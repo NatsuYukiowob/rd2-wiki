@@ -285,8 +285,8 @@ test.describe('線上編輯器', () => {
     await expect(page.locator('#edit-canvas-host svg .node')).toHaveCount(240);
 
     // 新節點的實際 transform 座標必須精準等於上面手算的「正確答案」——這就是本測試
-    // 真正的鑑別力來源：若實作誤用 svg.getScreenCTM()，這兩個值在「已平移縮放」的前提下
-    // 會不一致，測試會在這裡失敗。
+    // 真正的鑑別力來源：若實作誤用 svg.getScreenCTM()，這兩個值在「已縮放」的前提下
+    // 會不一致，測試會在這裡失敗（已用故意注入的錯誤實作實測驗證過，見任務報告）。
     const actual = await page.evaluate(() => {
       const nodes = document.querySelectorAll('#edit-canvas-host svg .node');
       const last = nodes[nodes.length - 1]!;
