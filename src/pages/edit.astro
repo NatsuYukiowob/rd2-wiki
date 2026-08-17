@@ -71,10 +71,14 @@ import Base from '../layouts/Base.astro';
     cursor: not-allowed;
   }
 
+  /* touch-action 刻意不設 none（審查回饋，2026-08-18）：edit-canvas.ts 這輪只接了滑鼠拖曳
+     平移／滾輪縮放，沒有像 tree-canvas.ts 那樣另外接雙指 pinch 縮放。tree.astro 的
+     #canvas-host 設 touch-action:none 是因為它自己的 JS 補上了完整的觸控手勢；這裡若原封
+     不動複製那個設定，會變成「關掉瀏覽器原生觸控行為，卻沒有對應的 JS 接住」——比什麼都
+     不做更糟（單指滑動整個失靈）。保留預設值 auto，讓原生觸控行為先頂著用。 */
   #edit-canvas-host {
     grid-area: canvas;
     overflow: hidden;
-    touch-action: none;
   }
 
   /* renderTree() 產生的 <svg id="tree">（src/lib/render.ts）填滿整個畫布容器；用
