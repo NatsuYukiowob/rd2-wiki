@@ -1,0 +1,101 @@
+---
+// 線上編輯器：讓沒有程式背景的玩家直接改骰子樹並送出 PR。
+// 設計見 docs/superpowers/specs/2026-08-18-rd2-wiki-online-editor-design.md。
+// 編輯目標是 /data/dice-tree.svg（build:data 從 data/ 複製過來的正本副本），
+// 所有改動都是對這份「原始字串」做行區塊替換，不重新序列化——這樣 PR 的 diff 才小到能 review。
+import Base from '../layouts/Base.astro';
+---
+
+<Base title="線上編輯器">
+  <div id="edit-toolbar">
+    <span id="edit-status">尚未修改</span>
+    <button id="edit-download" type="button" disabled>下載 SVG</button>
+  </div>
+  <div id="edit-canvas-host"></div>
+  <aside id="edit-panel">
+    <p id="edit-hint">點一個節點開始編輯。</p>
+    <div id="edit-validation"></div>
+  </aside>
+  <script>
+    import '../scripts/edit-canvas.ts';
+  </script>
+</Base>
+
+<style is:global>
+  /* 版面刻意不引入任何寫死的偏移量，也不需要 tree-canvas.ts 那種量測 nav 高度寫進
+     --nav-h 的機制：tree.astro 需要那套機制是因為 #branch-nav／#tree-controls 用
+     position:fixed 疊在畫布「上面」，脫離了文件正常流動順序，才需要另外算出「nav
+     實際渲染高度」讓自己緊接在 nav 下方（見 tree.astro 該規則的註解，CLAUDE.md
+     「寫死的版面偏移量咬過三次」講的就是這件事）。/edit 頁面的三個區塊
+     （#edit-toolbar／#edit-canvas-host／#edit-panel）沒有這個疊層需求，全部留在
+     正常文件流內，直接用 CSS Grid 排版——瀏覽器排版引擎本來就會把 main 接在
+     全站 <nav>（Base.astro 的 #site-nav，本身也是正常文件流、不是 fixed）後面，
+     不需要任何人猜測或量測 nav 的高度，也就沒有「假設值跟實際值兜不起來」的
+     bug 空間可言。 */
+  main:has(#edit-canvas-host) {
+    display: grid;
+    grid-template-columns: 1fr 20rem;
+    grid-template-rows: auto 1fr;
+    grid-template-areas: 'toolbar toolbar' 'canvas panel';
+    max-width: none;
+    padding: 0;
+    min-height: 100vh;
+  }
+
+  #edit-toolbar {
+    grid-area: toolbar;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.5rem 1rem;
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+  }
+
+  #edit-status {
+    color: var(--muted);
+  }
+
+  #edit-download {
+    margin-left: auto;
+    background: var(--bg);
+    color: var(--fg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 0.35rem 0.75rem;
+    font: inherit;
+  }
+
+  #edit-download:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  #edit-canvas-host {
+    grid-area: canvas;
+    overflow: hidden;
+    touch-action: none;
+  }
+
+  /* renderTree() 產生的 <svg id="tree">（src/lib/render.ts）填滿整個畫布容器；用
+     子代選擇器而不是耦合它內部固定的 id="tree"，畫布容器裡目前只會有這一顆 svg。 */
+  #edit-canvas-host svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+
+  #edit-panel {
+    grid-area: panel;
+    overflow: auto;
+    border-left: 1px solid var(--border);
+    padding: 1rem;
+  }
+
+  /* 節點是 renderTree() 動態產生的 SVG 元素（不是這個檔案模板裡寫死的），套用在它們身上
+     的樣式一律要 is:global（Astro scoped CSS 只認得模板裡靜態寫出的元素），這條規則跟
+     tree.astro 的 .node { cursor: pointer } 是同一個道理。 */
+  #edit-canvas-host .node {
+    cursor: pointer;
+  }
+</style>
