@@ -16,11 +16,16 @@ import { readFileSync, readdirSync } from 'node:fs';
  * 前一版的破口是 fail-open（靜默放行），方向錯誤。
  *
  * 唯一漏得掉的是動態拼接（`import('node' + ':fs')`），那是病態寫法，不在防守範圍。
+ *
+ * 正則用**反向參照** `\1` 要求開頭與結尾是同一種引號，這一點不能省：若允許不同種引號配對，
+ * 同一行裡一個含撇號的字串（`const s = "don't";`）會讓開頭的 `"` 跟撇號錯誤配對，
+ * 吃掉後面整段、連同真正的 `'node:fs'` 一起吞掉——又是一個 fail-open 的靜默假陰性。
+ * 排除 `\n` 則讓註解裡的單引號（`// Bob's note`）因同行找不到配對而不會跨行吞掉下一行的 import。
  */
 function forbiddenModuleLiterals(src: string): string[] {
   const hits: string[] = [];
-  for (const m of src.matchAll(/['"`]([^'"`\n]+)['"`]/g)) {
-    const spec = m[1]!;
+  for (const m of src.matchAll(/(['"`])((?:(?!\1)[^\n])+)\1/g)) {
+    const spec = m[2]!;      // ← 注意捕捉群組編號從 1 變 2（第 1 組現在是引號字元本身）
     if (spec.startsWith('node:') || spec === 'linkedom') hits.push(spec);
   }
   return hits;
@@ -61,5 +66,17 @@ describe('src/lib 必須是瀏覽器安全的', () => {
     // 貪婪吃掉後面整段，導致下一行真正的 node:fs import 被整個吞掉、靜默放行。
     const sample = `line.setAttribute('data-from', from);\nimport fs from 'node:fs';`;
     expect(forbiddenModuleLiterals(sample)).toEqual(['node:fs']);
+  });
+
+  it('同一行的不成對引號不會吞掉後面的真 import（回歸測試）', () => {
+    // 沒有反向參照的版本會讓 "don't" 的開頭雙引號跟撇號錯誤配對，
+    // 吃掉 `t"; import fs from ` 這一整段，使後面真正的 'node:fs' 永遠不會被單獨捕捉到。
+    const sample = `const s = "don't"; import fs from 'node:fs';`;
+    expect(forbiddenModuleLiterals(sample)).toEqual(['node:fs']);
+  });
+
+  it('同一行兩個成對引號都抓得到', () => {
+    const sample = `import a from 'node:fs'; import b from "node:path";`;
+    expect(forbiddenModuleLiterals(sample)).toEqual(['node:fs', 'node:path']);
   });
 });
