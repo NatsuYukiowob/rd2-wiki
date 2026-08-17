@@ -24,7 +24,21 @@ describe('icon-hash', () => {
 
   it('checkIcon 擋下非 PNG', async () => {
     const r = await checkIcon(new TextEncoder().encode('not a png at all, definitely not'));
-    expect(r).toEqual({ ok: false, reason: '不是有效的 PNG 檔案' });
+    expect(r).toEqual({ ok: false, reason: '不是有效的 PNG' });
+  });
+
+  it('checkIcon 非 PNG 的錯誤訊息與 CI 規則 7(c) 用語一致（回歸測試：防止兩邊措辭漂移）', async () => {
+    // 不把 CI 那句話抄一份寫死在這裡——寫死的話，CI 端改了措辭這支測試也不會發現，
+    // 那正是這次審查抓到的問題（icon-hash.ts 曾多寫「檔案」兩字，跟 CI 對不上）。
+    // 改成直接從 validate-rules.ts 的原始碼裡取出核心句，checkIcon 的 reason 要跟它一字不差。
+    const validateSrc = readFileSync('src/lib/validate-rules.ts', 'utf8');
+    const m = validateSrc.match(/if \(!size\) push\(`規則 7\(c\): 圖示 \$\{fileName\} ([^`]+)`\);/);
+    if (!m) throw new Error('抓不到 src/lib/validate-rules.ts 規則 7(c) 的非 PNG 錯誤訊息，格式可能已變動');
+    const ciCoreMessage = m[1]!;
+
+    const r = await checkIcon(new TextEncoder().encode('not a png at all, definitely not'));
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.reason).toBe(ciCoreMessage);
   });
 
   it('checkIcon 擋下最長邊小於 96px 的圖', async () => {

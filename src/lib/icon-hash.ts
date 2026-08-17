@@ -19,7 +19,7 @@ export type IconCheck =
 /** 一次做完 CI 規則 7(c) 的兩項檢查（合法 PNG、最長邊 ≥ 96px）並回傳雜湊，錯誤訊息與 CI 用語一致。 */
 export async function checkIcon(bytes: Uint8Array): Promise<IconCheck> {
   const size = readPngSize(bytes);
-  if (!size) return { ok: false, reason: '不是有效的 PNG 檔案' };
+  if (!size) return { ok: false, reason: '不是有效的 PNG' };
   const longest = Math.max(size.width, size.height);
   if (longest < 96) return { ok: false, reason: `圖示最長邊 ${longest}px，小於最低要求 96px` };
   return { ok: true, hash: await sha256Hex12(bytes), width: size.width, height: size.height };
