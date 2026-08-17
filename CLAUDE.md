@@ -12,6 +12,23 @@ CI 是唯一防線（維護者不可能逐行 review SVG 的 diff）。
 核心功能：點一個節點 → 高亮它在 DAG 上的**所有祖先聯集**（去重、含自身、多重前置視為 AND）
 → 算出解鎖成本。
 
+## Commit 訊息
+
+```
+<type>: <一句話>
+```
+
+單行、中文、**≤ 50 字元**（中文約 20 字）、**不寫 body**。只說「做了什麼」，**不解釋「為什麼」**
+——why 寫在程式碼註解裡（這個 repo 的註解密度本來就高、刻意用註解保存踩坑成因），
+commit 再寫一次是重複，而且那份重複會隨程式碼演進而過時。
+
+type：`feat` / `fix` / `refactor` / `test` / `docs` / `ci` / `chore`
+
+```
+好    fix: encodeAttributeNewlines 跳過註解與 CDATA
+太長  fix: encodeAttributeNewlines 讓狀態機認得註解／CDATA／PI／DOCTYPE，避免誤編碼元素內容換行
+```
+
 ## 指令
 
 ```bash
