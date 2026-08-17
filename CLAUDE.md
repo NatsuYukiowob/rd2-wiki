@@ -65,7 +65,12 @@ top 差距 < 0.5px），不是看截圖。
 - linkedom 沒有 `getScreenCTM()`，`.focus()` 也不會更新 `document.activeElement`
   → 這類行為只能靠 E2E 驗
 - 臨時的 Playwright 腳本要放在 **repo 目錄下**才 import 得到 `@playwright/test`
-- `tests/data/parser-parity.test.ts` 會實際啟動 Chromium，比一般單元測試慢數秒，屬正常現象
+- 換行不變量拆成兩支測試：`tests/data/parser-parity.test.ts`（vitest，純字串掃描、零瀏覽器
+  相依，`npm test`／`verify` job 可跑）驗「不變量本身有沒有被破壞」；
+  `tests/e2e/parser-parity.spec.ts`（Playwright，只有 `e2e` job 裝了瀏覽器）用雙 parser
+  比對證明「為什麼這個不變量重要」。**`verify` job 沒裝瀏覽器**——之後新增測試如果需要真的
+  DOM／瀏覽器 API，放進 `tests/e2e/`，不要放進 `npm test` 跑的範圍，否則乾淨的 CI runner
+  會直接炸「Executable doesn't exist」
 
 ## 不進版控
 
