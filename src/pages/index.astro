@@ -1,0 +1,18 @@
+---
+// 首頁：概覽數字全部從 src/generated/tree.json 讀出，不寫死，資料改版時自動同步。
+import Base from '../layouts/Base.astro';
+import data from '../generated/tree.json';
+
+const diceCount = data.nodes.filter((n) => n.type === 'dice').length;
+---
+
+<Base title="首頁">
+  <section style="padding:2rem">
+    <h1>Random Dice 2 骰子樹</h1>
+    <p>
+      收錄 {data.nodes.length} 個節點、{diceCount} 顆骰子，涵蓋自然、機械、魔法、秩序、渾沌五大屬性分支。解鎖前先看清楚整棵樹，避免點錯路線浪費資源。
+    </p>
+    <p><a href="/tree">開啟骰子樹 →</a></p>
+    <p style="color:var(--muted)">資料版本 {data.meta.gameBundle}（更新於 {data.meta.updated}）</p>
+  </section>
+</Base>

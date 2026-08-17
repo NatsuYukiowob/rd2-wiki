@@ -1,0 +1,57 @@
+---
+// 貢獻頁：正本只有 repo 根目錄的 CONTRIBUTING.md 一份，避免網站文字與檔案內容日後各自漂移。
+// 用 Astro 內建的 Markdown 匯入（.md 檔可直接 import 取得 <Content />）渲染成排版後的
+// HTML，不需要額外安裝 Markdown 解析套件。
+import Base from '../layouts/Base.astro';
+import { Content } from '../../CONTRIBUTING.md';
+---
+
+<Base title="貢獻">
+  <article class="contributing">
+    <Content />
+  </article>
+</Base>
+
+<style>
+  .contributing {
+    padding: 2rem;
+    max-width: 52rem;
+    margin: 0 auto;
+  }
+  .contributing :global(h1) {
+    font-size: 1.75rem;
+    margin-top: 0;
+  }
+  .contributing :global(h2) {
+    font-size: 1.3rem;
+    margin-top: 2rem;
+    padding-top: 0.5rem;
+    border-top: 1px solid var(--border);
+  }
+  .contributing :global(ul),
+  .contributing :global(ol) {
+    padding-left: 1.5rem;
+  }
+  .contributing :global(li) {
+    margin: 0.35rem 0;
+  }
+  .contributing :global(code) {
+    background: var(--panel);
+    padding: 0.1em 0.35em;
+    border-radius: 0.25em;
+    font-size: 0.9em;
+  }
+  .contributing :global(pre) {
+    background: var(--panel);
+    padding: 0.75rem 1rem;
+    border-radius: 0.5rem;
+    overflow-x: auto;
+  }
+  .contributing :global(pre code) {
+    background: none;
+    padding: 0;
+  }
+  .contributing :global(a) {
+    word-break: break-word;
+  }
+</style>

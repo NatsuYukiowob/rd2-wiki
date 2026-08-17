@@ -1,0 +1,31 @@
+{
+  "name": "rd2-wiki",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=24" },
+  "scripts": {
+    "pretest": "npm run build:data",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "split": "tsx tools/split-svg.ts",
+    "normalize": "tsx tools/normalize-svg.ts data/dice-tree.svg",
+    "validate": "tsx tools/validate.ts",
+    "add-icon": "tsx tools/add-icon.ts",
+    "build:data": "tsx tools/build-data.ts",
+    "build": "npm run build:data && astro build",
+    "dev": "npm run build:data && astro dev",
+    "pree2e": "npm run build",
+    "e2e": "playwright test"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "astro": "^5.0.0",
+    "linkedom": "^0.18.0",
+    "sharp": "^0.34.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0",
+    "vitest": "^2.1.0",
+    "@playwright/test": "^1.49.0",
+    "serve": "^14.2.0"
+  }
+}

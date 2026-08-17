@@ -1,0 +1,44 @@
+# PR Comment：把 ci.yml 產出的差異摘要貼回 PR。
+#
+# 為什麼跟 ci.yml 分成兩支、而不是在同一支 workflow 裡直接 `gh pr comment`：
+# `pull_request` 事件在 fork 送出的 PR 上，GitHub 給的 GITHUB_TOKEN 一律是唯讀的
+# （即使這裡宣告 `pull-requests: write` 也會被 GitHub 強制降權），直接呼叫留言 API 會 403。
+#
+# 因此拆成兩段：ci.yml 用 `pull_request` 觸發、唯讀權限，負責產生 diff-summary.md 並上傳成
+# artifact；這支 workflow 改用 `workflow_run` 觸發——在「目標 repo 的情境」下執行（不是 fork
+# 的情境），才拿得到真正有寫入權限的 token，下載上一支 workflow 的 artifact 後再貼留言。
+name: PR Comment
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+permissions:
+  pull-requests: write
+  actions: read
+jobs:
+  comment:
+    # 只在觸發來源是 pull_request（而不是 push to main）時才動作。
+    # 注意：diff-summary artifact 只有在 ci.yml 的「資料驗證／單元測試／建置」都成功、跑到
+    # 「產生差異摘要」那一步時才會存在（同一個 job 裡前面的步驟失敗，預設會跳過後面步驟）。
+    # 也就是說如果 PR 連 `npm run validate` 都沒過，這裡會因為找不到 artifact 而失敗、不會
+    # 貼出留言——這是預期行為：資料本身有問題時，PR 頁面上的 CI 紅燈本身就已經是最直接的提醒，
+    # 差異摘要要能算出來，前提是兩邊的 tree.json 都成功建置。
+    if: github.event.workflow_run.event == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: diff-summary
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const body = fs.readFileSync('diff-summary.md', 'utf8');
+            const prs = context.payload.workflow_run.pull_requests;
+            if (prs.length === 0) return;
+            await github.rest.issues.createComment({
+              owner: context.repo.owner, repo: context.repo.repo,
+              issue_number: prs[0].number, body,
+            });

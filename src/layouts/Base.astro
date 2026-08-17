@@ -1,0 +1,40 @@
+---
+// 全站共用版面：導覽列、頁尾版權聲明。
+// 導覽列只放已上線的頁面（首頁／骰子樹／貢獻），骰子樹頁面雖是下一個任務才會實作
+// 內容，但路由先接上不影響本頁。
+import '../styles/global.css';
+import data from '../generated/tree.json';
+
+interface Props {
+  title: string;
+}
+
+const { title } = Astro.props;
+---
+
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title} — rd2-wiki</title>
+    <meta
+      name="description"
+      content="Random Dice 2 骰子樹非官方玩家攻略站：收錄全部節點、解鎖條件與前置關係。"
+    />
+  </head>
+  <body>
+    <nav>
+      <a href="/">rd2-wiki</a>
+      <a href="/tree">骰子樹</a>
+      <a href="/about">貢獻</a>
+      <span style="margin-left:auto;color:var(--muted)">資料 {data.meta.gameBundle}</span>
+    </nav>
+    <main>
+      <slot />
+    </main>
+    <footer>
+      本站為非官方（fan-made）玩家攻略站，與 111% 無隸屬關係。<br />
+      遊戲圖示與文字著作權屬 111 Percent Inc.，程式碼採 MIT 授權。
+    </footer>
+  </body>
+</html>

@@ -1,0 +1,323 @@
+---
+// 骰子樹畫布頁：239 個節點、248 條邊的靜態結構 + 平移縮放（滑鼠/雙指/鍵盤）+
+// 選取/前置鏈高亮/詳情面板 + 搜尋/篩選/網址狀態同步。
+// 掛載邏輯放在 src/scripts/tree-canvas.ts，方便各任務在同一支腳本上疊加互動。
+import Base from '../layouts/Base.astro';
+
+// 分支（5 個，spec §6.3）與類型（4 個）在編譯期就是固定的字面聯集，不是要跑期才知道的
+// 節點資料，所以直接在這裡的 frontmatter 迴圈產生 checkbox 標記（Astro 本來就是做這件事
+// 的地方），不另外開一支 src/components/FilterBar.ts 純字串產生器——沒有需要在瀏覽器沒有
+// 的環境下單獨單元測試的邏輯（不像 NodeDetail.ts 有 HTML escape、關鍵字白名單比對這些
+// 值得鎖住的行為），見 task-16-report.md「FilterBar.ts 的取捨」一節。
+// value 用的字串必須跟 src/lib/types.ts 的 Branch / NodeType 字面聯集完全對應，
+// 因為 tree-canvas.ts 會直接把 dataset 值當 Branch/NodeType 塞進 FilterState。
+const BRANCHES: Array<[string, string]> = [
+  ['nature', '自然'],
+  ['engineering', '工學'],
+  ['magic', '魔法'],
+  ['order', '秩序'],
+  ['chaos', '渾沌'],
+];
+const TYPES: Array<[string, string]> = [
+  ['dice', '骰子'],
+  ['rune', '骰子符文'],
+  ['passive', '玩家被動'],
+  ['support', '支援'],
+];
+---
+
+<Base title="骰子樹">
+  <!-- #tree-controls：把 #toolbar 與 #branch-nav 包進同一個 position:fixed 的直向
+       flex 容器（修 bug：舊版兩者各自用寫死的 top 值疊放，#branch-nav 的 top:6rem
+       假設 #toolbar 永遠只有 3rem 高，但 #toolbar 有 flex-wrap，視窗變窄換行變高後
+       #branch-nav 就會壓上去）。改成同一個 flex column 容器後，#branch-nav 永遠緊接
+       在 #toolbar 實際渲染高度之後，不論 #toolbar 換幾行都不會重疊。#tree-controls
+       本身不是既有 DOM 契約的一部分，純粹是版面用的包裝元素，tree-canvas.ts／E2E
+       完全不吃這個 id，只吃裡面兩個原本就有的 id。 -->
+  <div id="tree-controls">
+    <div id="toolbar">
+      <!-- 手機版才顯示（見下面 CSS）：篩選收進頂部抽屜，預設收起，點這顆按鈕展開/收起
+           #filters（切 .open class，接線見 tree-canvas.ts）。桌機版 #filters 本來就常駐
+           顯示，不需要這顆按鈕，靠 CSS 媒體查詢隱藏。 -->
+      <button id="filters-toggle" type="button" aria-label="展開篩選" aria-controls="filters">篩選</button>
+      <input id="search" type="search" placeholder="搜尋節點名稱、效果、關鍵字…" aria-label="搜尋節點" />
+      <div id="filters">
+        <fieldset>
+          <legend>分支</legend>
+          {BRANCHES.map(([value, label]) => (
+            <label><input type="checkbox" data-branch={value} /> {label}</label>
+          ))}
+        </fieldset>
+        <fieldset>
+          <legend>類型</legend>
+          {TYPES.map(([value, label]) => (
+            <label><input type="checkbox" data-type={value} /> {label}</label>
+          ))}
+        </fieldset>
+      </div>
+    </div>
+    <!-- 桌機側欄的分支快速跳轉（spec §6.2.6）：跟下面手機版 #branch-chips 是同一組分支、
+         同一個按鈕點擊 handler（見 tree-canvas.ts 的 jumpToBranch()，不寫兩份跳轉邏輯），
+         只是版面位置與顯示時機不同（CSS 媒體查詢互斥顯示）。 -->
+    <nav id="branch-nav" aria-label="分支快速跳轉">
+      {BRANCHES.map(([value, label]) => (
+        <button type="button" data-branch={value}>{label}</button>
+      ))}
+    </nav>
+  </div>
+  <div id="canvas-host">
+    <script>
+      import '../scripts/tree-canvas.ts';
+    </script>
+  </div>
+  <aside id="detail" hidden></aside>
+  <!-- 手機版底部的分支切換列（DOM 契約，見 task-17 brief：#branch-chips 內含 5 個
+       button[data-branch]，第 18 個任務的 E2E 已經寫死這個結構）。 -->
+  <div id="branch-chips">
+    {BRANCHES.map(([value, label]) => (
+      <button type="button" data-branch={value}>{label}</button>
+    ))}
+  </div>
+</Base>
+
+<style is:global>
+  /* 畫布頁不要吃到 Base.astro 版面預設的 <main> 內距／寬度上限，
+     其餘頁面（首頁、貢獻頁）維持原本的閱讀寬度不受影響。 */
+  main:has(#canvas-host) {
+    max-width: none;
+    padding: 0;
+  }
+
+  #canvas-host {
+    height: calc(100vh - 110px);
+    overflow: hidden;
+    touch-action: none;
+  }
+
+  #tree {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+
+  /* #tree-controls：#toolbar 與 #branch-nav 共用的 fixed 定位容器，用 flex column
+     直向排列，讓 #branch-nav 自然接在 #toolbar「實際渲染高度」之後——不管 #toolbar
+     的 flex-wrap 在窄視窗換成幾行，#branch-nav 都不會被蓋到（修 bug：舊版兩者各自
+     寫死 top: 3rem / top: 6rem，後者假設前者恆為 3rem 高，視窗一窄就重疊）。
+     align-items: flex-start 避免直向 flex 預設的 stretch 把 #branch-nav 的按鈕拉寬
+     到跟 #toolbar 一樣寬。用 fixed 疊在畫布左上角（跟 #detail 疊在右側同一種做法），
+     不佔版面、不必重算 #canvas-host 的 calc(100vh - 110px)。 top: 3rem 對齊
+     #detail 面板同一個「nav 底下」的偏移量，兩者高度基準一致。 */
+  #tree-controls {
+    position: fixed;
+    top: 3rem;
+    left: 0;
+    z-index: 5;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    /* 重要：#tree-controls 是 flex column，自身的盒子會撐到最寬子元素（#toolbar）的
+       寬度，即使 #branch-nav 只佔左側一小條、右邊大片是視覺上的透明空白。這片空白如果
+       沒有 pointer-events: none，會蓋住底下畫布，讓那個區域裡的節點完全點不到（E2E
+       「點選節點會高亮前置鏈並顯示成本」在改用共用容器後就是死在這裡：Playwright
+       回報 #tree-controls intercepts pointer events）。真正該接住點擊的是下面兩個
+       有實際背景/內容的子元素，各自加回 pointer-events: auto 蓋掉繼承來的 none。 */
+    pointer-events: none;
+  }
+
+  #toolbar {
+    pointer-events: auto;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.5rem 1rem;
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+    border-right: 1px solid var(--border);
+    border-bottom-right-radius: 8px;
+  }
+
+  #search {
+    background: var(--bg);
+    color: var(--fg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 0.35rem 0.6rem;
+    min-width: 14rem;
+    font: inherit;
+  }
+
+  #filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+  }
+
+  #filters fieldset {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 0.15rem 0.5rem;
+  }
+
+  #filters legend {
+    color: var(--muted);
+    font-size: 0.75rem;
+    padding: 0 0.25rem;
+  }
+
+  #filters label {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    font-size: 0.85rem;
+    white-space: nowrap;
+  }
+
+  /* 以下樣式作用在 tree-canvas.ts 用 DOM API 動態產生的節點／邊上，
+     Astro 的 scoped CSS 只會標記本檔案模板裡「寫死」的元素，動態產生的 SVG 碰不到，
+     所以這裡一律用 is:global。 */
+  .edge {
+    stroke: var(--muted);
+    stroke-width: 2;
+    fill: none;
+  }
+
+  .node {
+    cursor: pointer;
+  }
+
+  .node .label {
+    font-size: 11px;
+    fill: var(--fg);
+    text-anchor: middle;
+    pointer-events: none;
+  }
+
+  .node:focus {
+    outline: 2px solid var(--gold);
+    outline-offset: 2px;
+  }
+
+  /* 桌機側欄的分支快速跳轉（spec §6.2.6）：跟在 #toolbar 下面、直向排列（定位交給
+     #tree-controls，見上面該規則的註解）。手機版改用畫面底部的 #branch-chips（見下面
+     的手機媒體查詢），兩者互斥顯示、共用同一組 data-branch 按鈕與同一個
+     tree-canvas.ts 的 jumpToBranch() handler。 */
+  #branch-nav {
+    pointer-events: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    padding: 0.5rem;
+  }
+  #branch-nav button {
+    background: var(--panel);
+    color: var(--fg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 0.35rem 0.6rem;
+    font: inherit;
+    font-size: 0.8rem;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  #branch-nav button:hover {
+    border-color: var(--gold);
+  }
+
+  /* 手機版分支切換列：預設（桌機寬度）不顯示，下面的手機媒體查詢會改成固定在畫面底部的
+     橫向列。DOM 結構（#branch-chips 內 5 個 button[data-branch]）是跨任務契約，
+     不要改名，見上方模板註解與 task-17 brief。 */
+  #branch-chips {
+    display: none;
+  }
+  #branch-chips button {
+    background: var(--panel);
+    color: var(--fg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 0.4rem 0.6rem;
+    font: inherit;
+    font-size: 0.8rem;
+  }
+
+  /* #filters-toggle 只在手機版顯示（見下面媒體查詢）；桌機版 #filters 常駐展開，
+     不需要這顆開關。 */
+  #filters-toggle {
+    display: none;
+    background: var(--panel);
+    color: var(--fg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 0.35rem 0.6rem;
+    font: inherit;
+  }
+
+  /* 手機版視角（task-17）：底部分支 chip、詳情面板改由下方滑出、篩選收進頂部抽屜、
+     桌機側欄跳轉按鈕隱藏（手機版用底部 chip 取代）。斷點 720px 要跟
+     src/scripts/tree-canvas.ts 判斷 isMobile 用的 matchMedia 查詢字串保持一致，
+     兩邊改動時要一起改。 */
+  @media (max-width: 720px) {
+    #filters-toggle {
+      display: inline-block;
+    }
+    #branch-nav {
+      display: none;
+    }
+    #detail {
+      position: fixed;
+      inset: auto 0 0 0;
+      width: 100%;
+      max-height: 55vh;
+      border-left: none;
+      border-top: 1px solid var(--border);
+      /* #branch-chips 同樣 position:fixed、bottom:0，疊在 #detail 底部之上（DOM 順序在
+         #detail 後面，兩者都沒有互相退讓的 z-index，後面的蓋掉前面的）。#detail 內容
+         最後一段一定是 spec §2.1 強制要求的「重置需要初期化券」災情警告（見
+         NodeDetail.ts 的 renderDetail()），這段內容被蓋住等於完全看不到。#detail 本身
+         overflow:auto，補一段跟 #branch-chips 實際高度相當（略留餘裕）的 padding-bottom，
+         讓可捲動內容的「結尾」落在 chip 列上緣之上，警告文字捲到底時才不會被蓋住。
+         #branch-chips 高度＝按鈕（0.4rem 上下內距＋約 0.8rem 字高）＋列本身 0.5rem 上下
+         內距＋1px 上框線，實測約 3rem；這裡抓 4.5rem 留額外安全邊界（實測驗證見
+         tests/e2e/tree.spec.ts 測試 K：拿掉這段 padding-bottom 時，警告底緣量到 810px，
+         蓋進 chip 列 787.75px 起點約 22px；加回後通過）。 */
+      padding-bottom: 4.5rem;
+    }
+    #filters {
+      position: fixed;
+      /* 收起狀態用 top:0 + translateY(-100%)，不是 top:3rem + translateY(-110%)
+         （task-18 code review 找到的真實 bug：-110% 是面板「自身高度」的 110%，面板
+         裡有分支／類型兩個 fieldset，在窄螢幕上換行變高後，-110% 換算出來的位移量往往
+         不足以蓋過 top:3rem 這個已經在視窗內 48px 的錨點，導致面板最底下一排（類型）的
+         邊緣露出約 30-40px。改成 top:0 + translateY(-100%)：不管面板實際多高，
+         translateY(-100%) 永遠讓面板的底緣精確貼齊視窗頂端正上方（y=0），是跟內容高度
+         無關、恆成立的收起位置。 */
+      top: 0;
+      left: 0;
+      right: 0;
+      transform: translateY(-100%);
+      transition: transform 0.2s;
+      background: var(--panel);
+    }
+    #filters.open {
+      /* 展開：滑到工具列（top:3rem，現在寫在 #tree-controls，見上面該規則）下面，
+         跟收起前的視覺位置一致。 */
+      transform: translateY(3rem);
+    }
+    #branch-chips {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      display: flex;
+      justify-content: space-around;
+      background: var(--panel);
+      padding: 0.5rem;
+      border-top: 1px solid var(--border);
+      z-index: 5;
+    }
+  }
+</style>
