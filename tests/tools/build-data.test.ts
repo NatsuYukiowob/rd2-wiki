@@ -5,6 +5,8 @@ import { buildTreeData } from '../../tools/build-data';
 import { buildSprite, type IconEntry } from '../../tools/lib/icons';
 import { parseTree } from '../../tools/lib/svg-parse';
 import { typeOfZh } from '../../src/lib/taxonomy';
+import { buildTreeDataWith } from '../../src/lib/build-tree';
+import { loadSvg } from '../../tools/lib/dom';
 
 const svg = readFileSync('data/dice-tree.svg', 'utf8');
 const opts = {
@@ -66,5 +68,22 @@ describe('buildTreeData', () => {
       });
     const { sprite } = await buildSprite(entries);
     expect(sprite.length).toBeLessThanOrEqual(400 * 1024);
+  });
+});
+
+describe('buildTreeDataWith（瀏覽器可用版）', () => {
+  it('注入 linkedom 時與 tools 版 buildTreeData 產生完全相同的 TreeData', () => {
+    const svgText = readFileSync('data/dice-tree.svg', 'utf8');
+    const opts = {
+      keywords: JSON.parse(readFileSync('data/keywords.json', 'utf8')),
+      unlockExceptions: JSON.parse(readFileSync('data/unlock-exceptions.json', 'utf8')),
+      spriteIndex: {} as Record<string, [number, number, number, number]>,
+      spriteSize: [1, 1] as [number, number],
+    };
+    const a = buildTreeData(svgText, opts);
+    const b = buildTreeDataWith(svgText, opts, loadSvg);
+    expect(JSON.stringify(b)).toBe(JSON.stringify(a));
+    expect(b.nodes.length).toBe(239);
+    expect(b.meta.totalUnlockCost).toEqual({ core: 1772, gold: 6662000 });
   });
 });
