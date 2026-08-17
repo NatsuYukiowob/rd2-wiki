@@ -40,6 +40,16 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const json = JSON.stringify(data);
   writeFileSync('src/generated/tree.json', json);
 
+  // 線上編輯器（/edit）的資料來源。刻意從 data/ 複製而不是讓編輯器去 GitHub raw 抓：
+  // 玩家必須在「這次站台建置所用的那一份」正本上編輯，兩邊不同源會讓他在舊版上改而不自知。
+  // icon-hashes.json 讓編輯器能做規則 7(a)/7(d) 的檢查（只要雜湊集合，約 2.6 KB），
+  // 不必為此下載 data/icons/ 的 202 張圖、4.6 MB。
+  mkdirSync('public/data', { recursive: true });
+  writeFileSync('public/data/dice-tree.svg', svgText);
+  writeFileSync('public/data/keywords.json', readFileSync('data/keywords.json', 'utf8'));
+  writeFileSync('public/data/unlock-exceptions.json', readFileSync('data/unlock-exceptions.json', 'utf8'));
+  writeFileSync('public/data/icon-hashes.json', JSON.stringify(entries.map(e => e.hash)));
+
   console.log(`tree.json ${(Buffer.byteLength(json) / 1024).toFixed(1)} KB, sprite ${(sprite.length / 1024).toFixed(0)} KB`);
 
   // spec §11 效能預算：正式產物（真實 sprite index，不是測試用的替身資料）

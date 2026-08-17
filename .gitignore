@@ -2,6 +2,7 @@ node_modules/
 dist/
 .astro/
 public/assets/
+public/data/
 src/generated/
 test-results/
 playwright-report/

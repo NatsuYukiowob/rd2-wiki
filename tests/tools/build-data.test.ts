@@ -87,3 +87,15 @@ describe('buildTreeDataWith（瀏覽器可用版）', () => {
     expect(b.meta.totalUnlockCost).toEqual({ core: 1772, gold: 6662000 });
   });
 });
+
+describe('編輯器資料產出', () => {
+  it('build:data 後 public/data/ 有編輯器需要的四個檔案且內容與正本一致', () => {
+    // 這支測試假設已經跑過 npm run build:data（vitest 的 pretest 會自動跑）
+    expect(readFileSync('public/data/dice-tree.svg', 'utf8')).toBe(readFileSync('data/dice-tree.svg', 'utf8'));
+    expect(readFileSync('public/data/keywords.json', 'utf8')).toBe(readFileSync('data/keywords.json', 'utf8'));
+    expect(readFileSync('public/data/unlock-exceptions.json', 'utf8')).toBe(readFileSync('data/unlock-exceptions.json', 'utf8'));
+    const hashes = JSON.parse(readFileSync('public/data/icon-hashes.json', 'utf8')) as string[];
+    expect(hashes.length).toBe(202);
+    expect(hashes.every(h => /^[0-9a-f]{12}$/.test(h))).toBe(true);
+  });
+});
