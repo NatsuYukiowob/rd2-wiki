@@ -36,4 +36,20 @@ describe('normalizeSvg', () => {
     const src = readFileSync('data/dice-tree.svg', 'utf8');
     expect(normalizeSvg(normalizeSvg(src))).toBe(normalizeSvg(src));
   });
+  it('屬性值內的換行編成 &#10; 實體，<title> 元素內容的換行維持字面換行', () => {
+    const out = normalizeSvg(
+      '<svg xmlns="http://www.w3.org/2000/svg">' +
+        '<g class="node" transform="translate(1,2)" data-cost="金幣 2,000&#10;最高 50 級">' +
+        '<title>A&#10;B</title>' +
+        '</g></svg>',
+    );
+    expect(out).toContain('data-cost="金幣 2,000&#10;最高 50 級"');
+    expect(out).toContain('<title>A\nB</title>');
+  });
+
+  it('真實檔案輸出後，屬性值內不得殘留字面換行', () => {
+    const out = normalizeSvg(readFileSync('data/dice-tree.svg', 'utf8'));
+    const offenders = out.match(/data-(?:cost|description|name)="[^"]*\n[^"]*"/g) ?? [];
+    expect(offenders).toEqual([]);
+  });
 });

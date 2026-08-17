@@ -41,6 +41,37 @@ function normalizePath(d: string, dx = 0, dy = 0): string {
 }
 
 /**
+ * 把序列化結果中「屬性值內」的字面換行編成 `&#10;` 實體，元素內容（例如 <title> 的文字）不動。
+ *
+ * 為什麼一定要做：XML 規範 §3.3.3 要求 parser 把屬性值內的字面換行正規化成空格。linkedom
+ * 沒有實作這條、Chromium 有——同一份檔案兩邊讀出來的 data-cost/data-description 會不一樣。
+ * 線上編輯器在瀏覽器解析這份檔案，若不編成實體，152 個節點的成本／描述會各少一個換行，
+ * 玩家一改就永久遺失，而且會撞上 validate 規則 1（title 與 data-* 逐字一致）而看不懂原因。
+ *
+ * 實作方式是掃描字串狀態機而不是正則：屬性值與元素內容都可能含 `"`／`<`／`>`，
+ * 用正則區分兩者會在多行描述上誤判。
+ */
+export function encodeAttributeNewlines(xml: string): string {
+  let out = '';
+  let inTag = false;
+  let quote: '"' | "'" | null = null;
+  for (const ch of xml) {
+    if (quote) {
+      if (ch === quote) quote = null;
+      else if (ch === '\n') { out += '&#10;'; continue; }
+      else if (ch === '\r') { out += '&#13;'; continue; }
+    } else if (inTag) {
+      if (ch === '"' || ch === "'") quote = ch;
+      else if (ch === '>') inTag = false;
+    } else if (ch === '<') {
+      inTag = true;
+    }
+    out += ch;
+  }
+  return out;
+}
+
+/**
  * 把 GUI 編輯工具（例如 Inkscape）存檔後產生的變形攤平回專案要求的正規形式：
  * - `<g class="node">` 的 transform 一律變成絕對 `translate(x,y)`，且必須是 `<svg>` 的直屬子元素
  *   （若原本包在圖層 `<g>` 裡，把圖層的位移併入節點後搬出來，圖層本身移除）
@@ -89,7 +120,7 @@ export function normalizeSvg(svgText: string): string {
     }
     wrappers = [...doc.querySelectorAll('svg > g:not(.node)')];
   }
-  return doc.toString();
+  return encodeAttributeNewlines(doc.toString());
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
