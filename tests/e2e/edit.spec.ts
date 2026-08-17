@@ -86,4 +86,74 @@ test.describe('線上編輯器', () => {
     expect(after.x).not.toBeCloseTo(before.x, 1);
     expect(after.y).not.toBeCloseTo(before.y, 1);
   });
+
+  // task-12：欄位表單與即時驗證。
+
+  test('改名字會即時反映在畫布與狀態列，且驗證維持通過', async ({ page }) => {
+    await page.goto('/edit');
+    await page.locator('#edit-canvas-host svg .node[data-id="1002"]').click();
+    await page.locator('#edit-panel [data-field="name"]').fill('尖刺骰');
+    await page.locator('#edit-panel [data-field="name"]').blur();
+    await expect(page.locator('#edit-status')).toContainText('已修改 1 處');
+    // 「驗證維持通過」量的是 errors（會擋 PR 的那些），不是「面板完全沒有『規則』兩個字」：
+    // 真實資料本身就有 4 個跟這次編輯無關的規則 9 警告（2403／5302／5403／5307 的成長值
+    // 含 {n} 佔位符，見 CLAUDE.md 已知待辦），validateWith 是對整份 svgText 跑的，這幾條
+    // warnings 不管編輯哪個節點都會出現在面板裡——用「面板裡完全不能出現規則字樣」當斷言
+    // 在真實資料上必然是假陰性。改成直接量「有沒有 errors 區塊」跟「送出按鈕有沒有被停用」
+    // 這兩個真正代表「通過」的訊號（renderValidation()／runValidation() 的說明）。
+    await expect(page.locator('#edit-validation .errors')).toHaveCount(0);
+    await expect(page.locator('#edit-download')).toBeEnabled();
+  });
+
+  test('把成本改成不合法格式會即時顯示規則 4 錯誤', async ({ page }) => {
+    await page.goto('/edit');
+    await page.locator('#edit-canvas-host svg .node[data-id="1002"]').click();
+    await page.locator('#edit-panel [data-field="cost"]').fill('八個核心');
+    await page.locator('#edit-panel [data-field="cost"]').blur();
+    await expect(page.locator('#edit-validation')).toContainText('規則 4');
+    await expect(page.locator('#edit-download')).toBeDisabled();
+  });
+
+  // task-12 對 task-11 已知取捨的修正：task-11 的 rerender() 每次成功渲染都呼叫
+  // fitTo()，玩家改一個欄位、畫面就跳回整棵樹視角。這裡用幾何斷言（讀 #viewport 的
+  // transform 矩陣，不是截圖）證明編輯後 scale/translate 沒有被重置，見 rerender() 與
+  // Viewport.rebind() 的說明。
+  test('編輯欄位後 #viewport 的 scale/translate 不會被重置', async ({ page }) => {
+    await page.goto('/edit');
+    await expect(page.locator('#edit-canvas-host svg .node')).toHaveCount(239);
+
+    // 先選取節點、開啟表單——特意在還沒平移縮放的初始視角下點，避免下面的平移縮放把
+    // 節點移出可視範圍導致點不到。表單開了之後活在 #edit-panel，跟畫布 #edit-canvas-host
+    // 是不同的 DOM 子樹，之後怎麼平移縮放畫布都不影響表單。
+    await page.locator('#edit-canvas-host svg .node[data-id="1002"]').click();
+
+    // 手動放大＋拖曳平移，離開初始 fitTo() 給的 0.9x 視角——這就是「玩家好不容易縮放到
+    // 想改的節點」那個動作。
+    const host = page.locator('#edit-canvas-host');
+    const box = await host.boundingBox();
+    if (!box) throw new Error('#edit-canvas-host 沒有 bounding box');
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.wheel(0, -300); // 放大
+    await page.mouse.move(box.x + box.width * 0.3, box.y + box.height * 0.5);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width * 0.5, box.y + box.height * 0.3, { steps: 10 });
+    await page.mouse.up();
+
+    const before = await getViewportMatrix(page);
+    // 確認真的離開了初始視角（不是巧合停在 fitTo() 給的精確值 0.9/170/142.5）：如果平移
+    // 縮放沒生效，就算 rerender() 真的把視角重置回 fitTo()，這條測試也會誤判通過。
+    expect(before.scale).not.toBeCloseTo(0.9, 3);
+
+    // 觸發一次欄位編輯 → applyEdit() → rerender()。task-11 的行為會讓這裡的 scale/x/y
+    // 被打回 fitTo() 算出的 0.9/170/142.5（見上面「初始載入」那條測試的手算值）；
+    // task-12 改成非初次渲染呼叫 Viewport.rebind()，這三個值應該完全不變。
+    await page.locator('#edit-panel [data-field="name"]').fill('尖刺骰');
+    await page.locator('#edit-panel [data-field="name"]').blur();
+    await expect(page.locator('#edit-status')).toContainText('已修改 1 處');
+
+    const after = await getViewportMatrix(page);
+    expect(after.scale).toBeCloseTo(before.scale, 6);
+    expect(after.x).toBeCloseTo(before.x, 6);
+    expect(after.y).toBeCloseTo(before.y, 6);
+  });
 });

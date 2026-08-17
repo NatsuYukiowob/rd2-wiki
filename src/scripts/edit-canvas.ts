@@ -3,9 +3,15 @@
 // 下載）都疊在 editorState 與 rerender() 之上，唯一的重繪路徑固定是
 // svgText → buildTreeDataWith → renderTree（見 rerender() 的說明），不另寫第二套。
 import rawTreeMeta from '../generated/tree.json';
+import { applyFieldEdits, renderEditForm, type FieldEdits } from '../components/EditForm.js';
+import { renderValidation } from '../components/ValidationPanel.js';
 import { buildTreeDataWith } from '../lib/build-tree.js';
+import { estimateGzipBytes } from '../lib/budget.js';
 import { parseXmlInBrowser } from '../lib/dom.js';
 import { renderTree } from '../lib/render.js';
+import { locateNodeBlocks, replaceNode } from '../lib/svg-edit.js';
+import { emitNodeBlock, parseNodeBlock, type NodeBlock } from '../lib/svg-emit.js';
+import { validateWith, type IconSource } from '../lib/validate-rules.js';
 import { Viewport } from '../lib/viewport.js';
 import type { TreeData, TreeNode, UnlockVia } from '../lib/types.js';
 
@@ -43,6 +49,18 @@ let currentNodesById = new Map<string, TreeNode>();
 // rerender() 失敗時同樣不更新它，理由跟 currentNodesById 一致：畫面沒換，操作對象也不該換。
 let currentViewport: Viewport | null = null;
 
+// boot() 讀一次就固定不變的 unlockExceptions，之後 rerender()／runValidation() 都要用
+// 同一份（buildTreeDataWith 的 BuildOpts 需要它）。放模組級變數而不是每次呼叫端各自傳
+// 一份，理由跟 currentNodesById／currentViewport 一樣：這是「目前這個編輯 session」共用的
+// 唯一一份設定，不是每次呼叫都可能不同的參數。
+let currentUnlockExceptions: UnlockExceptions | null = null;
+
+// 目前表單正在編輯哪個節點（bindNodeClicks() 選取節點時設定，bindFormEdits() 的
+// focusout 委派讀它來決定要把欄位改動套進哪個節點）。跟 currentNodesById／currentViewport
+// 同一類模組級狀態：表單本身沒有把「正在編輯誰」編碼進 DOM（data-field 只標記欄位名稱，
+// 不重複標記節點 id），需要一個地方記錄。
+let currentEditId: string | null = null;
+
 async function boot(): Promise<void> {
   const [svgText, keywords, unlockExceptions, iconHashes] = await Promise.all([
     fetch('/data/dice-tree.svg').then(r => r.text()),
@@ -54,9 +72,11 @@ async function boot(): Promise<void> {
   editorState.original = svgText;
   editorState.keywords = keywords;
   editorState.iconHashes = new Set<string>(iconHashes);
-  rerender(unlockExceptions);
+  currentUnlockExceptions = unlockExceptions;
+  rerender();
   bindNodeClicks();
   bindViewportInteractions();
+  bindFormEdits();
 }
 
 /**
@@ -73,29 +93,31 @@ async function boot(): Promise<void> {
  *
  * 防護做法：只有 try 區塊成功跑到底、算出新的 svg，才呼叫 host.replaceChildren() 換掉畫面；
  * 失敗時完全不動 DOM，讓「上一次成功渲染」的畫面原封不動留著，只把錯誤訊息寫進
- * #edit-validation 讓玩家知道剛剛的操作有問題。這也是為什麼 Viewport 只在成功分支重建——
- * 畫面沒換，就不該建立一個指向新（其實沒套用成功）狀態的平移縮放物件。
+ * #edit-validation 讓玩家知道剛剛的操作有問題（這則訊息之後可能立刻被 runValidation() 的
+ * renderValidation() 蓋掉，見該函式的說明——這裡的訊息是「連畫面都畫不出來」時的最後防線，
+ * 不是常態）。這也是為什麼 Viewport 只在成功分支動——畫面沒換，就不該讓平移縮放狀態跟著換。
  *
- * 每次成功都會建一個新的 Viewport 並立刻 fitTo() 整棵樹（跟 tree-canvas.ts 桌機初始視角
- * 同一招：`vp.fitTo([0, 0, viewBox.w, viewBox.h])`）。這代表 Task 12+ 一旦開始在編輯欄位時
- * 呼叫 rerender()，玩家目前平移/縮放到哪裡都會被重置回「整棵樹置中塞滿」——這是刻意先選的
- * 「兩害相權取其輕」：新建的 Viewport 預設 x=0,y=0,s=1（沒有 fitTo 的話只會顯示 viewBox
- * 左上角一小塊，多數情況下畫面是空的），比起保留舊視角，重置到「至少看得到整棵樹」還是比較
- * 不糟的預設值。「編輯時保留玩家原本的平移/縮放狀態」是這個取捨明確留下的缺口，本輪修正
- * 範圍以外，故意不在這裡解——Task 12 接上編輯功能、真的會頻繁重繪時，若這個重置感覺不好用，
- * 屆時再決定要不要把舊 Viewport 的 x/y/s 抄到新的上面。
+ * ⚠️ Viewport 只在「這個分頁第一次成功畫出東西」（currentViewport 還是 null）才建新的並
+ * fitTo() 整棵樹；之後每一輪成功渲染都呼叫 currentViewport.rebind()，保留玩家目前的
+ * 平移縮放（task-12 對 task-11 已知取捨的修正，完整理由見 Viewport.rebind() 的說明）。
+ * task-11 原本的做法是每次成功都重新 fitTo()：task-12 起 rerender() 會在玩家改動每一個
+ * 欄位後被呼叫（見 applyEdit()），若每次都 fitTo()，等於玩家每改一個欄位、畫面就跳回
+ * 整棵樹視角——他好不容易縮放到想改的節點，一打字就彈開，這對非開發者是很挫折的體驗。
  */
-function rerender(unlockExceptions: UnlockExceptions): void {
+function rerender(): void {
   const host = document.querySelector<HTMLElement>('#edit-canvas-host');
   const validation = document.querySelector<HTMLElement>('#edit-validation');
   if (!host) throw new Error('找不到 #edit-canvas-host，編輯器畫布無法掛載');
+  if (!currentUnlockExceptions) {
+    throw new Error('rerender() 在 boot() 完成、unlockExceptions 就緒前被呼叫');
+  }
 
   try {
     const data = buildTreeDataWith(
       editorState.svgText,
       {
         keywords: editorState.keywords,
-        unlockExceptions,
+        unlockExceptions: currentUnlockExceptions,
         spriteIndex: treeMeta.meta.sprite.index,
         spriteSize: treeMeta.meta.sprite.size,
       },
@@ -105,8 +127,12 @@ function rerender(unlockExceptions: UnlockExceptions): void {
     host.replaceChildren(svg);
     const viewportGroup = svg.querySelector<SVGGElement>('#viewport');
     if (viewportGroup) {
-      currentViewport = new Viewport(svg, viewportGroup);
-      currentViewport.fitTo([0, 0, data.meta.viewBox[2], data.meta.viewBox[3]]);
+      if (currentViewport) {
+        currentViewport.rebind(svg, viewportGroup);
+      } else {
+        currentViewport = new Viewport(svg, viewportGroup);
+        currentViewport.fitTo([0, 0, data.meta.viewBox[2], data.meta.viewBox[3]]);
+      }
     } else {
       currentViewport = null;
     }
@@ -126,7 +152,38 @@ function rerender(unlockExceptions: UnlockExceptions): void {
 const NODE_CLICK_DRAG_THRESHOLD_PX = 5;
 
 /**
- * 點一個節點時，在右側面板顯示它的欄位（本任務先只顯示名稱；完整欄位表單是 Task 12 的事）。
+ * 從目前的 editorState.svgText 讀出一個節點的 NodeBlock，供表單編輯用。
+ *
+ * 不能重用 currentNodesById（bindNodeClicks() 查完整欄位用的那份 TreeNode 查表）：
+ * TreeNode 是 buildTreeDataWith 算出來的衍生資料，經過 parseCost／parseGrowth 等規則
+ * 加工，欄位形狀是給渲染／驗證用的（例如 unlockCost 是算好的 {core,gold}，不是原始成本
+ * 字串）；NodeBlock 才是表單需要的「貼近原始 SVG 屬性」欄位（labelXml／titleMaxLevel
+ * 這些欄位 TreeNode 裡沒有對應物）。兩者刻意不是同一份資料，見 svg-emit.ts 檔頭的說明。
+ */
+function getNodeBlock(id: string): NodeBlock {
+  const loc = locateNodeBlocks(editorState.svgText).get(id);
+  if (!loc) throw new Error(`getNodeBlock: 在目前的 svgText 中找不到節點 ${id}`);
+  return parseNodeBlock(editorState.svgText.slice(loc[0], loc[1]));
+}
+
+/**
+ * 找到（或視需要建立）表單的掛載點 `#edit-form`。跟 bindNodeClicks() 原本建立
+ * `#edit-node-name` 的做法一樣，不在 edit.astro 裡預先寫死這個容器：`#edit-panel` 底下
+ * 除了固定的 `#edit-hint`／`#edit-validation`，表單容器本來就是「選了節點才出現」的東西，
+ * 用 JS 惰性建立、prepend 到 hint 原本的位置，跟這個「按需出現」的語意比較一致。
+ */
+function ensureFormHost(panel: HTMLElement): HTMLElement {
+  let formHost = panel.querySelector<HTMLElement>('#edit-form');
+  if (!formHost) {
+    formHost = document.createElement('div');
+    formHost.id = 'edit-form';
+    panel.prepend(formHost);
+  }
+  return formHost;
+}
+
+/**
+ * 點一個節點時，在右側面板顯示它的完整欄位表單（EditForm.ts 的 renderEditForm）。
  * 用事件委派掛在 #edit-canvas-host 上，而不是逐一在每個 .node 上掛監聽器：rerender()
  * 每次都會用 replaceChildren() 整批換掉畫布內容，掛在個別節點上的監聽器會跟著被丟棄，
  * 掛在容器上則不受影響（跟 tree-canvas.ts 的關鍵字 chip 事件委派是同一個理由）。
@@ -171,17 +228,8 @@ function bindNodeClicks(): void {
     const hint = panel.querySelector('#edit-hint');
     if (hint) hint.remove();
 
-    let nameEl = panel.querySelector<HTMLElement>('#edit-node-name');
-    if (!nameEl) {
-      nameEl = document.createElement('h2');
-      nameEl.id = 'edit-node-name';
-      panel.prepend(nameEl);
-    }
-    // node.name 是 buildTreeDataWith 解析出來的乾淨名稱（不是 render.ts 畫進 <title> 的
-    // hover tooltip——那段文字是「名稱＋描述第一行」再截斷到 24 字，會把後面的描述文字也
-    // 混進來，不是單純的節點名稱，見 render.ts 的 tooltipText()）。用 textContent 而不是
-    // innerHTML：名稱本來就不含標記，也不需要處理逃逸。
-    nameEl.textContent = node.name;
+    currentEditId = id;
+    renderEditForm(getNodeBlock(id), ensureFormHost(panel));
   });
 }
 
@@ -236,6 +284,142 @@ function bindViewportInteractions(): void {
     },
     { passive: false },
   );
+}
+
+/**
+ * 每次欄位編輯提交後的唯一入口：套用一段已經算好的新 svgText（呼叫端 bindFormEdits() 已經
+ * 做完 getNodeBlock → applyFieldEdits → emitNodeBlock → replaceNode 這串外科手術），標記
+ * 節點為已改動，重繪畫布，並跑一次即時驗證。拆成獨立函式（而不是直接寫在 bindFormEdits()
+ * 的事件委派 handler 裡）是因為未來任務（圖示／關鍵字新增、Task 13 的節點重建）改動
+ * svgText 的方式不一樣（不是走表單欄位），但收尾這三步——記 dirty、重繪、驗證——是共用的，
+ * 這裡先把共用的部分獨立出來，不必等到真的有第二個呼叫端才重構。
+ */
+function applyEdit(nextSvgText: string, touchedId: string): void {
+  editorState.svgText = nextSvgText;
+  editorState.dirty.add(touchedId);
+  rerender();
+  runValidation();
+}
+
+/**
+ * 送出前的即時驗證：跑一次 validateWith，把結果（連同 tree.json 的 gzip 體積預估）畫進
+ * #edit-validation，並依錯誤是否存在切換 #edit-download 的可用狀態、更新 #edit-status
+ * 的「已修改 N 處」文字。
+ *
+ * icons.toVerify 只放 editorState.newIcons（玩家本次新增、還沒進 repo 的圖示）：
+ * icons.known 是 repo 既有雜湊（editorState.iconHashes）＋ newIcons 的雜湊聯集，規則
+ * 7(a)/7(d) 只需要這個聯集；既有 202 張的內容早已由先前的 CI 驗過，規則 7(b)/7(c) 這種要
+ * 讀位元組內容的檢查沒有理由對它們重跑一次——瀏覽器沒理由為了重驗而下載 4.6 MB
+ * （見 validate-rules.ts 的 IconSource 說明）。
+ */
+async function runValidation(): Promise<void> {
+  if (!currentUnlockExceptions) return; // boot() 尚未完成，不可能有欄位編輯觸發到這裡
+
+  const icons: IconSource = {
+    known: new Set([...editorState.iconHashes, ...editorState.newIcons.keys()]),
+    toVerify: new Map(
+      [...editorState.newIcons].map(([hash, bytes]) => [hash, { bytes, actualHash: hash }]),
+    ),
+  };
+  const result = validateWith(
+    editorState.svgText,
+    { keywords: editorState.keywords, icons },
+    parseXmlInBrowser,
+  );
+
+  // buildTreeDataWith 對某些規則違反是直接 throw，不像 validateWith 把每條規則包在自己的
+  // try/catch 裡收斂成 errors 陣列——這是 build-tree.ts 既有的行為（例如節點的
+  // costRaw／description 被改成 parseCost／extractKeywords／parseGrowth 判為不合法的格式，
+  // 這三個呼叫在 build-tree.ts 裡都沒有包 try/catch，見該檔的節點映射），不是這裡新引入的
+  // 問題。若不接住，會讓下面的 estimateGzipBytes／renderValidation 整段被跳過：玩家剛打的
+  // 錯誤明明已經被上面的 validateWith 抓成正確的規則訊息（例如「規則 4: ...」），
+  // #edit-validation 卻會停在 rerender() 留下的通用「畫面更新失敗」訊息，看不到真正對得上
+  // 規則編號的訊息——這正是本任務 E2E 案例二（成本改成「八個核心」）在守的行為。
+  // gzip 體積這時候本來就算不出來（連 tree.json 的資料都建不出來），用 NaN 當「無法估算」
+  // 的哨兵值，renderValidation 看到 NaN 就跳過體積列，不顯示誤導性的 0 KB。
+  let gzipBytes = NaN;
+  try {
+    const data = buildTreeDataWith(
+      editorState.svgText,
+      {
+        keywords: editorState.keywords,
+        unlockExceptions: currentUnlockExceptions,
+        spriteIndex: treeMeta.meta.sprite.index,
+        spriteSize: treeMeta.meta.sprite.size,
+      },
+      parseXmlInBrowser,
+    );
+    gzipBytes = await estimateGzipBytes(JSON.stringify(data));
+  } catch {
+    // 上面已經用 NaN 記錄「算不出來」，這裡不需要額外處理。
+  }
+
+  // 新增圖示的提醒是這裡才有的資訊（editorState.newIcons），不屬於 renderValidation() 的
+  // 職責——那個函式的簽章（result／gzipBytes／host 三個參數）是任務簡報定死的介面，
+  // 加第四個參數等於改介面。改成把提示併進 warnings 陣列一起送進去，renderValidation
+  // 完全不需要知道「新增圖示」這個概念存在，維持它只管「顯示收到的東西」的單純職責。
+  const warnings = editorState.newIcons.size > 0
+    ? [...result.warnings, `本次新增了 ${editorState.newIcons.size} 張圖示，sprite.webp 的實際體積以 CI 為準`]
+    : result.warnings;
+
+  const validation = document.querySelector<HTMLElement>('#edit-validation');
+  if (validation) renderValidation({ errors: result.errors, warnings }, gzipBytes, validation);
+
+  // 停用送出跟「新增圖示」的提醒一樣，都是這裡（而不是 renderValidation 內部）的協調責任：
+  // renderValidation 只管寫進它收到的 host，不伸手碰 #edit-panel 以外的元素，跟
+  // NodeDetail.ts／EditForm.ts 的既有慣例一致（元件不知道自己以外還有哪些 DOM 節點）。
+  const downloadBtn = document.querySelector<HTMLButtonElement>('#edit-download');
+  if (downloadBtn) downloadBtn.disabled = result.errors.length > 0;
+
+  const status = document.querySelector<HTMLElement>('#edit-status');
+  if (status) {
+    status.textContent = editorState.dirty.size === 0 ? '尚未修改' : `已修改 ${editorState.dirty.size} 處`;
+  }
+}
+
+/** 把表單欄位（data-field 的值）跟玩家打進去的原始字串，轉成 applyFieldEdits 要的
+ *  FieldEdits 局部物件。`maxLevel` 一律帶上這個 key（不管留白與否）——focusout 觸發代表
+ *  「玩家確實碰過這一欄」，留白就是「把它清空」，對應 applyFieldEdits 需要用
+ *  `'maxLevel' in edits` 才能分辨的那個「有沒有要改」語意（見 EditForm.ts 的說明）。 */
+function toFieldEdits(field: string, value: string): FieldEdits {
+  switch (field) {
+    case 'name': return { name: value };
+    case 'label': return { label: value };
+    case 'cost': return { cost: value };
+    case 'description': return { description: value };
+    case 'maxLevel': return { maxLevel: value.trim() === '' ? null : Number(value) };
+    default: throw new Error(`toFieldEdits: 未知的 data-field="${field}"`);
+  }
+}
+
+/**
+ * 表單欄位提交：委派在 #edit-panel 上監聽 'focusout'（會冒泡），不是 'blur'（不會冒泡）
+ * ——事件委派本來就只能接住會冒泡的事件。Playwright 的 `locator.blur()`／玩家實際切到
+ * 下一個欄位，都是呼叫原生 `HTMLElement.blur()`，依規範會同步觸發不冒泡的 'blur' 與
+ * 冒泡的 'focusout' 兩個事件，這裡接住後者。
+ *
+ * 每個欄位獨立送出（讀觸發事件的 target 本身，不是整個表單一次序列化）：`getNodeBlock`
+ * 都是從 editorState.svgText「當下」的狀態重新解析，多個欄位依序 focusout 時，後一個
+ * 欄位的 applyFieldEdits 會疊在前一個欄位已經寫回 svgText 的結果上，天然支援連續改多欄。
+ */
+function bindFormEdits(): void {
+  const panel = document.querySelector<HTMLElement>('#edit-panel');
+  if (!panel) return;
+
+  panel.addEventListener('focusout', e => {
+    const el = (e.target as Element).closest?.('[data-field]') as
+      | (HTMLInputElement | HTMLTextAreaElement)
+      | null;
+    if (!el || !currentEditId) return;
+    const field = el.dataset.field;
+    if (!field) return;
+
+    const block = getNodeBlock(currentEditId);
+    const edits = toFieldEdits(field, el.value);
+    const nextBlockText = emitNodeBlock(applyFieldEdits(block, edits));
+    const nextSvgText = replaceNode(editorState.svgText, currentEditId, nextBlockText);
+    applyEdit(nextSvgText, currentEditId);
+  });
 }
 
 boot();
