@@ -111,7 +111,14 @@ export function parseNodeBlock(block: string): NodeBlock {
   const name = decodeAttr(requireMatch(NAME_RE, block, 'data-name')[1]!);
   const cost = decodeAttr(requireMatch(COST_RE, block, 'data-cost')[1]!);
   const description = decodeAttr(requireMatch(DESC_RE, block, 'data-description')[1]!);
-  const wip = WIP_RE.test(block);
+  // WIP_RE 只需要裸的 `data-wip="1"` 就命中，不像 SHAPE_RE/IMAGE_RE/LABEL_RE/TITLE_RE 那樣要求
+  // 字面 `<`（`<` 一定會被 escapeXmlContent 逃逸成 &lt;，所以那幾條不受這裡的問題影響）。
+  // `escapeXmlContent` 依 XML 規範不逃逸 `"`（那是正確的），所以玩家若在名稱或描述裡打出字面
+  // `data-wip="1"`，這段文字會原樣進到 <title> 元素內容裡；對整個 block 做無錨點比對的話，
+  // 這段使用者輸入就會被誤判成真的屬性，把節點從 validate 規則 6 的可達性檢查豁免掉
+  // ——公開投稿工具上這是對抗性輸入的洞。把比對範圍限制在開頭標籤（第一個 `>` 之前）即可避開，
+  // 因為 <title> 等後續內容必然在開頭標籤的 `>` 之後。
+  const wip = WIP_RE.test(block.slice(0, block.indexOf('>')));
 
   const titleContent = requireMatch(TITLE_RE, block, '<title>')[1]!;
   // 等級行必須取「最後一行」而非固定的「第二行」：跟 src/lib/svg-parse.ts 的 parseTreeWith

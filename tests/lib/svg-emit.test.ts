@@ -115,5 +115,19 @@ describe('svg-emit', () => {
       expect(n.wip).toBe(false);
       expect(emitNodeBlock(n)).not.toContain('data-wip');
     });
+
+    // 對抗性輸入回歸測試：escapeXmlContent 依 XML 規範不逃逸 `"`，玩家若在描述裡打出字面
+    // `data-wip="1"`，這段文字會原樣進到 <title> 元素內容。若 WIP_RE 對整個區塊做無錨點比對，
+    // 會把使用者輸入誤判成真的屬性，讓節點從 validate 規則 6 的可達性檢查被靜默豁免——
+    // 公開投稿工具上這是可利用的洞。修法：比對範圍限制在開頭標籤內（見 svg-emit.ts 的說明）。
+    it('data-description 含字面 data-wip="1" 文字時，wip 仍是 false（不會被使用者輸入誤判）', () => {
+      const block = allNodeBlocks(svgText).find(b => b.includes('data-id="1002"'))!;
+      const n = parseNodeBlock(block);
+      const spoofed = emitNodeBlock({ ...n, description: '打進去字面 data-wip="1" 測試' });
+      // 先確認攻擊字串真的混進了輸出（混進 <title> 元素內容，因為 escapeXmlContent 不逃逸 "），
+      // 不然下面 wip===false 的斷言可能只是「根本沒混進去」的假陽性，不是修法真的生效
+      expect(spoofed).toContain('data-wip="1"');
+      expect(parseNodeBlock(spoofed).wip).toBe(false);
+    });
   });
 });
