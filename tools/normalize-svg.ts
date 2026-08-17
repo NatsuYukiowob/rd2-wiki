@@ -45,28 +45,95 @@ function normalizePath(d: string, dx = 0, dy = 0): string {
  *
  * 為什麼一定要做：XML 規範 §3.3.3 要求 parser 把屬性值內的字面換行正規化成空格。linkedom
  * 沒有實作這條、Chromium 有——同一份檔案兩邊讀出來的 data-cost/data-description 會不一樣。
- * 線上編輯器在瀏覽器解析這份檔案，若不編成實體，152 個節點的成本／描述會各少一個換行，
+ * 線上編輯器在瀏覽器解析這份檔案，若不編成實體，節點的成本／描述會各少一個換行，
  * 玩家一改就永久遺失，而且會撞上 validate 規則 1（title 與 data-* 逐字一致）而看不懂原因。
  *
  * 實作方式是掃描字串狀態機而不是正則：屬性值與元素內容都可能含 `"`／`<`／`>`，
  * 用正則區分兩者會在多行描述上誤判。
+ *
+ * 除了一般標籤，狀態機還要認得幾種會混進 `<...>` 的構造，不能被當成一般標籤掃描屬性值──
+ * 否則裡面的引號會去切換給屬性值用的 `quote` 旗標，接下來每一個字面換行（包括 <title> 這類
+ * 元素內容的換行）都會被誤編成 `&#10;`：
+ * - `<!-- 註解 -->`：註解內容可以出現任意數量、不成對的 `"`／`'`（GUI 匯出工具很常見，例如
+ *   `<!-- Bob's export -->`），奇數個引號會讓 `quote` 卡在開啟狀態、再也關不上（這是實測重現過
+ *   的 bug：一路吃到檔尾，把後面所有 <title> 換行都當成屬性值換行誤編碼）。整段原樣照抄，
+ *   完全不掃描內容、不切換 `quote`。
+ * - `<![CDATA[ ... ]]>`：內容屬於元素內容（不是屬性值），換行不編碼，跟 <title> 一致，原樣照抄。
+ * - `<? ... ?>` 處理指令（含檔案開頭的 `<?xml version="1.0" encoding="utf-8"?>`）：內容不是
+ *   屬性值語意，原樣照抄跳過，不依賴「內部剛好引號成對」這個外部假設（目前之所以沒出過事，
+ *   純粹是因為 XML 宣告的假屬性語法本來就強制引號成對，屬於巧合而非保證）。
+ * - `<!DOCTYPE ...>`：本專案的 SVG 不會有 DOCTYPE，但正確性不該建立在這個假設上。若有內部子集
+ *   `[ ... ]`，先跳過整個中括號區塊（不解析子集內容——不會出現在這個工具的輸入裡，解析它的
+ *   價值不值得對應的複雜度），只在括號深度回到 0 時遇到的 `>` 才算宣告結束。
+ *
+ * 用 `Array.from(xml)` 依 code point（而非 UTF-16 code unit）切成陣列再逐一比對定界符，是因為
+ * 要對 `<!--`／`]]>`／`?>` 這類多字元定界符做前瞻比對，同時仍要保持逐 code point 安全——
+ * CJK 罕見字／emoji 這類 astral 字元是 surrogate pair，直接用字串索引切片會把一個字元劈成兩半。
  */
 export function encodeAttributeNewlines(xml: string): string {
+  const chars = Array.from(xml);
+  const n = chars.length;
   let out = '';
+  let i = 0;
   let inTag = false;
   let quote: '"' | "'" | null = null;
-  for (const ch of xml) {
+
+  // 比對 chars 陣列從 at 開始是否等於 seq（seq 只會是 ASCII 定界符字面量，逐字元比對即可）。
+  const matchesAt = (seq: string, at: number): boolean => {
+    for (let j = 0; j < seq.length; j++) {
+      if (chars[at + j] !== seq[j]) return false;
+    }
+    return true;
+  };
+  // 註解／CDATA／處理指令是同一種形狀：找到起始定界符後，整段原樣照抄到對應的結束定界符為止，
+  // 過程完全不掃描引號、不編碼換行（找不到結束定界符就照抄到檔尾——容錯優先於拋錯，這支工具
+  // 的職責是正規化既有檔案，不是驗證 XML 是否合法，那是 validate.ts 的工作）。
+  const copyVerbatimSection = (endDelim: string, contentStart: number): number => {
+    let end = -1;
+    for (let k = contentStart; k <= n - endDelim.length; k++) {
+      if (matchesAt(endDelim, k)) { end = k; break; }
+    }
+    const stop = end === -1 ? n : end + endDelim.length;
+    out += chars.slice(i, stop).join('');
+    return stop;
+  };
+
+  while (i < n) {
+    if (!inTag && chars[i] === '<') {
+      if (matchesAt('<!--', i)) { i = copyVerbatimSection('-->', i + 4); continue; }
+      if (matchesAt('<![CDATA[', i)) { i = copyVerbatimSection(']]>', i + 9); continue; }
+      if (matchesAt('<?', i)) { i = copyVerbatimSection('?>', i + 2); continue; }
+      if (matchesAt('<!DOCTYPE', i)) {
+        let depth = 0;
+        let k = i + 9;
+        for (; k < n; k++) {
+          if (chars[k] === '[') depth++;
+          else if (chars[k] === ']') depth--;
+          else if (chars[k] === '>' && depth <= 0) { k++; break; }
+        }
+        out += chars.slice(i, k).join('');
+        i = k;
+        continue;
+      }
+      inTag = true;
+      out += chars[i];
+      i++;
+      continue;
+    }
+    const ch = chars[i];
     if (quote) {
-      if (ch === quote) quote = null;
-      else if (ch === '\n') { out += '&#10;'; continue; }
-      else if (ch === '\r') { out += '&#13;'; continue; }
+      if (ch === quote) { quote = null; out += ch; }
+      else if (ch === '\n') out += '&#10;';
+      else if (ch === '\r') out += '&#13;';
+      else out += ch;
     } else if (inTag) {
       if (ch === '"' || ch === "'") quote = ch;
       else if (ch === '>') inTag = false;
-    } else if (ch === '<') {
-      inTag = true;
+      out += ch;
+    } else {
+      out += ch;
     }
-    out += ch;
+    i++;
   }
   return out;
 }
