@@ -46,7 +46,11 @@ top 差距 < 0.5px），不是看截圖。
 ### 資料解析
 
 - 成本字串的分隔符是**全形斜線 `／`**（U+FF0F），全檔 0 個半形 `/`
-- SVG 屬性裡的換行是 XML 實體 `&#10;`，經 DOM 解析後才變 `\n`
+- **SVG 屬性值裡的換行必須是 XML 實體 `&#10;`**（`<title>` 元素內容則是字面換行）。
+  原因：XML 規範要求 parser 把屬性值內的字面換行正規化成空格，Chromium 遵守、linkedom 沒有
+  ——寫成字面換行的話，Node 與瀏覽器讀出來的 `data-cost` / `data-description` 會不一樣。
+  `normalizeSvg()` 的 `encodeAttributeNewlines()` 負責維持這個不變量，
+  `tests/data/parser-parity.test.ts` 負責守住它。
 - **玩家被動的等級上限在 `<title>` 的最後一行**（`最高等級：N`），不在 `data-cost`；
   取「第二行」會在多行描述的節點上靜默算錯
 - `#關鍵字` 標記**沒有結束符**，中文無分詞 → 必須用 `data/keywords.json` 白名單
@@ -61,6 +65,7 @@ top 差距 < 0.5px），不是看截圖。
 - linkedom 沒有 `getScreenCTM()`，`.focus()` 也不會更新 `document.activeElement`
   → 這類行為只能靠 E2E 驗
 - 臨時的 Playwright 腳本要放在 **repo 目錄下**才 import 得到 `@playwright/test`
+- `tests/data/parser-parity.test.ts` 會實際啟動 Chromium，比一般單元測試慢數秒，屬正常現象
 
 ## 不進版控
 

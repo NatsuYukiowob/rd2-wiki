@@ -27,6 +27,13 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: '24', cache: npm }
       - run: npm ci
+      - name: 正規化定點檢查
+        # normalize 是冪等的，對已正規化的檔案不該產生任何改動。這條擋的是「用 Inkscape 改完
+        # 忘記跑 npm run normalize」以及「線上編輯器輸出的格式漂移」——validate 的規則 0 只驗
+        # 「解析得動」，驗不到「是不是正規形式」，兩者不重疊。
+        run: |
+          npm run normalize
+          git diff --exit-code data/dice-tree.svg
       - name: 資料驗證（規則 0–9，見 CONTRIBUTING.md）
         run: npm run validate
       - name: 建置資料與站台
