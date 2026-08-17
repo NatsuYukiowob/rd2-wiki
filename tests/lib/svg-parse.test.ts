@@ -28,4 +28,21 @@ describe('parseTreeWith', () => {
     expect(n.costRaw).toContain('\n');       // 屬性值的 &#10; 解析後是真換行
     expect(n.shape).toBe('diamond');
   });
+
+  it('屬性值裡的具名實體要正確解碼（linkedom 的 getAttribute 不解碼，必須走 getAttributeNode）', () => {
+    // 現行資料 0 個具名實體，所以 239 節點的往返與 parity 測試都涵蓋不到這條；
+    // 但編輯器一旦讓玩家打出 & 或 <，這條路徑就會被走到。
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10" data-version="1" data-updated="x">`
+      + `<path class="edge" marker-end="url(#arrow)" d="M 0.00 0.00 L 1.00 1.00" />`
+      + `<g class="node" transform="translate(0.00,0.00)" data-id="1001" data-type="骰子" `
+      + `data-name="A &amp; B" data-cost="核心 5" data-description="傷害 &lt; 100">`
+      + `<title>骰子｜A &amp; B｜傷害 &lt; 100</title>`
+      + `<rect x="-36" y="-28" width="72" height="56" rx="11" fill="#322b4b" stroke="#ef625e" stroke-width="2" />`
+      + `<image href="icons/a5caff6da1d2.png" x="-24" y="-26" width="48" height="52" preserveAspectRatio="xMidYMid meet" />`
+      + `<text class="dice-label" y="39">A &amp; B</text></g></svg>`;
+    const n = parseTreeWith(svg, loadSvg).nodes[0]!;
+    expect(n.name).toBe('A & B');
+    expect(n.description).toBe('傷害 < 100');
+    expect(n.label).toBe('A & B');
+  });
 });

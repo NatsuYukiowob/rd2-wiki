@@ -14,6 +14,16 @@ import type { XmlParser } from './dom.js';
  */
 const EXPECTED_ROOTS = ['1001', '2001', '3001', '4008', '5002'];
 
+/**
+ * 讀屬性值，一律走 `getAttributeNode` 而非 `getAttribute`：linkedom 對具名實體（`&amp;`／
+ * `&lt;`）的 `getAttribute` 不解碼，`getAttributeNode(...).value` 才兩邊一致——完整根因見
+ * `src/lib/svg-parse.ts` 同名函式的註解。這裡讀的 data-id／data-wip 目前不會含實體，
+ * 但沒有理由讓這個檔案自己留一套例外規則，讓下一個人猜「這裡為什麼用不同的讀法」。
+ */
+function attr(el: Element, name: string): string {
+  return el.getAttributeNode(name)?.value ?? '';
+}
+
 export interface IconSource {
   /** 所有已知圖示的檔名雜湊（repo 內既有的 ＋ 本次新增的）。規則 7(a) 與 7(d) 只需要這個。 */
   known: Set<string>;
@@ -71,7 +81,7 @@ export function validateWith(svgText: string, opts: ValidateOpts, parseXml: XmlP
   const doc = parseXml(svgText);
   const nodeElById = new Map<string, Element>();
   for (const g of doc.querySelectorAll('g.node')) {
-    const id = g.getAttribute('data-id');
+    const id = attr(g, 'data-id');
     if (id) nodeElById.set(id, g);
   }
 
@@ -149,7 +159,7 @@ export function validateWith(svgText: string, opts: ValidateOpts, parseXml: XmlP
   // 規則 6: 無環 + 可達性（data-wip="1" 的節點豁免可達性檢查，讓貢獻者可以先接資料再接線；
   // 這些節點改為列入 warnings，供 PR 摘要顯示「待接線節點」）
   const wip = new Set(
-    [...doc.querySelectorAll('g.node[data-wip="1"]')].map(g => g.getAttribute('data-id') ?? ''),
+    [...doc.querySelectorAll('g.node[data-wip="1"]')].map(g => attr(g, 'data-id')),
   );
   for (const id of wip) warn(`規則 6(c): 節點 ${id} 為待接線節點（data-wip="1"），尚未加入圖遍歷，請於 PR 摘要留意`);
   const ids = nodes.map(n => n.id);
