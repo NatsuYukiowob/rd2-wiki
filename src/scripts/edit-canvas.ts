@@ -4,16 +4,19 @@
 // svgText → buildTreeDataWith → renderTree（見 rerender() 的說明），不另寫第二套。
 import rawTreeMeta from '../generated/tree.json';
 import { applyFieldEdits, renderEditForm, type FieldEdits } from '../components/EditForm.js';
+import { renderNewNodeForm } from '../components/NewNodeForm.js';
 import { renderValidation } from '../components/ValidationPanel.js';
 import { buildTreeDataWith } from '../lib/build-tree.js';
 import { estimateGzipBytes } from '../lib/budget.js';
 import { parseXmlInBrowser } from '../lib/dom.js';
+import { allocateId } from '../lib/id-alloc.js';
 import { renderTree } from '../lib/render.js';
-import { locateNodeBlocks, replaceNode } from '../lib/svg-edit.js';
-import { emitNodeBlock, parseNodeBlock, type NodeBlock } from '../lib/svg-emit.js';
+import { locateNodeBlocks, replaceNode, insertNode, insertEdge, removeNode, removeEdge } from '../lib/svg-edit.js';
+import { emitNodeBlock, emitEdgeLine, newNodeBlock, parseNodeBlock, type NodeBlock } from '../lib/svg-emit.js';
+import { strokeOfElement } from '../lib/taxonomy.js';
 import { validateWith, type IconSource } from '../lib/validate-rules.js';
 import { Viewport } from '../lib/viewport.js';
-import type { TreeData, TreeNode, UnlockVia } from '../lib/types.js';
+import type { Branch, NodeType, TreeData, TreeNode, UnlockVia } from '../lib/types.js';
 
 // tree.json 是建置期產物，結構保證符合 TreeData，但 TS 對 JSON 匯入的型別推論會把
 // sprite.index 每一格的 tuple（[cx, cy, cw, ch]）寬鬆推成 number[]，跟 BuildOpts 要的
@@ -61,6 +64,24 @@ let currentUnlockExceptions: UnlockExceptions | null = null;
 // 不重複標記節點 id），需要一個地方記錄。
 let currentEditId: string | null = null;
 
+/**
+ * 編輯器的三種互斥模式（工具列 `#edit-mode-select`／`#edit-mode-add`／`#edit-mode-link`
+ * 三顆按鈕，見 bindModeButtons()）。跟 currentEditId 一樣是模組級狀態：`bindNodeClicks()`
+ * 掛在 `#edit-canvas-host` 上的單一 pointerup handler 要靠這個變數決定「這次點擊該做什麼」
+ * ——選取模式點節點開表單、新增模式點畫布放節點、連線模式點兩個節點拉一條邊，三者共用同一套
+ * 點擊判定（pointerdown/pointerup 量位移，理由見 bindNodeClicks() 開頭的說明），只是收尾
+ * 動作不同，不需要也不該各自重新掛一套點擊判定邏輯。
+ */
+type EditMode = 'select' | 'add' | 'link';
+let currentMode: EditMode = 'select';
+
+/**
+ * 連線模式「第一次點的節點記為前置」的暫存狀態。跟 currentEditId 不同：這個變數只在單一次
+ * 「點前置 → 點目標」互動期間存在，成功拉一條邊或使用者取消（見 handleLinkModeNodeClick()）
+ * 就會清空，不是跨模式存活的編輯 session 狀態。
+ */
+let linkFromId: string | null = null;
+
 async function boot(): Promise<void> {
   const [svgText, keywords, unlockExceptions, iconHashes] = await Promise.all([
     fetch('/data/dice-tree.svg').then(r => r.text()),
@@ -77,6 +98,9 @@ async function boot(): Promise<void> {
   bindNodeClicks();
   bindViewportInteractions();
   bindFormEdits();
+  bindModeButtons();
+  bindNewNodeFormActions();
+  bindDeleteShortcut();
 }
 
 /**
@@ -182,6 +206,31 @@ function ensureFormHost(panel: HTMLElement): HTMLElement {
   return formHost;
 }
 
+/** 跟 ensureFormHost() 同一招，但用於「新增模式」的 #new-node（NewNodeForm.ts 的掛載點）。 */
+function ensureNewNodeFormHost(panel: HTMLElement): HTMLElement {
+  let formHost = panel.querySelector<HTMLElement>('#new-node');
+  if (!formHost) {
+    formHost = document.createElement('div');
+    formHost.id = 'new-node';
+    panel.prepend(formHost);
+  }
+  return formHost;
+}
+
+/**
+ * 切換模式或切換選取目標前，先把面板裡「按需出現」的內容清乾淨：欄位表單（#edit-form）、
+ * 新增節點表單（#new-node）、初始提示（#edit-hint）三者互斥，同一時間只該有一個顯示——
+ * 不清乾淨的話，例如玩家在選取模式點開某節點的表單後切到新增模式，兩份表單會同時疊在
+ * #edit-panel 裡，欄位 id 沒有衝突（各自用 data-field 委派，不靠 DOM id 選取單一表單），
+ * 但畫面會很混亂。刻意不動 #edit-validation：那是 runValidation() 的地盤，跟「哪個表單
+ * 顯示中」是獨立的兩件事，見 setMode() 的說明。
+ */
+function clearPanelContent(panel: HTMLElement): void {
+  panel.querySelector('#edit-form')?.remove();
+  panel.querySelector('#new-node')?.remove();
+  panel.querySelector('#edit-hint')?.remove();
+}
+
 /**
  * 點一個節點時，在右側面板顯示它的完整欄位表單（EditForm.ts 的 renderEditForm）。
  * 用事件委派掛在 #edit-canvas-host 上，而不是逐一在每個 .node 上掛監聽器：rerender()
@@ -203,6 +252,12 @@ function ensureFormHost(panel: HTMLElement): HTMLElement {
  * g.setAttribute('data-id', n.id)），不是解析自玩家輸入的原始 SVG 文字，所以這裡用一般
  * getAttribute 就好，不需要 getAttributeNode（那個規範是給讀「作者輸入的文字」用的，
  * 見 src/lib/svg-parse.ts 的說明）。
+ *
+ * Task 13 起，同一套「pointerdown 記目標／pointerup 量位移判定點選」的機制依 currentMode
+ * 分岔成三種收尾：選取模式（下面 else 分支，原本的行為）開欄位表單；新增模式（見
+ * handleAddModeClick()）不管有沒有點到節點，都把點擊座標換算成 SVG 使用者座標開新增節點
+ * 表單；連線模式（見 handleLinkModeNodeClick()）只在點到節點時才有動作。三者共用同一套
+ * downTarget／downPos 判定，不必也不該各自重新掛一份 pointerdown/pointerup。
  */
 function bindNodeClicks(): void {
   const host = document.querySelector<HTMLElement>('#edit-canvas-host');
@@ -219,18 +274,191 @@ function bindNodeClicks(): void {
   host.addEventListener('pointerup', e => {
     const moved = Math.hypot(e.clientX - downPos.x, e.clientY - downPos.y);
     if (moved > NODE_CLICK_DRAG_THRESHOLD_PX) return; // 拖曳畫布放開，不是點選
+
+    if (currentMode === 'add') {
+      handleAddModeClick(e, host, panel);
+      return;
+    }
+
     if (!downTarget) return;
     const id = downTarget.getAttribute('data-id');
     if (!id) return;
+
+    if (currentMode === 'link') {
+      handleLinkModeNodeClick(id);
+      return;
+    }
+
     const node = currentNodesById.get(id);
     if (!node) return;
 
-    const hint = panel.querySelector('#edit-hint');
-    if (hint) hint.remove();
-
+    clearPanelContent(panel);
     currentEditId = id;
     renderEditForm(getNodeBlock(id), ensureFormHost(panel));
   });
+}
+
+/** 把數字取到小數點後兩位（新增節點時滑鼠座標換算的精度，見 handleAddModeClick()）。 */
+function roundTo2(n: number): number {
+  return Math.round(n * 100) / 100;
+}
+
+/**
+ * ⚠️ 新增模式的座標轉換陷阱（任務簡報特別點名）：把滑鼠螢幕座標換算成 SVG 使用者座標，
+ * 必須用 `#viewport` 這個群組的 CTM，不能用根 `<svg>` 的：
+ *
+ *   錯：svg.getScreenCTM()!.inverse()
+ *   對：viewportGroup.getScreenCTM()!.inverse()
+ *
+ * 差別在哪裡：`bindViewportInteractions()` 的拖曳／滾輪縮放是把平移縮放的 transform 掛在
+ * `#viewport` 這個 `<g>` 上（不是根 svg 本身，見 rerender() 與 Viewport 類別的說明）。根 svg
+ * 的 `getScreenCTM()` 只涵蓋「viewBox 使用者座標 → 容器 CSS 像素」這一層瀏覽器內建的縮放
+ * （由 `viewBox`＋`preserveAspectRatio` 決定），完全不知道 `#viewport` 自己還疊了一層由
+ * Task 11 拖曳／縮放產生的 transform。
+ *
+ * ⚠️ 實測過（用 `getScreenCTM()` 直接讀兩者的矩陣分量比較）：這兩種寫法在這個實作下**從
+ * 第一次渲染起就不一樣**，不是只有「玩家手動平移縮放過」才會產生落差——`rerender()` 在
+ * 第一次成功畫出畫面時就會呼叫 `Viewport.fitTo()`，把 `#viewport` 的 transform 設成
+ * `translate(170,142.5) scale(0.9)`（見該函式的說明），這本來就不是單位矩陣，`svg` 自己的
+ * CTM 從一開始就漏算了這一層。也就是說，即使 E2E 完全不平移縮放就點擊，用錯 CTM 這個 bug
+ * 理論上也測得出來——但這是這個實作的巧合（`fitTo()` 剛好套了非單位矩陣），不是這個座標
+ * 轉換陷阱本質上保證的事：任務簡報要求 E2E「必須先平移或縮放，再點畫布放節點」是對的原則
+ * ——不能讓測試的鑑別力偷偷依賴一個實作細節（哪天 fitTo() 改成別的算法，剛好套出單位矩陣，
+ * 沒有平移縮放的測試就會失去鑑別力而不自知）。tests/e2e/edit.spec.ts 對應案例因此仍然先
+ * 縮放過（原因見該測試檔案的說明：縮放比平移更能在各種容器長寬比例下保持穩定，尤其是這個
+ * 測試套件 mobile 專案的窄畫布），才點畫布放節點、斷言新節點座標。
+ *
+ * 回傳的座標取到小數點後兩位（`roundTo2`）——跟 `newNodeBlock`/`emitNodeBlock` 最終用
+ * `.toFixed(2)` 寫進 SVG 的精度一致，這裡先做只是讓 NewNodeForm 顯示的「位置」文字跟實際寫
+ * 入的座標一致，不是為了規避浮點誤差（`emitNodeBlock` 本來就會再 `.toFixed(2)` 一次）。
+ *
+ * 找不到 svg／#viewport／CTM（例如 boot() 還沒渲染出第一輪畫面）時回傳 null，呼叫端據此
+ * 放棄這次點擊，不硬算出一個沒有意義的座標。
+ */
+function screenToViewportXY(host: HTMLElement, clientX: number, clientY: number): [number, number] | null {
+  const svg = host.querySelector('svg');
+  const viewportGroup = svg?.querySelector<SVGGElement>('#viewport');
+  const ctm = viewportGroup?.getScreenCTM();
+  if (!ctm) return null;
+  const pt = new DOMPoint(clientX, clientY).matrixTransform(ctm.inverse());
+  return [roundTo2(pt.x), roundTo2(pt.y)];
+}
+
+const NODE_TRANSFORM_RE = /translate\(([-\d.]+),\s*([-\d.]+)\)/;
+
+/**
+ * 從渲染出來的節點 `<g>` 元素直接讀 `transform="translate(x,y)"` 的值，供連線模式／刪除節點
+ * 時取得節點座標。這是任務簡報「連線由點前置節點→點目標節點產生，座標直接取兩個節點
+ * transform 的值」的落地：不重新查表、不重新解析 editorState.svgText，直接讀畫面上這個
+ * `<g>` 元素當下的 transform——這個值就是 render.ts 用 `n.x`/`n.y`（parseNodeBlock 解析
+ * 原始 SVG 得到的座標，未經任何加工）寫進去的，跟 emitEdgeLine 最終要寫回 SVG 的端點座標
+ * 是同一個數字，只是走了 DOM 屬性這條路徑，而不是重新解析字串。這保證連線的端點誤差恆為 0
+ * ——不可能因為兩邊分別算一次座標而產生浮點或捨入的落差，CI 規則 5（邊端點要精準對齊節點
+ * 中心）因此不可能被這個機制違反。
+ */
+function nodeTransformXY(g: Element): [number, number] {
+  const m = NODE_TRANSFORM_RE.exec(g.getAttribute('transform') ?? '');
+  if (!m) throw new Error(`節點缺少可解析的 transform，無法取得座標：${g.getAttribute('data-id')}`);
+  return [Number(m[1]!), Number(m[2]!)];
+}
+
+/**
+ * 新增模式下的畫布點擊：不管有沒有點到既有節點，都把點擊座標換算成 SVG 使用者座標（見
+ * screenToViewportXY() 的陷阱說明），開出新增節點表單。「點畫布空白處」只是任務簡報描述的
+ * 典型操作方式，不是強制要求——判定要不要開表單只看有沒有成功換算出座標，不檢查底下有沒有
+ * 節點，這樣邏輯比較單純，也不會出現「點得剛好卡在節點邊緣、不知道算不算空白處」的模糊地帶。
+ */
+function handleAddModeClick(e: PointerEvent, host: HTMLElement, panel: HTMLElement): void {
+  const xy = screenToViewportXY(host, e.clientX, e.clientY);
+  if (!xy) return;
+  const [x, y] = xy;
+
+  clearPanelContent(panel);
+  currentEditId = null;
+  const formHost = ensureNewNodeFormHost(panel);
+  // 建立節點時（bindNewNodeFormActions() 的 create 分支）要用到這次點擊換算出的座標，
+  // 存成 dataset 屬性掛在表單容器本身，不另外開一個模組級變數——這個座標只在「這個表單
+  // 開著」的期間有意義，跟著承載表單的 DOM 元素活，表單被移除（建立或取消）座標自然一起消失，
+  // 不需要額外一步「記得清掉」。
+  formHost.dataset.x = String(x);
+  formHost.dataset.y = String(y);
+  const existingIds = [...locateNodeBlocks(editorState.svgText).keys()];
+  renderNewNodeForm({ x, y, existingIds }, formHost);
+}
+
+/**
+ * 連線模式下點到一個節點：第一次點記為前置（linkFromId），第二次點記為目標，成功配對後
+ * `insertEdge(emitEdgeLine(前置座標, 目標座標))`。座標直接讀畫面上的節點 transform
+ * （nodeTransformXY()），理由見該函式的說明——這是規則 5「不可能違反」的落地機制。
+ *
+ * 兩次點到同一個節點：任務簡報要求「取消並提示」。這裡不把節點跟自己連起來（自迴圈對規則 6
+ * 的無環檢查沒有意義，也幾乎不可能是玩家的真實意圖，多半是手滑點了兩次同一顆），改成清空
+ * linkFromId、把提示寫進 #edit-validation——借用這個既有的訊息區塊而不是新開一個 DOM 元素，
+ * 跟 rerender() 失敗時借用同一個區塊顯示「畫面更新失敗」是同一個做法（見該函式的說明）。
+ * 這則提示是暫時性的：下一次任何真正的編輯動作（含成功拉一條邊）都會呼叫 runValidation()
+ * 蓋掉它，不需要另外清除。
+ */
+function handleLinkModeNodeClick(id: string): void {
+  const validation = document.querySelector<HTMLElement>('#edit-validation');
+
+  if (!linkFromId) {
+    linkFromId = id;
+    if (validation) validation.textContent = `連線模式：已選前置節點 ${id}，請點選目標節點。`;
+    return;
+  }
+
+  const fromId = linkFromId;
+  linkFromId = null; // 不管接下來成功還是取消，這次「點前置」的狀態都結束了。
+
+  if (fromId === id) {
+    if (validation) validation.textContent = `已取消連線：前置與目標不能是同一個節點（${id}）。`;
+    return;
+  }
+
+  const svg = document.querySelector<HTMLElement>('#edit-canvas-host')?.querySelector('svg');
+  const fromEl = svg?.querySelector(`.node[data-id="${fromId}"]`);
+  const toEl = svg?.querySelector(`.node[data-id="${id}"]`);
+  // id 是從當下畫面上的 .node 讀出來的（bindNodeClicks() 的 downTarget），這裡理論上一定
+  // 找得到對應元素；防禦性判斷，避免萬一（例如兩次點擊之間畫面被 rerender 換掉）撞上 null
+  // 讓後面的座標讀取直接炸掉整個 handler。
+  if (!fromEl || !toEl) return;
+
+  const from = nodeTransformXY(fromEl);
+  const to = nodeTransformXY(toEl);
+  const next = insertEdge(editorState.svgText, emitEdgeLine(from, to));
+  applyEdit(next, `${fromId}→${id}`);
+}
+
+/** 三顆模式按鈕的 id，供 setMode() 統一切換 aria-pressed／樣式用。 */
+const MODE_BUTTON_ID: Record<EditMode, string> = {
+  select: 'edit-mode-select', add: 'edit-mode-add', link: 'edit-mode-link',
+};
+
+/**
+ * 切換編輯模式：更新 currentMode、清掉連線模式的暫存前置節點（切模式等於放棄這次未完成的
+ * 連線操作）、清空面板上按需出現的表單（切到新模式時，上一個模式開著的表單沒有意義了）、
+ * 並用 aria-pressed 同步三顆按鈕的視覺狀態（CSS 選一律吃 aria-pressed，不另外維護一個
+ * class，單一事實來源，見 edit.astro 的樣式）。
+ *
+ * 刻意不清 #edit-validation：那裡顯示的是 validateWith() 對目前 svgText 的驗證結果（或
+ * handleLinkModeNodeClick() 借位顯示的連線提示），跟「現在是哪個模式」是獨立的兩件事——
+ * 玩家若還有未解決的規則錯誤，切模式不該讓那則訊息憑空消失。
+ */
+function setMode(mode: EditMode): void {
+  currentMode = mode;
+  linkFromId = null;
+  const panel = document.querySelector<HTMLElement>('#edit-panel');
+  if (panel) clearPanelContent(panel);
+  currentEditId = null;
+  for (const [m, id] of Object.entries(MODE_BUTTON_ID) as [EditMode, string][]) {
+    document.getElementById(id)?.setAttribute('aria-pressed', String(m === mode));
+  }
+}
+
+function bindModeButtons(): void {
+  for (const [mode, id] of Object.entries(MODE_BUTTON_ID) as [EditMode, string][]) {
+    document.getElementById(id)?.addEventListener('click', () => setMode(mode));
+  }
 }
 
 /**
@@ -287,12 +515,15 @@ function bindViewportInteractions(): void {
 }
 
 /**
- * 每次欄位編輯提交後的唯一入口：套用一段已經算好的新 svgText（呼叫端 bindFormEdits() 已經
- * 做完 getNodeBlock → applyFieldEdits → emitNodeBlock → replaceNode 這串外科手術），標記
- * 節點為已改動，重繪畫布，並跑一次即時驗證。拆成獨立函式（而不是直接寫在 bindFormEdits()
- * 的事件委派 handler 裡）是因為未來任務（圖示／關鍵字新增、Task 13 的節點重建）改動
- * svgText 的方式不一樣（不是走表單欄位），但收尾這三步——記 dirty、重繪、驗證——是共用的，
- * 這裡先把共用的部分獨立出來，不必等到真的有第二個呼叫端才重構。
+ * 每一種會改動 svgText 的操作提交後的唯一入口：套用一段已經算好的新 svgText，標記節點（或
+ * Task 13 新增的邊／刪除操作，touchedId 借用某種可以唯一代表這次改動的字串，見各呼叫端）
+ * 為已改動，重繪畫布，並跑一次即時驗證。拆成獨立函式（而不是直接寫在各自的事件委派 handler
+ * 裡）是因為不同操作組出新 svgText 的方式不一樣——bindFormEdits() 走 getNodeBlock →
+ * applyFieldEdits → emitNodeBlock → replaceNode，Task 13 的新增節點走 newNodeBlock →
+ * emitNodeBlock → insertNode，拉連線走 emitEdgeLine → insertEdge，刪除節點走 removeEdge
+ * （逐條）→ removeNode——但收尾這三步：記 dirty、重繪、驗證，是所有操作共用的，這個函式
+ * 從一開始（task-12）就是為了讓後面這些呼叫端都能重用而獨立出來的（原始設計意圖見本檔
+ * git 歷史，這裡不重複貼一份過期的「未來任務」預告）。
  */
 function applyEdit(nextSvgText: string, touchedId: string): void {
   editorState.svgText = nextSvgText;
@@ -419,6 +650,158 @@ function bindFormEdits(): void {
     const nextBlockText = emitNodeBlock(applyFieldEdits(block, edits));
     const nextSvgText = replaceNode(editorState.svgText, currentEditId, nextBlockText);
     applyEdit(nextSvgText, currentEditId);
+  });
+}
+
+/**
+ * 新增節點暫時沒有圖示上傳（那是 Task 14「新增圖示與新增關鍵字」的範圍——玩家選圖片、
+ * checkIcon 驗證、算雜湊、存進 editorState.newIcons，是完全獨立的一段流程）。這裡固定用
+ * repo 裡已經存在、也已經被其他節點引用的一張圖示（"a5caff6da1d2"，跟 tests/lib/
+ * svg-edit.test.ts 的整合測試用同一張）當佔位圖：它已經在 editorState.iconHashes 裡，
+ * 規則 7(a)「節點引用的圖示必須存在」對新節點必然通過，不需要玩家在能看到成果之前先解決
+ * 「這張圖從哪來」的問題。玩家之後可以用 Task 14 的功能換成真正的圖示。
+ */
+const NEW_NODE_DEFAULT_ICON_HASH = 'a5caff6da1d2';
+
+/**
+ * NodeType → data-type 中文字串。跟 NodeDetail.ts 的 TYPE_ZH、NewNodeForm.ts 的 TYPE_ZH
+ * 是同一份對照表的三份獨立副本——這個專案裡每個要顯示中文類型名稱的檔案都各自維護一份小
+ * 常數表（NodeDetail.ts 已經是這個先例），不集中成共用模組；四個 entry 的小表格重複比多引入
+ * 一層跨檔案相依划算，這裡沿用既有慣例。
+ */
+const NEW_NODE_TYPE_ZH: Record<NodeType, string> = {
+  dice: '骰子', rune: '骰子符文', passive: '玩家被動', support: '支援',
+};
+
+/** 從 #new-node 表單讀出玩家填的所有欄位。純讀取，不做任何格式驗證——不合法的值（例如
+ *  成本欄位打錯格式）留給 createNewNodeFromForm() 之後的 runValidation() 用規則 4 等
+ *  對得上編號的錯誤訊息說明，不在這裡提前用另一套邏輯攔一次（EditForm.ts 的欄位提交也是
+ *  同樣的「先套用、讓 CI 規則說明哪裡錯」哲學，這裡沿用一致的做法）。 */
+function readNewNodeFields(form: HTMLElement): {
+  branch: string; type: string; prefix: string;
+  name: string; label: string; cost: string; description: string; maxLevel: number | null;
+} {
+  const value = (field: string): string =>
+    form.querySelector<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>(`[data-field="${field}"]`)?.value ?? '';
+  const maxLevelRaw = value('maxLevel').trim();
+  return {
+    branch: value('branch'), type: value('type'), prefix: value('prefix'),
+    name: value('name'), label: value('label'), cost: value('cost'), description: value('description'),
+    maxLevel: maxLevelRaw === '' ? null : Number(maxLevelRaw),
+  };
+}
+
+/**
+ * 「建立節點」：讀表單欄位、配 id、決定 stroke、組出節點區塊並 insertNode。
+ *
+ * id 用「當下」（呼叫這個函式那一刻）重新掃描 editorState.svgText 配出來的 existingIds，
+ * 不是 NewNodeForm 開啟當時傳入的 ctx.existingIds 快照——見 NewNodeForm.ts renderNewNodeForm()
+ * 文件註解的說明，避免快照過期配出重複 id。
+ *
+ * stroke 用 strokeOfElement() 反查，不讓玩家選色：這是任務簡報的設計核心，讓 CI 規則 3
+ * 「外框顏色要對應屬性分支」對編輯器使用者不可能違反。支援類型的 element 固定是 'support'
+ * （不跟著分支選擇走，即使 newNodeBlock 對 support 類型的樣板其實根本不吃這個 stroke 參數、
+ * 寫死 #f3c5ff，這裡仍然算出「語意正確」的值傳進去——不依賴呼叫端知道樣板的這個實作細節，
+ * 也是 build-tree.ts 讀真實資料時 elementOfStroke() 反推出來的值，兩者要對得上）；其餘三種
+ * 類型的 element 就是分支本身（實測驗證過現有 239 個節點的 branch／element 除了 support
+ * 以外恆相等，沒有例外）。
+ */
+function createNewNodeFromForm(x: number, y: number, form: HTMLElement): void {
+  const f = readNewNodeFields(form);
+  const branch = f.branch as Branch;
+  const type = f.type as NodeType;
+  const element = type === 'support' ? 'support' : branch;
+
+  const existingIds = [...locateNodeBlocks(editorState.svgText).keys()];
+  const id = allocateId(existingIds, f.prefix);
+
+  const block = emitNodeBlock(newNodeBlock({
+    x, y, id, type, typeZh: NEW_NODE_TYPE_ZH[type],
+    name: f.name, label: f.label, cost: f.cost, description: f.description,
+    maxLevel: f.maxLevel, stroke: strokeOfElement(element), iconHash: NEW_NODE_DEFAULT_ICON_HASH,
+  }));
+  const next = insertNode(editorState.svgText, block);
+  applyEdit(next, id);
+}
+
+/**
+ * 委派在 #edit-panel 上監聽 #new-node 裡「建立」／「取消」兩顆按鈕的 click（跟
+ * bindFormEdits() 的 focusout 委派同一個容器、同一個理由：#new-node 是按需建立的，
+ * 監聽器掛在活得比它久的 #edit-panel 上才不會漏接）。
+ */
+function bindNewNodeFormActions(): void {
+  const panel = document.querySelector<HTMLElement>('#edit-panel');
+  if (!panel) return;
+
+  panel.addEventListener('click', e => {
+    const target = e.target as Element;
+    const form = target.closest<HTMLElement>('#new-node');
+    if (!form) return;
+
+    if (target.closest('[data-action="cancel"]')) {
+      form.remove();
+      return;
+    }
+    if (target.closest('[data-action="create"]')) {
+      // 座標是 handleAddModeClick() 開表單當下算好、存在表單容器自己的 dataset 上的
+      // （見該函式的說明），這裡讀回來即可，不需要重新換算一次滑鼠座標。
+      // 讀欄位（createNewNodeFromForm 內部呼叫 readNewNodeFields）要在 form.remove() 之前
+      // 做——雖然 querySelector 在已經拔出 DOM 的元素上一樣能查到自己的子孫節點，這裡刻意
+      // 保持「先讀、再移除」的直覺順序，不依賴這個不直觀的 DOM 行為。
+      const x = Number(form.dataset.x);
+      const y = Number(form.dataset.y);
+      createNewNodeFromForm(x, y, form);
+      form.remove();
+    }
+  });
+}
+
+/**
+ * 選取模式下按 Delete 鍵刪除目前選取的節點，連同所有以它為端點的邊，需二次確認
+ * （`window.confirm`——最單純的原生二次確認機制，這個操作沒有復原機制，值得用瀏覽器原生、
+ * 玩家一定認得的阻斷式對話框，不必為此另外做一個自訂確認 UI）。
+ *
+ * ⚠️ 只在 currentMode === 'select' 且事件目標不是輸入型欄位（input/textarea/select）時才
+ * 觸發：玩家在表單欄位裡打字刪字元也會送出 Delete 鍵事件，若不排除，會變成「玩家想刪一個
+ * 字，結果把整個節點刪掉」——這是判斷全域鍵盤事件時容易漏掉的陷阱，見 bindDeleteShortcut()。
+ */
+function deleteSelectedNode(): void {
+  const id = currentEditId;
+  if (!id) return;
+
+  const confirmed = window.confirm(`確定要刪除節點 ${id} 嗎？將一併移除所有連到它的邊，此操作無法復原。`);
+  if (!confirmed) return;
+
+  const svg = document.querySelector<HTMLElement>('#edit-canvas-host')?.querySelector('svg');
+  let next = editorState.svgText;
+  // 連到這個節點的邊，用畫面上渲染出來的 <line class="edge" data-from data-to> 找——
+  // render.ts 幫每條邊都寫了這兩個屬性，直接查比自己重新掃描 editorState.svgText 的原始
+  // <path> 找端點簡單，且座標一樣走 nodeTransformXY() 讀畫面上的節點 transform，跟連線模式
+  // 用同一套機制，保證找到的座標精準對應 removeEdge() 需要的值。
+  const touchingEdges = svg?.querySelectorAll(`.edge[data-from="${id}"], .edge[data-to="${id}"]`) ?? [];
+  for (const edge of touchingEdges) {
+    const fromId = edge.getAttribute('data-from');
+    const toId = edge.getAttribute('data-to');
+    const fromEl = fromId ? svg?.querySelector(`.node[data-id="${fromId}"]`) : null;
+    const toEl = toId ? svg?.querySelector(`.node[data-id="${toId}"]`) : null;
+    if (!fromEl || !toEl) continue; // 理論上不會發生：data-from/data-to 是渲染時從同一份 data.edges 寫入的，端點節點必然存在
+    next = removeEdge(next, nodeTransformXY(fromEl), nodeTransformXY(toEl));
+  }
+  next = removeNode(next, id);
+
+  const panel = document.querySelector<HTMLElement>('#edit-panel');
+  if (panel) clearPanelContent(panel);
+  currentEditId = null;
+  applyEdit(next, id);
+}
+
+function bindDeleteShortcut(): void {
+  document.addEventListener('keydown', e => {
+    if (e.key !== 'Delete') return;
+    if (currentMode !== 'select') return;
+    const target = e.target as HTMLElement | null;
+    if (target?.closest('input, textarea, select')) return; // 正在編輯欄位文字，這個 Delete 是刪字元，不是刪節點
+    deleteSelectedNode();
   });
 }
 

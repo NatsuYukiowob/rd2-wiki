@@ -2,6 +2,8 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { locateNodeBlocks, replaceNode, insertNode, removeNode, insertEdge, removeEdge } from '../../src/lib/svg-edit';
 import { parseNodeBlock, emitNodeBlock, emitEdgeLine, newNodeBlock, setLabelText } from '../../src/lib/svg-emit';
+import { prefixesFor, allocateId } from '../../src/lib/id-alloc';
+import { strokeOfElement } from '../../src/lib/taxonomy';
 import { normalizeSvg } from '../../tools/normalize-svg';
 import { validate } from '../../tools/validate';
 
@@ -62,5 +64,30 @@ describe('svg-edit', () => {
     out = removeEdge(out, [1506.53, 626.63], [1506.53, 500]);
     out = removeNode(out, '1099');
     expect(out).toBe(svgText);
+  });
+
+  it('用 prefixesFor/allocateId 配號、strokeOfElement 上色的新節點，五種類型都通過 validate', () => {
+    const ids = [...svgText.matchAll(/data-id="(\d{4})"/g)].map(m => m[1]!);
+    const cases = [
+      { type: 'dice' as const, typeZh: '骰子', branch: 'nature' as const, element: 'nature' as const, cost: '核心 5', y: 400 },
+      { type: 'rune' as const, typeZh: '骰子符文', branch: 'magic' as const, element: 'magic' as const, cost: '金幣 2,000\n最高 50 級', y: 420 },
+      { type: 'passive' as const, typeZh: '玩家被動', branch: 'chaos' as const, element: 'chaos' as const, cost: '金幣 8,000', y: 440 },
+      { type: 'support' as const, typeZh: '支援', branch: 'order' as const, element: 'support' as const, cost: '核心 12', y: 460 },
+    ];
+    let out = svgText;
+    const used = new Set(ids);
+    for (const c of cases) {
+      const id = allocateId(used, prefixesFor(c.branch, c.type)[0]!);
+      used.add(id);
+      const block = emitNodeBlock(newNodeBlock({
+        x: 1506.53, y: c.y, id, type: c.type, typeZh: c.typeZh,
+        name: `測試${c.typeZh}`, label: '測試', cost: c.cost,
+        description: '測試效果增加20%(+4%)', maxLevel: 50,
+        stroke: strokeOfElement(c.element), iconHash: 'a5caff6da1d2',
+      }));
+      out = insertEdge(insertNode(out, block), emitEdgeLine([1506.53, 626.63], [1506.53, c.y]));
+    }
+    expect(validate(out, vopts).errors).toEqual([]);
+    expect(normalizeSvg(out)).toBe(out);
   });
 });

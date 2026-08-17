@@ -18,6 +18,32 @@ async function getViewportMatrix(page: Page): Promise<{ scale: number; x: number
   });
 }
 
+/**
+ * 點擊一個節點的 `.icon`（實際畫出圖形的 `<rect>`），用 `page.mouse.click()` 而不是
+ * `locator.click()`（task-13 新增，見任務報告的「小節點點擊」踩坑說明）：
+ *
+ * `locator.click()` 送出前會做一連串 actionability 檢查（可見、穩定、沒被其他元素攔截），
+ * 這些檢查在符文（24x26）／被動（20x20）這類小圖示節點上，於這個測試套件的 mobile
+ * 專案（Pixel 7 裝置模擬）下會失敗：`#edit-panel` 固定佔 20rem 寬、edit.astro 沒有針對
+ * 窄螢幕收窄它，`#edit-canvas-host` 因此被壓成只剩 92px 寬，要塞下整個 3400 使用者單位寬
+ * 的 viewBox，縮放比例只剩約 0.027——一個 24 單位寬的符文圖示換算成 CSS px 只剩約 0.65px，
+ * 是名副其實的次像素元素。這是既有 /edit 版面沒有做手機適配的既有落差（不是 Task 13 的
+ * 範圍），但 Playwright 對這種次像素元素的 actionability 檢查會判定「不穩定／點不到」，
+ * 一路重試到逾時。
+ *
+ * `page.mouse.click(x, y)` 繞過這層檢查，直接在指定的螢幕座標送出真實滑鼠事件，讓瀏覽器
+ * 自己的畫面命中測試（跟真人滑鼠點在同一個像素是同一件事）決定點到什麼——實測過即使目標
+ * 只有次像素大小，瀏覽器仍然會正確命中畫在那裡的形狀（見任務報告）。座標算的是 `.icon`
+ * 這個實際有畫出東西的 `<rect>` 的幾何中心，不是整個 `.node` `<g>` 的 bounding box 中心
+ * ——後者涵蓋圖示＋標籤文字兩者，對小圖示節點來說，這個組合 bbox 的幾何中心常常落在兩者
+ * 之間的空白，不管用哪種點擊方式都點不到任何東西（這是這個踩坑故事的第一層，見任務報告）。
+ */
+async function clickIconCenter(page: Page, nodeLocator: ReturnType<Page['locator']>): Promise<void> {
+  const box = await nodeLocator.locator('.icon').boundingBox();
+  if (!box) throw new Error('節點的 .icon 沒有 bounding box，無法點擊');
+  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+}
+
 test.describe('線上編輯器', () => {
   test('載入後畫出 239 個節點與 248 條邊，狀態列顯示尚未修改', async ({ page }) => {
     await page.goto('/edit');
@@ -194,5 +220,142 @@ test.describe('線上編輯器', () => {
       if (!box) throw new Error('欄位控制項沒有 bounding box');
       expect(box.x + box.width).toBeLessThanOrEqual(panelBox.x + panelBox.width + 0.5);
     }
+  });
+
+  // task-13：加節點與拉連線。
+
+  test('新增一個節點並連線後，節點數變 240、邊數變 249，驗證仍通過', async ({ page }) => {
+    await page.goto('/edit');
+    await expect(page.locator('#edit-canvas-host svg .node')).toHaveCount(239);
+
+    // ⚠️ 先縮放過再點擊，這是這支測試存在的理由：新增模式的座標轉換陷阱
+    // （edit-canvas.ts 的 screenToViewportXY()）是「用 svg.getScreenCTM() 而不是
+    // #viewport 的 CTM」。實測過（見任務報告）：即使完全不縮放，這兩種寫法在這個實作下
+    // 就已經不一樣——因為初始 fitTo() 本來就把 #viewport 的 transform 設成
+    // `translate(170,142.5) scale(0.9)`，不是單位矩陣，所以 svg 自己的 CTM 從第一次
+    // 渲染起就跟 #viewport 的 CTM有落差。但簡報明確要求「必須先平移或縮放，再點畫布」，
+    // 這裡照做（縮放，見下面的理由）——多一層保險：確保鑑別力不是僥倖建立在 fitTo() 這個
+    // 實作細節上，未來如果 fitTo() 改成套單位矩陣，這支測試仍然對這個 bug 有鑑別力。
+    //
+    // 只用「縮放」不用「平移」：`Viewport.zoomAt(factor, cx, cy)` 是以「螢幕座標
+    // (cx,cy) 對應的使用者座標維持不變」為錨點縮放（見 viewport.ts 的說明），錨點選在
+    // 畫布正中央時，不管容器長寬比例怎樣，縮放前後畫面中心對應的資料點都不變。反過來
+    // `pan(dx,dy)` 是直接把「螢幕像素位移」除以 CTM 的縮放分量換算成使用者座標位移，
+    // 這個換算完全不設界——實測過：Playwright 的 mobile 專案（Pixel 7）套用這個版面後，
+    // #edit-canvas-host 只剩 92px 寬、757px 高（20rem 的 #edit-panel 沒有隨小螢幕收窄，
+    // 這是既有版面本來就有的落差，不是 Task 13 要處理的範圍），螢幕的 CTM 縮放分量因此
+    // 被压得極小，一個 15px 的拖曳换算成使用者座標會偏移超過 500 單位；这在有些方向上
+    // 会把新节点推到当前可视窗口之外，导致后面 `.node.last().click()` 因为「元素不在
+    // 視窗內」逾時。只縮放、不平移，縮放錨點固定在畫布中心，不會有這個問題。
+    const host = page.locator('#edit-canvas-host');
+    const box = await host.boundingBox();
+    if (!box) throw new Error('#edit-canvas-host 沒有 bounding box');
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.wheel(0, -100); // 放大一格（單次 wheel 事件，固定 1.1 倍，見 edit-canvas.ts 的 wheel handler）
+    await page.mouse.wheel(0, -100); // 再放大一格，讓 scale 跟初始值的差距更明確
+
+    const before = await getViewportMatrix(page);
+    expect(before.scale).not.toBeCloseTo(0.9, 3); // 確認真的離開了初始視角，見上面同款斷言的說明
+
+    await page.locator('#edit-mode-add').click();
+    // 點擊位置用畫布「中心」——縮放錨點也是畫布中心，這裡點在同一個點上，確保新節點
+    // 建在畫面中央附近（不管容器長寬比例如何都是離可視範圍邊界最遠的位置），後面連線
+    // 模式要點它、以及要點原本就接近 viewBox 中心的 1001（見下面的說明），才能穩定命中。
+    const clickPos = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+    // 用跟 edit-canvas.ts 完全相同的公式（screenToViewportXY() 的 DOMPoint.matrixTransform）
+    // 手動算一次「正確答案」：讀 #viewport 目前的 CTM，反推點擊位置對應的使用者座標。
+    // 如果實作誤用了 svg.getScreenCTM()（任務簡報點名的那個 bug），這裡算出來的「正確答案」
+    // 跟實作實際寫入 SVG 的座標會對不上，下面的斷言就會抓到。
+    const expected = await page.evaluate(({ x, y }) => {
+      const svg = document.querySelector('#edit-canvas-host svg') as SVGSVGElement;
+      const vp = svg.querySelector('#viewport') as SVGGElement;
+      const ctm = vp.getScreenCTM()!;
+      const pt = new DOMPoint(x, y).matrixTransform(ctm.inverse());
+      return { x: Math.round(pt.x * 100) / 100, y: Math.round(pt.y * 100) / 100 };
+    }, clickPos);
+
+    await page.mouse.click(clickPos.x, clickPos.y);
+    await page.locator('#new-node [data-field="branch"]').selectOption('nature');
+    await page.locator('#new-node [data-field="type"]').selectOption('passive');
+    await page.locator('#new-node [data-field="name"]').fill('測試被動');
+    await page.locator('#new-node [data-field="label"]').fill('測試');
+    await page.locator('#new-node [data-field="cost"]').fill('金幣 8,000');
+    await page.locator('#new-node [data-field="description"]').fill('自然骰子子彈傷害增加20%(+5%)');
+    await page.locator('#new-node [data-action="create"]').click();
+    await expect(page.locator('#edit-canvas-host svg .node')).toHaveCount(240);
+
+    // 新節點的實際 transform 座標必須精準等於上面手算的「正確答案」——這就是本測試
+    // 真正的鑑別力來源：若實作誤用 svg.getScreenCTM()，這兩個值在「已平移縮放」的前提下
+    // 會不一致，測試會在這裡失敗。
+    const actual = await page.evaluate(() => {
+      const nodes = document.querySelectorAll('#edit-canvas-host svg .node');
+      const last = nodes[nodes.length - 1]!;
+      const m = /translate\(([-\d.]+),([-\d.]+)\)/.exec(last.getAttribute('transform') ?? '');
+      return { x: Number(m![1]), y: Number(m![2]) };
+    });
+    expect(actual.x).toBeCloseTo(expected.x, 2);
+    expect(actual.y).toBeCloseTo(expected.y, 2);
+
+    await page.locator('#edit-mode-link').click();
+    await page.locator('#edit-canvas-host svg .node[data-id="1001"]').click();
+    // 新節點是 passive 類型，圖示只有 20x20 使用者單位——用 clickIconCenter()，見該函式
+    // 開頭的說明（小圖示節點在這個測試套件的 mobile 專案下會是次像素大小）。
+    await clickIconCenter(page, page.locator('#edit-canvas-host svg .node').last());
+    await expect(page.locator('#edit-canvas-host svg .edge')).toHaveCount(249);
+    // 「驗證仍通過」量的是 errors（會擋 PR 的那些），不是「面板完全沒有『規則』兩個字」
+    // ——任務簡報原本給的斷言是 `not.toContainText('規則')`，但真實資料本身就有 4 個
+    // 跟這次新增無關的規則 9 警告（2403／5302／5403／5307 的成長值含 {n} 佔位符，見
+    // CLAUDE.md 已知待辦，跟上面「改名字會即時反映...」測試踩過的同一個坑），用「面板裡
+    // 完全不能出現規則字樣」當斷言在真實資料上必然是假陰性，不管新增/連線做得對不對都會
+    // 紅。改成跟同檔案既有測試一致的量法：有沒有 errors 區塊、送出按鈕有沒有被停用。
+    await expect(page.locator('#edit-validation .errors')).toHaveCount(0);
+    await expect(page.locator('#edit-download')).toBeEnabled();
+  });
+
+  test('連線模式下兩次點同一個節點會取消並提示，不會產生自迴圈邊', async ({ page }) => {
+    await page.goto('/edit');
+    await expect(page.locator('#edit-canvas-host svg .node')).toHaveCount(239);
+
+    await page.locator('#edit-mode-link').click();
+    await page.locator('#edit-canvas-host svg .node[data-id="1001"]').click();
+    await page.locator('#edit-canvas-host svg .node[data-id="1001"]').click();
+
+    await expect(page.locator('#edit-validation')).toContainText('已取消');
+    await expect(page.locator('#edit-canvas-host svg .edge')).toHaveCount(248);
+  });
+
+  test('選取模式下按 Delete 鍵刪除節點，需二次確認；取消確認則不刪除', async ({ page }) => {
+    await page.goto('/edit');
+    await expect(page.locator('#edit-canvas-host svg .node')).toHaveCount(239);
+
+    // 1301（火焰射程增加）是葉節點：只有唯一一條前置邊、沒有子節點，刪除它不會連帶讓其他
+    // 節點斷線失去可達性——挑一個結構單純的節點，這支測試才能把斷言收斂成單純的「節點數
+    // -1、邊數 -1」，不用另外處理「刪掉一個有兩個前置的中繼節點，會一次少 4 條邊、還可能讓
+    // 它的子節點變成從根不可達」這種複雜度（那不是這支測試要驗的東西）。
+    //
+    // 用 clickIconCenter()（見該函式開頭的說明）而不是 locator.click()：1301 是符文
+    // 類型，圖示只有 24x26 使用者單位，在這個測試套件的 mobile 專案（Pixel 7 模擬、
+    // #edit-canvas-host 只有 92px 寬）下換算成不到 1 個 CSS px，Playwright 的
+    // actionability 檢查會判定這個目標「不穩定／點不到」而重試到逾時——即使改成點
+    // `.icon` 而不是整個 `.node`（後者的 bounding box 還涵蓋標籤文字，幾何中心常落在
+    // 圖示與文字之間的空白，同樣點不到任何東西）也一樣，因為問題是元素本身small到次像素，
+    // 不是點的位置選錯。這是既有 /edit 版面沒有做手機適配的既有落差（CLAUDE.md 已知待辦：
+    // 「節點標籤字太小」），不是 Task 13 的範圍；`page.mouse.click()` 直接送出真實座標的
+    // 滑鼠事件、不做 actionability 前置檢查，讓瀏覽器自己的畫面命中測試決定點到什麼，
+    // 實測過即使目標只有次像素大小依然能正確命中。
+    await clickIconCenter(page, page.locator('#edit-canvas-host svg .node[data-id="1301"]'));
+    await expect(page.locator('#edit-panel')).toContainText('火焰射程增加');
+
+    // 先確認「取消確認」不會刪除：dismiss() 對應玩家在對話框按下「取消」。
+    page.once('dialog', dialog => dialog.dismiss());
+    await page.keyboard.press('Delete');
+    await expect(page.locator('#edit-canvas-host svg .node')).toHaveCount(239);
+
+    // 再確認「接受確認」真的會刪除，且它唯一的前置邊一併消失。
+    page.once('dialog', dialog => dialog.accept());
+    await page.keyboard.press('Delete');
+    await expect(page.locator('#edit-canvas-host svg .node')).toHaveCount(238);
+    await expect(page.locator('#edit-canvas-host svg .node[data-id="1301"]')).toHaveCount(0);
+    await expect(page.locator('#edit-canvas-host svg .edge')).toHaveCount(247);
   });
 });

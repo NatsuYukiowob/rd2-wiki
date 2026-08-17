@@ -9,6 +9,15 @@ import Base from '../layouts/Base.astro';
 <Base title="線上編輯器">
   <div id="edit-toolbar">
     <span id="edit-status">尚未修改</span>
+    <!-- 三顆互斥的模式按鈕（Task 13）：選取模式（預設，點節點開欄位表單）／新增模式
+         （點畫布放新節點）／連線模式（點兩個節點拉一條邊）。狀態用 aria-pressed 表達，
+         不另外維護一個 class——edit-canvas.ts 的 setMode() 只需要同步這一個屬性，
+         CSS 也只認這一個屬性，單一事實來源，見下面 #edit-mode-buttons 的樣式。 -->
+    <div id="edit-mode-buttons" role="group" aria-label="編輯模式">
+      <button id="edit-mode-select" type="button" aria-pressed="true">選取</button>
+      <button id="edit-mode-add" type="button" aria-pressed="false">新增節點</button>
+      <button id="edit-mode-link" type="button" aria-pressed="false">拉連線</button>
+    </div>
     <button id="edit-download" type="button" disabled>下載 SVG</button>
   </div>
   <div id="edit-canvas-host"></div>
@@ -71,6 +80,27 @@ import Base from '../layouts/Base.astro';
     cursor: not-allowed;
   }
 
+  /* 三顆模式按鈕的樣式。啟用中的模式用 aria-pressed="true" 當選擇器（edit-canvas.ts 的
+     setMode() 是唯一寫這個屬性的地方，見該函式的說明），不另外定義 .active class——
+     一個布林狀態沒有理由同時用兩種方式表達，會有兩者不同步的風險。 */
+  #edit-mode-buttons {
+    display: flex;
+    gap: 0.25rem;
+  }
+  #edit-mode-buttons button {
+    background: var(--bg);
+    color: var(--fg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 0.35rem 0.75rem;
+    font: inherit;
+    cursor: pointer;
+  }
+  #edit-mode-buttons button[aria-pressed='true'] {
+    border-color: var(--gold);
+    color: var(--gold);
+  }
+
   /* touch-action 刻意不設 none（審查回饋，2026-08-18）：edit-canvas.ts 這輪只接了滑鼠拖曳
      平移／滾輪縮放，沒有像 tree-canvas.ts 那樣另外接雙指 pinch 縮放。tree.astro 的
      #canvas-host 設 touch-action:none 是因為它自己的 JS 補上了完整的觸控手勢；這裡若原封
@@ -105,26 +135,35 @@ import Base from '../layouts/Base.astro';
      不做視覺設計（不加陰影、不加動畫、配色全部沿用既有 CSS 變數），刻意壓低範圍。
      跟 #edit-canvas-host/#edit-panel 一樣，不引入任何寫死的版面偏移量（CLAUDE.md
      「寫死的版面偏移量咬過三次」）——這裡全部是相對於父層的 flex 排版，沒有 top/left
-     這類需要跟外部量測值對齊的屬性，沒有這類 bug 可以發生的空間。 */
-  #edit-form {
+     這類需要跟外部量測值對齊的屬性，沒有這類 bug 可以發生的空間。
+
+     Task 13 的 #new-node（NewNodeForm.ts 的掛載點）跟 #edit-form 是同一種「可用性優先」
+     的表單，欄位種類也高度重疊（只是多了 select、少了唯讀的類型 <p>），所以這裡直接把
+     選擇器擴充成兩者都吃，而不是整段複製一份幾乎一樣的規則——重複的樣式規則跟重複的程式碼
+     一樣，會在下一次改動時變成兩份要同步維護的東西。 */
+  #edit-form,
+  #new-node {
     display: flex;
     flex-direction: column;
     gap: 0.75rem;
     margin-bottom: 1rem;
   }
 
-  #edit-form h2 {
+  #edit-form h2,
+  #new-node h2 {
     margin: 0;
   }
 
-  #edit-form .meta {
+  #edit-form .meta,
+  #new-node .meta {
     color: var(--muted);
     margin: 0;
   }
 
-  /* label 本身也是 flex column：讓欄位名稱（文字節點）跟控制項（input/textarea）
+  /* label 本身也是 flex column：讓欄位名稱（文字節點）跟控制項（input/textarea/select）
      縱向堆疊，而不是 label 預設的 inline 排列把兩者擠在同一行。 */
-  #edit-form label {
+  #edit-form label,
+  #new-node label {
     display: flex;
     flex-direction: column;
     gap: 0.25rem;
@@ -133,9 +172,14 @@ import Base from '../layouts/Base.astro';
 
   /* width:100% 讓控制項填滿 #edit-panel 的可用寬度；box-sizing:border-box 讓 padding／
      border 算在這個 100% 之內，不會因為邊框多算出去而溢出面板（審查驗收要求之一）。
-     font:inherit 避免瀏覽器預設的表單控制項字體跟頁面其餘文字不一致。 */
+     font:inherit 避免瀏覽器預設的表單控制項字體跟頁面其餘文字不一致。select 併進同一條
+     規則——#new-node 用 <select> 選分支／類型／id 字首，跟 input/textarea 需要的可用性
+     基本盤（填滿寬度、邊框對齊面板）完全一樣。 */
   #edit-form input,
-  #edit-form textarea {
+  #edit-form textarea,
+  #new-node input,
+  #new-node textarea,
+  #new-node select {
     width: 100%;
     box-sizing: border-box;
     background: var(--bg);
@@ -149,11 +193,32 @@ import Base from '../layouts/Base.astro';
   /* rows 屬性已經給了瀏覽器算高度的基準（成本 2 行、說明 4 行），這裡額外訂
      min-height 是保險：字體大小、行高被使用者端設定覆寫時，rows 算出來的高度可能
      壓縮到放不下原本該有的行數，min-height 確保「至少看得到這麼多」。 */
-  #edit-form textarea[data-field='cost'] {
+  #edit-form textarea[data-field='cost'],
+  #new-node textarea[data-field='cost'] {
     min-height: 3rem;
   }
-  #edit-form textarea[data-field='description'] {
+  #edit-form textarea[data-field='description'],
+  #new-node textarea[data-field='description'] {
     min-height: 6rem;
+  }
+
+  /* 「建立」「取消」兩顆按鈕橫向並排，跟表單欄位的縱向堆疊區分開來。 */
+  #new-node .actions {
+    display: flex;
+    gap: 0.5rem;
+  }
+  #new-node .actions button {
+    background: var(--bg);
+    color: var(--fg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 0.35rem 0.75rem;
+    font: inherit;
+    cursor: pointer;
+  }
+  #new-node .actions button[data-action='create'] {
+    border-color: var(--gold);
+    color: var(--gold);
   }
 
   /* 節點是 renderTree() 動態產生的 SVG 元素（不是這個檔案模板裡寫死的），套用在它們身上
