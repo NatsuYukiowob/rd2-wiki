@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { parseNodeBlock, emitNodeBlock, emitEdgeLine, newNodeBlock, setLabelText } from '../../src/lib/svg-emit';
+import { loadSvg } from '../../tools/lib/dom';
 
 const svgText = readFileSync('data/dice-tree.svg', 'utf8');
 
@@ -47,6 +48,39 @@ describe('svg-emit', () => {
   it('產生的邊格式與既有資料一致', () => {
     expect(emitEdgeLine([1700, 1271.53], [1506.53, 1078.06]))
       .toBe('<path class="edge" marker-end="url(#arrow)" d="M 1700.00 1271.53 L 1506.53 1078.06" />');
+  });
+
+  it('玩家打進 & 或 < 時，屬性值與元素內容各自逃逸且仍是合法 XML', () => {
+    // 現行資料 0 個節點含這類字元，所以 239 節點往返測試涵蓋不到這條；
+    // 但 Task 12 起玩家會自由打字，沒逃逸的話整份 SVG 會解析失敗、編輯器當場壞掉。
+    const n = newNodeBlock({
+      x: 100, y: 200, id: '1099', type: 'dice', typeZh: '骰子',
+      name: 'A & B', label: 'A & B', cost: '核心 5',
+      description: '傷害 < 100 且 A & B', maxLevel: null,
+      stroke: '#ef625e', iconHash: 'a5caff6da1d2',
+    });
+    const out = emitNodeBlock(n);
+    expect(out).toContain('data-name="A &amp; B"');
+    expect(out).toContain('data-description="傷害 &lt; 100 且 A &amp; B"');
+    expect(out).toContain('<title>骰子｜A &amp; B｜傷害 &lt; 100 且 A &amp; B</title>');
+    expect(out).toContain('>A &amp; B</text>');
+    // 最終驗收：產出的區塊塞進最小 SVG 後，linkedom 必須解析得動且值還原正確。
+    // 屬性值故意用 getAttributeNode(...).value 而不是 getAttribute(...)：實測發現 linkedom
+    // 對 SVG／XML 文件（非 ignoreCase 的元素）的 getAttribute() 會把「已經正確解碼」的內部值
+    // 再套一次 HTML escape（node_modules/linkedom/esm/interface/element.js 的 getAttribute
+    // 實作，這是它自己的怪癖，不是這裡的程式碼有問題），導致讀回來又變成 `A &amp; B`。
+    // getAttributeNode().value 讀的是解碼後、還沒被那層多餘 escape 動過的原始內部值。
+    const doc = loadSvg(`<svg xmlns="http://www.w3.org/2000/svg">${out}</svg>`);
+    const g = doc.querySelector('g.node')!;
+    expect(g.getAttributeNode('data-name')!.value).toBe('A & B');
+    expect(g.getAttributeNode('data-description')!.value).toBe('傷害 < 100 且 A & B');
+    expect(g.querySelector('text')!.textContent).toBe('A & B');
+  });
+
+  it('setLabelText 寫入的文字也會逃逸', () => {
+    const block = allNodeBlocks(svgText).find(b => b.includes('data-id="1002"'))!;
+    const n = parseNodeBlock(block);
+    expect(setLabelText(n.labelXml, 'A & B')).toContain('>A &amp; B</text>');
   });
 
   // ── data-wip 覆蓋缺口補測（現行 239 個真實節點裡 0 個帶 data-wip，主測試完全涵蓋不到這個欄位）──

@@ -86,6 +86,23 @@ export function encodeAttr(value: string): string {
     .replace(/\n/g, '&#10;');
 }
 
+/**
+ * XML **元素內容**用的逃逸（`<title>` 與 `<text>` 寫入的文字），跟屬性值用的 `encodeAttr`
+ * 規則不同：內容只需要處理 `&`／`<`（`"` 在元素內容裡不需要逃逸），換行維持字面換行
+ * （屬性值那邊才要編成 `&#10;`）。
+ *
+ * 現行 239 個節點的 typeZh／name／description／標籤文字裡沒有 `&`／`<`，所以這個函式對現有
+ * 資料是全恆等（往返測試不會被影響）；但 Task 12 起玩家會在表單自由打字，沒有這道逃逸的話，
+ * 玩家打「A & B」或「傷害 < 100」會讓 `emitNodeBlock` 組出來的 `<title>`／`setLabelText`
+ * 寫入的 `<text>` 變成不合法 XML，整份 SVG 直接解析失敗。
+ *
+ * 順序（`&` 必須先換）跟 `decodeAttr` 的 `&amp;` 必須最後解是同一個坑的另一面：
+ * 若先把 `<` 換成 `&lt;` 再處理 `&`，`&lt;` 裡的 `&` 會被二次逃逸成 `&amp;lt;`。
+ */
+export function escapeXmlContent(text: string): string {
+  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;');
+}
+
 /** 解析單一 `<g class="node">…</g>` 區塊。輸入必須是完整區塊（含頭尾標籤），不做寬容修復。 */
 export function parseNodeBlock(block: string): NodeBlock {
   const [, xStr, yStr] = requireMatch(TRANSFORM_RE, block, 'transform="translate(x,y)"');
@@ -115,9 +132,12 @@ export function parseNodeBlock(block: string): NodeBlock {
   };
 }
 
-/** 組回 `<title>` 的內容（不含頭尾標籤）：`{typeZh}｜{name}｜{description}`，換行用字面換行字元。 */
+/**
+ * 組回 `<title>` 的內容（不含頭尾標籤）：`{typeZh}｜{name}｜{description}`，換行用字面換行字元。
+ * 三個動態欄位各自過 `escapeXmlContent`（分隔符 `｜` 與「最高等級：」是固定字面量，不需要逃逸）。
+ */
 function titleContentOf(n: NodeBlock): string {
-  const head = `${n.typeZh}｜${n.name}｜${n.description}`;
+  const head = `${escapeXmlContent(n.typeZh)}｜${escapeXmlContent(n.name)}｜${escapeXmlContent(n.description)}`;
   return n.titleMaxLevel === null ? head : `${head}\n最高等級：${n.titleMaxLevel}`;
 }
 
@@ -154,22 +174,22 @@ const TEMPLATES: Record<NodeType, {
   dice: {
     shape: stroke => `<rect x="-36" y="-28" width="72" height="56" rx="11" fill="#322b4b" stroke="${stroke}" stroke-width="2" />`,
     image: hash => `<image href="icons/${hash}.png" x="-24" y="-26" width="48" height="52" preserveAspectRatio="xMidYMid meet" />`,
-    label: text => `<text class="dice-label" y="39">${text}</text>`,
+    label: text => `<text class="dice-label" y="39">${escapeXmlContent(text)}</text>`,
   },
   rune: {
     shape: stroke => `<polygon points="0,-17 17,0 0,17 -17,0" fill="#405276" stroke="${stroke}" stroke-width="2" />`,
     image: hash => `<image href="icons/${hash}.png" x="-12" y="-13" width="24" height="26" preserveAspectRatio="xMidYMid meet" />`,
-    label: text => `<text class="mini-label" y="26">${text}</text>`,
+    label: text => `<text class="mini-label" y="26">${escapeXmlContent(text)}</text>`,
   },
   passive: {
     shape: stroke => `<circle r="12" fill="#55506d" stroke="${stroke}" stroke-width="2" />`,
     image: hash => `<image href="icons/${hash}.png" x="-10" y="-10" width="20" height="20" preserveAspectRatio="xMidYMid meet" />`,
-    label: text => `<text class="mini-label" y="23">${text}</text>`,
+    label: text => `<text class="mini-label" y="23">${escapeXmlContent(text)}</text>`,
   },
   support: {
     shape: () => `<polygon points="0,-22 19,-11 19,11 0,22 -19,11 -19,-11" fill="#7d4cb1" stroke="#f3c5ff" stroke-width="2" />`,
     image: hash => `<image href="icons/${hash}.png" x="-15" y="-17" width="30" height="34" preserveAspectRatio="xMidYMid meet" />`,
-    label: text => `<text class="mini-label" y="29">${text}</text>`,
+    label: text => `<text class="mini-label" y="29">${escapeXmlContent(text)}</text>`,
   },
 };
 
@@ -194,11 +214,15 @@ export function newNodeBlock(input: {
 
 const LABEL_STRUCTURE_RE = /^(<text\b[^]*?>)[^]*?(<\/text>)$/;
 
-/** 替換 `labelXml` 的文字內容，保留原本的開頭標籤（class／y／可能的 inline style）不變。 */
+/**
+ * 替換 `labelXml` 的文字內容，保留原本的開頭標籤（class／y／可能的 inline style）不變。
+ * `text` 是元素內容，過 `escapeXmlContent`（不是 `encodeAttr`）——玩家改標籤打進 `&`／`<`
+ * 時，沒逃逸會讓輸出的 `<text>` 變成不合法 XML。
+ */
 export function setLabelText(labelXml: string, text: string): string {
   const m = LABEL_STRUCTURE_RE.exec(labelXml);
   if (!m) throw new Error(`labelXml 不是預期的 <text ...>…</text> 結構: ${preview(labelXml)}`);
-  return `${m[1]}${text}${m[2]}`;
+  return `${m[1]}${escapeXmlContent(text)}${m[2]}`;
 }
 
 const IMAGE_HREF_RE = /href="icons\/[0-9a-f]{12}\.png"/;
