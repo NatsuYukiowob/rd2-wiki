@@ -95,7 +95,11 @@ describe('編輯器資料產出', () => {
     expect(readFileSync('public/data/keywords.json', 'utf8')).toBe(readFileSync('data/keywords.json', 'utf8'));
     expect(readFileSync('public/data/unlock-exceptions.json', 'utf8')).toBe(readFileSync('data/unlock-exceptions.json', 'utf8'));
     const hashes = JSON.parse(readFileSync('public/data/icon-hashes.json', 'utf8')) as string[];
-    expect(hashes.length).toBe(202);
     expect(hashes.every(h => /^[0-9a-f]{12}$/.test(h))).toBe(true);
+    // 關鍵：比對「集合相等」而不只是數量。只驗數量與格式的話，202 個語法正確但內容錯的雜湊
+    // （來源目錄抓錯、快取沒更新、某張圖的雜湊重複而另一張被丟掉）會完全通過——
+    // 而 /edit 的規則 7(a)「節點引用的圖示必須存在」與 7(d)「孤兒圖示警告」正是靠這份清單判斷。
+    const onDisk = readdirSync('data/icons').filter(f => f.endsWith('.png')).map(f => f.slice(0, -4));
+    expect([...hashes].sort()).toEqual([...onDisk].sort());
   });
 });
