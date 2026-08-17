@@ -129,5 +129,19 @@ describe('svg-emit', () => {
       expect(spoofed).toContain('data-wip="1"');
       expect(parseNodeBlock(spoofed).wip).toBe(false);
     });
+
+    // 假陰性回歸測試：擋假陽性的修法（切到第一個 `>` 為止）本身有殘留缺口——`encodeAttr` 不逃逸
+    // 屬性值裡的字面 `>`（XML 規範不要求），玩家在描述打「傷害 > 100」會讓 `indexOf('>')` 切到
+    // 屬性值中間，把接在後面的真 `data-wip="1"` 屬性排除在掃描範圍外。這支測試跟上面那支要
+    // 一起看：一支擋假陽性（使用者輸入被誤判成屬性）、一支擋假陰性（真屬性因使用者輸入而被漏判）。
+    it('data-description 含字面 > 且節點真的有 data-wip="1" 時，wip 仍是 true（不會被使用者輸入誤判成沒有）', () => {
+      const block = allNodeBlocks(svgText).find(b => b.includes('data-id="1002"'))!;
+      const n = parseNodeBlock(block);
+      const real = emitNodeBlock({ ...n, wip: true, description: '傷害 > 100 時觸發' });
+      // 先確認 description 的 > 真的原樣留在輸出裡（沒被逃逸），不然下面 wip===true 的斷言
+      // 測不到這支要涵蓋的情境
+      expect(real).toContain('data-description="傷害 > 100 時觸發"');
+      expect(parseNodeBlock(real).wip).toBe(true);
+    });
   });
 });

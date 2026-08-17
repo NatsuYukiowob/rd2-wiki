@@ -116,9 +116,16 @@ export function parseNodeBlock(block: string): NodeBlock {
   // `escapeXmlContent` 依 XML 規範不逃逸 `"`（那是正確的），所以玩家若在名稱或描述裡打出字面
   // `data-wip="1"`，這段文字會原樣進到 <title> 元素內容裡；對整個 block 做無錨點比對的話，
   // 這段使用者輸入就會被誤判成真的屬性，把節點從 validate 規則 6 的可達性檢查豁免掉
-  // ——公開投稿工具上這是對抗性輸入的洞。把比對範圍限制在開頭標籤（第一個 `>` 之前）即可避開，
-  // 因為 <title> 等後續內容必然在開頭標籤的 `>` 之後。
-  const wip = WIP_RE.test(block.slice(0, block.indexOf('>')));
+  // ——公開投稿工具上這是對抗性輸入的洞。
+  //
+  // 比對範圍要切在開頭標籤內，但邊界不能用第一個 `>`：`encodeAttr` 依 XML 規範不逃逸屬性值裡的
+  // `>`（只有 `<` 才逃逸），玩家在 data-description 打「傷害 > 100」這種字面 `>` 的話，
+  // `block.indexOf('>')` 會切到屬性值中間，切太短、把接在後面的真 `data-wip="1"` 屬性排除在
+  // 掃描範圍外，變成假陰性（真正的 wip 節點失去規則 6 豁免，CI 報「從根不可達」，貢獻者完全
+  // 不知道那跟描述裡的大於號有關）。改用「位置 0 之後第一個字面 `<`」：`<` 出現在屬性值裡時
+  // 一定會被 `encodeAttr` 逃逸成 `&lt;`，所以這個位置必定是第一個子元素（`<title>`）的開頭，
+  // 也就是開頭標籤真正的結束點，不會被屬性值內容誤導。
+  const wip = WIP_RE.test(block.slice(0, block.indexOf('<', 1)));
 
   const titleContent = requireMatch(TITLE_RE, block, '<title>')[1]!;
   // 等級行必須取「最後一行」而非固定的「第二行」：跟 src/lib/svg-parse.ts 的 parseTreeWith
