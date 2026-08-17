@@ -96,6 +96,66 @@ import Base from '../layouts/Base.astro';
     padding: 1rem;
   }
 
+  /* 欄位表單的版面（審查回饋，2026-08-18 第 1 輪：#edit-form 原本完全沒有樣式，
+     <label> 預設是 inline 元素，六個欄位在 20rem 寬的 #edit-panel 裡會橫向擠成一團，
+     配上瀏覽器預設寬度的 <input>——不是「不夠精緻」，是「不能用」。這個專案的存在理由
+     就是讓沒有程式背景的玩家能操作它，表單可用是功能需求，不是視覺打磨，所以補在這裡而
+     不是留給後續美化任務）。
+     只解決「可用」：縱向堆疊、控制項填滿面板寬度、textarea 給得下內容的最小高度。
+     不做視覺設計（不加陰影、不加動畫、配色全部沿用既有 CSS 變數），刻意壓低範圍。
+     跟 #edit-canvas-host/#edit-panel 一樣，不引入任何寫死的版面偏移量（CLAUDE.md
+     「寫死的版面偏移量咬過三次」）——這裡全部是相對於父層的 flex 排版，沒有 top/left
+     這類需要跟外部量測值對齊的屬性，沒有這類 bug 可以發生的空間。 */
+  #edit-form {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+  }
+
+  #edit-form h2 {
+    margin: 0;
+  }
+
+  #edit-form .meta {
+    color: var(--muted);
+    margin: 0;
+  }
+
+  /* label 本身也是 flex column：讓欄位名稱（文字節點）跟控制項（input/textarea）
+     縱向堆疊，而不是 label 預設的 inline 排列把兩者擠在同一行。 */
+  #edit-form label {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    color: var(--muted);
+  }
+
+  /* width:100% 讓控制項填滿 #edit-panel 的可用寬度；box-sizing:border-box 讓 padding／
+     border 算在這個 100% 之內，不會因為邊框多算出去而溢出面板（審查驗收要求之一）。
+     font:inherit 避免瀏覽器預設的表單控制項字體跟頁面其餘文字不一致。 */
+  #edit-form input,
+  #edit-form textarea {
+    width: 100%;
+    box-sizing: border-box;
+    background: var(--bg);
+    color: var(--fg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 0.35rem 0.5rem;
+    font: inherit;
+  }
+
+  /* rows 屬性已經給了瀏覽器算高度的基準（成本 2 行、說明 4 行），這裡額外訂
+     min-height 是保險：字體大小、行高被使用者端設定覆寫時，rows 算出來的高度可能
+     壓縮到放不下原本該有的行數，min-height 確保「至少看得到這麼多」。 */
+  #edit-form textarea[data-field='cost'] {
+    min-height: 3rem;
+  }
+  #edit-form textarea[data-field='description'] {
+    min-height: 6rem;
+  }
+
   /* 節點是 renderTree() 動態產生的 SVG 元素（不是這個檔案模板裡寫死的），套用在它們身上
      的樣式一律要 is:global（Astro scoped CSS 只認得模板裡靜態寫出的元素），這條規則跟
      tree.astro 的 .node { cursor: pointer } 是同一個道理。 */

@@ -156,4 +156,43 @@ test.describe('線上編輯器', () => {
     expect(after.x).toBeCloseTo(before.x, 6);
     expect(after.y).toBeCloseTo(before.y, 6);
   });
+
+  // 審查回饋（2026-08-18 第 1 輪）：#edit-form 原本完全沒有樣式，<label> 預設是 inline
+  // 元素，六個欄位（名稱／畫面標籤／類型／解鎖成本／效果說明／等級上限）在 20rem 寬的
+  // #edit-panel 裡會橫向擠成一團，配上瀏覽器預設寬度的 <input>——不是「不夠精緻」，是
+  // 「不能用」。修正後在 src/pages/edit.astro 補了版面 CSS，這裡用幾何斷言驗證「可用」
+  // 這件事本身，不是看截圖（CLAUDE.md「版面驗收要用幾何斷言」）。
+  test('表單六個欄位縱向堆疊，控制項不會溢出面板', async ({ page }) => {
+    await page.goto('/edit');
+    await page.locator('#edit-canvas-host svg .node[data-id="1002"]').click();
+
+    // 六個欄位列＝五個 <label>（名稱／畫面標籤／解鎖成本／效果說明／等級上限）＋一個
+    // <p class="meta">（類型，唯讀顯示，不是 <label>，見 EditForm.ts 的說明）。用
+    // #edit-form 的直接子元素、依 DOM 順序取，這個順序就是 renderEditForm() 產生的順序。
+    const rows = page.locator('#edit-form > label, #edit-form > p.meta');
+    await expect(rows).toHaveCount(6);
+
+    // 1. 縱向堆疊：依序比較每一列的 bounding box，後一列的 top 不能小於前一列的
+    // bottom（允許 0.5px 的浮點誤差）。若六個欄位橫向擠成一團（修正前的 bug），
+    // 後一列的 y 會跟前一列的 y 幾乎相同（同一行），這裡會直接抓到而不是「看起來擠」。
+    let prevBox: { y: number; height: number } | null = null;
+    for (const row of await rows.all()) {
+      const box = await row.boundingBox();
+      if (!box) throw new Error('表單欄位列沒有 bounding box');
+      if (prevBox) {
+        expect(box.y).toBeGreaterThanOrEqual(prevBox.y + prevBox.height - 0.5);
+      }
+      prevBox = box;
+    }
+
+    // 2. 控制項沒有溢出面板：每個 input/textarea 的右緣（x + width）不能超出
+    // #edit-panel 的右緣。
+    const panelBox = await page.locator('#edit-panel').boundingBox();
+    if (!panelBox) throw new Error('#edit-panel 沒有 bounding box');
+    for (const control of await page.locator('#edit-form [data-field]').all()) {
+      const box = await control.boundingBox();
+      if (!box) throw new Error('欄位控制項沒有 bounding box');
+      expect(box.x + box.width).toBeLessThanOrEqual(panelBox.x + panelBox.width + 0.5);
+    }
+  });
 });
