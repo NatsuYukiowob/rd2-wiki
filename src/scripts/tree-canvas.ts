@@ -18,6 +18,32 @@ const data = rawData as unknown as TreeData;
 // ?node=」反查該節點所屬分支，純資料處理、不依賴任何 DOM，提前宣告沒有副作用。
 const byId = new Map(data.nodes.map(n => [n.id, n]));
 
+// --- 全站導覽列的實際渲染高度，量出來寫進 CSS 自訂屬性 --nav-h ---
+// 修 bug：#tree-controls（src/pages/tree.astro）與 #detail（src/styles/global.css）
+// 舊版都寫死 top: 3rem，假設全站導覽列 <nav id="site-nav">（src/layouts/Base.astro）
+// 恆為 48px 高，但 nav 實際渲染高度（padding 0.75rem×2 ＋ 行高 ＋ 1px 下框線）
+// 實測約 50.59px，2.59px 的落差讓 #toolbar 右上角的 border-right 往上戳出 nav 下緣，
+// 形成一個小突起。這是同一種「寫死偏移量」的 bug 第三次出現（前兩次見
+// tree.astro 裡 #tree-controls 那條 CSS 規則的註解），這次不再換一個新的魔術數字
+// （字型、行高、瀏覽器預設值一變就會再錯一次），改成實測 nav 的
+// getBoundingClientRect().bottom。CSS 端讀同一個 --nav-h，3rem 只當這支腳本
+// 執行前（或量測失敗時）的 fallback，兩處 CSS 因此永遠對齊同一個高度基準。
+function updateNavHeight(): void {
+  const nav = document.getElementById('site-nav');
+  if (!nav) return;
+  const bottom = nav.getBoundingClientRect().bottom;
+  // 單元測試環境（linkedom）沒有版面引擎，getBoundingClientRect() 預設全 0，
+  // bottom <= 0 一定不是真實渲染結果，跳過寫入、讓 CSS 的 3rem fallback 留著
+  // （tests/scripts/tree-canvas.test.ts 的頁面 fixture 也沒有 #site-nav，上面
+  // 那個 `if (!nav) return` 已經先擋掉，這裡是雙重保險，避免任何環境把
+  // --nav-h 寫成無意義的 0px）。
+  if (bottom > 0) {
+    document.documentElement.style.setProperty('--nav-h', `${bottom}px`);
+  }
+}
+updateNavHeight();
+window.addEventListener('resize', updateNavHeight);
+
 const host = document.getElementById('canvas-host');
 if (!host) {
   throw new Error('找不到 #canvas-host，骰子樹畫布無法掛載');

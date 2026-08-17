@@ -149,7 +149,11 @@ pre {
 #detail {
   position: fixed;
   right: 0;
-  top: 3rem;
+  /* var(--nav-h, 3rem)：跟 src/pages/tree.astro 的 #tree-controls 用同一個由
+     src/scripts/tree-canvas.ts 的 updateNavHeight() 量出來的 CSS 自訂屬性，理由見
+     那條規則的註解（修「#toolbar 右上角戳出 nav 下緣」bug 時一併修，兩者本來就是
+     同一個「nav 底下」的偏移量，不該各自寫死）。3rem 只當 JS 執行前的 fallback。 */
+  top: var(--nav-h, 3rem);
   width: 22rem;
   max-width: 100%;
   max-height: 80vh;

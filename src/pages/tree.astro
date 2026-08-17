@@ -106,11 +106,20 @@ const TYPES: Array<[string, string]> = [
      寫死 top: 3rem / top: 6rem，後者假設前者恆為 3rem 高，視窗一窄就重疊）。
      align-items: flex-start 避免直向 flex 預設的 stretch 把 #branch-nav 的按鈕拉寬
      到跟 #toolbar 一樣寬。用 fixed 疊在畫布左上角（跟 #detail 疊在右側同一種做法），
-     不佔版面、不必重算 #canvas-host 的 calc(100vh - 110px)。 top: 3rem 對齊
-     #detail 面板同一個「nav 底下」的偏移量，兩者高度基準一致。 */
+     不佔版面、不必重算 #canvas-host 的 calc(100vh - 110px)。
+
+     top: var(--nav-h, 3rem) 是第三次修同一類 bug（前兩次：#branch-nav 寫死
+     top: 6rem 假設 #toolbar 恆 3rem 高；這次是 #tree-controls 本身寫死 top: 3rem
+     假設全站導覽列 nav 恆 48px 高，但 nav 實際渲染高度是 padding 0.75rem×2 ＋ 行高
+     ＋ 1px 下框線，量出來約 50.59px，2.59px 的落差讓 #toolbar 右上角的
+     border-right 往上戳出 nav 下緣）。這次不換一個新的寫死數字，改成
+     src/scripts/tree-canvas.ts 的 updateNavHeight() 在載入與 resize 時實測
+     #site-nav 的 getBoundingClientRect().bottom，寫進 :root 的 --nav-h 自訂屬性；
+     3rem 只當 JS 執行前的 fallback。#detail 面板（src/styles/global.css）用同一個
+     變數，兩者高度基準永遠一致。 */
   #tree-controls {
     position: fixed;
-    top: 3rem;
+    top: var(--nav-h, 3rem);
     left: 0;
     z-index: 5;
     display: flex;
@@ -303,9 +312,11 @@ const TYPES: Array<[string, string]> = [
       background: var(--panel);
     }
     #filters.open {
-      /* 展開：滑到工具列（top:3rem，現在寫在 #tree-controls，見上面該規則）下面，
-         跟收起前的視覺位置一致。 */
-      transform: translateY(3rem);
+      /* 展開：滑到工具列（top: var(--nav-h, 3rem)，現在寫在 #tree-controls，見上面
+         該規則）下面，跟收起前的視覺位置一致。這裡跟 #tree-controls 用同一個變數，
+         不能各自硬寫一份數字——不然 #tree-controls 修好對齊 nav 之後，這裡沒跟著改
+         就會重新製造出同一種「兩個地方各自假設同一個高度、實際不同步」的落差。 */
+      transform: translateY(var(--nav-h, 3rem));
     }
     #branch-chips {
       position: fixed;

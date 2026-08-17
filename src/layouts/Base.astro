@@ -23,11 +23,17 @@ const { title } = Astro.props;
     />
   </head>
   <body>
-    <nav>
+    <!-- id="site-nav"：讓 /tree 頁的 tree-canvas.ts 能精準抓到「全站導覽列」這個 nav，
+         不會跟同頁另一個 <nav id="branch-nav">（桌機側欄分支跳轉）搞混，用來量測
+         這個 nav 的實際渲染高度（見 tree-canvas.ts 的 updateNavHeight() 說明）。 -->
+    <nav id="site-nav">
       <a href="/">rd2-wiki</a>
       <a href="/tree">骰子樹</a>
       <a href="/about">貢獻</a>
-      <span style="margin-left:auto;color:var(--muted)">資料 {data.meta.gameBundle}</span>
+      <!-- 顯示「上次更新」而非資料版本號：日期取自資料正本 SVG 的 data-updated 屬性
+           （tools/build-data.ts 解析進 meta.updated），會隨資料更新自動變動，
+           不是寫死在頁面上的字串。 -->
+      <span style="margin-left:auto;color:var(--muted)">上次更新 {data.meta.updated}</span>
     </nav>
     <main>
       <slot />
