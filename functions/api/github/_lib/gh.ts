@@ -18,9 +18,22 @@
 export interface FileChange { path: string; content: Uint8Array }
 
 export interface OpenPrInput {
-  token: string; login: string;
+  token: string;
   /** 形如 `NatsuYukiowob/rd2-wiki`，跟 `_lib/session.ts` 的 `Env.UPSTREAM_REPO` 同一種格式。 */
   upstream: string;
+  /** 玩家 fork 的完整名稱（`{owner}/{repo}`），來自 `ensureFork()` 的回傳值（I5，見該函式
+   *  的說明）。**不要**自己用 `${login}/${repo}`（`repo` 取 `upstream` 的 repo 名）現組——
+   *  玩家帳號下若已有同名但無關的 repo，GitHub 會把 fork 建成 `<repo>-1` 這類别名，那樣現組
+   *  出來的 URL 會指到一個完全無關的 repo，`openPr` 會在那個 repo 上建 blob／tree／commit、
+   *  推一條新分支，等於動了沒被授權去動的東西（跟 `#edit-permission-note` 對玩家的承諾直接
+   *  矛盾）。
+   *
+   *  這個介面刻意不再另外收 `login`（I5 修正前的版本有）：fork 的 owner 已經完整包含在這個
+   *  欄位裡（`forkFullName.split('/')[0]`），另外收一份 `login` 只會製造第二個「理論上該
+   *  跟 forkFullName 的 owner 一致」的來源，正是這次修的 bug 的形狀——兩個來源沒有機制保證
+   *  同步，遲早會有人在某處手滑用錯其中一個。呼叫端若需要 `login`（例如組分支名），自己留著
+   *  用，不需要透過這個型別傳遞。 */
+  forkFullName: string;
   /** 形如 `editor/<timestamp>-<login>`，由呼叫端（Task 20 的 submit 端點）產生。 */
   branch: string;
   /** 建分支／建 commit 的基底 sha；沒傳的話 `openPr` 自己呼叫 `getBaseSha` 抓一次上游 main
@@ -86,24 +99,47 @@ async function ghFetch<T = unknown>(token: string, url: string, init: RequestIni
   return (await res.json()) as T;
 }
 
+export interface EnsureForkResult {
+  /** fork 的完整名稱（`{owner}/{repo}`），餵給 `OpenPrInput.forkFullName`（見該欄位的說明）。 */
+  fullName: string;
+}
+
 /**
- * 確保 `login` 名下有一份 `upstream` 的 fork，處理 GitHub 建 fork 的非同步延遲。
+ * 確保 `login` 名下有一份 `upstream` 的 fork，處理 GitHub 建 fork 的非同步延遲，回傳這份
+ * fork 的實際完整名稱。
  *
  * `POST /forks` 對「已經 fork 過」跟「這次才新建」都回 202/200（GitHub 端是 idempotent
  * 的），差別只在新建時 fork 的 repo 物件不會馬上查得到——所以呼叫完一律接著輪詢
- * `GET /repos/{login}/{repo}` 直到拿到 200，逾時才視為真的失敗。多數玩家的 fork 早就
+ * `GET /repos/{fullName}` 直到拿到 200，逾時才視為真的失敗。多數玩家的 fork 早就
  * 存在，第一次輪詢就會成功，不會真的等到 10 次。
+ *
+ * ⚠️ I5（全分支審查抓到、22 輪任務審查都漏掉的 Important）：輪詢用的 repo 名稱**不能**假設
+ * 恆等於 `upstream` 的 repo 名稱（`upstream.split('/')[1]`）。玩家帳號下若已有一個同名但
+ * 無關的 repo，GitHub 會把這次 fork 建成 `<repo>-1` 這類別名，若這裡還是去查
+ * `{login}/{repo}`（`repo` 取自 upstream），會查到那個無關的 repo、拿到 200、誤判成
+ * 「fork 就緒」，讓呼叫端（`openPr`）接著在錯的 repo 上建 blob／tree／commit、推一條新分支
+ * ——這正是 `#edit-permission-note` 向玩家承諾「不會也沒有能力動你其他的 repo」的反例。
+ * 修法：`POST /forks` 的回應本來就帶 `full_name`，這裡改用它輪詢、也回傳給呼叫端，不再自己
+ * 用 `upstream` 的 repo 名稱猜。
  */
-export async function ensureFork(token: string, upstream: string, login: string, f: typeof fetch = fetch): Promise<void> {
-  const repo = upstream.split('/')[1];
-  await ghFetch(token, `${GITHUB_API}/repos/${upstream}/forks`, { method: 'POST' }, f);
+export async function ensureFork(token: string, upstream: string, login: string, f: typeof fetch = fetch): Promise<EnsureForkResult> {
+  const forkRes = await ghFetch<{ full_name: string }>(token, `${GITHUB_API}/repos/${upstream}/forks`, { method: 'POST' }, f);
+  const fullName = forkRes.full_name;
+
+  // 防禦性檢查：`POST /forks` 不帶 `organization` 參數時，GitHub 保證 fork 建在呼叫者
+  // （token 持有者）自己帳號下，owner 理論上恆等於 `login`。這裡驗證這件事而不是默默信任
+  // 回應——寧可讓這裡早點炸出一句看得懂的錯誤，也不要讓 `openPr` 之後在一個 owner 不是玩家
+  // 本人的 repo 上建 blob／tree／commit、推分支（跟這次修的 I5 是同一個信任邊界）。
+  if (!fullName.startsWith(`${login}/`)) {
+    throw new Error(`fork 的 owner（${fullName}）與登入使用者（${login}）不符，拒絕繼續`);
+  }
 
   for (let attempt = 1; attempt <= FORK_POLL_ATTEMPTS; attempt++) {
-    const res = await rawFetch(token, `${GITHUB_API}/repos/${login}/${repo}`, {}, f);
-    if (res.ok) return;
+    const res = await rawFetch(token, `${GITHUB_API}/repos/${fullName}`, {}, f);
+    if (res.ok) return { fullName };
     if (attempt < FORK_POLL_ATTEMPTS) await sleep(FORK_POLL_INTERVAL_MS);
   }
-  throw new Error(`fork 尚未就緒：等了 ${FORK_POLL_ATTEMPTS} 次仍查不到 ${login}/${repo}，請稍後重試`);
+  throw new Error(`fork 尚未就緒：等了 ${FORK_POLL_ATTEMPTS} 次仍查不到 ${fullName}，請稍後重試`);
 }
 
 /** 目前唯一的二進位檔案類型是 `data/icons/*.png`，用副檔名判斷就夠，不需要嗅探內容。 */
@@ -175,15 +211,20 @@ export async function getFileAtRef(token: string, upstream: string, path: string
  * 3. 用所有 blob 建一個 tree，`base_tree` 接上游 sha——沒被改到的檔案不用重新列出。
  * 4. 用這個 tree 建一個 commit，`parents` 只有上游 sha，不是玩家 fork 舊有的 commit。
  * 5. 在玩家 fork 上把新分支指到這個 commit。
- * 6. 對上游開 PR，`head` 用 `<login>:<branch>` 語法指到玩家 fork 的分支，`base` 固定 main。
+ * 6. 對上游開 PR，`head` 用 `<fork owner>:<branch>` 語法指到玩家 fork 的分支，`base` 固定 main。
  *
  * 呼叫前必須先 `ensureFork`：這裡不重複做 fork 存在性檢查，兩件事分屬不同關注點
  * （fork 是否就緒 vs. 這次要送出什麼改動），交給呼叫端（Task 20 的 submit 端點）決定順序。
+ *
+ * `forkRepo`／PR 的 `head` 一律用 `input.forkFullName`（`ensureFork()` 的回傳值），
+ * **不用** `${login}/${upstream 的 repo 名}` 現組（I5，見 `OpenPrInput.forkFullName` 的說明）
+ * ——玩家帳號下若已有同名但無關的 repo，fork 會被 GitHub 建成 `<repo>-1` 這類別名，現組出來
+ * 的 URL 會指到一個完全無關的 repo。
  */
 export async function openPr(input: OpenPrInput, f: typeof fetch = fetch): Promise<{ number: number; url: string }> {
-  const { token, login, upstream, branch, baseSha: suppliedBaseSha, title, body, files } = input;
-  const repo = upstream.split('/')[1];
-  const forkRepo = `${GITHUB_API}/repos/${login}/${repo}`;
+  const { token, upstream, forkFullName, branch, baseSha: suppliedBaseSha, title, body, files } = input;
+  const forkOwner = forkFullName.split('/')[0];
+  const forkRepo = `${GITHUB_API}/repos/${forkFullName}`;
 
   const baseSha = suppliedBaseSha ?? await getBaseSha(token, upstream, f);
 
@@ -220,7 +261,7 @@ export async function openPr(input: OpenPrInput, f: typeof fetch = fetch): Promi
 
   const pr = await ghFetch<PullRequest>(token, `${GITHUB_API}/repos/${upstream}/pulls`, {
     method: 'POST',
-    body: JSON.stringify({ title, body, head: `${login}:${branch}`, base: 'main' }),
+    body: JSON.stringify({ title, body, head: `${forkOwner}:${branch}`, base: 'main' }),
   }, f);
 
   return { number: pr.number, url: pr.html_url };

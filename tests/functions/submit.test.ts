@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { handleSubmit } from '../../functions/api/github/submit';
 import { openSession, sealSession, type Session } from '../../functions/api/github/_lib/session';
+import { sha256Hex12 } from '../../src/lib/icon-hash';
 import { fakeGitHub, utf8ToBase64 } from './helpers';
 
 const env = {
@@ -20,7 +21,12 @@ const summary = {
   newIcons: [] as string[], newKeywords: [] as string[],
 };
 
-const validBody = { svgText: '<svg/>', summary };
+const VALID_SVG_TEXT = '<svg/>';
+// I4：baseSvgHash 必須跟 helpers.ts 的 fakeGitHub 預設 `/contents/data/dice-tree.svg`
+// 回應內容（同樣是 '<svg/>'）算出同一個雜湊，這樣「雜湊比對通過」才會是大多數測試案例的
+// 預設情境，只有明確要測 409 的案例才需要用 overrides 讓兩者對不上。
+const validBaseSvgHash = await sha256Hex12(new TextEncoder().encode(VALID_SVG_TEXT));
+const validBody = { svgText: VALID_SVG_TEXT, baseSvgHash: validBaseSvgHash, summary };
 
 /** 帶有效 session cookie 的送出請求；`sessionOverrides` 讓個別測試調整 `lastSubmitAt`
  *  之類的欄位（節流測試需要模擬「不久前才送過」）。login 固定用 'someplayer'——
@@ -188,5 +194,133 @@ describe('submit', () => {
     expect(res.status).toBe(502);
     const body = await res.json() as { message: string };
     expect(body.message).toContain('權限不足');
+  });
+
+  // I3（全分支審查抓到、22 輪任務審查都漏掉的 Important）：`svgText`／`icon.hash` 完全由
+  // 客戶端提供，沒有格式檢查就直接拼進 commit 內容／路徑。下面三支測試都用「不該打出任何
+  // 請求」的假 fetch——這些檢查必須在碰任何 GitHub API 之前就短路回傳 400，不能等
+  // ensureFork／openPr 打出去才發現。
+  describe('I3：輸入的基本形狀檢查', () => {
+    const noFetch = (async () => { throw new Error('不該打出任何請求'); }) as typeof fetch;
+
+    it('svgText 缺漏時回 400，不會把 "undefined" 寫進 commit', async () => {
+      const { svgText: _omit, ...rest } = validBody;
+      const req = await loggedInRequest(rest);
+      const res = await handleSubmit(req, env, { fetch: noFetch });
+      expect(res.status).toBe(400);
+    });
+
+    it('svgText 是空字串時回 400', async () => {
+      const req = await loggedInRequest({ ...validBody, svgText: '' });
+      const res = await handleSubmit(req, env, { fetch: noFetch });
+      expect(res.status).toBe(400);
+    });
+
+    it('baseSvgHash 缺漏時回 400', async () => {
+      const { baseSvgHash: _omit, ...rest } = validBody;
+      const req = await loggedInRequest(rest);
+      const res = await handleSubmit(req, env, { fetch: noFetch });
+      expect(res.status).toBe(400);
+    });
+
+    it('icon.hash 格式不正確（非 12 碼小寫 hex）時回 400', async () => {
+      const req = await loggedInRequest({
+        ...validBody,
+        icons: [{ hash: '../../etc/passwd', base64: btoa('\x89PNG') }],
+      });
+      const res = await handleSubmit(req, env, { fetch: noFetch });
+      expect(res.status).toBe(400);
+      const body = await res.json() as { message: string };
+      expect(body.message).toContain('../../etc/passwd');
+    });
+
+    it('icon.hash 格式正確時正常送出（不會誤擋合法輸入）', async () => {
+      const { f } = fakeGitHub();
+      const req = await loggedInRequest({
+        ...validBody,
+        icons: [{ hash: 'abc123abc123', base64: btoa('\x89PNG') }],
+      });
+      const res = await handleSubmit(req, env, { fetch: f });
+      expect(res.status).toBe(200);
+    });
+  });
+
+  // I4（全分支審查抓到、跟 keywords.json 早就修過的漂移問題是同一類 bug）：
+  // `data/dice-tree.svg` 走的是整份拿玩家頁面載入時的舊快照覆蓋這條路，玩家開著 `/edit`
+  // 編輯期間若維護者剛好合併了另一個 PR，直接覆蓋會靜默還原掉那個 PR 的全部改動。
+  describe('I4：骰子樹資料漂移檢查', () => {
+    it('baseSvgHash 與上游目前內容不符時回 409，訊息可讀', async () => {
+      // 上游「目前」的內容跟玩家開始編輯時的快照（validBody.baseSvgHash 對應的 '<svg/>'）
+      // 不一樣，模擬「玩家編輯期間，維護者合併了另一個 PR」。
+      const { f } = fakeGitHub({
+        '/contents/data/dice-tree.svg': () => new Response(JSON.stringify({
+          content: utf8ToBase64('<svg>上游已經改變</svg>'), encoding: 'base64',
+        })),
+      });
+      const req = await loggedInRequest(validBody);
+      const res = await handleSubmit(req, env, { fetch: f });
+      expect(res.status).toBe(409);
+      const body = await res.json() as { message: string };
+      expect(body.message).toContain('重新整理');
+    });
+
+    it('409 發生時不會呼叫 openPr（不會建出任何 commit／PR）', async () => {
+      const { f, calls } = fakeGitHub({
+        '/contents/data/dice-tree.svg': () => new Response(JSON.stringify({
+          content: utf8ToBase64('<svg>上游已經改變</svg>'), encoding: 'base64',
+        })),
+      });
+      const req = await loggedInRequest(validBody);
+      await handleSubmit(req, env, { fetch: f });
+      expect(calls.some(c => c.url.includes('/git/blobs'))).toBe(false);
+      expect(calls.some(c => c.url.includes('/pulls'))).toBe(false);
+    });
+
+    it('baseSvgHash 與上游目前內容相符時正常送出（不會誤擋沒有漂移的正常情境）', async () => {
+      const { f } = fakeGitHub(); // 預設路由的 dice-tree.svg 內容跟 validBody.baseSvgHash 對得上
+      const req = await loggedInRequest(validBody);
+      const res = await handleSubmit(req, env, { fetch: f });
+      expect(res.status).toBe(200);
+    });
+
+    it('讀 data/dice-tree.svg 漂移檢查用的 ref 跟 openPr 建 commit 的 baseSha 是同一個值', async () => {
+      const { f, calls } = fakeGitHub();
+      const req = await loggedInRequest(validBody);
+      const res = await handleSubmit(req, env, { fetch: f });
+      expect(res.status).toBe(200);
+
+      const baseShaCalls = calls.filter(c => c.url.includes('/git/ref/heads/main'));
+      expect(baseShaCalls.length).toBe(1); // 只抓一次，不會因為多了這個檢查就變成抓兩次
+
+      const contentsCall = calls.find(c => c.url.includes('/contents/data/dice-tree.svg'))!;
+      const refUsedForRead = new URL(contentsCall.url).searchParams.get('ref');
+      const commitCall = calls.find(c => c.url.includes('/git/commits'))!;
+      expect(refUsedForRead).toBeTruthy();
+      expect(refUsedForRead).toBe(commitCall.body.parents[0]);
+    });
+  });
+
+  // I5（全分支審查抓到、22 輪任務審查都漏掉的 Important）：submit.ts 必須把 ensureFork()
+  // 回傳的實際 fork 名稱轉交給 openPr，不能自己假設等於 `${login}/${上游 repo 名}`——
+  // 詳細的「fork 名稱跟上游不同」情境已經在 gh.test.ts 驗過 ensureFork／openPr 各自的行為，
+  // 這裡驗的是 submit.ts 有沒有把兩者正確接起來（沒接起來的話，這支測試會因為
+  // openPr 收到的 forkFullName 是 undefined 而在組 URL 時就出錯）。
+  describe('I5：fork 名稱正確轉交給 openPr', () => {
+    it('fork 名稱與上游不同時，openPr 仍然用正確的 fork 名稱建 commit', async () => {
+      const { f, calls } = fakeGitHub({
+        '/forks': () => new Response(JSON.stringify({ full_name: 'someplayer/rd2-wiki-1' }), { status: 202 }),
+        '/repos/someplayer/rd2-wiki-1': () => new Response('{}', { status: 200 }),
+      });
+      const req = await loggedInRequest(validBody);
+      const res = await handleSubmit(req, env, { fetch: f });
+      expect(res.status).toBe(200);
+      expect(calls.some(c => c.url.includes('/repos/someplayer/rd2-wiki-1/git/blobs'))).toBe(true);
+      const pr = calls.find(c => c.url.includes('/pulls'))!;
+      // head 的 owner 段來自 forkFullName 的 owner（'someplayer'），不是 fork 的 repo 名稱
+      // （'rd2-wiki-1'）——GitHub 的 head 語法只認 owner:branch，repo 名稱不影響這個欄位，
+      // 但整條呼叫鏈（ensureFork → openPr）用的必須是同一個 forkFullName，這支測試驗的正是
+      // submit.ts 有沒有把 ensureFork() 的回傳值正確轉交給 openPr。
+      expect(pr.body.head).toMatch(/^someplayer:editor\//);
+    });
   });
 });

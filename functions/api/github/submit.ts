@@ -4,24 +4,49 @@
 //
 // 伺服器端刻意不重跑 `validateWith`：那需要把整份 239 節點的 SVG 完整解析一次，在 Function
 // 裡跑會拖慢回應（每次送出都要多等好幾秒），而且真正的守門員本來就是 CI（見 CLAUDE.md
-// 「資料正本」一段——CI 是唯一防線，維護者不可能逐行 review diff）。這裡只做三件事：
-// 確認已登入、擋掉異常大的 payload、軟性節流（同一 session 兩次送出間隔至少 30 秒，
-// 時間戳存在加密 cookie 裡）。硬性的濫用防護交給 Cloudflare 儀表板對 /api/github/submit
-// 設的 Rate Limiting 規則，不為了計數這件事引入 KV 這個新相依。
+// 「資料正本」一段——CI 是唯一防線，維護者不可能逐行 review diff）。這裡做的事：確認已登入、
+// 擋掉異常大的 payload、軟性節流（同一 session 兩次送出間隔至少 30 秒，時間戳存在加密 cookie
+// 裡）、輸入的基本形狀檢查（I3：`svgText`／`icon.hash` 的格式）、`data/dice-tree.svg` 有沒有
+// 在玩家編輯期間被別的 PR 改過（I4，見 handleSubmit 主流程對 `baseSvgHash` 的比對）。
+// 硬性的濫用防護交給 Cloudflare 儀表板對 /api/github/submit 設的 Rate Limiting 規則，不為了
+// 計數這件事引入 KV 這個新相依——**這條規則必須另外在 Cloudflare 儀表板手動設定**，這個檔案
+// 的節流只防得住「不小心連點兩次」，防不住任何願意帶 curl 重放 cookie 的人（I6，見 CLAUDE.md
+// 「信任邊界」一節）。
+//
+// ⚠️ 另一個信任邊界（I2）：`body.summary` 是玩家瀏覽器算好的，這裡只拿來組 PR 標題／內文，
+// 完全不會拿它重算或驗證——一個惡意投稿者可以送一份「整份改寫的 svgText ＋ 宣稱只改了 1 個
+// 節點的 summary」。`renderPrBody` 已經在內文加了一行說明「這份摘要未經伺服器驗證」，維護者
+// 該信任的是 CI 自動貼的差異摘要留言（`tools/diff-summary.ts`），不是這裡組出來的內文。
 import { openSession, sealSession, sessionCookie, readSessionCookie, type Env } from './_lib/session.js';
 import { ensureFork, getBaseSha, getFileAtRef, openPr, type FileChange } from './_lib/gh.js';
 import { renderPrTitle, renderPrBody, type EditSummary } from '../../../src/lib/pr-summary.js';
+import { sha256Hex12 } from '../../../src/lib/icon-hash.js';
 
 export interface SubmitBody {
   svgText: string;
+  /** `editorState.original`（玩家開始編輯前那份骰子樹）的 sha256 前 12 碼，I4 的資料漂移
+   *  檢查用（見 handleSubmit 主流程對它的比對邏輯，與 src/scripts/edit-canvas.ts 的
+   *  `baseSvgHash` 說明）。 */
+  baseSvgHash: string;
   /** 有新增關鍵字時才帶；只放「這次新增的」詞（前端 editorState.newKeywords 的內容），
    *  不是整份白名單——`insertKeywords` 只需要新增的部分做最小插入。 */
   keywords?: string[];
   icons?: { hash: string; base64: string }[];
   /** 前端算好的摘要，僅供 PR 標題／內文使用；伺服器不會拿它重算或驗證任何東西
-   *  （見檔頭「伺服器端刻意不重跑驗證」）。 */
+   *  （見檔頭「伺服器端刻意不重跑驗證」與 I2：這份摘要完全由玩家瀏覽器產生，任何人可用
+   *  curl 送一份「整份改寫的 svgText＋宣稱只改了 1 個節點的 summary」，`renderPrBody` 因此
+   *  在內文加了一行說明這個信任邊界，見該函式）。 */
   summary: EditSummary;
 }
+
+/** I3（全分支審查抓到、22 輪任務審查都漏掉的 Important）：`icon.hash` 完全由客戶端控制，
+ *  沒有格式檢查就直接拼進 commit 路徑（`data/icons/${icon.hash}.png`）。雖然這裡不會執行
+ *  任意檔案系統操作（GitHub Contents/Git Data API 本身就會擋掉路徑穿越之類的異常字元組合，
+ *  頂多是建出一個檔名很怪的檔案，不是本地檔案系統風險），但沒有格式檢查就等於把「這串字會
+ *  被拼進公開 repo 的哪個路徑」完全交給匿名輸入決定，值得在進 GitHub API 之前就擋下、給一句
+ *  可讀錯誤，而不是让 GitHub API 用一個不透明的 4xx 擋（或者更糟：真的建出一個檔名詭異的
+ *  檔案）。跟資料正本的雜湊格式（12 碼小寫 hex）用同一個規則，見 `src/lib/icon-hash.ts`。 */
+const ICON_HASH_RE = /^[0-9a-f]{12}$/;
 
 /** 跟 `_lib/session.ts` 的 `PagesGetHandler` 同一種「結構相容最小簽章」手法（見該檔案開頭
  *  的說明：根 tsconfig 沒載入 workers-types，`PagesFunction<Env>` 在那個程式下會找不到）。
@@ -129,6 +154,32 @@ export async function handleSubmit(
     });
   }
 
+  // I3：基本形狀檢查，早於任何 GitHub API 呼叫。`body.svgText` 不是非空字串時（例如整個
+  // 欄位漏帶、送成 `undefined`），沒有這道檢查會讓後面的 `new TextEncoder().encode(...)`
+  // 寫出一份內容異常的 `data/dice-tree.svg`（視執行環境而定，可能是空字串或字面
+  // `"undefined"`），玩家或維護者要等 CI 報一堆看不懂的解析錯誤才會發現。`icon.hash` 沒有
+  // 格式檢查就直接拼進 commit 路徑，見 `ICON_HASH_RE` 的說明。
+  if (typeof body.svgText !== 'string' || body.svgText.length === 0) {
+    return new Response(JSON.stringify({ message: 'svgText 缺漏或格式不正確' }), {
+      status: 400,
+      headers: { 'content-type': 'application/json' },
+    });
+  }
+  if (typeof body.baseSvgHash !== 'string' || body.baseSvgHash.length === 0) {
+    return new Response(JSON.stringify({ message: 'baseSvgHash 缺漏或格式不正確' }), {
+      status: 400,
+      headers: { 'content-type': 'application/json' },
+    });
+  }
+  for (const icon of body.icons ?? []) {
+    if (!ICON_HASH_RE.test(icon.hash)) {
+      return new Response(JSON.stringify({ message: `圖示雜湊格式不正確：${icon.hash}` }), {
+        status: 400,
+        headers: { 'content-type': 'application/json' },
+      });
+    }
+  }
+
   try {
     const files: FileChange[] = [
       { path: 'data/dice-tree.svg', content: new TextEncoder().encode(body.svgText) },
@@ -137,12 +188,29 @@ export async function handleSubmit(
       files.push({ path: `data/icons/${icon.hash}.png`, content: fromBase64(icon.base64) });
     }
 
-    await ensureFork(session.token, env.UPSTREAM_REPO, session.login, f);
+    const fork = await ensureFork(session.token, env.UPSTREAM_REPO, session.login, f);
 
-    // 抓一次 baseSha，同時餵給下面讀 keywords.json（如果有）跟稍後的 openPr——兩者用同一個
-    // 基底，才能保證「插入時看到的既有內容」跟「這次 commit 實際採用的 base_tree」一致
-    // （見上面「設計決定」段落與 _lib/gh.ts 的 OpenPrInput.baseSha／getFileAtRef 說明）。
+    // 抓一次 baseSha，同時餵給下面讀 keywords.json（如果有）／比對 dice-tree.svg 雜湊
+    // 跟稍後的 openPr——三者用同一個基底，才能保證「這裡看到的既有內容」跟「這次 commit
+    // 實際採用的 base_tree」一致（見上面「設計決定」段落與 _lib/gh.ts 的
+    // OpenPrInput.baseSha／getFileAtRef 說明）。
     const baseSha = await getBaseSha(session.token, env.UPSTREAM_REPO, f);
+
+    // I4（全分支審查抓到、跟 keywords.json 早就修過的漂移問題是同一類 bug）：
+    // `data/dice-tree.svg` 走的是「整份拿玩家頁面載入時的舊快照覆蓋」這條路——玩家開著
+    // `/edit` 編輯期間，若維護者剛好合併了另一個 PR，直接覆蓋會靜默還原掉那個 PR 的全部
+    // 改動，diff 上看起來卻只是一般改動，規則 10 的 id 警告也不會亮。這裡用跟 openPr 建
+    // commit 同一個 `baseSha` 重讀一次上游現在的 `data/dice-tree.svg`，跟玩家送來的
+    // `baseSvgHash`（他開始編輯那一刻的雜湊）比對，不同就代表上游在這段期間已經變了，
+    // 拒絕這次送出並回 409，前端顯示可讀訊息、請玩家重新整理頁面。
+    const currentSvg = await getFileAtRef(session.token, env.UPSTREAM_REPO, 'data/dice-tree.svg', baseSha, f);
+    const currentSvgHash = await sha256Hex12(new TextEncoder().encode(currentSvg));
+    if (currentSvgHash !== body.baseSvgHash) {
+      return new Response(JSON.stringify({ message: '骰子樹資料已更新，請重新整理頁面後再改一次' }), {
+        status: 409,
+        headers: { 'content-type': 'application/json' },
+      });
+    }
 
     if (body.keywords && body.keywords.length > 0) {
       const original = await getFileAtRef(session.token, env.UPSTREAM_REPO, 'data/keywords.json', baseSha, f);
@@ -157,8 +225,8 @@ export async function handleSubmit(
 
     const pr = await openPr({
       token: session.token,
-      login: session.login,
       upstream: env.UPSTREAM_REPO,
+      forkFullName: fork.fullName,
       branch,
       baseSha,
       title: renderPrTitle(body.summary),

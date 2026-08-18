@@ -111,10 +111,20 @@ function fmtIdList(ids: string[]): string {
  * `> ⚠️ …` 這段警示文字延續既有 CI 規則 10（`tools/diff-summary.ts`）已經在用的措辭
  * ——「分享網址」「刻意變更」——維護者不必學兩套說法：手動 PR 收到 CI 貼的警告、
  * 線上編輯器送出的 PR 收到這裡產生的警告，讀起來是同一件事。
+ *
+ * ⚠️ I2（全分支審查抓到、22 輪任務審查都漏掉的 Important）：這裡收到的 `s` 是玩家瀏覽器
+ * 算好、原樣塞進來的（`functions/api/github/submit.ts` 不重算、不驗證，見該檔檔頭），
+ * 任何人可以用 curl 送一份「整份改寫的 svgText ＋ 宣稱只改了 1 個節點的 summary」。維護者
+ * 若照這份文件其餘段落的語氣把這裡的表格當成可信的改動清單，就會漏看。最便宜、最誠實的
+ * 修法是在內文自己講清楚這個信任邊界——這行放在最開頭，維護者掃到 PR 內文的第一眼就看得到，
+ * 不是等看完整份摘要才發現「原來這個不能信」。
  */
 export function renderPrBody(s: EditSummary, editorUrl: string): string {
   const lines: string[] = [];
   lines.push(`本 PR 由[線上編輯器](${editorUrl})產生。`);
+  lines.push('');
+  lines.push('> ⚠️ 以下摘要由投稿者的瀏覽器算出、伺服器未重算或驗證，僅供快速掃視參考，' +
+    '真正的改動請以 CI 自動貼上的差異摘要留言（規則 10）為準。');
   lines.push('');
 
   lines.push('## 節點變動');
