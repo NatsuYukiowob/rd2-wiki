@@ -37,14 +37,18 @@ jobs:
             const fs = require('fs');
             const body = fs.readFileSync('diff-summary.md', 'utf8');
 
-            // ⚠️ 不要用 context.payload.workflow_run.pull_requests。
-            // 那個欄位在實際送達的 webhook payload 裡幾乎總是空陣列（GitHub 的已知行為），
-            // 即使同一個 run 用 REST API 查得到關聯的 PR 也一樣。舊版寫成
-            // `if (prs.length === 0) return;`，於是這支 workflow 每次都「成功但靜默什麼都沒做」
-            // ——規則 10 的差異摘要留言從 v1 起就從來沒有真正貼出來過，而且因為 workflow 是綠的，
-            // 沒有任何跡象顯示它壞了。2026-08-18 開出本 repo 第一個真實 PR 時才發現。
+            // 為什麼用 head SHA 反查，而不是 context.payload.workflow_run.pull_requests：
             //
-            // 正確做法是用 head SHA 反查：這條在同 repo 分支與 fork PR 上都成立。
+            // 同 repo 分支的 PR 上，那個欄位是有值的——2026-08-18 於本 repo 第一個真實 PR
+            // （#1）實測確認舊寫法能正常貼出留言。**但 GitHub 文件載明：PR 來自 fork 時，
+            // workflow_run payload 的 pull_requests 會是空陣列。** 舊版寫成
+            // `if (prs.length === 0) return;`，於是 fork PR 會讓這支 workflow「成功但靜默
+            // 什麼都沒做」——而 CONTRIBUTING.md §7 明確向貢獻者承諾「規則 10 的差異摘要留言
+            // 即使是 fork PR 送出的也一樣會出現」。
+            //
+            // 這個專案的貢獻者絕大多數會用 fork 送 PR（他們沒有本 repo 的寫入權），
+            // 所以那條承諾正是最常被用到的路徑。改用 head SHA 反查，同 repo 與 fork 兩種都成立。
+            // （fork 那半尚未實測——本 repo 目前還沒有收過 fork PR，見 v1-known-issues。）
             const { data: prs } = await github.rest.repos.listPullRequestsAssociatedWithCommit({
               owner: context.repo.owner,
               repo: context.repo.repo,
