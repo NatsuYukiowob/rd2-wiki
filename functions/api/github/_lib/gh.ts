@@ -23,7 +23,7 @@ export interface OpenPrInput {
   upstream: string;
   /** 玩家 fork 的完整名稱（`{owner}/{repo}`），來自 `ensureFork()` 的回傳值（I5，見該函式
    *  的說明）。**不要**自己用 `${login}/${repo}`（`repo` 取 `upstream` 的 repo 名）現組——
-   *  玩家帳號下若已有同名但無關的 repo，GitHub 會把 fork 建成 `<repo>-1` 這類别名，那樣現組
+   *  玩家帳號下若已有同名但無關的 repo，GitHub 會把 fork 建成 `<repo>-1` 這類別名，那樣現組
    *  出來的 URL 會指到一個完全無關的 repo，`openPr` 會在那個 repo 上建 blob／tree／commit、
    *  推一條新分支，等於動了沒被授權去動的東西（跟 `#edit-permission-note` 對玩家的承諾直接
    *  矛盾）。
