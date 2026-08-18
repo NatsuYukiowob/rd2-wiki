@@ -705,3 +705,26 @@ test('R. 分頁標題不帶破折號，分頁圖示指向實際存在的檔案',
   expect(res.status()).toBe(200);
   expect(res.headers()['content-type']).toContain('image/png');
 });
+
+test('S. 連結預覽卡片：標題全站固定，網址與圖片都是絕對網址且圖片存在', async ({ page }) => {
+  // 貼進聊天室展開的卡片。沒有這些標籤時各平台是拿 <title> 湊，顯示成「骰子樹 rd2-wiki」。
+  await page.goto('/tree');
+  const meta = (sel: string) => page.locator(sel).getAttribute('content');
+  expect(await meta('meta[property="og:title"]')).toBe('Random Dice 2 wiki - Fan made');
+  expect(await meta('meta[name="twitter:title"]')).toBe('Random Dice 2 wiki - Fan made');
+
+  // 絕對網址是規格要求——相對路徑多數平台直接不顯示圖，而且不會有任何錯誤訊息。
+  const url = await meta('meta[property="og:url"]');
+  const image = await meta('meta[property="og:image"]');
+  expect(url).toMatch(/^https:\/\//);
+  expect(image).toMatch(/^https:\/\//);
+
+  // 圖片真的存在：只檢查標籤有值的話，路徑打錯照樣通過，而卡片會是一張空白圖。
+  const res = await page.request.get(new URL(image!).pathname);
+  expect(res.status()).toBe(200);
+  expect(res.headers()['content-type']).toContain('image');
+
+  // 標題刻意不隨分頁變動：換一頁再驗一次，避免有人日後改成 `${title} - …` 而沒人發現。
+  await page.goto('/about');
+  expect(await meta('meta[property="og:title"]')).toBe('Random Dice 2 wiki - Fan made');
+});

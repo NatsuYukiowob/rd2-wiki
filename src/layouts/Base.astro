@@ -11,6 +11,13 @@ interface Props {
 }
 
 const { title } = Astro.props;
+
+/** 連結預覽卡片的標題。全站固定，不隨分頁變動——理由見 <head> 裡的說明。 */
+const OG_TITLE = 'Random Dice 2 wiki - Fan made';
+/** 站台描述。<meta name="description">（給搜尋引擎）與連結預覽共用同一句，不維護兩份。 */
+const DESCRIPTION = 'Random Dice 2 骰子樹非官方玩家攻略站：收錄全部節點、解鎖條件與前置關係。';
+const pageUrl = new URL(Astro.url.pathname, Astro.site).href;
+const imageUrl = new URL('/favicon.png', Astro.site).href;
 ---
 
 <html lang="zh-Hant">
@@ -22,10 +29,28 @@ const { title } = Astro.props;
          約四分之一的面積，把中間的陰陽符號擠到看不清。圖是方形畫布置中的透明 PNG——favicon
          的顯示位置是正方形，直接放長方形圖會被壓扁。 -->
     <link rel="icon" type="image/png" href="/favicon.png" />
-    <meta
-      name="description"
-      content="Random Dice 2 骰子樹非官方玩家攻略站：收錄全部節點、解鎖條件與前置關係。"
-    />
+    <meta name="description" content={DESCRIPTION} />
+
+    <!--
+      連結預覽（貼進 Discord／LINE／Twitter 等聊天室時展開的卡片）。
+
+      標題刻意**全站固定**、不帶頁名：貼出去的是「這個站」，收到連結的人要先認出它是什麼，
+      而不是「骰子樹」這種只有站內才有意義的分頁名。沒有這幾行的時候，各平台是拿 <title>
+      湊出來的，顯示成「骰子樹 rd2-wiki」。
+
+      og:url 與 og:image 一定要是絕對網址（規格要求，相對路徑多數平台直接不顯示）——
+      靠 astro.config.mjs 的 `site` 組出來，不在這裡再寫死一次網域。
+    -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content={OG_TITLE} />
+    <meta property="og:title" content={OG_TITLE} />
+    <meta property="og:description" content={DESCRIPTION} />
+    <meta property="og:url" content={pageUrl} />
+    <meta property="og:image" content={imageUrl} />
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content={OG_TITLE} />
+    <meta name="twitter:description" content={DESCRIPTION} />
+    <meta name="twitter:image" content={imageUrl} />
   </head>
   <body>
     <!-- id="site-nav"：讓 /tree 頁的 tree-canvas.ts 能精準抓到「全站導覽列」這個 nav，
