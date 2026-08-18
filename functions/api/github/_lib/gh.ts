@@ -118,7 +118,7 @@ export interface EnsureForkResult {
  * 無關的 repo，GitHub 會把這次 fork 建成 `<repo>-1` 這類別名，若這裡還是去查
  * `{login}/{repo}`（`repo` 取自 upstream），會查到那個無關的 repo、拿到 200、誤判成
  * 「fork 就緒」，讓呼叫端（`openPr`）接著在錯的 repo 上建 blob／tree／commit、推一條新分支
- * ——這正是 `#edit-permission-note` 向玩家承諾「不會也沒有能力動你其他的 repo」的反例。
+ * ——這正是 `#edit-permission-note` 向玩家承諾「不會去碰你其他的 repo」的反例。
  * 修法：`POST /forks` 的回應本來就帶 `full_name`，這裡改用它輪詢、也回傳給呼叫端，不再自己
  * 用 `upstream` 的 repo 名稱猜。
  */

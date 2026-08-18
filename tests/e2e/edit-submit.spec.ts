@@ -20,7 +20,11 @@ test.describe('送出 PR', () => {
     await page.locator('#edit-panel [data-field="name"]').blur();
     await expect(page.locator('#edit-status')).toContainText('已修改 1 處');
     await expect(page.locator('#edit-login')).toContainText('用 GitHub 登入');
-    await expect(page.locator('#edit-permission-note')).toContainText('不會也沒有能力動你其他的 repo');
+    await expect(page.locator('#edit-permission-note')).toContainText('不會去碰你其他的 repo');
+    // 反向守門：擋住有人把「沒有能力」這種不實陳述加回來（public_repo 技術上有那個能力，
+    // 只是本站不用）。這條 not.toContainText 不會假陰性——上一行的正向斷言已經證明
+    // #edit-permission-note 存在且有文字，元素不存在時上一行就先紅了。
+    await expect(page.locator('#edit-permission-note')).not.toContainText('沒有能力');
   });
 
   test('已登入且有改動時，送出後顯示 PR 連結', async ({ page }) => {
