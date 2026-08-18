@@ -112,6 +112,7 @@ async function boot(): Promise<void> {
   bindModeButtons();
   bindNewNodeFormActions();
   bindDeleteShortcut();
+  bindDownload();
 }
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -661,8 +662,12 @@ async function runValidation(): Promise<void> {
   // 停用送出跟「新增圖示」的提醒一樣，都是這裡（而不是 renderValidation 內部）的協調責任：
   // renderValidation 只管寫進它收到的 host，不伸手碰 #edit-panel 以外的元素，跟
   // NodeDetail.ts／EditForm.ts 的既有慣例一致（元件不知道自己以外還有哪些 DOM 節點）。
+  // 任務簡報 Step 3 定死的條件：`errors.length > 0 || dirty.size === 0` 時停用。有 error
+  // 不該讓玩家下載一份會被 CI 擋下的檔案；沒有任何改動（dirty 是空的）則單純沒有東西可下載
+  // ——`#edit-download` 在 edit.astro 裡本來就預設 `disabled`（見該檔），這裡是每次驗證後
+  // 重新算一次，讓「剛修好最後一個 error」「剛完成第一次編輯」這兩種情況都能即時轉為可用。
   const downloadBtn = document.querySelector<HTMLButtonElement>('#edit-download');
-  if (downloadBtn) downloadBtn.disabled = result.errors.length > 0;
+  if (downloadBtn) downloadBtn.disabled = result.errors.length > 0 || editorState.dirty.size === 0;
 
   const status = document.querySelector<HTMLElement>('#edit-status');
   if (status) {
@@ -963,6 +968,48 @@ function bindDeleteShortcut(): void {
     const target = e.target as HTMLElement | null;
     if (target?.closest('input, textarea, select')) return; // 正在編輯欄位文字，這個 Delete 是刪字元，不是刪節點
     deleteSelectedNode();
+  });
+}
+
+/**
+ * 觸發瀏覽器原生下載：建一個不掛進 DOM 的 `<a download>`，設好 blob URL 就點一下丟掉。
+ * 跟 overlayNewIcons() 的 blob URL 用法不同的地方：那邊的 URL 要跨渲染輪次存活（疊在畫布上
+ * 顯示，玩家可能盯著看好一陣子），這裡的 URL 只需要活到「瀏覽器接手這次下載」那一刻，
+ * `a.click()` 觸發下載是同步動作，緊接著 revoke 是安全的（跟任務簡報 Step 3 給的參考實作
+ * 逐字一致），不需要像 activeIconBlobUrls 那樣另外用模組級陣列追蹤存活時間。
+ */
+function downloadBlob(filename: string, blob: Blob): void {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+/**
+ * 下載按鈕（Task 11 就放進 DOM，這個任務才接功能）：這是 P1 的驗收點——玩家在 `/edit`
+ * 完成所有編輯後，靠這顆按鈕把改好的 SVG 存下來手動送 PR；也是 P2（OAuth 一鍵送出）的
+ * 安全網，萬一那段出意外，這條路徑仍然可用。啟用狀態由 runValidation() 依
+ * `errors.length > 0 || dirty.size === 0` 統一控制（見該函式），這裡只管「被按下時做什麼」。
+ *
+ * 有新增圖示（`editorState.newIcons`，Task 14 換圖示流程還沒進 repo 的那些）時一併下載——
+ * 檔名直接用雜湊（`${hash}.png`，跟 `data/icons/` 的既有命名規則相同），玩家不需要自己
+ * 幫圖示命名，選好檔案存下來、整批丟進 `data/icons/` 即可（見更新後的 CONTRIBUTING.md
+ * 第 0 節）。SVG 先下載、圖示照 Map 迭代順序接著下載，不特別排序：這批圖示本來就是玩家
+ * 自己這次操作新增的，數量小（單一節點一次只能換一張），順序對玩家沒有意義。
+ */
+function bindDownload(): void {
+  const downloadBtn = document.querySelector<HTMLButtonElement>('#edit-download');
+  if (!downloadBtn) return;
+
+  downloadBtn.addEventListener('click', () => {
+    downloadBlob('dice-tree.svg', new Blob([editorState.svgText], { type: 'image/svg+xml' }));
+    for (const [hash, bytes] of editorState.newIcons) {
+      // new Uint8Array(bytes) 同一個型別坑（見 overlayNewIcons() 的說明）：TS 5.7+ 把
+      // TypedArray 的 buffer 泛型化成 ArrayBufferLike，跟 DOM BlobPart 要的
+      // ArrayBuffer-backed TypedArray 對不上，內容不變，只是讓型別對得上。
+      downloadBlob(`${hash}.png`, new Blob([new Uint8Array(bytes)], { type: 'image/png' }));
+    }
   });
 }
 

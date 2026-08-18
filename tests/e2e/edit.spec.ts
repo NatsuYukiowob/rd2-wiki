@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { test, expect, type Page } from '@playwright/test';
 
 // /edit 頁面骨架的端對端驗證（task-11）。這支測試同時是「parseTreeWith 真的能在瀏覽器跑」的
@@ -401,5 +402,71 @@ test.describe('線上編輯器', () => {
     await expect(page.locator('#edit-validation')).toContainText('規則 8');
     await page.locator('#edit-validation [data-action="add-keyword"]').click();
     await expect(page.locator('#edit-validation')).not.toContainText('規則 8');
+  });
+
+  // task-15：下載 SVG（P1 驗收點）。這是玩家在 /edit 完成編輯後拿到最終產物的唯一路徑，
+  // 也是 P2 OAuth 一鍵送出萬一出意外時的安全網——下面四支測試涵蓋三類：「內容正確」
+  // 「啟用條件正確（errors.length > 0 || dirty.size === 0 時停用，各佔一支）」
+  // 「新增圖示一併下載」。
+
+  test('改完後可下載 SVG，內容就是編輯器算出來的那份', async ({ page }) => {
+    await page.goto('/edit');
+    await page.locator('#edit-canvas-host svg .node[data-id="1002"]').click();
+    await page.locator('#edit-panel [data-field="name"]').fill('尖刺骰');
+    await page.locator('#edit-panel [data-field="name"]').blur();
+    const [download] = await Promise.all([
+      page.waitForEvent('download'),
+      page.locator('#edit-download').click(),
+    ]);
+    expect(download.suggestedFilename()).toBe('dice-tree.svg');
+    const text = await (await download.createReadStream()).toArray().then(cs => Buffer.concat(cs).toString('utf8'));
+    expect(text).toContain('data-name="尖刺骰"');
+    expect(text.match(/<g class="node"/g)!.length).toBe(239);
+  });
+
+  // 啟用條件是 `errors.length > 0 || dirty.size === 0` 時停用（任務簡報 Step 3）：沒有改動
+  // 沒東西可下載，有 error 不該讓玩家下載一份會被 CI 擋下的檔案。分別驗這兩個獨立條件，
+  // 不合併成一支測試——各自對應不同的程式路徑（runValidation() 的 disabled 判斷式是 ||），
+  // 只測其中一半沒辦法證明另一半也接對了。
+  test('剛載入、還沒有任何改動時下載按鈕停用（dirty.size === 0）', async ({ page }) => {
+    await page.goto('/edit');
+    await expect(page.locator('#edit-canvas-host svg .node')).toHaveCount(239);
+    await expect(page.locator('#edit-status')).toContainText('尚未修改');
+    await expect(page.locator('#edit-download')).toBeDisabled();
+  });
+
+  test('有 error 時下載按鈕停用（errors.length > 0），即使已經改過東西', async ({ page }) => {
+    await page.goto('/edit');
+    await page.locator('#edit-canvas-host svg .node[data-id="1002"]').click();
+    await page.locator('#edit-panel [data-field="cost"]').fill('八個核心');
+    await page.locator('#edit-panel [data-field="cost"]').blur();
+    await expect(page.locator('#edit-validation')).toContainText('規則 4'); // 已經改過（dirty≠0），但有 error
+    await expect(page.locator('#edit-download')).toBeDisabled();
+  });
+
+  test('有新增圖示時，下載會一併給那張 PNG，檔名是雜湊、內容跟上傳的一致', async ({ page }) => {
+    await page.goto('/edit');
+    await page.locator('#edit-canvas-host svg .node[data-id="1002"]').click();
+    await page.locator('#edit-panel [data-field="icon"]').setInputFiles('tests/fixtures/icon-128.png');
+    const hash = await page.locator('#edit-panel [data-icon-hash]').getAttribute('data-icon-hash');
+    if (!hash) throw new Error('沒有讀到 data-icon-hash，換圖示流程可能失敗了');
+
+    // 兩個 `a.click()`（svg、圖示）在頁面裡是同步緊接著觸發的：實測過用兩個
+    // `page.waitForEvent('download')` 疊 `Promise.all`（等同兩個 `.once('download', ...)`
+    // 監聽器）會讓兩者都接到同一個第一次事件（Node EventEmitter 的 `emit()` 是廣播給「當下
+    // 已註冊」的所有監聽器，不是照註冊順序把後續事件逐一分派給後面的監聽器），第二個下載事件
+    // 因此沒有監聽器接住而遺漏。改用 `page.on('download', ...)` 常駐監聽＋收集陣列，不受
+    // 「兩個下載幾乎同時觸發」這件事影響。
+    const downloads: import('@playwright/test').Download[] = [];
+    page.on('download', d => downloads.push(d));
+    await page.locator('#edit-download').click();
+    await expect.poll(() => downloads.length).toBe(2);
+    const [svgDownload, iconDownload] = downloads;
+    expect(svgDownload!.suggestedFilename()).toBe('dice-tree.svg');
+    expect(iconDownload!.suggestedFilename()).toBe(`${hash}.png`);
+
+    const iconBytes = await (await iconDownload!.createReadStream()).toArray().then(cs => Buffer.concat(cs));
+    const original = readFileSync('tests/fixtures/icon-128.png');
+    expect(iconBytes.equals(original)).toBe(true);
   });
 });
