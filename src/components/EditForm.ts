@@ -66,14 +66,21 @@ const LABEL_CONTENT_RE = /<text\b[^]*?>([^]*?)<\/text>/;
 /**
  * 從 `labelXml`（svg-emit.ts 保留的原始 `<text ...>…</text>` 字串）取出目前的畫面標籤
  * 文字，供表單欄位的初始值顯示。內容是用 `escapeXmlContent`（svg-emit.ts）逃逸過的 XML
- * 元素內容（只逃逸 `&`／`<`），這裡要反向解碼回人類看得懂的文字給玩家看——順序（先解
- * `&lt;` 再解 `&amp;`）跟編碼順序相反，跟 svg-emit.ts 的 `encodeAttr`／`decodeAttr`
- * 互為反函式時「反著做」的理由一樣：`&lt;` 字面上含 `&`，若先解 `&amp;`，`&lt;` 會被
- * 解壞成單獨的 `<` 再被下一步規則誤傷。
+ * 元素內容——那個函式逃逸的字元集合是「linkedom 序列化器實測會轉什麼」（`&``<``>``U+00A0`），
+ * 不是從 XML 規範推導的最小需求（見該函式檔頭關於 Critical fix 的說明），這裡要反向解碼回
+ * 人類看得懂的文字給玩家看，必須跟 `escapeXmlContent` 逃逸的字元集合逐一對稱，否則玩家編輯
+ * 過含 `>`／NBSP 的標籤後，表單顯示的初始值會殘留沒解開的實體字面量。
+ *
+ * 順序（`&amp;` 放最後解）跟 svg-emit.ts 的 `decodeAttr` 同一個理由：`&lt;`／`&gt;` 字面上都
+ * 含 `&`，若先解 `&amp;`，這兩個實體會被解壞成單獨的 `<`／`>` 再被後面的規則誤傷。
  */
 function labelTextOf(labelXml: string): string {
   const content = LABEL_CONTENT_RE.exec(labelXml)?.[1] ?? '';
-  return content.replace(/&lt;/g, '<').replace(/&amp;/g, '&');
+  return content
+    .replace(/&#160;/g, ' ')
+    .replace(/&gt;/g, '>')
+    .replace(/&lt;/g, '<')
+    .replace(/&amp;/g, '&');
 }
 
 /**

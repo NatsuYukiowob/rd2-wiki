@@ -64,43 +64,80 @@ function requireMatch(re: RegExp, block: string, label: string): RegExpExecArray
 }
 
 /**
+ * ⚠️ 這個檔案的逃逸／解碼規格是「linkedom 的序列化器實際會產生什麼」，**不是 XML 規範允許
+ * 什麼**（見 CLAUDE.md「emitter 的輸出必須逐字等於 linkedom 序列化器」）。這兩者不是同一件
+ * 事：CI 的守門條件是 `normalizeSvg(檔案) === 檔案`（`.github/workflows/ci.yml` 的「正規化
+ * 定點檢查」），`normalizeSvg` 內部用 linkedom 解析、重新序列化、再跑 `encodeAttributeNewlines`
+ * 後處理（見 `tools/normalize-svg.ts`）——只要 emitter 產出的東西丟進這條管線後不是它自己的
+ * 定點，CI 就會失敗，不管那個輸出符不符合 XML 規範的最小要求。舊版本的 `encodeAttr`／
+ * `escapeXmlContent` 是照 XML 規範第一原理寫的（「屬性值要處理 `&``<``"`，內容只需要處理
+ * `&``<`」），實測（見任務報告）發現 linkedom 的序列化器額外還會轉 `>` 與 `U+00A0`（不換行
+ * 空白），屬性值另外還多轉 `\r`（`\n`／`\r` 是 `encodeAttributeNewlines` 這層後處理做的，
+ * 不是 linkedom 自己），這幾個字元在真實資料裡出現次數是 0，239 節點的往返測試因此完全遮蔽
+ * 不到這個落差——玩家在欄位打進 `>` 或貼上一個 NBSP，emitter 產出的檔案就不再是 CI 期待的
+ * 定點，PR 送出後 CI 才會失敗，玩家在編輯器裡完全看不出原因、也無法用任何操作修正。
+ *
+ * 下次要改這裡的逃逸規則時：先用 `tests/lib/svg-emit.test.ts` 的 property test（拿一組對抗性
+ * 字元跑 `normalizeSvg(out) === out`）驗證，不要只憑 XML 規範推導字元清單——那正是這個 bug
+ * 的根因，而且字元清單本來就可能隨 linkedom 版本漂移。
+ *
  * XML 屬性值實體解碼。順序刻意把 `&amp;` 放最後：若先解 `&amp;`，原始資料裡字面的 `&#10;`
  * （不是實體、是使用者真的打了這四個字元，理論上不該發生但不該假設不會發生）會先被
  * `&amp;` 那條規則動到一半、變成 `&#10;` 的殘缺形式，再被下一條 `&#10;` 規則誤解成換行。
  * 反過來——`&#10;` 先解——不會有這個問題：一個貨真價實的實體只會被對應的規則命中一次。
+ * 同一個理由套用到這裡新補的 `&#13;`／`&#160;`／`&gt;`：只要它們全部排在 `&amp;` 之前解碼，
+ * 都不會有這個問題。
  */
 function decodeAttr(value: string): string {
   return value
+    .replace(/&#13;/g, '\r')
     .replace(/&#10;/g, '\n')
+    .replace(/&#160;/g, ' ')
     .replace(/&quot;/g, '"')
+    .replace(/&gt;/g, '>')
     .replace(/&lt;/g, '<')
     .replace(/&amp;/g, '&');
 }
 
-/** XML 屬性值實體編碼，`decodeAttr` 的反函式。順序（`&` 最先）避免把編碼過程新產生的 `&` 二次編碼。 */
+/**
+ * XML 屬性值實體編碼，`decodeAttr` 的反函式。順序（`&` 最先）避免把編碼過程新產生的 `&`
+ * 二次編碼。`>`／`U+00A0`／`\r` 是這次 Critical fix 補上的（見檔頭說明）：linkedom 的
+ * 序列化器對屬性值會轉 `&``<``>``"``U+00A0`，`\r`／`\n` 則是 `normalizeSvg()` 的
+ * `encodeAttributeNewlines()` 後處理層轉的——四者合起來才是 CI 實際期待的定點。
+ */
 export function encodeAttr(value: string): string {
   return value
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
+    .replace(/ /g, '&#160;')
+    .replace(/\r/g, '&#13;')
     .replace(/\n/g, '&#10;');
 }
 
 /**
  * XML **元素內容**用的逃逸（`<title>` 與 `<text>` 寫入的文字），跟屬性值用的 `encodeAttr`
- * 規則不同：內容只需要處理 `&`／`<`（`"` 在元素內容裡不需要逃逸），換行維持字面換行
- * （屬性值那邊才要編成 `&#10;`）。
+ * 規則不同：linkedom 對元素內容只轉 `&``<``>``U+00A0`（`"`／`'` 不轉，換行也維持字面換行，
+ * 屬性值那邊的換行才會被 `encodeAttributeNewlines` 轉成 `&#10;`／`&#13;`）——這是 linkedom
+ * 序列化器實測出來的行為（見檔頭說明），不是從 XML 規範「內容只需要處理 `&`／`<`」推導的
+ * 最小需求：舊版本正是照那個推導寫的，漏了 `>`／`U+00A0`，兩者在檔頭說的 Critical bug 裡都是
+ * 真正出過事的字元。
  *
- * 現行 239 個節點的 typeZh／name／description／標籤文字裡沒有 `&`／`<`，所以這個函式對現有
- * 資料是全恆等（往返測試不會被影響）；但 Task 12 起玩家會在表單自由打字，沒有這道逃逸的話，
- * 玩家打「A & B」或「傷害 < 100」會讓 `emitNodeBlock` 組出來的 `<title>`／`setLabelText`
- * 寫入的 `<text>` 變成不合法 XML，整份 SVG 直接解析失敗。
+ * 現行 239 個節點的 typeZh／name／description／標籤文字裡沒有 `&`／`<`／`>`／NBSP，所以這個
+ * 函式對現有資料是全恆等（往返測試不會被影響）；但玩家會在表單自由打字，沒有這道逃逸的話，
+ * 玩家打「A & B」「傷害 < 100」「傷害 > 100」或貼上一個 NBSP，會讓 emitter 產出的檔案不再是
+ * `normalizeSvg` 的定點（`>`／NBSP 沒逃逸的那個版本甚至可能整份 SVG 解析失敗）。
  *
  * 順序（`&` 必須先換）跟 `decodeAttr` 的 `&amp;` 必須最後解是同一個坑的另一面：
  * 若先把 `<` 換成 `&lt;` 再處理 `&`，`&lt;` 裡的 `&` 會被二次逃逸成 `&amp;lt;`。
  */
 export function escapeXmlContent(text: string): string {
-  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;');
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/ /g, '&#160;');
 }
 
 /** 解析單一 `<g class="node">…</g>` 區塊。輸入必須是完整區塊（含頭尾標籤），不做寬容修復。 */
@@ -113,18 +150,20 @@ export function parseNodeBlock(block: string): NodeBlock {
   const description = decodeAttr(requireMatch(DESC_RE, block, 'data-description')[1]!);
   // WIP_RE 只需要裸的 `data-wip="1"` 就命中，不像 SHAPE_RE/IMAGE_RE/LABEL_RE/TITLE_RE 那樣要求
   // 字面 `<`（`<` 一定會被 escapeXmlContent 逃逸成 &lt;，所以那幾條不受這裡的問題影響）。
-  // `escapeXmlContent` 依 XML 規範不逃逸 `"`（那是正確的），所以玩家若在名稱或描述裡打出字面
-  // `data-wip="1"`，這段文字會原樣進到 <title> 元素內容裡；對整個 block 做無錨點比對的話，
-  // 這段使用者輸入就會被誤判成真的屬性，把節點從 validate 規則 6 的可達性檢查豁免掉
-  // ——公開投稿工具上這是對抗性輸入的洞。
+  // `escapeXmlContent` 不逃逸 `"`（linkedom 的序列化器對元素內容也不轉 `"`，見該函式說明），
+  // 所以玩家若在名稱或描述裡打出字面 `data-wip="1"`，這段文字會原樣進到 <title> 元素內容裡；
+  // 對整個 block 做無錨點比對的話，這段使用者輸入就會被誤判成真的屬性，把節點從 validate
+  // 規則 6 的可達性檢查豁免掉——公開投稿工具上這是對抗性輸入的洞。
   //
-  // 比對範圍要切在開頭標籤內，但邊界不能用第一個 `>`：`encodeAttr` 依 XML 規範不逃逸屬性值裡的
-  // `>`（只有 `<` 才逃逸），玩家在 data-description 打「傷害 > 100」這種字面 `>` 的話，
-  // `block.indexOf('>')` 會切到屬性值中間，切太短、把接在後面的真 `data-wip="1"` 屬性排除在
-  // 掃描範圍外，變成假陰性（真正的 wip 節點失去規則 6 豁免，CI 報「從根不可達」，貢獻者完全
-  // 不知道那跟描述裡的大於號有關）。改用「位置 0 之後第一個字面 `<`」：`<` 出現在屬性值裡時
-  // 一定會被 `encodeAttr` 逃逸成 `&lt;`，所以這個位置必定是第一個子元素（`<title>`）的開頭，
-  // 也就是開頭標籤真正的結束點，不會被屬性值內容誤導。
+  // 比對範圍要切在開頭標籤內，用「位置 0 之後第一個字面 `<`」而不是第一個 `>`：`<` 出現在
+  // 屬性值裡時一定會被 `encodeAttr` 逃逸成 `&lt;`，所以這個位置必定是第一個子元素
+  // （`<title>`）的開頭，也就是開頭標籤真正的結束點，不會被屬性值內容誤導。
+  // ⚠️ 這裡刻意不依賴「`encodeAttr` 現在也會逃逸 `>`」這件事（Critical fix 之後 `encodeAttr`
+  // 確實會把屬性值裡的字面 `>` 轉成 `&gt;`，見該函式）：用 `<` 定界的防線不需要這個前提就
+  // 成立，對「不是這個 emitter 產生、可能沒有逃逸 `>`」的既有／手動編輯資料一樣安全
+  // ——之前選 `<` 而不是 `>` 正是因為 `encodeAttr` 曾經不逃逸 `>`（假陰性回歸測試，見下面
+  // `svg-emit.test.ts` 的 `data-wip` 測試群組），這裡不因為那個舊坑已經補上就把防線退化成
+  // 依賴這項新事實，屬於防禦性設計，多一層保險不吃虧。
   const wip = WIP_RE.test(block.slice(0, block.indexOf('<', 1)));
 
   const titleContent = requireMatch(TITLE_RE, block, '<title>')[1]!;

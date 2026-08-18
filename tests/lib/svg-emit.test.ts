@@ -2,6 +2,8 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { parseNodeBlock, emitNodeBlock, emitEdgeLine, newNodeBlock, setLabelText } from '../../src/lib/svg-emit';
 import { loadSvg } from '../../tools/lib/dom';
+import { normalizeSvg } from '../../tools/normalize-svg';
+import { replaceNode, insertNode } from '../../src/lib/svg-edit';
 
 const svgText = readFileSync('data/dice-tree.svg', 'utf8');
 
@@ -130,18 +132,87 @@ describe('svg-emit', () => {
       expect(parseNodeBlock(spoofed).wip).toBe(false);
     });
 
-    // 假陰性回歸測試：擋假陽性的修法（切到第一個 `>` 為止）本身有殘留缺口——`encodeAttr` 不逃逸
-    // 屬性值裡的字面 `>`（XML 規範不要求），玩家在描述打「傷害 > 100」會讓 `indexOf('>')` 切到
-    // 屬性值中間，把接在後面的真 `data-wip="1"` 屬性排除在掃描範圍外。這支測試跟上面那支要
-    // 一起看：一支擋假陽性（使用者輸入被誤判成屬性）、一支擋假陰性（真屬性因使用者輸入而被漏判）。
+    // 假陰性回歸測試：這支測試守的是「即使 boundary 判定曾經（修法前）依賴『屬性值裡不會有
+    // 字面 `>`』這個現在已經不成立的前提，也不該假陰性」——用 `indexOf('>')` 切邊界的寫法會讓
+    // 玩家在描述打「傷害 > 100」時把接在後面的真 `data-wip="1"` 屬性排除在掃描範圍外。現在
+    // `encodeAttr` 會把屬性值裡的字面 `>` 逃逸成 `&gt;`（Critical fix，見該函式），所以這個
+    // 特定输入已經不會再讓 emitter 自己產生未逃逸的 `>`；但 `parseNodeBlock` 的 boundary 判定
+    // 刻意不依賴這個新事實（見該函式裡 wip 那段的說明——防禦性設計，對非本 emitter 產生的
+    // 既有／手動編輯資料一樣安全），這支測試留著繼續驗證這個防線本身沒有退化。這支測試跟上面
+    // 那支要一起看：一支擋假陽性（使用者輸入被誤判成屬性）、一支擋假陰性（真屬性因使用者輸入
+    // 而被漏判）。
     it('data-description 含字面 > 且節點真的有 data-wip="1" 時，wip 仍是 true（不會被使用者輸入誤判成沒有）', () => {
       const block = allNodeBlocks(svgText).find(b => b.includes('data-id="1002"'))!;
       const n = parseNodeBlock(block);
       const real = emitNodeBlock({ ...n, wip: true, description: '傷害 > 100 時觸發' });
-      // 先確認 description 的 > 真的原樣留在輸出裡（沒被逃逸），不然下面 wip===true 的斷言
-      // 測不到這支要涵蓋的情境
-      expect(real).toContain('data-description="傷害 > 100 時觸發"');
+      // Critical fix（2026-08-18 全分支審查）之前，這裡斷言的是
+      // `data-description="傷害 > 100 時觸發"`（字面 >，未逃逸）——那是把 CI 會擋下的非定點
+      // 輸出寫進了測試期望值，等於把 emitter 的 bug 固化進測試（見任務報告）。encodeAttr 現在
+      // 會把屬性值裡的 `>` 逃逸成 `&gt;`（linkedom 序列化器本來就會轉這個字元，見 svg-emit.ts
+      // 檔頭關於 normalizeSvg 定點的說明），這裡改成斷言正確逃逸後的字串；下面 wip===true
+      // 的斷言驗的是「即使描述裡原本會產生 `>` 的來源文字，boundary 判定仍不受影響」這件事，
+      // 跟 escapeXmlContent 有沒有逃逸 `>` 是兩個獨立的關注點（見 parseNodeBlock 裡 wip 判定
+      // 那段的更新後說明）。
+      expect(real).toContain('data-description="傷害 &gt; 100 時觸發"');
       expect(parseNodeBlock(real).wip).toBe(true);
     });
+  });
+});
+
+/**
+ * Critical fix 的核心不變量（2026-08-18 全分支審查）：CI 的守門條件不是「輸出是合法 XML」，
+ * 是 `normalizeSvg(檔案) === 檔案`（`.github/workflows/ci.yml` 的「正規化定點檢查」）。
+ * 上面逐字元列舉的測試（`> ` `< ` `&` 等）驗證的是「這幾個具體字元」有沒有被正確逃逸，但字元
+ * 清單本身會漂移——linkedom 换版本、normalizeSvg 的後處理邏輯調整，都可能讓「目前列出的這幾個
+ * 字元」不再是完整清單。真正該斷言、也更不容易隨字元清單漂移而失去鑑別力的，是這個不變量本身：
+ *
+ *   對任意玩家文字 t，把 t 放進節點的 name／description／label 之後產生的檔案，
+ *   必須是 normalizeSvg 的定點。
+ *
+ * 這支測試如果早存在，Critical bug（encodeAttr／escapeXmlContent 漏轉 `>`／U+00A0／`\r`）
+ * 在最初實作 emitter 的那個任務就會被抓到，不必等到全分支審查才發現。
+ */
+describe('emitter 輸出必須是 normalizeSvg 的定點（property test）', () => {
+  const n = parseNodeBlock(allNodeBlocks(svgText).find(b => b.includes('data-id="1002"'))!);
+
+  // 對抗性樣本：涵蓋 Critical bug 實測抓到的落差字元（`>`／U+00A0／`\r`），既有已知會逃逸的
+  // 字元（`<`／`&`／`"`／`'`／`\n`），可能撞到 normalizeSvg 內部狀態機（見 tools/normalize-svg.ts
+  // 的 encodeAttributeNewlines）的結構性子字串（`]]>`／`-->`／`?>`），會提前結束 <title>／<text>
+  // 元素的字面標籤（`</title>`），astral 字元（emoji，surrogate pair），以及「解碼不能二次處理」
+  // 的字面實體字串（`&#10;`／`&gt;`——這兩個是使用者真的打了這幾個字元，不是實體，見
+  // svg-emit.ts 的 decodeAttr 說明）。
+  const ADVERSARIAL_INPUTS: string[] = [
+    '>', '<', '&', '"', "'", '\r', '\n', '\t', ' ',
+    ']]>', '-->', '?>', '</title>',
+    '🔥', // emoji（astral 字元，UTF-16 下是 surrogate pair）
+    '&#10;', // 字面的實體字串（不是真的換行）——測 decodeAttr 不會把它二次解碼成換行
+    '&gt;',  // 字面的 &gt; 字串——測不會被二次解碼成 >
+  ];
+
+  it.each(ADVERSARIAL_INPUTS)('玩家文字含 %j 時，替換既有節點後的檔案是 normalizeSvg 的定點', t => {
+    const nextBlock = emitNodeBlock({
+      ...n, name: t, description: t, labelXml: setLabelText(n.labelXml, t),
+    });
+    const out = replaceNode(svgText, '1002', nextBlock);
+    expect(normalizeSvg(out)).toBe(out);
+  });
+
+  it.each(ADVERSARIAL_INPUTS)('玩家文字含 %j 時，parseNodeBlock(emitNodeBlock(...)) 能還原出同一段文字（encodeAttr／decodeAttr 互為反函式）', t => {
+    const nextBlock = emitNodeBlock({ ...n, name: t, description: t });
+    const roundTripped = parseNodeBlock(nextBlock);
+    expect(roundTripped.name).toBe(t);
+    expect(roundTripped.description).toBe(t);
+  });
+
+  it('複合案例：newNodeBlock 建出的全新節點，name／label／description 同時混合全部對抗性字元，仍是 normalizeSvg 的定點', () => {
+    const combined = ADVERSARIAL_INPUTS.join(' / ');
+    const block = newNodeBlock({
+      x: 100, y: 200, id: '9999', type: 'dice', typeZh: '骰子',
+      name: combined, label: combined, cost: '核心 5',
+      description: combined, maxLevel: null,
+      stroke: '#ef625e', iconHash: 'a5caff6da1d2',
+    });
+    const out = insertNode(svgText, emitNodeBlock(block));
+    expect(normalizeSvg(out)).toBe(out);
   });
 });
