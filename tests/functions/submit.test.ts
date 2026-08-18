@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { handleSubmit } from '../../functions/api/github/submit';
 import { openSession, sealSession, type Session } from '../../functions/api/github/_lib/session';
-import { fakeGitHub } from './helpers';
+import { fakeGitHub, utf8ToBase64 } from './helpers';
 
 const env = {
   GITHUB_CLIENT_ID: 'test-client-id',
@@ -124,7 +124,9 @@ describe('submit', () => {
   it('data/keywords.json 走最小插入：只在收尾 ] 前塞新詞，其餘位元組不變', async () => {
     const rawExisting = '["巨型尖刺", "尖刺"]\n';
     const { f, calls } = fakeGitHub({
-      'raw.githubusercontent.com': () => new Response(rawExisting),
+      '/contents/data/keywords.json': () => new Response(JSON.stringify({
+        content: utf8ToBase64(rawExisting), encoding: 'base64',
+      })),
     });
     const req = await loggedInRequest({ ...validBody, keywords: ['新詞'] });
     const res = await handleSubmit(req, env, { fetch: f });
@@ -137,6 +139,37 @@ describe('submit', () => {
     expect(keywordsBlob.body.content).toBe('["巨型尖刺", "尖刺", "新詞"]\n');
     // 除了插入的那段之外，其餘位元組原樣保留（不是整檔重新序列化）。
     expect(keywordsBlob.body.content.startsWith('["巨型尖刺", "尖刺"')).toBe(true);
+  });
+
+  it('讀 data/keywords.json 用的 ref 跟 openPr 建 commit 的 baseSha 是同一個值（不會各自抓一次而漂移）', async () => {
+    // 這是 2026-08-18 review 修正的重點：第一版分別用 raw.githubusercontent.com（讀檔）跟
+    // git/ref/heads/main（openPr 內部建 commit）兩個獨立來源，兩者理論上可能看到不同版本
+    // 的上游狀態。修正後兩者該共用同一個 getBaseSha() 結果——這支測試不驗證任何寫死的
+    // sha 字面值，而是動態比對「讀檔那次請求帶的 ref 參數」跟「建 commit 那次請求帶的
+    // parent sha」是否相等，這樣即使實作細節（例如假 fetch 回的 sha 字串）改變，測試仍然
+    // 直接驗到「兩者一致」這個不變量本身。
+    const { f, calls } = fakeGitHub();
+    const req = await loggedInRequest({ ...validBody, keywords: ['新詞'] });
+    const res = await handleSubmit(req, env, { fetch: f });
+    expect(res.status).toBe(200);
+
+    // baseSha 只該抓一次：submit.ts 自己抓一次給 getFileAtRef 用、同一個值又傳給
+    // openPr，不會讓 openPr 自己內部再重新呼叫一次 git/ref/heads/main。
+    const baseShaCalls = calls.filter(c => c.url.includes('/git/ref/heads/main'));
+    expect(baseShaCalls.length).toBe(1);
+
+    const contentsCall = calls.find(c => c.url.includes('/contents/data/keywords.json'))!;
+    const refUsedForRead = new URL(contentsCall.url).searchParams.get('ref');
+
+    const commitCall = calls.find(c => c.url.includes('/git/commits'))!;
+    const parentUsedForCommit = commitCall.body.parents[0];
+
+    const treeCall = calls.find(c => c.url.includes('/git/trees'))!;
+    const baseTreeUsedForCommit = treeCall.body.base_tree;
+
+    expect(refUsedForRead).toBeTruthy();
+    expect(refUsedForRead).toBe(parentUsedForCommit);
+    expect(refUsedForRead).toBe(baseTreeUsedForCommit);
   });
 
   it('沒有 keywords 欄位時不會去讀或送出 data/keywords.json', async () => {

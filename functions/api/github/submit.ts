@@ -9,7 +9,7 @@
 // 時間戳存在加密 cookie 裡）。硬性的濫用防護交給 Cloudflare 儀表板對 /api/github/submit
 // 設的 Rate Limiting 規則，不為了計數這件事引入 KV 這個新相依。
 import { openSession, sealSession, sessionCookie, readSessionCookie, type Env } from './_lib/session.js';
-import { ensureFork, openPr, type FileChange } from './_lib/gh.js';
+import { ensureFork, getBaseSha, getFileAtRef, openPr, type FileChange } from './_lib/gh.js';
 import { renderPrTitle, renderPrBody, type EditSummary } from '../../../src/lib/pr-summary.js';
 
 export interface SubmitBody {
@@ -68,37 +68,27 @@ function insertKeywords(original: string, newWords: string[]): string {
   return `${before}${hasExisting ? ', ' : ''}${insertion}${original.slice(closeIdx)}`;
 }
 
-/**
- * 讀上游 repo 目前的 `data/keywords.json` 內容，供 `insertKeywords` 做最小插入。
- *
- * 設計決定——原始內容從哪來，是後端自己抓，不是讓前端把它已經 fetch 過的內容
- * （Task 11，`/data/keywords.json`）一併送上來：
- *
- * 1. `SubmitBody` 是這個任務定案的介面，欄位只有 `keywords?: string[]`（新增的詞），沒有
- *    「原始字串」這個欄位。硬塞一個等於是在這個任務裡順便改 Task 11 的前端 fetch 邏輯
- *    （它目前直接 `.then(r => r.json())`，原始字串沒有被保留下來）——那是 src/scripts/
- *    edit-canvas.ts 的改動，超出這個任務「Code Organization」鎖定的檔案範圍
- *    （functions/api/github/submit.ts＋測試）。
- * 2. 就算加了欄位，前端送上來的內容也只會是玩家「開始編輯那一刻」的舊快照——玩家可能編輯
- *    了很久才送出。這段期間如果剛好有別的 PR 合併、`data/keywords.json` 內容變了，拿玩家
- *    手上的舊字串做最小插入，等於用舊版本覆蓋掉那個變動（其他人加的詞會憑空消失）。
- *    改成伺服器在真正要開 PR 之前才去讀上游「現在」的內容，這個競態視窗窄得多
- *    （只剩這次請求處理的幾百毫秒，而不是玩家整段編輯階段）。
- *
- * 不透過 `_lib/gh.ts` 既有的 `ghFetch`／`rawFetch`：兩者都是模組私有匯出，且都預設帶
- * GitHub API 認證標頭；`raw.githubusercontent.com` 是公開內容，不需要玩家的 token，用最
- * 單純的一次 GET 就好——也不需要為了這一個檔案去擴大 `_lib/gh.ts` 的匯出面（那個檔案
- * 這個任務的 Code Organization 沒有列進改動範圍）。
- *
- * 仍然殘留一個小競態視窗（這次讀取到 `openPr` 真正建 commit 之間，上游理論上還是可能再變），
- * 但那是 `openPr` 本身「分支建在上游 sha 上」這個既有設計的既有取捨（見 gh.ts 檔頭說明），
- * 不是這個函式新引入的問題；真正的正確性防線始終是 CI，不是這裡的視窗大小。
- */
-async function fetchUpstreamKeywordsJson(upstream: string, f: typeof fetch): Promise<string> {
-  const res = await f(`https://raw.githubusercontent.com/${upstream}/main/data/keywords.json`);
-  if (!res.ok) throw new Error(`讀取上游 data/keywords.json 失敗（${res.status}）`);
-  return res.text();
-}
+// 設計決定——`data/keywords.json` 的原始內容從哪來，是後端自己抓，不是讓前端把它已經
+// fetch 過的內容（Task 11，`/data/keywords.json`）一併送上來：
+//
+// 1. `SubmitBody` 是這個任務定案的介面，欄位只有 `keywords?: string[]`（新增的詞），沒有
+//    「原始字串」這個欄位。硬塞一個等於是在這個任務裡順便改 Task 11 的前端 fetch 邏輯
+//    （它目前直接 `.then(r => r.json())`，原始字串沒有被保留下來）——那是 src/scripts/
+//    edit-canvas.ts 的改動，超出這個任務「Code Organization」鎖定的檔案範圍。
+// 2. 就算加了欄位，前端送上來的內容也只會是玩家「開始編輯那一刻」的舊快照——玩家可能編輯
+//    了很久才送出，這段期間如果剛好有別的 PR 合併、`data/keywords.json` 內容變了，拿玩家
+//    手上的舊字串做最小插入等於用舊版本覆蓋掉那個變動（其他人加的詞會憑空消失）。
+//
+// （2026-08-18 review 後修正）第一版曾經用 `raw.githubusercontent.com` 讀這份內容，理由是
+// 那裡不需要 token、也不用擴大 `_lib/gh.ts` 的匯出面。但 review 指出一個更根本的問題：
+// `openPr` 建 commit 用的 `base_tree`／`parents` 是 `git/ref/heads/main` 當下讀到的 sha
+// （見 `_lib/gh.ts`），跟 CDN 讀到的內容完全是兩個獨立來源，沒有任何機制保證兩者一致。
+// CDN 讀到「比 sha 舊」的內容，PR 會靜默還原掉 sha 之後才合併的變動；讀到「比 sha 新」的
+// 內容，PR 的 diff 會顯示玩家改了他根本沒碰過的東西——兩種都是真實的資料正確性問題，
+// 不是「縮小競態視窗」能解決的，而是「跟建 commit 用同一個 sha 讀檔」直接消掉整類問題。
+// 現在改成：`getBaseSha` 抓一次 sha，同時餵給 `getFileAtRef`（讀檔）與 `openPr`（建 commit
+// 的 `baseSha`），確保兩者永遠是同一個基底——見 handleSubmit 主流程與 `_lib/gh.ts` 裡
+// `OpenPrInput.baseSha`／`getFileAtRef` 的說明。
 
 export async function handleSubmit(
   request: Request,
@@ -146,13 +136,19 @@ export async function handleSubmit(
     for (const icon of body.icons ?? []) {
       files.push({ path: `data/icons/${icon.hash}.png`, content: fromBase64(icon.base64) });
     }
+
+    await ensureFork(session.token, env.UPSTREAM_REPO, session.login, f);
+
+    // 抓一次 baseSha，同時餵給下面讀 keywords.json（如果有）跟稍後的 openPr——兩者用同一個
+    // 基底，才能保證「插入時看到的既有內容」跟「這次 commit 實際採用的 base_tree」一致
+    // （見上面「設計決定」段落與 _lib/gh.ts 的 OpenPrInput.baseSha／getFileAtRef 說明）。
+    const baseSha = await getBaseSha(session.token, env.UPSTREAM_REPO, f);
+
     if (body.keywords && body.keywords.length > 0) {
-      const original = await fetchUpstreamKeywordsJson(env.UPSTREAM_REPO, f);
+      const original = await getFileAtRef(session.token, env.UPSTREAM_REPO, 'data/keywords.json', baseSha, f);
       const updated = insertKeywords(original, body.keywords);
       files.push({ path: 'data/keywords.json', content: new TextEncoder().encode(updated) });
     }
-
-    await ensureFork(session.token, env.UPSTREAM_REPO, session.login, f);
 
     // editor/{YYYYMMDD}-{login}-{8 碼隨機}：日期方便維護者辨識，隨機尾碼避免同一人同一天
     // 送兩次時撞名（撞名會讓第二次的建分支請求失敗）。
@@ -164,6 +160,7 @@ export async function handleSubmit(
       login: session.login,
       upstream: env.UPSTREAM_REPO,
       branch,
+      baseSha,
       title: renderPrTitle(body.summary),
       body: renderPrBody(body.summary, new URL('/edit', request.url).toString()),
       files,

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { ensureFork, openPr } from '../../functions/api/github/_lib/gh';
-import { fakeGitHub } from './helpers';
+import { ensureFork, openPr, getBaseSha, getFileAtRef } from '../../functions/api/github/_lib/gh';
+import { fakeGitHub, utf8ToBase64 } from './helpers';
 
 const input = {
   token: 'gho_fake', login: 'someplayer', upstream: 'NatsuYukiowob/rd2-wiki',
@@ -51,4 +51,35 @@ describe('gh', () => {
     await expect(ensureFork('gho_fake', 'NatsuYukiowob/rd2-wiki', 'someplayer', f))
       .rejects.toThrow(/fork 尚未就緒/);
   }, 30_000);
+
+  it('openPr 有給 baseSha 時直接用，不會自己再打一次 git/ref/heads/main', async () => {
+    const { f, calls } = fakeGitHub();
+    await openPr({ ...input, baseSha: 'caller-supplied-sha' }, f);
+    expect(calls.some(c => c.url.includes('/git/ref/heads/main'))).toBe(false);
+    const tree = calls.find(c => c.url.includes('/git/trees'))!;
+    expect(tree.body.base_tree).toBe('caller-supplied-sha');
+    const commit = calls.find(c => c.url.includes('/git/commits'))!;
+    expect(commit.body.parents).toEqual(['caller-supplied-sha']);
+  });
+
+  it('getBaseSha 讀上游 main 目前的 commit sha', async () => {
+    const { f, calls } = fakeGitHub();
+    const sha = await getBaseSha('gho_fake', 'NatsuYukiowob/rd2-wiki', f);
+    expect(sha).toBe('base-sha');
+    expect(calls.some(c => c.url.includes('/repos/NatsuYukiowob/rd2-wiki/git/ref/heads/main'))).toBe(true);
+  });
+
+  it('getFileAtRef 讀指定 ref 上的檔案內容，正確解碼 base64（含換行）與 UTF-8 中文', async () => {
+    // 手動組一個帶換行的 base64 回應，模擬 GitHub Contents API 真實回應的排版
+    // （每 60 字元插一個換行），驗證 getFileAtRef 有把換行濾掉才 atob。
+    const raw = '["巨型尖刺", "尖刺"]\n';
+    const wrapped = utf8ToBase64(raw).replace(/(.{60})/g, '$1\n');
+    const { f, calls } = fakeGitHub({
+      '/contents/data/keywords.json': () => new Response(JSON.stringify({ content: wrapped, encoding: 'base64' })),
+    });
+    const text = await getFileAtRef('gho_fake', 'NatsuYukiowob/rd2-wiki', 'data/keywords.json', 'some-sha', f);
+    expect(text).toBe(raw);
+    const call = calls.find(c => c.url.includes('/contents/data/keywords.json'))!;
+    expect(call.url).toContain('ref=some-sha');
+  });
 });

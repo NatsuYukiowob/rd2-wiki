@@ -23,6 +23,15 @@ export interface OpenPrInput {
   upstream: string;
   /** 形如 `editor/<timestamp>-<login>`，由呼叫端（Task 20 的 submit 端點）產生。 */
   branch: string;
+  /** 建分支／建 commit 的基底 sha；沒傳的話 `openPr` 自己呼叫 `getBaseSha` 抓一次上游 main
+   *  目前的 sha。呼叫端如果在呼叫 `openPr` 之前還需要用同一個基底讀其他檔案內容（例如
+   *  Task 20 的 submit 端點要用它讀 `data/keywords.json` 做最小插入），務必自己先呼叫
+   *  `getBaseSha` 拿到 sha、把讀檔跟這裡都餵同一個值——分別各自呼叫 `getBaseSha` 兩次，
+   *  中間有機率（`raw.githubusercontent.com` 這類 CDN 甚至有數分鐘等級的快取延遲）上游
+   *  剛好又推進一個 commit，讀到的檔案內容就會跟這次 commit 實際採用的 base_tree 對不上
+   *  ——輕則這個 PR 靜默還原了別人剛加的內容，重則 diff 會顯示玩家改了他沒改過的東西
+   *  （見 `getFileAtRef` 的說明）。 */
+  baseSha?: string;
   title: string; body: string;
   files: FileChange[];
 }
@@ -115,12 +124,53 @@ interface GitBlob { sha: string }
 interface GitTree { sha: string }
 interface GitCommit { sha: string }
 interface PullRequest { number: number; html_url: string }
+interface GitContentFile { content: string; encoding: string }
+
+/** 讀上游倉庫 `main` 分支目前指到的 commit sha。從 `openPr` 內部抽出來獨立匯出，是因為
+ *  呼叫端（Task 20 的 submit 端點）在需要「用同一個基底讀某個檔案內容、再拿同一個基底
+ *  建 commit」時，必須自己先抓一次這個 sha、把它同時餵給 `getFileAtRef` 跟 `openPr` 的
+ *  `baseSha`——分別各自呼叫兩次會有漂移風險（見 `OpenPrInput.baseSha` 的說明）。 */
+export async function getBaseSha(token: string, upstream: string, f: typeof fetch = fetch): Promise<string> {
+  const baseRef = await ghFetch<GitRef>(token, `${GITHUB_API}/repos/${upstream}/git/ref/heads/main`, {}, f);
+  return baseRef.object.sha;
+}
+
+/**
+ * 讀某個 ref（commit sha、分支名皆可）上單一檔案的內容，解碼成文字字串。
+ *
+ * 用 GitHub 的 Contents API（`GET /repos/{upstream}/contents/{path}?ref={ref}`）而不是
+ * `raw.githubusercontent.com`：後者是 CDN，文件記載有數分鐘等級的快取延遲，讀到的內容
+ * 可能跟呼叫端指定的 `ref` 對不上——比 `ref` 舊，會讓插入的內容遺漏掉 `ref` 那個 commit
+ * 之後才合併的變動；比 `ref` 新，則會讓最後產生的 PR diff 顯示出「玩家改了他根本沒碰過
+ * 的東西」（因為 commit 的 base_tree 是 `ref`，但這裡讀到的是 `ref` 之後的內容）。
+ * Contents API 是直接查 Git 物件庫，給定 `ref` 就精準讀那個 sha 上的內容，沒有這個問題。
+ *
+ * 這不是要推翻檔頭「為什麼用 Git Data API 而不是 Contents API」那段的結論——那段講的是
+ * *寫入* 多檔案時 Contents API 一次只能改一個檔案、會拆成多個 commit；這裡是*讀取*單一
+ * 檔案在特定 sha 上的內容，兩者是不同操作、不同關注點，Contents API 用在讀取上沒有那個
+ * 問題。
+ *
+ * Contents API 預設回傳 base64（`encoding: 'base64'`），GitHub 還會把 base64 字串每 60
+ * 字元插一個換行方便閱讀（純排版，不影響解碼語意，但 `atob` 前得先濾掉）。解出來的是
+ * 原始位元組，逐字元對應 char code 只會得到 Latin-1 語意（中文字元會變亂碼）——這裡跟
+ * `openPr` 建文字 blob 時 `new TextDecoder().decode()` 那步一樣，用 `TextDecoder` 把
+ * 位元組轉回正確的 UTF-8 字串。
+ */
+export async function getFileAtRef(token: string, upstream: string, path: string, ref: string, f: typeof fetch = fetch): Promise<string> {
+  const file = await ghFetch<GitContentFile>(token, `${GITHUB_API}/repos/${upstream}/contents/${path}?ref=${ref}`, {}, f);
+  if (file.encoding !== 'base64') throw new Error(`讀取 ${path} 失敗：未預期的編碼 ${file.encoding}`);
+  const binary = atob(file.content.replace(/\n/g, ''));
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return new TextDecoder().decode(bytes);
+}
 
 /**
  * 把 `input.files` 的所有改動包成單一 commit，在玩家 fork 上開新分支，對上游開 PR。
  *
  * 固定六步（見檔頭「為什麼用 Git Data API」的說明）：
- * 1. 讀上游 main 目前的 commit sha，後面的分支與 commit 都接在這個 sha 上。
+ * 1. 取得上游 main 目前的 commit sha（`input.baseSha` 有給就用，沒給就自己呼叫
+ *    `getBaseSha` 抓一次），後面的分支與 commit 都接在這個 sha 上。
  * 2. 每個檔案各自建一個 blob（文字 utf-8、二進位 base64）。
  * 3. 用所有 blob 建一個 tree，`base_tree` 接上游 sha——沒被改到的檔案不用重新列出。
  * 4. 用這個 tree 建一個 commit，`parents` 只有上游 sha，不是玩家 fork 舊有的 commit。
@@ -131,12 +181,11 @@ interface PullRequest { number: number; html_url: string }
  * （fork 是否就緒 vs. 這次要送出什麼改動），交給呼叫端（Task 20 的 submit 端點）決定順序。
  */
 export async function openPr(input: OpenPrInput, f: typeof fetch = fetch): Promise<{ number: number; url: string }> {
-  const { token, login, upstream, branch, title, body, files } = input;
+  const { token, login, upstream, branch, baseSha: suppliedBaseSha, title, body, files } = input;
   const repo = upstream.split('/')[1];
   const forkRepo = `${GITHUB_API}/repos/${login}/${repo}`;
 
-  const baseRef = await ghFetch<GitRef>(token, `${GITHUB_API}/repos/${upstream}/git/ref/heads/main`, {}, f);
-  const baseSha = baseRef.object.sha;
+  const baseSha = suppliedBaseSha ?? await getBaseSha(token, upstream, f);
 
   // 個別 blob 之間沒有依賴，平行送出縮短總延遲；`Promise.all` 保留呼叫端傳入的 `files`
   // 順序（結果陣列順序對應輸入順序，跟哪個請求先落地無關），tree 才能對得上每個檔案的路徑。
