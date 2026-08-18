@@ -36,9 +36,31 @@ jobs:
           script: |
             const fs = require('fs');
             const body = fs.readFileSync('diff-summary.md', 'utf8');
-            const prs = context.payload.workflow_run.pull_requests;
-            if (prs.length === 0) return;
+
+            // 為什麼用 head SHA 反查，而不是 context.payload.workflow_run.pull_requests：
+            //
+            // 同 repo 分支的 PR 上，那個欄位是有值的——2026-08-18 於本 repo 第一個真實 PR
+            // （#1）實測確認舊寫法能正常貼出留言。**但 GitHub 文件載明：PR 來自 fork 時，
+            // workflow_run payload 的 pull_requests 會是空陣列。** 舊版寫成
+            // `if (prs.length === 0) return;`，於是 fork PR 會讓這支 workflow「成功但靜默
+            // 什麼都沒做」——而 CONTRIBUTING.md §7 明確向貢獻者承諾「規則 10 的差異摘要留言
+            // 即使是 fork PR 送出的也一樣會出現」。
+            //
+            // 這個專案的貢獻者絕大多數會用 fork 送 PR（他們沒有本 repo 的寫入權），
+            // 所以那條承諾正是最常被用到的路徑。改用 head SHA 反查，同 repo 與 fork 兩種都成立。
+            // （fork 那半尚未實測——本 repo 目前還沒有收過 fork PR，見 v1-known-issues。）
+            const { data: prs } = await github.rest.repos.listPullRequestsAssociatedWithCommit({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              commit_sha: context.payload.workflow_run.head_sha,
+            });
+            const open = prs.filter(pr => pr.state === 'open');
+            if (open.length === 0) {
+              core.info('找不到與這個 commit 關聯的開啟中 PR，不貼留言');
+              return;
+            }
             await github.rest.issues.createComment({
               owner: context.repo.owner, repo: context.repo.repo,
-              issue_number: prs[0].number, body,
+              issue_number: open[0].number, body,
             });
+            core.info(`已貼上差異摘要到 PR #${open[0].number}`);
