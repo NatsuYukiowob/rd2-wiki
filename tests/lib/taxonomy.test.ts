@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { branchOfId, elementOfStroke, typeOfZh, sizeOfType } from '../../src/lib/taxonomy';
+import { branchOfId, elementOfStroke, typeOfZh, sizeOfType, strokeOfElement } from '../../src/lib/taxonomy';
 
 describe('taxonomy', () => {
   it('分支由 id 首碼決定', () => {
@@ -23,5 +23,10 @@ describe('taxonomy', () => {
   it('顯示尺寸依類型', () => {
     expect(sizeOfType('dice')).toEqual([48, 52]);
     expect(sizeOfType('passive')).toEqual([20, 20]);
+  });
+  it('strokeOfElement 是 elementOfStroke 的反函式，六個元素都對得起來', () => {
+    for (const el of ['nature', 'engineering', 'magic', 'order', 'chaos', 'support'] as const) {
+      expect(elementOfStroke(strokeOfElement(el))).toBe(el);
+    }
   });
 });

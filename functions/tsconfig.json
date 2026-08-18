@@ -1,0 +1,30 @@
+{
+  // 獨立於根目錄 tsconfig.json 的專案：Cloudflare Pages Functions 跑在 Workers 執行環境，
+  // 沒有 DOM，只有 Web 標準 API + Workers 專屬型別（KVNamespace、PagesFunction… 等）。
+  //
+  // 為什麼不直接把 "functions" 塞進根 tsconfig.json 的 include：
+  // @cloudflare/workers-types 的 index.d.ts 是「無 import/export 的全域 script」，
+  // 用 `/// <reference types="@cloudflare/workers-types" />` 引入後，它宣告的全域型別
+  // （例如 HTMLRewriter 用的 `Element`、Workers 版 `Response`）會跟根 tsconfig 的 DOM lib
+  // 全域型別衝突——`src/` 底下操作真實瀏覽器 DOM 的程式碼會開始報一堆「Element 不相容」
+  // 之類的錯（實測過：加進同一個 tsconfig 後 NewNodeForm.ts / edit-canvas.ts 立刻炸開）。
+  // 兩邊要的是不同的全域環境，只能拆成兩個 tsconfig。
+  //
+  // 編輯器（VS Code）開 functions/ 底下的檔案時會自動找最近的 tsconfig.json、套用這份設定，
+  // PagesFunction<Env> 之類的型別可以正常解析。要手動檢查則跑
+  // `npm run typecheck:functions`（= `tsc --noEmit -p functions/tsconfig.json`）。
+  "compilerOptions": {
+    "target": "ES2023",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "lib": ["ES2023"],
+    "types": ["@cloudflare/workers-types"],
+    "noEmit": true
+  },
+  "include": ["**/*.ts"]
+}
