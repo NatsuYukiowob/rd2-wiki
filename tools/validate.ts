@@ -132,9 +132,30 @@ export function validate(svgText: string, opts: ValidateOpts): ValidateResult {
     // 規則 7(d): 未被任何節點引用的圖示，只警告不擋 PR。
     if (!referencedIcons.has(expectedHash)) warn(`規則 7(d): 圖示 ${fileName} 未被任何節點引用`);
   }
+  // 規則 7(c) 的 96px 下限是「圖檔本身別太小」，跟「它會被放多大」無關。顯示尺寸自 2026-08-18
+  // 改成逐節點寫在正本的 `<image width/height>`（不再由類型推導）之後，那個數字變成**完全沒有
+  // 人守**：parseTree 只擋 ≤0／NaN，規則 7 只看檔案。一個 PR 把某個節點寫成 width="500"
+  // height="500"，CI 全綠，sprite 會為它開一個 500×500 的分區、拿 104px 的來源拉上去，站台上
+  // 就是一塊糊掉的巨型貼圖。這裡補上「顯示尺寸不得超過來源解析度的一半」——跟規則 10 對樞紐圖
+  // 的要求同一個標準（來源至少要是顯示尺寸的兩倍，高 DPI 螢幕才不會糊）。
+  const pngSizeByHash = new Map<string, { width: number; height: number }>();
+  for (const fileName of iconFileNames) {
+    const size = readPngSize(readFileSync(join(opts.iconsDir, fileName)));
+    if (size) pngSizeByHash.set(fileName.slice(0, -'.png'.length), size);
+  }
   for (const n of nodes) {
     // 規則 7(a): 節點引用的圖示必須存在於 iconsDir。
-    if (!iconHashSet.has(n.icon)) push(`規則 7(a): 節點 ${n.id} 引用的圖示 ${n.icon} 不存在`);
+    if (!iconHashSet.has(n.icon)) { push(`規則 7(a): 節點 ${n.id} 引用的圖示 ${n.icon} 不存在`); continue; }
+    // 規則 7(e): 顯示尺寸 × 2 不得超過圖檔解析度。
+    const px = pngSizeByHash.get(n.icon);
+    if (!px) continue; // 不是有效 PNG——規則 7(c) already 報過了，這裡不重複
+    const [w, h] = n.size;
+    if (w * 2 > px.width || h * 2 > px.height) {
+      push(
+        `規則 7(e): 節點 ${n.id} 的顯示尺寸 ${w}x${h} 相對圖示 ${n.icon} 的解析度 ${px.width}x${px.height} 過大` +
+          `（顯示尺寸的兩倍不得超過圖檔解析度，否則高 DPI 螢幕上會糊）`,
+      );
+    }
   }
 
   // 規則 10: 中央樞紐。整組是選用的（正本沒有 g.tree-center 時 parseTree 回傳 null），但只要有，

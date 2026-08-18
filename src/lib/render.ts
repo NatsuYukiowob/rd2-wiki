@@ -83,6 +83,29 @@ export function renderTree(data: TreeData, doc: Document): SVGSVGElement {
   // 共用同一張圖，例如不同分支的同名關鍵字節點），不是每個節點各自一個。
   const defs = doc.createElementNS(NS, 'defs');
   svg.appendChild(defs);
+
+  // 鍵盤 focus 的外框。用 feMorphology 把圖示「看得見的形狀」往外膨脹一圈再填成金色，
+  // 疊在原圖下面——出來的就是一圈貼著輪廓的邊：圓形節點得到圓環、圓角方塊得到圓角框、
+  // 菱形得到菱形框，不必為每種形狀各寫一份。
+  //
+  // 為什麼不用 CSS 的 `outline`：outline 畫的永遠是元素的矩形邊界框，圓形節點會被套上一個
+  // 四角外露的方框（image8 之後的回報）。SVG 也沒有 border-radius 可以救。
+  //
+  // in="SourceAlpha" 取的是這個 <rect> 實際算繪出來的透明度——它填的是 sprite pattern，
+  // 所以拿到的是圖示本身的輪廓，不是 rect 的方形範圍。
+  const focusFilter = doc.createElementNS(NS, 'filter');
+  focusFilter.setAttribute('id', 'focus-ring');
+  // 濾鏡區域要留得比膨脹量大，否則那圈邊會被自己的濾鏡框裁掉。
+  focusFilter.setAttribute('x', '-20%');
+  focusFilter.setAttribute('y', '-20%');
+  focusFilter.setAttribute('width', '140%');
+  focusFilter.setAttribute('height', '140%');
+  focusFilter.innerHTML =
+    '<feMorphology operator="dilate" radius="2" in="SourceAlpha" result="thick"/>' +
+    '<feFlood flood-color="#ffd66f" result="gold"/>' +
+    '<feComposite in="gold" in2="thick" operator="in" result="ring"/>' +
+    '<feMerge><feMergeNode in="ring"/><feMergeNode in="SourceGraphic"/></feMerge>';
+  defs.appendChild(focusFilter);
   // icon 雜湊 → 第一個用到它的節點的顯示尺寸。pattern 的 tile 尺寸用 sprite cell 的
   // 尺寸（cw/ch）而不是逐一讀每個節點的 n.size，是建立在「同一個圖示雜湊，size 一定
   // 相同」這個假設上（跟參照它的 <rect> 用同一組 -w/2,-h/2 對齊 pattern，見下面的位移
@@ -204,7 +227,7 @@ export function renderTree(data: TreeData, doc: Document): SVGSVGElement {
       const text = doc.createElementNS(NS, 'text');
       text.setAttribute('class', 'tree-center-label');
       text.setAttribute('x', String(c.x));
-      text.setAttribute('y', String(c.y + ch / 2 + 12));
+      text.setAttribute('y', String(c.y + c.labelDy));
       text.textContent = c.label;
       hub.appendChild(text);
     }
@@ -255,7 +278,7 @@ export function renderTree(data: TreeData, doc: Document): SVGSVGElement {
 
     const label = doc.createElementNS(NS, 'text');
     label.setAttribute('class', 'label');
-    label.setAttribute('y', String(h / 2 + 12));
+    label.setAttribute('y', String(h / 2 + 15));
     label.textContent = n.label;
     g.appendChild(label);
 

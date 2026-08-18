@@ -58,6 +58,8 @@ export interface TreeMeta {
     /** 樞紐放射線連到的節點 id（＝五顆起手骰）。 */
     links: string[];
     label: string;
+    /** 標籤基線相對樞紐中心的垂直位移（正本說了算，見 tools/lib/svg-parse.ts 的說明）。 */
+    labelDy: number;
   } | null;
 }
 

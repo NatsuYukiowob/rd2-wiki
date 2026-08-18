@@ -5,11 +5,15 @@
 // 所以「搜尋框 focus 時方向鍵/+/- 不應平移畫布」這件事，這裡只能驗證判斷邏輯本身
 // （isTypingTarget，已在 tests/lib/filter.test.ts 涵蓋），實際瀏覽器下的 focus 判斷
 // 留給第 18 個任務的 E2E。
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { parseHTML, Event as LinkedomEvent } from 'linkedom';
-import { Viewport, minReadableScale } from '../../src/lib/viewport';
-import { sizeOfType } from '../../src/lib/taxonomy';
+import {
+  DESKTOP_ICON_TARGET_PX,
+  MOBILE_ICON_TARGET_PX,
+  Viewport,
+  minReadableScale,
+} from '../../src/lib/viewport';
 import type { Branch, TreeData } from '../../src/lib/types';
 
 const treeData: TreeData = JSON.parse(readFileSync('src/generated/tree.json', 'utf8'));
@@ -35,7 +39,8 @@ function rawFitScale(branch: Branch): number {
 /** 對應 tree-canvas.ts 的 applyReadabilityFloor()：同一組容器尺寸下的可讀性下限。 */
 function readabilityFloor(containerW: number, containerH: number, targetPx: number): number {
   const [, , vbw, vbh] = treeData.meta.viewBox;
-  return minReadableScale(containerW, containerH, vbw, vbh, sizeOfType('dice')[0], targetPx);
+  const diceWidth = treeData.nodes.find(n => n.type === 'dice')!.size[0];
+  return minReadableScale(containerW, containerH, vbw, vbh, diceWidth, targetPx);
 }
 
 /** 跳到某分支、還沒套下限時的 transform（translate 分量）。 */
@@ -308,7 +313,7 @@ describe('tree-canvas 整合：分支快速跳轉（task-17，spec §6.2.6）', 
     // raw fitTo 已經超過桌機可讀性下限（1280x610 容器、目標 24px），下限不該把畫面往下拉，
     // 最終縮放應該就是 raw 本身。先斷言前提成立，否則這條測試會退化成驗另一件事還照樣綠。
     const raw = rawFitScale('engineering');
-    expect(raw).toBeGreaterThan(readabilityFloor(1280, 610, 24));
+    expect(raw).toBeGreaterThan(readabilityFloor(1280, 610, DESKTOP_ICON_TARGET_PX));
     expect(parseScale(page.viewportEl.getAttribute('transform') ?? '')).toBeCloseTo(raw, 9);
   });
 
@@ -323,19 +328,19 @@ describe('tree-canvas 整合：分支快速跳轉（task-17，spec §6.2.6）', 
   it('桌機：raw fitTo(bounds) 低於可讀性下限時，也會被拉高到下限（task-18 修正的核心案例——桌機不再是永遠不套下限）', async () => {
     const page = await loadTreePage('');
     stubDesktopRect(page);
-    // 容器刻意用 1280x400（瀏覽器視窗被壓扁的桌機情境）而不是上面那組 1280x610：2026-08-18
+    // 容器刻意用 1280x260（瀏覽器視窗被壓扁的桌機情境）而不是上面那組 1280x610：2026-08-18
     // 換版面後 viewBox 從 3400x2850 縮成 2000x1700，同樣的容器換算出來的每單位 CSS px 變多、
     // 可讀性下限跟著降到 1.45，已經低於任何分支的 raw fitTo（1.96～2.13）——也就是新版面在
     // 一般桌機視窗下本來就夠清楚、根本不會走到 boost 這條路。要繼續守住「桌機也會套下限」
     // 這個 task-18 修正的回歸，就得挑一個下限真的會勝出的容器尺寸。下面那條 toBeLessThan
     // 就是在把這個前提釘住：哪天它不成立了，測試會直接紅，而不是安靜地退化成驗別的事。
     Object.assign(page.svg, {
-      getBoundingClientRect: () => ({ x: 0, y: 0, left: 0, top: 0, right: 1280, bottom: 400, width: 1280, height: 400 }),
+      getBoundingClientRect: () => ({ x: 0, y: 0, left: 0, top: 0, right: 1280, bottom: 260, width: 1280, height: 260 }),
     });
     // 最終縮放要正好落在下限上。這裡只斷言縮放值，不重算 zoomAt 的置中位移——那等於在測試裡
     // 抄一份 viewport.ts 的實作，抄錯了測試反而會跟著錯下去。
     const raw = rawFitScale('nature');
-    const floor = readabilityFloor(1280, 400, 24);
+    const floor = readabilityFloor(1280, 260, DESKTOP_ICON_TARGET_PX);
     expect(raw).toBeLessThan(floor);
     const btn = page.document.querySelector<HTMLButtonElement>('#branch-nav button[data-branch="nature"]')!;
     fireClick(btn);
@@ -348,7 +353,7 @@ describe('tree-canvas 整合：分支快速跳轉（task-17，spec §6.2.6）', 
     // 裡抄一份實作），只用「(錨點 - 位移) / 縮放」這個座標換算來檢查不變性。
     // 容器 stub 的 left/top 都是 0，所以容器中心的螢幕座標就是 (1280/2, 400/2)；本環境
     // getScreenCTM() 不存在，Viewport 退化成 1:1，螢幕座標即使用者座標。
-    const [ax, ay] = [1280 / 2, 400 / 2];
+    const [ax, ay] = [1280 / 2, 260 / 2];
     const [rx, ry] = rawFitTranslate('nature');
     const [bx, by] = parseTranslate(after);
     expect((ax - bx) / parseScale(after)).toBeCloseTo((ax - rx) / raw, 6);
@@ -369,7 +374,7 @@ describe('tree-canvas 整合：分支快速跳轉（task-17，spec §6.2.6）', 
     // 下限應該勝出。容差放寬到 1e-6：這條路徑會先算 fitTo 的 scale 再乘上 (floor/scale)
     // 換算成 zoomAt 的縮放係數，比 minReadableScale() 本身多一次浮點乘除，可能有比純函式
     // 測試更大一點的浮點誤差。
-    const floor = readabilityFloor(390, 800, 32);
+    const floor = readabilityFloor(390, 800, MOBILE_ICON_TARGET_PX);
     expect(rawFitScale('engineering')).toBeLessThan(floor);
     expect(parseScale(page.viewportEl.getAttribute('transform') ?? '')).toBeCloseTo(floor, 6);
   });
@@ -382,7 +387,7 @@ describe('tree-canvas 整合：分支快速跳轉（task-17，spec §6.2.6）', 
       getBoundingClientRect: () => ({ x: 0, y: 0, left: 0, top: 0, right: 4000, bottom: 2000, width: 4000, height: 2000 }),
     });
     const raw = rawFitScale('engineering');
-    expect(raw).toBeGreaterThan(readabilityFloor(4000, 2000, 32));
+    expect(raw).toBeGreaterThan(readabilityFloor(4000, 2000, MOBILE_ICON_TARGET_PX));
     const btn = page.document.querySelector<HTMLButtonElement>('#branch-chips button[data-branch="engineering"]')!;
     fireClick(btn);
     expect(parseScale(page.viewportEl.getAttribute('transform') ?? '')).toBeCloseTo(raw, 9);
@@ -414,14 +419,15 @@ describe('tree-canvas 整合：分支快速跳轉（task-17，spec §6.2.6）', 
   });
 });
 
-describe('tree-canvas 整合：關鍵字 chip 可點擊搜尋（task-17 補漏，spec §6.2.3）', () => {
+describe('tree-canvas 整合：關鍵字 chip（spec §6.2.3；點擊搜尋目前由 FEATURES.keywordSearch 停用）', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
   });
 
-  it('點擊詳情面板裡的關鍵字 chip：搜尋框被設成該關鍵字、套用篩選、寫回網址', async () => {
+  it('關鍵字 chip 目前不觸發搜尋（FEATURES.keywordSearch 暫時關閉），也不會裝成可以點', async () => {
     // 1002 尖刺骰子的描述含「#尖刺」，keywords=['尖刺']，NodeDetail.ts 會把它渲染成
     // <span class="kw">#尖刺</span>（見 src/components/NodeDetail.ts 的 renderDescription）。
+    // 關鍵字本身照樣要標示出來——停用的是「點下去會搜尋」，不是「這個詞有特殊意義」的提示。
     const page = await loadTreePage('?node=1002');
     const kw = page.detailEl.querySelector('.kw');
     expect(kw).not.toBeNull();
@@ -429,10 +435,13 @@ describe('tree-canvas 整合：關鍵字 chip 可點擊搜尋（task-17 補漏�
 
     fireClick(kw!);
 
-    expect(page.searchInput.value).toBe('尖刺');
-    expect(page.getSearchBox()).toContain('q=');
-    // 1002 自己的描述就含「尖刺」，搜尋後應該仍然可見，不會被自己觸發的搜尋篩掉。
-    expect(page.svg.querySelector('g.node[data-id="1002"]')!.classList.contains('filtered-out')).toBe(false);
+    expect(page.searchInput.value).toBe('');
+    expect(page.getSearchBox()).not.toContain('q=');
+    // 樣式與接線共用同一個開關：功能關著就不該掛上 .kw-clickable，否則游標與 hover 底線
+    // 會騙使用者去點一個沒有反應的東西（樣式見 src/styles/global.css）。
+    expect(page.detailEl.classList.contains('kw-clickable')).toBe(false);
+    // FEATURES.keywordSearch 開回來時這條會紅——那是刻意的，紅的時候把上面三條斷言換回
+    // 「搜尋框被設成該關鍵字、網址帶 q=、面板掛上 .kw-clickable」即可。
   });
 
   it('點擊詳情面板裡非關鍵字的地方，不觸發搜尋（事件委派只認 .kw，不是整個面板都可點）', async () => {

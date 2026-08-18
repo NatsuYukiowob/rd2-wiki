@@ -41,6 +41,14 @@ const TYPES: Array<[string, string]> = [
            顯示，不需要這顆按鈕，靠 CSS 媒體查詢隱藏。 -->
       <button id="filters-toggle" type="button" aria-label="展開篩選" aria-controls="filters">篩選</button>
       <input id="search" type="search" placeholder="搜尋節點名稱、效果、關鍵字…" aria-label="搜尋節點" />
+      <!-- 篩選狀態列。沒有篩選時整個隱藏；一旦有條件就顯示「符合 N 個」與清除鈕。
+           沒有它的時候，搜尋只符合少數幾個節點會變成「整片變灰、看不出哪裡有東西、也不知道
+           怎麼回去」——點關鍵字進來的人尤其容易卡住（2026-08-18 人工檢視 image9 回報）。
+           role="status" 讓螢幕閱讀器在數字變動時唸出來。 -->
+      <p id="filter-status" role="status" hidden>
+        <span id="filter-count"></span>
+        <button id="filter-clear" type="button">清除篩選</button>
+      </p>
       <div id="filters">
         <fieldset>
           <legend>分支</legend>
@@ -172,10 +180,42 @@ const TYPES: Array<[string, string]> = [
     padding: 0.15rem 0.5rem;
   }
 
+  /* legend 預設會被瀏覽器排在 fieldset 內容框的「上方那一格」，把底下的 checkbox 整列往下
+     推——結果是工具列裡的搜尋框中線與 checkbox 中線差了 9px，看起來沒對齊。float 讓 legend
+     退出那個特殊排版、變成一般的浮動盒子，標題就跟 checkbox 同一列，整條工具列共用一條中線。
+     用 float 而不是 position:absolute：後者要自己算偏移量，而這個 repo 的固定偏移量已經咬過
+     三次（見 CLAUDE.md）。 */
   #filters legend {
+    float: left;
     color: var(--muted);
     font-size: 0.75rem;
-    padding: 0 0.25rem;
+    padding: 0 0.5rem 0 0;
+  }
+
+  #filter-status {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin: 0;
+    font-size: 0.85rem;
+    color: var(--muted);
+    white-space: nowrap;
+  }
+  #filter-status[hidden] {
+    display: none;
+  }
+  #filter-count.none {
+    color: var(--gold);
+  }
+  #filter-clear {
+    background: var(--panel);
+    color: var(--fg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 0.2rem 0.5rem;
+    font: inherit;
+    font-size: 0.8rem;
+    cursor: pointer;
   }
 
   #filters label {
@@ -189,14 +229,28 @@ const TYPES: Array<[string, string]> = [
   /* 以下樣式作用在 tree-canvas.ts 用 DOM API 動態產生的節點／邊上，
      Astro 的 scoped CSS 只會標記本檔案模板裡「寫死」的元素，動態產生的 SVG 碰不到，
      所以這裡一律用 is:global。 */
+  /* 邊的顏色、粗細與端點畫法都取自遊戲原圖的 `.edge` 規則（stroke:#a89ad3、寬 3.2、
+     round 端點、opacity .9），讓站台跟原圖看起來是同一張圖。 */
   .edge {
-    stroke: var(--muted);
-    stroke-width: 2;
+    stroke: #a89ad3;
+    stroke-width: 3.2;
+    stroke-linecap: round;
+    opacity: 0.9;
     fill: none;
   }
 
   .node {
     cursor: pointer;
+  }
+
+  /* 節點的投影。原圖是把它烘在圖片裡的（`#node-shadow` 濾鏡 ＋ `.dice-shadow` 剪影），
+     但那樣會讓圖示的框比看得見的底板大一圈，鍵盤 focus 的外框與前置鏈的金色光暈就會去描
+     那一圈空白（image8 回報）。改成在這裡用 CSS 畫：框剛好等於底板，投影還在，而且會跟著
+     縮放一起變化，不會放大後糊成一塊貼圖。數值換算自原圖的
+     `feDropShadow dx=0 dy=2 stdDeviation=2.2 flood-opacity=.48`（那組值在 scale(0.72)
+     的座標系裡，再乘上站台的 0.5 倍座標）。 */
+  .node .icon {
+    filter: drop-shadow(0 1px 1.5px rgb(10 7 18 / 48%));
   }
 
   /* 中央樞紐：放射線比一般的邊粗一點、亮一點，讓「五顆起手骰從樹心長出來」讀得出來；
@@ -206,12 +260,13 @@ const TYPES: Array<[string, string]> = [
     pointer-events: none;
   }
 
+  /* 樞紐放射線：原圖用的是跟 .edge 同色、同粗，但不透明度更高（.96 vs .9）——差別只在
+     「更實一點」，不是更粗。這裡照抄，不自己另外設計一組。 */
   .tree-center-link {
-    stroke: var(--muted);
-    stroke-width: 3;
+    stroke: #a89ad3;
+    stroke-width: 3.2;
     stroke-linecap: round;
-    /* 刻意不設 opacity：`.edge` 是全不透明的，這裡設 0.9 反而比一般的邊更暗，
-       跟上面註解說的「粗一點、亮一點」相反。層次感交給 stroke-width 就夠了。 */
+    opacity: 0.96;
   }
 
   .tree-center-label {
@@ -226,11 +281,60 @@ const TYPES: Array<[string, string]> = [
     fill: var(--fg);
     text-anchor: middle;
     pointer-events: none;
+    /* 描邊當底：標籤被單獨叫出來時，底下可能壓著邊、圖示或別的節點，沒有這層外框會糊成
+       一片。paint-order: stroke 讓描邊畫在字的下面，不會把筆畫本身吃掉。 */
+    paint-order: stroke;
+    stroke: var(--bg);
+    stroke-width: 3px;
+    stroke-linejoin: round;
   }
 
+  /*
+   * 標籤擁擠（2026-08-18 換版面後浮上檯面）：符文 123 個＋玩家被動 70 個，它們的標籤平均寬
+   * 61 使用者單位、彼此最近距離卻只有 41——標籤比間距還寬 1.5 倍，全部同時顯示必然互相壓到
+   * （實測 27 對重疊，把字級一路縮到 7px 也只降到 15 對，縮字級根本不是解法）。
+   *
+   * 改成：畫面上恆常只留骰子（41）與支援（5）這 46 個導覽錨點的標籤——它們間距夠寬，實測
+   * 0 對重疊——符文與被動的標籤改成「要看哪個就叫哪個」：滑鼠移過去、鍵盤聚焦、或它被選進
+   * 前置鏈時才單獨出現。
+   *
+   * 用純 CSS 而不是 JS：hover 與 focus 本來就是 CSS 的事，選取狀態也已經有 .in-chain
+   * （tree-canvas.ts 的 select() 掛的），不需要為了顯示標籤再養一套平行的狀態。
+   *
+   * 選擇器要寫死 :not(...) 兩層是為了讓「顯示」那組的優先級贏過「隱藏」那組——CSS 不看規則
+   * 先後，只比優先級，少一層 :not() 就會被隱藏規則蓋回去。
+   */
+  .node:not([data-type='dice']):not([data-type='support']) .label {
+    display: none;
+  }
+  .node:not([data-type='dice']):not([data-type='support']):hover .label,
+  .node:not([data-type='dice']):not([data-type='support']):focus .label,
+  .node:not([data-type='dice']):not([data-type='support']).in-chain .label {
+    display: block;
+  }
+
+  /* 鍵盤 focus 的外框套在圖示那個 <rect> 上，不是整個 <g>：<g> 的框會把底下的標籤文字
+     一起圈進去，框出來是一個又寬又高、下緣拖著一截字的方塊（image6 回報）。圖示的 rect
+     自己的 x/y/width/height 就是節點的顯示範圍，框它才貼合按鈕本身。 */
   .node:focus {
-    outline: 2px solid var(--gold);
-    outline-offset: 2px;
+    outline: none;
+  }
+  /* 外框是一圈貼著圖示輪廓的金邊，由 #focus-ring 濾鏡產生（定義見 src/lib/render.ts）：
+     圓形節點得到圓環、圓角方塊得到圓角框。CSS 的 outline 做不到——它畫的永遠是矩形邊界框。
+     投影要一起寫進來：filter 是單一屬性，只寫 url(#focus-ring) 會把 .node .icon 那條
+     投影整條蓋掉，focus 的瞬間節點會突然變扁。 */
+  .node:focus .icon {
+    filter: url(#focus-ring) drop-shadow(0 1px 1.5px rgb(10 7 18 / 48%));
+  }
+
+  /* Windows 高對比模式會把 filter 產生的顏色整個抽掉，focus 指示就消失了。那個模式下改用
+     老派的矩形 outline——不夠貼合，但「看得見焦點在哪」優先於「框得好不好看」。 */
+  @media (forced-colors: active) {
+    .node:focus .icon {
+      filter: none;
+      outline: 2px solid;
+      outline-offset: 0;
+    }
   }
 
   /* 桌機側欄的分支快速跳轉（spec §6.2.6）：跟在 #toolbar 下面、直向排列（定位交給
@@ -242,7 +346,9 @@ const TYPES: Array<[string, string]> = [
     display: flex;
     flex-direction: column;
     gap: 0.4rem;
-    padding: 0.5rem;
+    /* 左右內距要跟 #toolbar 一樣是 1rem：兩者上下相接、同屬畫布左上角那一疊，左內距不一樣
+       的話按鈕會比上面的搜尋框往左凸出 8px（2026-08-18 人工檢視回報）。改動時兩邊一起改。 */
+    padding: 0.5rem 1rem;
   }
   #branch-nav button {
     background: var(--panel);
@@ -300,11 +406,18 @@ const TYPES: Array<[string, string]> = [
     }
     #detail {
       position: fixed;
+      /* 手機維持「從底部升起的抽屜」，不套桌機那組浮動卡片的樣式：窄螢幕上把卡片再往內縮
+         0.75rem 只會讓本來就不夠的寬度更擠。inset 會一次覆蓋桌機設的 top/right，但圓角、
+         陰影與四邊框線不會，要各自歸零，否則抽屜會變成一張貼在螢幕下緣、只有上面兩角是
+         圓的怪卡片。 */
       inset: auto 0 0 0;
       width: 100%;
+      max-width: 100%;
       max-height: 55vh;
-      border-left: none;
+      border: none;
       border-top: 1px solid var(--border);
+      border-radius: 0;
+      box-shadow: none;
       /* #branch-chips 同樣 position:fixed、bottom:0，疊在 #detail 底部之上（DOM 順序在
          #detail 後面，兩者都沒有互相退讓的 z-index，後面的蓋掉前面的）。#detail 內容
          最後一段一定是 spec §2.1 強制要求的「重置需要初期化券」災情警告（見

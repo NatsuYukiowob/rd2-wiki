@@ -44,6 +44,18 @@ const MAX = 8;
  *
  * 純函式、不碰 DOM，可以直接單元測試（不需要瀏覽器版面引擎）。
  */
+/**
+ * `minReadableScale()` 的目標圖示尺寸（CSS px）：手機用手指、桌機用滑鼠，桌機的精準度門檻
+ * 可以低一些。兩者都遠高於「完全看不清」的舊 bug 數字（約 9～13px）。
+ *
+ * 放在這裡而不是 tree-canvas.ts，是因為測試也要用同一組數字。2026-08-18 這兩個值照骰子
+ * 顯示寬度重算過（24×50/46 ≈ 26、32×50/46 ≈ 35），當時 tree-canvas.ts 與測試各存了一份，
+ * 改了一邊沒改另一邊，於是每個視角都比設計值多放大 12%——只有一份就不會再發生。
+ * 骰子寬度日後再變，這兩個值要照同一個比例重算。
+ */
+export const DESKTOP_ICON_TARGET_PX = 26;
+export const MOBILE_ICON_TARGET_PX = 35;
+
 export function minReadableScale(
   containerWidthPx: number,
   containerHeightPx: number,

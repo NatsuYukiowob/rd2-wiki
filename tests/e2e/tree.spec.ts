@@ -291,11 +291,25 @@ test('D. 拖曳畫布放開在空白處，選取不會被誤觸清除', async ({
     endX = box.x + box.width * 0.7;
     endY = topLimit + (bottomLimit - topLimit) * 0.7;
   } else {
-    startX = box.x + box.width * 0.45;
+    // 桌機版以前寫死「畫布左半部」，前提是 #detail 固定在右側——2026-08-18 詳情卡片改成貼在
+    // 被選節點旁邊（positionPanel()）之後那個前提就不成立了，卡片可能正好落在左半部，拖曳
+    // 全程打在卡片上、svg 收不到任何事件，而這條測試只斷言「選取還在」，於是安靜地通過卻
+    // 什麼都沒測到——跟手機版當初被抓到的是同一個假綠。改成跟手機版一樣讀卡片的實際位置：
+    // 取卡片左右兩側較寬的那一邊當安全區。
+    const leftRoom = detailBox ? detailBox.x - box.x : box.width;
+    const rightRoom = detailBox ? box.x + box.width - (detailBox.x + detailBox.width) : 0;
+    const useLeft = leftRoom >= rightRoom;
+    const zoneX = useLeft ? box.x : detailBox!.x + detailBox!.width;
+    const zoneW = (useLeft ? leftRoom : rightRoom) - 12;
+    startX = zoneX + zoneW * 0.3;
     startY = box.y + box.height * 0.75;
-    endX = box.x + box.width * 0.65;
+    endX = zoneX + zoneW * 0.7;
     endY = box.y + box.height * 0.35;
   }
+
+  // 前提斷言：拖曳必須真的讓畫布動了。少了這條，只要起訖點落在任何攔截事件的元素上，
+  // 下面「選取沒被清掉」就會在「根本沒發生拖曳」的情況下自動成立（假綠）。
+  const transformBefore = await page.locator('#viewport').getAttribute('transform');
 
   await page.mouse.move(startX, startY);
   await page.mouse.down();
@@ -304,6 +318,10 @@ test('D. 拖曳畫布放開在空白處，選取不會被誤觸清除', async ({
   await page.mouse.move((startX + endX) / 2, (startY + endY) / 2, { steps: 10 });
   await page.mouse.move(endX, endY, { steps: 10 });
   await page.mouse.up();
+
+  await expect
+    .poll(async () => page.locator('#viewport').getAttribute('transform'))
+    .not.toBe(transformBefore);
 
   // 拖曳放開後，選取（面板 + in-chain 高亮）應該原封不動地留著，不會被這次「其實是拖曳、
   // 不是點選」的 pointerup 誤判成點在空白處而清空選取。
@@ -390,50 +408,52 @@ test('G. bbox 修正驗證：四種節點類型的 bounding box 貼合顯示尺�
   }
 });
 
-test('H. 鍵盤 focus 外框貼合圖示，不再因為 bbox bug 放大到跟旁邊節點重疊', async ({ page, isMobile }) => {
+test('H. 鍵盤 focus 的金邊貼合圖示輪廓：圓形節點得到圓環，四個角不會冒出金色', async ({ page, isMobile }) => {
   await goToNatureBranch(page, isMobile);
-  const node = page.locator('g.node[data-id="1001"]');
+  // 挑一個圓形節點（玩家被動）：矩形 outline 與貼合輪廓的金邊，差別最明顯的地方就在四個角。
+  const node = page.locator('g.node[data-type="passive"]').first();
+  const icon = node.locator('> rect.icon');
+  await node.scrollIntoViewIfNeeded();
+  const point = await centerOf(node);
+  await zoomInAt(page, point, 12); // 放大讓金邊佔的像素夠多，取樣才有意義
   await node.focus();
 
-  const box = await node.boundingBox();
-  if (!box) throw new Error('node 沒有 bounding box');
-  const style = await node.evaluate(el => {
-    const cs = getComputedStyle(el);
-    return { outlineWidth: parseFloat(cs.outlineWidth), outlineOffset: parseFloat(cs.outlineOffset) };
+  const box = await icon.boundingBox();
+  if (!box) throw new Error('取不到圖示的 bounding box');
+  expect(box.width).toBeGreaterThan(30);
+
+  // 金邊由 #focus-ring 濾鏡畫（見 src/lib/render.ts）。先確認它真的套上去了，避免下面的
+  // 像素判定在「根本沒有 focus 樣式」的情況下也剛好通過。
+  const filter = await icon.evaluate(el => getComputedStyle(el).filter);
+  expect(filter).toContain('focus-ring');
+
+  const PAD = 6;
+  const buf = await page.screenshot({
+    clip: { x: box.x - PAD, y: box.y - PAD, width: box.width + PAD * 2, height: box.height + PAD * 2 },
   });
-  const expand = style.outlineWidth + style.outlineOffset; // 外框從 bbox 邊緣往外擴張的距離
-
-  // 修正前光是 bbox 本身就有一兩百 px 起跳（同量級樣本節點實測），加上外框擴張後只會更大；
-  // 修正後 bbox 應該貼合顯示尺寸（見測試 G），外框整個範圍（bbox 加上兩側的擴張量）理應
-  // 遠小於舊 bug 的量級，用一個遠低於舊 bug 數字、但留有餘裕的上限來分辨。
-  expect(box.width + 2 * expand).toBeLessThan(120);
-  expect(box.height + 2 * expand).toBeLessThan(120);
-
-  // 視覺再驗一次：把「bbox 往外擴張到外框範圍」的區域截圖，確認金色外框顏色真的出現在
-  // 這個小範圍裡（不是完全沒畫出來、也不是散落在算出來的範圍之外）。
-  const clip = {
-    x: Math.max(0, box.x - expand - 2),
-    y: Math.max(0, box.y - expand - 2),
-    width: box.width + 2 * (expand + 2),
-    height: box.height + 2 * (expand + 2),
-  };
-  const buf = await page.screenshot({ clip });
-  const goldHex = await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--gold').trim());
-  const m = /^#?([0-9a-f]{6})$/i.exec(goldHex);
-  if (!m) return; // --gold 不是 #hex 格式（例如具名色）時跳過顏色比對，上面的尺寸斷言已經是主要證據
-  const hex = m[1] as string;
-  const gr = parseInt(hex.slice(0, 2), 16);
-  const gg = parseInt(hex.slice(2, 4), 16);
-  const gb = parseInt(hex.slice(4, 6), 16);
   const { data, info } = await sharp(buf).raw().toBuffer({ resolveWithObject: true });
-  let goldPixelFound = false;
-  for (let i = 0; i + 2 < data.length; i += info.channels) {
-    if (Math.abs(data[i]! - gr) < 30 && Math.abs(data[i + 1]! - gg) < 30 && Math.abs(data[i + 2]! - gb) < 30) {
-      goldPixelFound = true;
-      break;
-    }
-  }
-  expect(goldPixelFound).toBe(true);
+  const at = (x: number, y: number) => {
+    const i = (y * info.width + x) * info.channels;
+    return [data[i]!, data[i + 1]!, data[i + 2]!] as const;
+  };
+  // 金色是 #ffd66f：紅高、綠高、藍明顯低。用色彩關係判定而不是比對確切數值——反鋸齒與
+  // 底下透出來的顏色會讓實際像素略有出入。
+  const isGold = ([r, g, b]: readonly [number, number, number]) => r > 200 && g > 150 && b < 150;
+
+  // 1) 金邊真的畫出來了：沿著圖示上緣中線往外掃，一定會碰到金色。
+  const midX = Math.round(info.width / 2);
+  let ringFound = false;
+  for (let y = 0; y < PAD + 6; y++) if (isGold(at(midX, y))) ringFound = true;
+  expect(ringFound).toBe(true);
+
+  // 2) 四個角不能是金色：矩形 outline 會把角落塗滿，貼合圓形輪廓的金邊不會碰到那裡。
+  const corners: Array<readonly [number, number]> = [
+    [1, 1],
+    [info.width - 2, 1],
+    [1, info.height - 2],
+    [info.width - 2, info.height - 2],
+  ];
+  for (const [x, y] of corners) expect(isGold(at(x, y))).toBe(false);
 });
 
 test('I. 初次載入未經任何互動，只要初始縮放超過 1x，可見節點就已經是高解析圖示', async ({ page }) => {
@@ -513,4 +533,160 @@ test('L. 中央樞紐真的畫得出來：五條腿都在、圖不是 404，篩�
   await page.goto('/tree?branch=chaos');
   await expect(page.locator('#tree g.tree-center')).toHaveClass(/filtered-out/);
   await expect(page.locator('#tree')).not.toHaveClass(/has-selection/);
+});
+
+test('M. 標籤只在需要時出現：符文／被動預設不標字，選進前置鏈或滑過時才單獨顯示', async ({ page, isMobile }) => {
+  await page.goto('/tree');
+  // 骰子是導覽錨點，標籤恆常可見
+  await expect(page.locator('g.node[data-id="1001"] .label')).toBeVisible();
+
+  // 符文預設不標字——這正是擁擠的來源（123 個符文的標籤平均比節點間距還寬 1.5 倍）
+  const rune = page.locator('g.node[data-id="1201"] .label');
+  await expect(rune).toBeHidden();
+  if (!isMobile) {
+    await page.locator('g.node[data-id="1201"]').hover();
+    await expect(rune).toBeVisible();
+  }
+
+  // 選取節點時，前置鏈上的符文／被動要把標籤帶出來（「點開後顯示個別」）。這裡不寫死是哪個
+  // 節點——前置鏈的組成會隨資料改變，寫死只會在下次改資料時假紅。
+  await page.goto('/tree?node=1002');
+  const chainMinor = page.locator(
+    'g.node.in-chain:not([data-type="dice"]):not([data-type="support"])',
+  );
+  const n = await chainMinor.count();
+  expect(n).toBeGreaterThan(0); // 1002 的前置鏈本來就含符文／被動，是 0 代表選取根本沒生效
+  await expect(chainMinor.first().locator('.label')).toBeVisible();
+
+  // 不在鏈上的符文仍然不標字（否則上面那條會被「其實全部都顯示」蒙混過去）
+  const offChain = page.locator(
+    'g.node:not(.in-chain):not([data-type="dice"]):not([data-type="support"])',
+  );
+  await expect(offChain.first().locator('.label')).toBeHidden();
+});
+
+test('N. 詳情卡片貼在被選節點旁邊，不擋工具列，畫布平移時跟著走', async ({ page, isMobile }) => {
+  test.skip(isMobile, '僅桌機：手機版 #detail 是從底部升起的抽屜，沒有「節點旁邊」這種空間');
+  await page.goto('/tree?node=1002');
+  const panel = page.locator('#detail');
+  const icon = page.locator('g.node[data-id="1002"] .icon');
+  await expect(panel).toBeVisible();
+
+  const p1 = (await panel.boundingBox())!;
+  const n1 = (await icon.boundingBox())!;
+  const toolbar = (await page.locator('#toolbar').boundingBox())!;
+
+  // 貼在節點旁：水平方向緊鄰（左右都可以，靠近邊緣時會翻面），垂直方向大致對齊節點中心。
+  const gapRight = p1.x - (n1.x + n1.width);
+  const gapLeft = n1.x - (p1.x + p1.width);
+  expect(Math.max(gapRight, gapLeft)).toBeGreaterThanOrEqual(0);
+  expect(Math.max(gapRight, gapLeft)).toBeLessThan(40);
+  expect(Math.abs((p1.y + p1.height / 2) - (n1.y + n1.height / 2))).toBeLessThan(p1.height);
+  // 不擋工具列
+  expect(p1.y).toBeGreaterThanOrEqual(toolbar.y + toolbar.height - 1);
+
+  // 平移畫布後要跟著節點跑——卡片留在原地的話，它就指著一個已經不在那裡的節點了
+  // 起點挑畫布左下角的空白處：卡片本身佔了畫面右上一大塊，從那裡起手等於在拖卡片、
+  // 畫布不會動，測試會變成「前提不成立」的假紅。
+  await page.mouse.move(200, 600);
+  await page.mouse.down();
+  await page.mouse.move(80, 600, { steps: 8 });
+  await page.mouse.up();
+  const p2 = (await panel.boundingBox())!;
+  const n2 = (await icon.boundingBox())!;
+  expect(n2.x).toBeLessThan(n1.x - 40); // 前提：畫布真的移動了
+  expect(p2.x).toBeLessThan(p1.x - 40);
+  expect(Math.abs((p2.x - n2.x) - (p1.x - n1.x))).toBeLessThan(4); // 與節點的相對位置維持不變
+});
+
+test('O. 搜尋命中時鏡頭帶到結果、狀態列說明命中幾個、清除鈕能回到原狀；關鍵字目前不可點', async ({ page }) => {
+  // 這條守的是 image9 回報的死路：搜尋只命中兩三個節點時，畫面上是 236 個淡掉的節點加 243
+  // 條淡掉的邊，數量壓過那幾個命中的目標，看起來就像「什麼都沒發生」；而 ?q= 不會因為點
+  // 空白處而清掉（那只清 ?node=），使用者會覺得畫面卡住了、也找不到回去的路。
+  await page.goto('/tree?node=4008'); // 陰陽骰子，描述裡有 #陰陽 關鍵字
+  await expect(page.locator('#filter-status')).toBeHidden(); // 沒有篩選時整條不出現
+
+  // 關鍵字點擊搜尋目前由 src/lib/flags.ts 的 FEATURES.keywordSearch 停用：點下去不該有反應，
+  // 也不該長得像可以點。開回來時這一段會紅，把它換成「點了就等同下面那段搜尋流程」即可。
+  const kw = page.locator('#detail .kw').first();
+  await expect(kw).toBeVisible();
+  await expect(page.locator('#detail')).not.toHaveClass(/kw-clickable/);
+  await kw.click();
+  await expect(page.locator('#filter-status')).toBeHidden();
+  expect(new URL(page.url()).searchParams.get('q')).toBeNull();
+
+  // 同一套「帶我去看結果」的流程，改從搜尋框走：打字＋Enter。
+  const before = await page.locator('#viewport').getAttribute('transform');
+  await page.locator('#search').fill('陰陽');
+  await page.locator('#search').press('Enter');
+
+  // 1) 狀態列說得出命中幾個
+  await expect(page.locator('#filter-status')).toBeVisible();
+  await expect(page.locator('#filter-count')).toHaveText(/符合 \d+ 個節點/);
+
+  // 2) 鏡頭真的動了（沒動的話就是「原地一片灰」那個症狀）
+  await expect
+    .poll(async () => page.locator('#viewport').getAttribute('transform'))
+    .not.toBe(before);
+
+  // 3) 命中的節點在畫面內、而且沒有被篩掉
+  const hit = page.locator('g.node[data-id="4008"]');
+  await expect(hit).not.toHaveClass(/filtered-out/);
+  const box = (await hit.boundingBox())!;
+  expect(box.x).toBeGreaterThan(0);
+  expect(box.x).toBeLessThan(1280);
+
+  // 4) 清除鈕把篩選收乾淨：狀態列收起、沒有節點被篩掉、網址不再帶 q
+  await page.locator('#filter-clear').click();
+  await expect(page.locator('#filter-status')).toBeHidden();
+  await expect(page.locator('g.node.filtered-out')).toHaveCount(0);
+  expect(new URL(page.url()).searchParams.get('q')).toBeNull();
+});
+
+test('Q. 導覽列的「貢獻」入口目前不曝光（FEATURES.contributeLink 暫時關閉），但頁面本身還在', async ({ page }) => {
+  await page.goto('/tree');
+  await expect(page.locator('#site-nav a[href="/about"]')).toHaveCount(0);
+  // 其餘入口不能被一起關掉——反向守門，避免「整條導覽列壞了」也能讓上面那條通過。
+  await expect(page.locator('#site-nav a[href="/tree"]')).toHaveCount(1);
+  // 關的是入口不是頁面：直接開網址仍然要打得開（見 src/lib/flags.ts 的說明）。
+  const res = await page.request.get('/about');
+  expect(res.status()).toBe(200);
+});
+
+test('P. 工具列對齊：搜尋框與分支側欄切齊同一條左邊界，工具列每一項共用同一條中線', async ({ page, isMobile }) => {
+  test.skip(isMobile, '僅桌機：手機版 #branch-nav 隱藏、篩選收進頂部抽屜，沒有這條左邊界');
+  await page.goto('/tree?q=' + encodeURIComponent('僵硬')); // 帶搜尋才會出現 #filter-status
+
+  const box = async (sel: string) => {
+    const b = await page.locator(sel).first().boundingBox();
+    if (!b) throw new Error(`${sel} 沒有 bounding box`);
+    return b;
+  };
+  const search = await box('#search');
+  const branchBtn = await box('#branch-nav button');
+  const label = await box('#filters label');
+  const legend = await box('#filters legend');
+  const status = await box('#filter-status');
+
+  // 左邊界：#toolbar 與 #branch-nav 上下相接、同屬畫布左上角那一疊，內距不同的話按鈕會比
+  // 搜尋框凸出去。用幾何斷言而不是比對 CSS 值——這個 repo 的固定偏移量咬過三次（見 CLAUDE.md）。
+  expect(Math.abs(search.x - branchBtn.x)).toBeLessThan(1);
+
+  // 中線：搜尋框、狀態列、篩選群組的標題與 checkbox 全部落在同一條水平中線上。
+  const midY = (b: { y: number; height: number }) => b.y + b.height / 2;
+  for (const [name, b] of [['狀態列', status], ['legend', legend], ['checkbox', label]] as const) {
+    expect(Math.abs(midY(b) - midY(search)), `${name} 與搜尋框的中線差距`).toBeLessThan(1);
+  }
+
+  // 全站導覽列的樣式不可以漏到分支側欄：兩者都是 <nav>，用裸元素選擇器寫的 border-bottom
+  // 會被一起套上，而 #branch-nav 背景透明，那條線就變成最後一顆分支按鈕底下一條無主的橫線
+  // 浮在畫布上（2026-08-18 人工檢視回報）。
+  const borders = await page.evaluate(() => ({
+    branchNav: getComputedStyle(document.getElementById('branch-nav')!).borderBottomWidth,
+    siteNav: getComputedStyle(document.getElementById('site-nav')!).borderBottomWidth,
+  }));
+  expect(borders.branchNav).toBe('0px');
+  // 反向守門：正確的修法是把規則收斂到 #site-nav，不是把那條線整個刪掉——全站導覽列跟底下
+  // 內容之間本來就該有分隔線。
+  expect(borders.siteNav).not.toBe('0px');
 });

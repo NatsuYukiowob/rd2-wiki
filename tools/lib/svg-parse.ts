@@ -15,6 +15,15 @@ export interface RawNode {
   stroke: string;
   shape: Shape;
   icon: string;
+  /**
+   * 節點在畫面上的顯示尺寸 [寬, 高]，直接讀自 `<image>` 的 width/height。
+   *
+   * 這個值以前是寫在 `src/lib/taxonomy.ts` 的「類型 → 尺寸」對照表裡，改成從正本讀，是因為
+   * 2026-08-18 換成遊戲原圖的畫法之後，同樣是「玩家被動」卻有大小兩種（45 個 34×34、
+   * 25 個 44×44）——尺寸不再是類型的函數。正本本來就逐節點寫著這個數字，讓它當唯一真相，
+   * 比在程式碼裡再維護一份會漂移的對照表可靠。
+   */
+  size: [number, number];
 }
 
 /** 從 SVG `<path class="edge">` 抽出的原始邊資料，以座標表示起訖點（尚未對應回節點 id）。 */
@@ -39,8 +48,16 @@ export interface RawCenter {
   links: string[];
   /** 各條放射線的終點座標，順序與 `links` 對應；驗證端用它比對是否真的落在該節點中心。 */
   linkEnds: [number, number][];
-  /** 樞紐底下的文字標籤。 */
+  /** 樞紐的文字標籤。 */
   label: string;
+  /**
+   * 標籤基線相對樞紐中心的垂直位移，直接讀自正本 `<text>` 的 y。
+   *
+   * 不用「圖高的一半再加固定間距」推算：樞紐的圖是整組渲染出來的，框裡有大半是那五個
+   * 淡淡的分支符號留下的空白，照圖高推算會把標籤丟到底板下面很遠的地方。標籤該落在底板
+   * 內的哪個位置是視覺決定，讓正本說了算。
+   */
+  labelDy: number;
 }
 
 /** SVG 根節點與 `<metadata>` 帶出的圖表中繼資料。 */
@@ -167,10 +184,12 @@ function parseCenter(doc: Document, svg: Element): RawCenter | null {
     throw new Error(`tree-center 的 data-links 有 ${linkIds.length} 個 id，但有 ${links.length} 條放射線`);
   }
 
+  const text = g.querySelector('text');
   return {
     x, y, size: [w, h], image, links: linkIds,
     linkEnds: paths.map(p => p.to),
-    label: g.querySelector('text')?.textContent ?? '',
+    label: text?.textContent ?? '',
+    labelDy: Number(text?.getAttribute('y') ?? y) - y,
   };
 }
 
@@ -203,8 +222,14 @@ export function parseTree(svgText: string): { meta: RawMeta; nodes: RawNode[]; e
     const titleLines = title.split('\n');
     const levelLine = titleLines.length > 1 ? titleLines[titleLines.length - 1] : undefined;
     const lm = levelLine ? /^最高等級：(\d+)$/.exec(levelLine.trim()) : null;
-    const href = g.querySelector('image')?.getAttribute('href') ?? '';
+    const img = g.querySelector('image');
+    const href = img?.getAttribute('href') ?? '';
     const icon = /^icons\/([0-9a-f]{12})\.png$/.exec(href)?.[1] ?? '';
+    const iw = Number(img?.getAttribute('width'));
+    const ih = Number(img?.getAttribute('height'));
+    if (!Number.isFinite(iw) || !Number.isFinite(ih) || iw <= 0 || ih <= 0) {
+      throw new Error(`${nodeRef(g)} 的 <image> 缺少有效的 width/height（顯示尺寸靠它決定）`);
+    }
     return {
       id: g.getAttribute('data-id') ?? '',
       typeZh: g.getAttribute('data-type') ?? '',
@@ -216,7 +241,7 @@ export function parseTree(svgText: string): { meta: RawMeta; nodes: RawNode[]; e
       // 順序很重要：shapeOf 先判斷「有沒有形狀元素」，strokeOf 才去讀該元素的 stroke。
       // 兩者的「找不到元素」條件完全重疊（都是 querySelector('rect, circle, polygon') 落空），
       // 若順序相反，缺形狀元素的節點會先被 strokeOf 攔截、shapeOf 的「缺少形狀元素」分支永遠打不到。
-      x, y, shape: shapeOf(g), stroke: strokeOf(g), icon,
+      x, y, shape: shapeOf(g), stroke: strokeOf(g), icon, size: [iw, ih],
     };
   });
 

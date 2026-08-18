@@ -6,16 +6,20 @@
 ## 這個專案的核心概念
 
 資料正本是 **`data/dice-tree.svg`**——一份帶 `data-*` 屬性的 SVG（239 節點 / 248 邊），
-外加 `data/icons/`（202 張 PNG，檔名 = 內容 sha256 前 12 碼）與 `data/tree-center.png`
+外加 `data/icons/`（238 張 PNG，檔名 = 內容 sha256 前 12 碼）與 `data/tree-center.png`
 （中央樞紐的合成圖，見下）。由社群發 PR 維護，CI 是唯一防線（維護者不可能逐行 review
 SVG 的 diff）。
 
-**版面來自遊戲內的原圖**：2026-08-18 依 `RD2骰子樹 v1.0.1`（`/mnt/data/share/Yuki/
-random dice 2 dice tree/RD2骰子樹v1.0.1/dice_tree_v1.0.1_fixed.svg`）重排，座標取原圖 ×0.5
-（原圖節點座標全是 20 的倍數，減半後仍是 10 的倍數）。那份原圖**只有版面、沒有任何文字資料**
-（0 個 `<text>` / `<title>` / `data-name`），所以它能提供的只有座標與節點尺寸，名稱／花費／
-描述一律留在本正本裡。它的圖示與現行 `data/icons/` 逐像素最大只差 1（PNG 重新編碼的捨入），
-**不要拿它的圖示覆蓋現有的**——換了沒有視覺收益，只會讓 191 個檔案的雜湊全部作廢。
+**外觀整個來自遊戲內的原圖**：2026-08-18 依 `RD2骰子樹 v1.0.1`（`/mnt/data/share/Yuki/
+random dice 2 dice tree/RD2骰子樹v1.0.1/dice_tree_v1.0.1_fixed.svg`）重做，座標取原圖 ×0.5
+（原圖節點座標全是 20 的倍數，減半後仍是 10 的倍數），圖示、配色、邊的粗細與顏色也都對過去。
+那份原圖**只有畫面、沒有任何文字資料**（0 個 `<text>` / `<title>` / `data-name`），名稱／
+花費／描述一律留在本正本裡。
+
+⚠️ **原圖的節點不是「一張圖」，是多層疊出來的**——底盤圖 ＋ SVG 漸層圖形 ＋ 帶 CSS filter 的
+符號 ＋ 投影濾鏡。所以「換圖示」不能只是複製檔案，要跑 `npm run render-nodes`：它用真的
+Chromium 把每個節點各自渲染成一張扁平 PNG（濾鏡與漸層由瀏覽器算，不重寫一份），再把結果
+與尺寸寫回正本。這支**不掛在建置流程上**，一年跑不了幾次，CI 與貢獻者都不必裝瀏覽器。
 
 核心功能：點一個節點 → 高亮它在 DAG 上的**所有祖先聯集**（去重、含自身、多重前置視為 AND）
 → 算出解鎖成本。
@@ -24,8 +28,10 @@ random dice 2 dice tree/RD2骰子樹v1.0.1/dice_tree_v1.0.1_fixed.svg`）重排�
 
 ```bash
 npm run validate    # 資料驗證（規則 0–10，CI 守門員）
+npm run typecheck   # tsc --noEmit（含 noUnusedLocals，會抓沒用到的 import）
 npm run normalize   # 攤平 Inkscape 的圖層/matrix/相對路徑（貢獻者送 PR 前必跑）
 npm run add-icon    # 新增圖示，自動用內容雜湊命名
+npm run render-nodes # 用 Chromium 從遊戲原圖重新渲染全部節點圖示（遊戲改版才跑，見下）
 npm run build:data  # 產出 src/generated/tree.json + public/assets/
 npm run build       # build:data + astro build
 npm test            # 有 pretest 自動跑 build:data
@@ -38,9 +44,13 @@ npm run e2e         # 有 pree2e 自動跑 build
 - `5201` 前置鏈 = **核心 66 ／ 金幣 23,000**（spec §6.4 基準）
 - 全樹解鎖成本 = **核心 1,772 ／ 金幣 6,662,000**
 - `dataIssue==='placeholder'` **4** 個、`no-growth` **5** 個
-- 畫布 viewBox `0 0 2000 1700`；顯示尺寸（`SIZE_BY_TYPE`，`src/lib/taxonomy.ts`）
-  骰子 46×57、符文 26×29、被動 33×33、支援 45×47
-- 效能預算硬斷言：`tree.json` gzip ≤ 20KB（目前 15.7KB）、sprite ≤ 400KB（目前 132KB）
+- 畫布 viewBox `0 0 2000 1700`；顯示尺寸**逐節點**寫在正本的 `<image width/height>`
+  （骰子 50×53 ×41、符文 26×26 ×123、被動小 34×34 ×45、被動大 44×44 ×25、支援 51×47 ×5）。
+  **不要再加「類型 → 尺寸」對照表**：同一種類型底下也會有不同尺寸（被動有大小兩種），
+  舊的 `sizeOfType()` 就是為此拿掉的。這幾個數字改動後一定要回頭看
+  `src/scripts/tree-canvas.ts` 的兩個 `*_ICON_TARGET_PX`——它們是照骰子寬度換算的，
+  曾經因為骰子從 56 縮到 50 卻沒跟著改，讓每個視角都多放大 12%
+- 效能預算硬斷言：`tree.json` gzip ≤ 20KB（目前 16.4KB）、sprite ≤ 400KB（目前 130KB）
 
 ### 中央樞紐 `<g class="tree-center">`
 
@@ -102,13 +112,21 @@ top 差距 < 0.5px），不是看截圖。
 備份在 `/mnt/data/share/Yuki/rd2-wiki-docs/`。v1 開發歷程（39 commit）在本機
 `feat/v1-dice-tree` 分支，未推遠端。
 
+## 暫時停用的功能
+
+`src/lib/flags.ts` 的 `FEATURES` 列出「程式碼還在、只是先不讓使用者碰到」的東西，目前兩項：
+導覽列的「貢獻」入口（`/about` 直接開網址仍打得開）、詳情面板 `#關鍵字` 點下去自動搜尋。
+布林值一翻功能就回來（樣式與接線共用同一個開關，不會出現「看起來能點卻沒反應」）；
+對應的測試斷言的是**現在**的行為，開回來時會紅，紅的那幾條會直接指出還要改哪裡。
+
 ## 已知待辦
 
 見本機 `docs/v1-known-issues.md`（30 個延後的 Minor ＋ 開發期 35 項裁決）。最需要注意的：
 
-1. **節點標籤在密集區會重疊**——2026-08-18 換版面後字已經看得清（圖示與標籤都放大了），
-   但新版面的節點間距相對節點尺寸比舊版緊（節點寬/間距從 0.30 變成 0.46，原圖本身就沒有
-   標籤），符文叢集處的標籤仍會互相壓到。可讀性下限目前是拿「圖示尺寸」當指標，但真正決定
-   辨識度的是標籤。可能的修法：依縮放層級決定顯不顯示標籤、或縮小字級。待 Yuki 看畫面後決定
+1. ~~節點標籤重疊~~ **已解（2026-08-18）**：畫面上恆常只留骰子（41）與支援（5）的標籤，
+   符文（123）與被動（70）改成滑過／鍵盤聚焦／被選進前置鏈時才單獨顯示（純 CSS，見
+   `src/pages/tree.astro` 的 `.node ... .label` 規則）。量測依據：符文標籤平均寬 61 單位、
+   最近鄰距離只有 41（比值 1.49），全顯示必然重疊（實測 27 對）；**縮字級沒用**（縮到 7px
+   仍有 15 對），只留骰子與支援則是 0 對。E2E 由 `tests/e2e/tree.spec.ts` 的 M 守著
 2. **只在 Chromium 驗過**，核心渲染用 `<pattern>` 這條冷門 SVG 路徑，iOS Safari 未驗
 3. `slug` 已從 v1 移除，v2 做 `/dice` 圖鑑時要依 spec §7 重新設計（含人工名稱對照表）

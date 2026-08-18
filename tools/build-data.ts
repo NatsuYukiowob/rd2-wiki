@@ -6,7 +6,7 @@ import { buildSprite, buildHiRes, type IconEntry } from './lib/icons.js';
 import { parseCost } from '../src/lib/cost.js';
 import { parseGrowth } from '../src/lib/growth.js';
 import { extractKeywords } from '../src/lib/keywords.js';
-import { branchOfId, elementOfStroke, typeOfZh, sizeOfType } from '../src/lib/taxonomy.js';
+import { branchOfId, elementOfStroke, typeOfZh } from '../src/lib/taxonomy.js';
 import { buildAdjacency, findRoots } from '../src/lib/graph.js';
 import type { Branch, Edge, TreeData, TreeNode, UnlockVia } from '../src/lib/types.js';
 
@@ -33,7 +33,7 @@ export function buildTreeData(svgText: string, opts: BuildOpts): TreeData {
     return {
       id: r.id, branch, element: elementOfStroke(r.stroke), type,
       name: r.name, label: r.label,
-      shape: r.shape, size: sizeOfType(type), x: r.x, y: r.y,
+      shape: r.shape, size: r.size, x: r.x, y: r.y,
       unlockCost: cost,
       unlockVia: opts.unlockExceptions[r.id]?.unlockVia ?? 'cost',
       maxLevel: level,
@@ -87,6 +87,7 @@ export function buildTreeData(svgText: string, opts: BuildOpts): TreeData {
     url: `/assets/${rawCenter.image.replace(/\.png$/, '.webp')}`,
     links: rawCenter.links,
     label: rawCenter.label,
+    labelDy: rawCenter.labelDy,
   };
 
   return {
@@ -106,12 +107,20 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const unlockExceptions = JSON.parse(readFileSync('data/unlock-exceptions.json', 'utf8'));
 
   const { meta: rawMeta, nodes: rawNodes } = parseTree(svgText);
-  const typeByHash = new Map(rawNodes.map(n => [n.icon, typeOfZh(n.typeZh)]));
+  // 圖示的打包格子尺寸＝引用它的節點的顯示尺寸。同一張圖被多個節點共用時，尺寸必然相同
+  // （圖是逐節點渲染出來的，位元組一樣就代表像素尺寸一樣），所以取第一個引用者即可；
+  // src/lib/render.ts 另有一道主動檢查，真的出現一圖多尺寸會當場丟錯而不是悄悄裁錯。
+  const sizeByHash = new Map(rawNodes.map(n => [n.icon, n.size]));
+  // 沒有任何節點引用的圖示直接不打包。規則 7(d) 只警告不擋，所以這種檔案是可以合法存在的，
+  // 但為它挑一個「誰都沒用到的尺寸」當 fallback 只會讓 buildSprite 憑空多開一個 16 欄的分區，
+  // 換來一張沒有人會顯示的圖（code review 指出；先前的 fallback 是 [48, 52]，那個尺寸現在
+  // 連一個節點都不是）。真正需要它的那天，會有節點引用它、也就會有尺寸。
   const entries: IconEntry[] = readdirSync('data/icons')
     .filter(f => f.endsWith('.png'))
-    .map(f => {
+    .flatMap(f => {
       const hash = f.replace('.png', '');
-      return { hash, buf: readFileSync(`data/icons/${f}`), type: typeByHash.get(hash) ?? 'dice' };
+      const size = sizeByHash.get(hash);
+      return size ? [{ hash, buf: readFileSync(`data/icons/${f}`), size }] : [];
     });
 
   const { sprite, index, size } = await buildSprite(entries);

@@ -4,7 +4,6 @@ import { gzipSync } from 'node:zlib';
 import { buildTreeData } from '../../tools/build-data';
 import { buildSprite, type IconEntry } from '../../tools/lib/icons';
 import { parseTree } from '../../tools/lib/svg-parse';
-import { typeOfZh } from '../../src/lib/taxonomy';
 
 const svg = readFileSync('data/dice-tree.svg', 'utf8');
 const opts = {
@@ -79,12 +78,12 @@ describe('buildTreeData', () => {
   // spriteIndex），量測結果才跟 CLI 一致。
   it('data/icons/ 真實圖示組出的 sprite 符合效能預算（≤ 400 KB）', async () => {
     const { nodes: rawNodes } = parseTree(svg);
-    const typeByHash = new Map(rawNodes.map(n => [n.icon, typeOfZh(n.typeZh)]));
+    const sizeByHash = new Map(rawNodes.map(n => [n.icon, n.size]));
     const entries: IconEntry[] = readdirSync('data/icons')
       .filter(f => f.endsWith('.png'))
       .map(f => {
         const hash = f.replace('.png', '');
-        return { hash, buf: readFileSync(`data/icons/${f}`), type: typeByHash.get(hash) ?? 'dice' };
+        return { hash, buf: readFileSync(`data/icons/${f}`), size: sizeByHash.get(hash) ?? ([48, 52] as [number, number]) };
       });
     const { sprite } = await buildSprite(entries);
     expect(sprite.length).toBeLessThanOrEqual(400 * 1024);

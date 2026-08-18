@@ -3,13 +3,18 @@
 // 節點互動（詳情面板、搜尋、篩選……後續任務）會接著在這支腳本上擴充。
 import rawData from '../generated/tree.json';
 import { renderTree } from '../lib/render.js';
-import { Viewport, minReadableScale } from '../lib/viewport.js';
+import {
+  DESKTOP_ICON_TARGET_PX,
+  MOBILE_ICON_TARGET_PX,
+  Viewport,
+  minReadableScale,
+} from '../lib/viewport.js';
 import { computeSelection } from '../lib/selection.js';
 import { renderDetail } from '../components/NodeDetail.js';
 import { matchesFilter, stateToQueryString, queryStringToState, isTypingTarget } from '../lib/filter.js';
 import { visibleNodeIds, upgradeIcons } from '../lib/hires.js';
-import { sizeOfType } from '../lib/taxonomy.js';
-import type { Branch, NodeType, TreeData } from '../lib/types.js';
+import { FEATURES } from '../lib/flags.js';
+import type { Branch, NodeType, TreeData, TreeNode } from '../lib/types.js';
 
 // tree.json 是建置期由 tools/build-data.ts 產生、結構保證符合 TreeData；
 // 但 TS 對 JSON 匯入的型別推論會把 tuple（如 viewBox、size）寬鬆推成 number[]，
@@ -77,21 +82,29 @@ let currentSelected: string | null = initialSelected;
 // 存在性檢查寫法，也讓測試可以用 vi.stubGlobal('matchMedia', ...) 精準模擬手機環境
 // （見 tests/scripts/tree-canvas.test.ts）。720px 斷點要跟 src/pages/tree.astro 的
 // CSS 媒體查詢保持一致，兩邊改動時要一起改。
-const isMobile = typeof matchMedia === 'function' && matchMedia('(max-width: 720px)').matches;
+// maybeUpgradeIcons() 的節流控制碼。宣告刻意提到這裡、離它的函式很遠：jumpToBranch() 會呼叫
+// maybeUpgradeIcons()，而 jumpToBranch() 在模組初始化階段（手機版初始視角）就會被呼叫一次——
+// 宣告若留在函式旁邊（檔案下半部），那次呼叫會落進 `let` 的暫時死區直接 ReferenceError，
+// 整個模組掛掉。測試環境剛好驗不到（linkedom 沒有 cancelAnimationFrame，函式會提早 return，
+// 根本讀不到這個變數），只有真瀏覽器會炸。
+let upgradeRaf = 0;
+
+/** 手機版斷點。要跟 src/pages/tree.astro 的媒體查詢保持一致，兩邊改動時一起改。 */
+const NARROW_QUERY = '(max-width: 720px)';
+// 只用於「載入當下要不要走手機版初始視角」這種一次性決定；跟著視窗變化的判斷請當場再問一次
+// matchMedia（見 positionPanel()）。
+const isMobile = typeof matchMedia === 'function' && matchMedia(NARROW_QUERY).matches;
 
 // 骰子圖示的顯示寬度（使用者座標，見 tree.json 節點的 size 欄位／render.ts）。分支包圍盒
 // 裡最小的節點是骰子符文／被動，但「至少要看得清一顆骰子圖示」是 task-17 裁決原文明確舉的
 // 例子——拿骰子的尺寸當基準，比骰子小的圖示縮放後只會更清楚不會反而不夠，不需要每個節點
 // 各自算一個下限再取最大值，徒增複雜度換不到實質好處。
 //
-// 這個值直接取自 sizeOfType('dice')，不再抄一份數字：2026-08-18 換版面時尺寸表從 48 改成
-// 46，這裡如果還是寫死的 48，可讀性下限就會照著一個已經不存在的尺寸算，而且畫面上看起來
-// 「差不多」，沒有任何測試或型別會抱怨。
-const DICE_ICON_WIDTH_UNITS = sizeOfType('dice')[0];
-// 手機用手指操作、桌機用滑鼠，桌機的精準度門檻可以比手機低一些，兩者都遠高於「完全看不清」
-// 的舊 bug 數字（約 9～13px），差別只是要拉到多高的下限。
-const MOBILE_ICON_TARGET_PX = 32;
-const DESKTOP_ICON_TARGET_PX = 24;
+// 直接從資料取第一顆骰子的實際顯示尺寸，不抄一份數字：這個值 2026-08-18 這一天就變過兩次
+// （48 → 46 → 56），寫死的話可讀性下限會照著一個已經不存在的尺寸算，畫面上看起來「差不多」，
+// 而且沒有任何測試或型別會抱怨。
+const DICE_ICON_WIDTH_UNITS = data.nodes.find(n => n.type === 'dice')?.size[0] ?? 50;
+// 目標圖示尺寸（兩個常數與它們的由來見 src/lib/viewport.ts）。
 
 /**
  * `fitTo(bounds)` 之後，如果算出來的縮放比 `minReadableScale()`（見 src/lib/viewport.ts）
@@ -140,6 +153,9 @@ function applyReadabilityFloor(): void {
 function jumpToBranch(branch: Branch): void {
   vp.fitTo(data.meta.bounds[branch]);
   applyReadabilityFloor();
+  // 同 focusMatches()：程式移動鏡頭後要自己補一次高解析升級。分支按鈕在 <svg> 之外，
+  // svg 上那兩個 wheel／pointerup 監聽器接不到，不補的話跳過去看到的是糊的圖示。
+  maybeUpgradeIcons();
 }
 
 if (isMobile) {
@@ -243,7 +259,6 @@ svg.addEventListener('pointermove', e => {
 // 例外，但「縮放後圖示真的換成高解析版本」這個實際效果本環境驗不到，留給第 18 個任務的
 // E2E 或真機——src/lib/hires.ts 的 upgradeIcons() 本身（拿到正確的可視節點清單之後，
 // DOM 要怎麼改）已經在 tests/lib/hires.test.ts 用真實 SVG DOM 驗過。
-let upgradeRaf = 0;
 function maybeUpgradeIcons(): void {
   if (typeof cancelAnimationFrame === 'function') cancelAnimationFrame(upgradeRaf);
   if (typeof requestAnimationFrame !== 'function') return;
@@ -342,7 +357,96 @@ function select(id: string | null): void {
   ).length;
 
   renderDetail(node, sel, panel);
+  positionPanel();
 }
+
+/**
+ * 把詳情卡片挪到被選節點旁邊（spec 外，2026-08-18 人工檢視回報：卡在右上角時，眼睛要在
+ * 「點下去的節點」和「螢幕另一角」之間來回跑）。
+ *
+ * 只在桌機做。手機版的 #detail 是從螢幕底部升起的抽屜（見 src/pages/tree.astro 的媒體
+ * 查詢），窄螢幕上根本沒有「節點旁邊」這種空間，硬擠只會兩邊都看不清。
+ *
+ * 位置規則：預設放在節點右邊；右邊放不下就翻到左邊；再放不下就夾回可視範圍內。垂直方向
+ * 對齊節點中心，同樣夾在工具列下緣與視窗底部之間。這幾個夾制不是防禦性程式碼——樹的四個
+ * 角落本來就有節點，不夾就會有卡片一半在畫面外的情況。
+ */
+function positionPanel(): void {
+  // 這裡刻意**不用**模組頂端那個 isMobile：它在載入時算一次就定案，而視窗是會被拉的。
+  // 桌機視窗拉窄到斷點以下時，CSS 會把面板切成底部抽屜（inset: auto 0 0 0），但這裡留下的
+  // 行內 left/top 優先級更高，抽屜會被釘在桌機算出來的位置上（code review 實測：400×800 下
+  // 面板停在 top=162、left=12、寬 400，右邊突出畫面外）。每次都重新問一次媒體查詢才對。
+  const narrow = typeof matchMedia === 'function' && matchMedia(NARROW_QUERY).matches;
+  if (narrow) {
+    panel.style.left = '';
+    panel.style.top = '';
+    panel.style.right = '';
+    panel.style.maxHeight = '';
+    return;
+  }
+  if (panel.hidden || !currentSelected) return;
+  const nodeEl = svg.querySelector(`g.node[data-id="${currentSelected}"] .icon`);
+  if (!nodeEl) return;
+
+  const GAP = 12;
+  // 上緣夾在**工具列**下方：#toolbar 是疊在畫布左上角的固定圖層（搜尋框＋篩選），只看
+  // --nav-h 的話卡片會滑到它底下、把搜尋框蓋掉一半。量它的實際下緣而不是再寫一個固定
+  // 偏移量——這個 repo 的版面偏移量已經寫死出過三次 bug（見 CLAUDE.md）。
+  const toolbarEl = document.getElementById('toolbar');
+  const topLimit = toolbarEl
+    ? toolbarEl.getBoundingClientRect().bottom
+    : parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--nav-h')) || 48;
+
+  // 高度上限也要從同一個基準算。CSS 的 max-height 是用 --nav-h 起算的，但實際起點是工具列
+  // 下緣（低了約 68px），兩邊基準不一致時面板下緣會超出視窗——而面板最後一段固定是 spec
+  // §2.1 強制要求的「重置需要初期化券」災情警告，捲到底也看不到（code review 實測 1000×480
+  // 下超出 43.8px）。先設上限、再量高度，量到的才是夾制後的結果。
+  panel.style.maxHeight = `${Math.max(0, window.innerHeight - topLimit - GAP * 2)}px`;
+
+  const n = nodeEl.getBoundingClientRect();
+  const rect = panel.getBoundingClientRect();
+  const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(v, hi));
+
+  let left = n.right + GAP;
+  if (left + rect.width > window.innerWidth - GAP) left = n.left - GAP - rect.width;
+  left = clamp(left, GAP, Math.max(GAP, window.innerWidth - rect.width - GAP));
+
+  const top = clamp(
+    n.top + n.height / 2 - rect.height / 2,
+    topLimit + GAP,
+    Math.max(topLimit + GAP, window.innerHeight - rect.height - GAP),
+  );
+
+  panel.style.left = `${left}px`;
+  panel.style.top = `${top}px`;
+  panel.style.right = 'auto';
+}
+
+// 畫布一動（拖曳、滾輪縮放、雙指縮放、分支跳轉、初始視角……）卡片就要跟著節點跑。與其在
+// 每個事件處理器後面各補一次呼叫（漏掉任何一個就會留下一張黏在原地的卡片），這裡監看
+// #viewport 的 transform——Viewport 的每一次變動最後都落在這個屬性上，一個掛勾全包。
+// `typeof` 存在性檢查跟本檔上面 matchMedia 那裡同一個理由：單元測試環境（linkedom）沒有
+// MutationObserver，直接 new 會是 ReferenceError、整個模組掛掉。卡片跟隨畫布這件事需要真的
+// 版面資訊，本來就只能靠 E2E 驗（tests/e2e/tree.spec.ts 的 N）。
+// 用 requestAnimationFrame 節流（跟 maybeUpgradeIcons() 同一套路）：拖曳時每一幀都會寫一次
+// transform，不節流的話每次寫入後都立刻 getBoundingClientRect() 兩次再寫回 style，是典型的
+// 讀寫交錯版面抖動。
+let positionRaf = 0;
+function schedulePositionPanel(): void {
+  if (typeof requestAnimationFrame !== 'function') {
+    positionPanel();
+    return;
+  }
+  cancelAnimationFrame(positionRaf);
+  positionRaf = requestAnimationFrame(() => positionPanel());
+}
+if (typeof MutationObserver === 'function') {
+  new MutationObserver(schedulePositionPanel).observe(viewport, {
+    attributes: true,
+    attributeFilter: ['transform'],
+  });
+}
+window.addEventListener('resize', schedulePositionPanel);
 
 // 選取判定用 pointerdown/pointerup 自己量位移，不用 click（審查回饋，2026-08-17 第 1
 // 輪修正）：
@@ -393,8 +497,14 @@ svg.addEventListener('keydown', e => {
 // select(selected)——applyFilter() 內部已經呼叫過，外面重複呼叫只是多做一次一樣的事，
 // 還容易在日後改動時兩處各改一半、行為對不上，所以拿掉了。
 function applyFilter(): void {
+  // 判定算一次就好。以前這個函式會把 matchesFilter() 跑過節點一輪、248 條邊的兩端各一輪、
+  // 再一輪算 anyFiltered，updateFilterStatus() 又跑第四輪——每一次按鍵約 1,200 次呼叫，
+  // 每次都要 normalizeQuery() 再對 name／description／keywords 做 includes（code review 指出）。
+  const matched = new Map(data.nodes.map(n => [n.id, matchesFilter(n, filterState)]));
+  const isMatch = (id: string) => matched.get(id) ?? false;
+
   for (const n of data.nodes) {
-    svg.querySelector(`g.node[data-id="${n.id}"]`)?.classList.toggle('filtered-out', !matchesFilter(n, filterState));
+    svg.querySelector(`g.node[data-id="${n.id}"]`)?.classList.toggle('filtered-out', !isMatch(n.id));
   }
   // 邊也要跟著篩選淡出（上一輪審查 Minor，task-17 補漏）：一條邊如果兩端節點都被篩掉，
   // 套用同一套 .filtered-out class 讓它一起淡出（樣式見 global.css 的
@@ -404,9 +514,7 @@ function applyFilter(): void {
   // select()，幫前置鏈上的邊補上 .in-chain，靠 CSS 的 !important 疊加規則蓋過這裡設的
   // opacity（見 global.css 的說明），這裡不用另外排除前置鏈上的邊。
   for (const [from, to] of data.edges) {
-    const a = byId.get(from);
-    const b = byId.get(to);
-    const bothFiltered = !!a && !!b && !matchesFilter(a, filterState) && !matchesFilter(b, filterState);
+    const bothFiltered = !isMatch(from) && !isMatch(to);
     svg
       .querySelector(`line.edge[data-from="${from}"][data-to="${to}"]`)
       ?.classList.toggle('filtered-out', bothFiltered);
@@ -414,13 +522,71 @@ function applyFilter(): void {
   // 中央樞紐不是節點、拿不到上面那個逐節點掛的 .filtered-out，但畫面上它跟節點一樣佔位置：
   // 只要有任何節點被篩掉（＝使用者正在縮小注意範圍），樞紐就該一起淡下去，否則它會變成
   // 全畫面唯一還亮著的東西（樣式見 global.css 的 `#tree .tree-center.filtered-out`）。
-  const anyFiltered = data.nodes.some(n => !matchesFilter(n, filterState));
-  svg.querySelector('g.tree-center')?.classList.toggle('filtered-out', anyFiltered);
+  const matchCount = [...matched.values()].filter(Boolean).length;
+  svg.querySelector('g.tree-center')?.classList.toggle('filtered-out', matchCount < data.nodes.length);
+
+  updateFilterStatus(matchCount);
 
   // 沒有選取節點時，select() 不會被呼叫、syncUrl() 也就不會跑，這裡補呼叫一次，
   // 確保單純調整篩選（沒選節點）也會把 ?branch=/?type=/?q= 寫回網址。
   if (currentSelected) select(currentSelected);
   else syncUrl();
+}
+
+/** 目前符合篩選條件的節點。 */
+function matchedNodes(): TreeNode[] {
+  return data.nodes.filter(n => matchesFilter(n, filterState));
+}
+
+/** 現在有沒有任何篩選條件（搜尋字串或分支／類型勾選）。 */
+function hasActiveFilter(): boolean {
+  return filterState.query.trim() !== '' || filterState.branches.size > 0 || filterState.types.size > 0;
+}
+
+/**
+ * 更新工具列的篩選狀態列。
+ *
+ * 這條存在的理由是可讀性，不是好看：搜尋只命中兩三個節點時，畫面上是 236 個淡掉的節點加
+ * 243 條淡掉的邊，數量壓過那幾個命中的目標，看起來就像「什麼都沒發生」；而 ?q= 不會因為
+ * 點空白處而清掉（那只清 ?node=），使用者會覺得畫面卡住了、也找不到回去的路。
+ */
+function updateFilterStatus(matchCount: number): void {
+  const status = document.getElementById('filter-status');
+  const count = document.getElementById('filter-count');
+  if (!status || !count) return;
+  if (!hasActiveFilter()) {
+    status.hidden = true;
+    return;
+  }
+  status.hidden = false;
+  count.textContent = matchCount === 0 ? '沒有符合的節點' : `符合 ${matchCount} 個節點`;
+  count.classList.toggle('none', matchCount === 0);
+}
+
+/**
+ * 把鏡頭帶到目前符合篩選的節點上。
+ *
+ * 只在「使用者明確要求看結果」時呼叫（點關鍵字、在搜尋框按 Enter），不掛在每次輸入上——
+ * 邊打字邊跳鏡頭會讓人抓不到畫面。
+ */
+function focusMatches(): void {
+  const matched = matchedNodes();
+  if (matched.length === 0) return;
+  const xs = matched.map(n => n.x);
+  const ys = matched.map(n => n.y);
+  const PAD = 90;
+  // 下限 400：只命中一個節點時，包圍盒只有內距那麼大，fitTo 會一路放大到 8 倍上限，
+  // 整個畫面只剩一顆圖示、完全失去「它在樹的哪裡」這個資訊。
+  const w = Math.max(400, Math.max(...xs) - Math.min(...xs) + PAD * 2);
+  const h = Math.max(400, Math.max(...ys) - Math.min(...ys) + PAD * 2);
+  const cx = (Math.min(...xs) + Math.max(...xs)) / 2;
+  const cy = (Math.min(...ys) + Math.max(...ys)) / 2;
+  vp.fitTo([cx - w / 2, cy - h / 2, w, h]);
+  applyReadabilityFloor();
+  // 鏡頭一動就會有新的節點進到畫面裡，它們還掛著 sprite 的低解析 pattern（放大後會糊）。
+  // maybeUpgradeIcons() 平常只掛在 wheel／pointerup 上，程式自己移動鏡頭時不會被觸發——
+  // 這正是 task-18 code review 抓過一次的同一個 bug，這條路徑（搜尋跳轉）當時還不存在。
+  maybeUpgradeIcons();
 }
 
 /** 把目前的篩選狀態＋選取節點寫回網址，用 replaceState（不用 pushState，見任務指示：
@@ -451,15 +617,24 @@ document.getElementById('filters-toggle')?.addEventListener('click', () => {
 // <span class="kw"> 上掛監聽器，下一次重畫就會被沖掉；改用事件委派掛在 #detail 本身
 // （面板容器元素不會被 innerHTML 重畫掉，只有它的子節點內容會被整段換掉），點擊事件
 // 冒泡上來時用 closest('.kw') 判斷是不是點在關鍵字 chip 上，不是就直接略過。
-panel.addEventListener('click', e => {
-  const kwEl = (e.target as Element).closest?.('.kw');
-  if (!kwEl) return;
-  const keyword = (kwEl.textContent ?? '').replace(/^#/, '');
-  if (!keyword) return;
-  searchEl.value = keyword;
-  filterState.query = keyword;
-  applyFilter();
-});
+// `.kw-clickable` 同時是樣式開關（游標與 hover 底線，見 src/styles/global.css）與這裡的
+// 接線開關，兩者共用 FEATURES.keywordSearch 一個布林值——不會出現「看起來能點但點了沒反應」
+// 或反過來的組合。
+panel.classList.toggle('kw-clickable', FEATURES.keywordSearch);
+if (FEATURES.keywordSearch) {
+  panel.addEventListener('click', e => {
+    const kwEl = (e.target as Element).closest?.('.kw');
+    if (!kwEl) return;
+    const keyword = (kwEl.textContent ?? '').replace(/^#/, '');
+    if (!keyword) return;
+    searchEl.value = keyword;
+    filterState.query = keyword;
+    applyFilter();
+    // 點關鍵字是「給我看有這個效果的節點」，所以把鏡頭帶過去。沒有這一步的話，命中的節點
+    // 可能在畫面外，使用者看到的只是原地的一片灰（image9 回報的「沒有東西跑出來」）。
+    focusMatches();
+  });
+}
 
 // 還原網址帶入的搜尋字串／勾選狀態，讓畫面初始值跟網址一致（對應 brief Step 6 的手動
 // 驗收項目：開 /tree?node=1002&branch=nature&q=冰凍，節點被選取、篩選框已勾選、搜尋框
@@ -475,6 +650,29 @@ for (const cb of filtersEl.querySelectorAll<HTMLInputElement>('input[data-type]'
 
 searchEl.addEventListener('input', () => {
   filterState.query = searchEl.value;
+  applyFilter();
+});
+
+// Enter＝「帶我去看」。輸入中途不動鏡頭（每打一個字就跳一次會讓人抓不到畫面），
+// 按下 Enter 才是明確要求。
+searchEl.addEventListener('keydown', e => {
+  if (e.key !== 'Enter') return;
+  e.preventDefault();
+  // 空字串時 matchedNodes() 會回傳全部 239 個節點，focusMatches() 於是把鏡頭重設成「整棵樹」
+  // ——使用者剛剛的平移縮放被無聲丟掉，而畫面上沒有任何東西解釋為什麼跳走（code review 實測）。
+  // 模組底部那次呼叫本來就有這個判斷，這裡當時漏了。
+  if (filterState.query.trim() === '') return;
+  focusMatches();
+});
+
+document.getElementById('filter-clear')?.addEventListener('click', () => {
+  filterState.query = '';
+  filterState.branches.clear();
+  filterState.types.clear();
+  searchEl.value = '';
+  for (const cb of filtersEl.querySelectorAll<HTMLInputElement>('input[data-branch], input[data-type]')) {
+    cb.checked = false;
+  }
   applyFilter();
 });
 
@@ -508,3 +706,6 @@ for (const cb of filtersEl.querySelectorAll<HTMLInputElement>('input[data-type]'
 }
 
 applyFilter();
+// 網址帶了搜尋字串就把鏡頭帶到命中的節點上。分享連結（或按下重新整理）本來就是在說
+// 「看這些」，落在原本的初始視角只會看到一片灰，跟點關鍵字時的死路一模一樣。
+if (filterState.query.trim() !== '') focusMatches();

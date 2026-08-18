@@ -10,9 +10,6 @@ const ELEMENT_BY_STROKE: Record<string, Element> = {
 const TYPE_BY_ZH: Record<string, NodeType> = {
   '骰子': 'dice', '骰子符文': 'rune', '玩家被動': 'passive', '支援': 'support',
 };
-const SIZE_BY_TYPE: Record<NodeType, [number, number]> = {
-  dice: [46, 57], rune: [26, 29], passive: [33, 33], support: [45, 47],
-};
 
 /** 分支由 id 首碼決定；支援節點的分支也跟著 id 首碼走，不是固定的 support。 */
 export function branchOfId(id: string): Branch {
@@ -31,8 +28,4 @@ export function typeOfZh(zh: string): NodeType {
   const t = TYPE_BY_ZH[zh];
   if (!t) throw new Error(`未知的 data-type: ${zh}`);
   return t;
-}
-/** 各類型節點在畫面上的顯示尺寸（寬、高）。 */
-export function sizeOfType(type: NodeType): [number, number] {
-  return SIZE_BY_TYPE[type];
 }

@@ -5,7 +5,7 @@
  * 避免各頁面各自定義出不一致的顏色。
  */
 :root {
-  --bg: #29233f;
+  --bg: #2f2942; /* 取自遊戲原圖的背景矩形，讓站台與原圖同一個底色 */
   --panel: #322b4b;
   --fg: #f7f3ff;
   --muted: #aaa4c1;
@@ -48,7 +48,13 @@ a:hover {
   text-decoration: underline;
 }
 
-nav {
+/*
+ * 只針對全站導覽列，不要用裸的 `nav` 元素選擇器：骰子樹頁面還有第二個 <nav id="branch-nav">
+ * （桌機側欄的分支跳轉），裸選擇器會把這裡的樣式一起套上去。#branch-nav 在 tree.astro 覆寫了
+ * display／flex-direction／gap／padding，唯獨沒覆寫 border-bottom，於是它背景透明的盒子在
+ * 最後一顆分支按鈕底下拖出一條無主的橫線，浮在畫布上（2026-08-18 人工檢視回報）。
+ */
+#site-nav {
   display: flex;
   align-items: center;
   gap: 1rem;
@@ -56,12 +62,12 @@ nav {
   border-bottom: 1px solid var(--border);
 }
 
-nav a {
+#site-nav a {
   text-decoration: none;
   font-weight: 600;
 }
 
-nav a:hover {
+#site-nav a:hover {
   text-decoration: underline;
 }
 
@@ -167,19 +173,24 @@ pre {
 
 #detail {
   position: fixed;
-  right: 0;
   /* var(--nav-h, 3rem)：跟 src/pages/tree.astro 的 #tree-controls 用同一個由
      src/scripts/tree-canvas.ts 的 updateNavHeight() 量出來的 CSS 自訂屬性，理由見
      那條規則的註解（修「#toolbar 右上角戳出 nav 下緣」bug 時一併修，兩者本來就是
      同一個「nav 底下」的偏移量，不該各自寫死）。3rem 只當 JS 執行前的 fallback。 */
-  top: var(--nav-h, 3rem);
+  top: calc(var(--nav-h, 3rem) + 0.75rem);
+  /* 浮在畫布上的獨立卡片，不是貼著邊緣的側欄：右邊與上下都留 0.75rem，四邊都有框、
+     有圓角與陰影，高度只包到內容為止（撐滿時才捲動）。留白讓底下的骰子樹在卡片邊緣
+     露出來，看得出來它是疊在畫布上的一層，而不是把畫布切掉一塊。 */
+  right: 0.75rem;
   width: 22rem;
-  max-width: 100%;
-  max-height: 80vh;
+  max-width: calc(100% - 1.5rem);
+  max-height: calc(100vh - var(--nav-h, 3rem) - 1.5rem);
   overflow: auto;
   background: var(--panel);
   padding: 1rem;
-  border-left: 1px solid var(--border);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 10px 30px rgb(0 0 0 / 50%);
 }
 #detail h2 {
   margin-top: 0;
@@ -200,12 +211,16 @@ pre {
   font-size: 1.1rem;
   font-weight: 700;
 }
-/* 關鍵字 chip 可點擊搜尋（spec §6.2.3，task-17 補漏）：cursor 給點擊可能性的視覺提示，
-   實際點擊行為（設定搜尋框、套用篩選、更新網址）接在 tree-canvas.ts。 */
+/* 關鍵字在描述裡一律用強調色標出來——那是「這個詞在遊戲裡有特定意義」的提示，跟能不能點無關。 */
 #detail .kw {
   color: var(--support);
+}
+/* 「看起來可以點」只在功能真的開著時才給（`.kw-clickable` 由 tree-canvas.ts 依
+   src/lib/flags.ts 的 FEATURES.keywordSearch 掛上）。功能停用時還留著 cursor: pointer
+   與 hover 底線，等於騙使用者去點一個沒有反應的東西。 */
+#detail.kw-clickable .kw {
   cursor: pointer;
 }
-#detail .kw:hover {
+#detail.kw-clickable .kw:hover {
   text-decoration: underline;
 }

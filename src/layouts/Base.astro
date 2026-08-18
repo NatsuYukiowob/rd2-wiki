@@ -1,9 +1,10 @@
 ---
 // 全站共用版面：導覽列、頁尾版權聲明。
-// 導覽列只放已上線的頁面（首頁／骰子樹／貢獻），骰子樹頁面雖是下一個任務才會實作
-// 內容，但路由先接上不影響本頁。
+// 導覽列只放已上線的頁面。「貢獻」入口目前由 src/lib/flags.ts 的 FEATURES.contributeLink
+// 暫時關掉（頁面本身還在，只是不從導覽列曝光）。
 import '../styles/global.css';
 import data from '../generated/tree.json';
+import { FEATURES } from '../lib/flags';
 
 interface Props {
   title: string;
@@ -29,7 +30,7 @@ const { title } = Astro.props;
     <nav id="site-nav">
       <a href="/">rd2-wiki</a>
       <a href="/tree">骰子樹</a>
-      <a href="/about">貢獻</a>
+      {FEATURES.contributeLink && <a href="/about">貢獻</a>}
       <!-- 顯示「上次更新」而非資料版本號：日期取自資料正本 SVG 的 data-updated 屬性
            （tools/build-data.ts 解析進 meta.updated），會隨資料更新自動變動，
            不是寫死在頁面上的字串。 -->

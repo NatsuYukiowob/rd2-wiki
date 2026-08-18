@@ -76,7 +76,9 @@ describe('parseTree（真實資料）', () => {
     expect(() => parseTree(sub)).toThrow(/不可含路徑/);
   });
   it('樞紐的圖沒有以中心對齊時擋下（正本與站台會畫在不同位置）', () => {
-    const off = svg.replace('<image href="tree-center.png" x="952.00"', '<image href="tree-center.png" x="900.00"');
+    // x 從正本現讀：樞紐的尺寸會隨 tools/render-nodes.ts 重跑而變，寫死就會變成 no-op。
+    const x = /<image href="tree-center\.png" x="([-\d.]+)"/.exec(svg)![1]!;
+    const off = svg.replace(`x="${x}"`, `x="${Number(x) - 50}"`);
     expect(off).not.toBe(svg);
     expect(() => parseTree(off)).toThrow(/以樞紐中心對齊/);
   });

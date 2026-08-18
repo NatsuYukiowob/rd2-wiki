@@ -108,18 +108,26 @@ describe('upgradeIcons', () => {
     expect(icon.getAttribute('fill')).not.toBe(fillAfterFirst);
   });
 
-  it('多個節點共用同一個圖示雜湊時，只會建立一個高解析 pattern，不重複建立（1101/1110 共用 a5caff6da1d2）', () => {
-    const svg = renderInto();
-    const icon1101 = iconRect(svg, '1101');
-    const icon1110 = iconRect(svg, '1110');
-    const hash = icon1101.getAttribute('data-icon')!;
-    expect(icon1110.getAttribute('data-icon')).toBe(hash); // 前提：測試資料真的共用同一張圖，不然這條測試沒有意義
+  it('多個節點共用同一個圖示雜湊時，只會建立一個高解析 pattern，不重複建立', () => {
+    // 共用同一張圖的那一對節點從資料現找，不寫死 id 與雜湊：圖示是逐節點渲染出來、再依內容
+    // 雜湊命名的，遊戲改版重跑一次 tools/render-nodes.ts，哪兩個節點剛好長一樣就會變。
+    const byIcon = new Map<string, string[]>();
+    for (const n of data.nodes) byIcon.set(n.icon, [...(byIcon.get(n.icon) ?? []), n.id]);
+    const shared = [...byIcon.values()].find(ids => ids.length >= 2);
+    expect(shared).toBeDefined(); // 前提：真的有節點共用同一張圖，不然這條測試沒有意義
+    const [idA, idB] = shared!;
 
-    upgradeIcons(['1101', '1110'], svg);
+    const svg = renderInto();
+    const iconA = iconRect(svg, idA!);
+    const iconB = iconRect(svg, idB!);
+    const hash = iconA.getAttribute('data-icon')!;
+    expect(iconB.getAttribute('data-icon')).toBe(hash);
+
+    upgradeIcons([idA!, idB!], svg);
 
     expect(svg.querySelectorAll(`defs > pattern#icon-hires-${hash}`)).toHaveLength(1);
-    expect(icon1101.getAttribute('fill')).toBe(`url(#icon-hires-${hash})`);
-    expect(icon1110.getAttribute('fill')).toBe(`url(#icon-hires-${hash})`);
+    expect(iconA.getAttribute('fill')).toBe(`url(#icon-hires-${hash})`);
+    expect(iconB.getAttribute('fill')).toBe(`url(#icon-hires-${hash})`);
   });
 
   it('對不存在的節點 id 不拋錯，靜默略過', () => {

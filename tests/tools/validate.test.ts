@@ -127,6 +127,18 @@ describe('validate', () => {
     expect(result.errors.some(e => /規則 10.*小於顯示尺寸的兩倍/.test(e))).toBe(true);
   });
 
+  it('規則 7(e)：顯示尺寸相對圖示解析度過大會被擋', () => {
+    // 顯示尺寸 2026-08-18 改成逐節點寫在正本裡（不再由類型推導），這條是它唯一的守門員：
+    // 少了它，一個 width="500" 的節點會讓 sprite 為它開一個 500×500 分區、拿 104px 的來源
+    // 拉上去，站台上是一塊糊掉的巨型貼圖，而 CI 全綠。
+    const broken = svg.replace(
+      /(<image href="icons\/[0-9a-f]{12}\.png" x="[-\d.]+" y="[-\d.]+" )width="[\d.]+" height="[\d.]+"/,
+      '$1width="500" height="500"',
+    );
+    expect(broken).not.toBe(svg);
+    expect(validate(broken, opts).errors.some(e => /規則 7\(e\)/.test(e))).toBe(true);
+  });
+
   it('規則 5：邊少了 marker-end 會被擋', () => {
     const broken = svg.replace('<path class="edge" marker-end="url(#arrow)"', '<path class="edge"');
     expect(validate(broken, opts).errors.some(e => /marker-end/.test(e))).toBe(true);
@@ -151,7 +163,7 @@ describe('validate', () => {
     const wip = svg.replace('</svg>',
       '<g class="node" data-wip="1" transform="translate(300.00,300.00)" data-id="1099" data-type="骰子" data-name="測試骰子" data-cost="核心 5" data-description="測試">' +
       '<title>骰子｜測試骰子｜測試</title><rect x="-36" y="-28" width="72" height="56" stroke="#ef625e"/>' +
-      '<image href="icons/000000000000.png"/><text>測試骰子</text></g></svg>');
+      '<image href="icons/000000000000.png" width="56" height="56"/><text>測試骰子</text></g></svg>');
     // 圖示內容檢查（規則 7b/7c）與這條測試的重點無關，所以用一個獨立的暫存目錄放假圖示，
     // 不動到真正的 data/icons；假圖示的雜湊／格式不會通過規則 7，但那是預期中的另一個
     // 錯誤，不影響本測試只關心的「不可達」斷言。

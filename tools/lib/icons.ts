@@ -1,23 +1,25 @@
 import sharp from 'sharp';
-import { sizeOfType } from '../../src/lib/taxonomy.js';
-import type { NodeType } from '../../src/lib/types.js';
 
-/** 一張待打包圖示：雜湊檔名、原始 PNG 位元組、所屬節點類型。 */
+/** 一張待打包圖示：雜湊檔名、原始 PNG 位元組、在畫面上的顯示尺寸 [寬, 高]。 */
 export interface IconEntry {
   hash: string;
   buf: Buffer;
-  type: NodeType;
+  /**
+   * 顯示尺寸來自引用這張圖的節點（正本 `<image>` 的 width/height），不再由「節點類型」推導：
+   * 2026-08-18 換成遊戲原圖的畫法之後，同一種類型底下也會有不同尺寸（玩家被動有大小兩種）。
+   */
+  size: [number, number];
 }
 
 const COLS = 16;
 const QUALITY = 80;
 
 /**
- * 把所有圖示依「類型」分區打包成一張 WebP sprite。
+ * 把所有圖示依「顯示尺寸」分區打包成一張 WebP sprite。
  *
- * 圖示在畫面上有四種顯示尺寸（骰子/符文/被動/支援），若全部塞進同一格會讓正方形圖被拉伸、
- * 或讓小尺寸類型浪費版面。因此依類型分組、各自用自己的格子尺寸排版（每組固定 16 欄），
- * 縮放一律 `fit: 'inside'` 保留長寬比，回傳的 `index` 記錄每張圖在畫布上的 `[x, y, w, h]`。
+ * 圖示在畫面上有好幾種顯示尺寸，若全部塞進同一格會讓正方形圖被拉伸、或讓小尺寸的浪費版面。
+ * 因此依尺寸分組、各自用自己的格子尺寸排版（每組固定 16 欄），縮放一律 `fit: 'inside'`
+ * 保留長寬比，回傳的 `index` 記錄每張圖在畫布上的 `[x, y, w, h]`。
  */
 export async function buildSprite(
   entries: IconEntry[]
@@ -29,7 +31,7 @@ export async function buildSprite(
 }> {
   const groups = new Map<string, IconEntry[]>();
   for (const e of entries) {
-    const [w, h] = sizeOfType(e.type);
+    const [w, h] = e.size;
     const key = `${w}x${h}`;
     const group = groups.get(key);
     if (group) {
@@ -76,7 +78,7 @@ export async function buildSprite(
 export async function buildHiRes(entries: IconEntry[]): Promise<Map<string, Buffer>> {
   const out = new Map<string, Buffer>();
   for (const e of entries) {
-    const [w, h] = sizeOfType(e.type);
+    const [w, h] = e.size;
     out.set(
       e.hash,
       await sharp(e.buf)
