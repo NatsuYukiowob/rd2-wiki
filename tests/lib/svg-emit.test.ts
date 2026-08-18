@@ -171,6 +171,15 @@ describe('svg-emit', () => {
  *
  * 這支測試如果早存在，Critical bug（encodeAttr／escapeXmlContent 漏轉 `>`／U+00A0／`\r`）
  * 在最初實作 emitter 的那個任務就會被抓到，不必等到全分支審查才發現。
+ *
+ * ⚠️ 這支測試只斷言 fixpoint（`normalizeSvg(out) === out`），**不斷言雙 parser 一致性**
+ * （Chromium 與 linkedom 讀出同一個值）——這是兩個獨立的不變量，分別驗（見 CLAUDE.md
+ * 「fixpoint 不等於雙 parser 一致」那段）。下面 `ADVERSARIAL_INPUTS` 含 `'\t'` 且這支測試
+ * 全綠，**不代表字面 TAB 沒問題**：TAB 正是一個 fixpoint 成立、雙 parser 卻不一致的已知
+ * 反例（`encodeAttr` 不逃逸 `\t`，`normalizeSvg` 也不把它編碼，所以是 fixpoint；但屬性值
+ * 裡的字面 TAB 會被 Chromium 正規化成空格、linkedom 不會，跟 `\n`／`\r` 同一種落差）。
+ * 細節與重現方式見 `docs/v1-known-issues.md`「字面 TAB 的雙 parser 分歧」一條，不要把這裡的
+ * 綠燈當成「TAB 已經被涵蓋」的證明。
  */
 describe('emitter 輸出必須是 normalizeSvg 的定點（property test）', () => {
   const n = parseNodeBlock(allNodeBlocks(svgText).find(b => b.includes('data-id="1002"'))!);

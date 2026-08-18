@@ -76,6 +76,11 @@ npm run e2e         # 有 pree2e 自動跑 build
   才會失敗，玩家在編輯器裡完全看不出原因。下次要改這裡的逃逸規則：先用
   `tests/lib/svg-emit.test.ts` 的 property test（拿一組對抗性字元跑
   `normalizeSvg(out) === out`）驗證，不要只憑 XML 規範推導字元清單
+- **fixpoint 不等於雙 parser 一致——這是兩個獨立的不變量，要分開驗。**
+  `normalizeSvg(檔案) === 檔案` 只保證「linkedom 讀進去再寫出來不變」；它**不保證** Chromium
+  與 linkedom 讀出同樣的值。字面 TAB 就是一個 fixpoint 成立、雙 parser 卻不一致的實例
+  （見 `docs/v1-known-issues.md`）。`tests/lib/svg-emit.test.ts` 的 property test 只斷言
+  前者，**不要把它當成後者的保證**。
 - **`/edit` 的信任邊界**：`functions/api/github/submit.ts` 收到的 `body.summary`（PR 標題／
   內文摘要）完全由玩家瀏覽器算出、伺服器不重算也不驗證，任何人可用 curl 送一份「整份改寫的
   svgText ＋ 宣稱只改了 1 個節點的 summary」——`renderPrBody()` 已經在內文開頭加了一行
