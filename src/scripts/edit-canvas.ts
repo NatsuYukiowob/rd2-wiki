@@ -42,7 +42,7 @@ type UnlockExceptions = Record<string, { unlockVia: UnlockVia }>;
 
 // 最近一次成功渲染所用的節點清單，供 bindNodeClicks() 查完整欄位用（id → TreeNode）。
 // 不放進 editorState（那個物件的形狀是跨任務 DOM 契約，見簡報，不能隨意加欄位）：這裡純粹
-// 是「目前畫面上畫的是哪份資料」的內部快取，Task 12 的表單渲染會需要同一份查表，屆時再决定
+// 是「目前畫面上畫的是哪份資料」的內部快取，Task 12 的表單渲染會需要同一份查表，屆時再決定
 // 要不要把這個查表邏輯抽出去共用。rerender() 失敗時刻意不更新它——連畫面都保留上一輪的了，
 // 查表跟著保留上一輪的資料才是一致的（見 rerender() 的 try/catch 說明）。
 let currentNodesById = new Map<string, TreeNode>();

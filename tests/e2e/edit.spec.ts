@@ -245,8 +245,8 @@ test.describe('線上編輯器', () => {
     // 這個換算完全不設界——實測過：Playwright 的 mobile 專案（Pixel 7）套用這個版面後，
     // #edit-canvas-host 只剩 92px 寬、757px 高（20rem 的 #edit-panel 沒有隨小螢幕收窄，
     // 這是既有版面本來就有的落差，不是 Task 13 要處理的範圍），螢幕的 CTM 縮放分量因此
-    // 被压得極小，一個 15px 的拖曳换算成使用者座標會偏移超過 500 單位；这在有些方向上
-    // 会把新节点推到当前可视窗口之外，导致后面 `.node.last().click()` 因为「元素不在
+    // 被壓得極小，一個 15px 的拖曳換算成使用者座標會偏移超過 500 單位；這在有些方向上
+    // 會把新節點推到當前可視窗口之外，導致後面 `.node.last().click()` 因為「元素不在
     // 視窗內」逾時。只縮放、不平移，縮放錨點固定在畫布中心，不會有這個問題。
     const host = page.locator('#edit-canvas-host');
     const box = await host.boundingBox();
