@@ -48,6 +48,14 @@ jobs:
         # ENOENT。package.json 的 `pretest` 已經會在 `npm test` 前自動跑一次
         # `build:data`，這裡的步驟順序是第二層保險（互為保險，其中一層失效另一層還在）。
         run: npm run build
+      - name: 型別檢查（兩套環境）
+        # functions/ 是 Cloudflare Workers 執行環境、src/ 是瀏覽器，兩者的全域型別互斥
+        # （@cloudflare/workers-types 的 Response／Element 會跟 DOM lib 衝突），
+        # 所以有兩份 tsconfig、要各檢查一次。vitest 靠 esbuild 去型別，
+        # 測試跑得過不代表型別是對的——這一關是唯一會擋下型別錯誤的地方。
+        run: |
+          npx tsc --noEmit
+          npm run typecheck:functions
       - name: 單元測試
         run: npm test
       - name: 效能預算（規則 11：對建置產物做獨立覆核，並印出用量／剩餘餘裕）
