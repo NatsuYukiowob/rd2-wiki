@@ -6,7 +6,7 @@
 // 與這份自動摘要。摘要的品質標準不是「資訊完整」，是「一眼看得出要不要細看」。
 //
 // 跟 svg-edit.ts／svg-emit.ts 一樣刻意不 import linkedom／node:*：這個檔案會被 Astro
-// 打包進瀏覽器（Task 21 的線上編輯器要在送出 PR 前，用玩家editor session 裡的
+// 打包進瀏覽器（Task 21 的線上編輯器要在送出 PR 前，用玩家編輯過程中的
 // before/after TreeData 現算摘要），不能有任何 Node 專屬依賴。
 import type { Cost, TreeData } from './types.js';
 
