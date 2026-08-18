@@ -176,6 +176,10 @@ describe('minReadableScale（task-17/18 裁決：最小可讀縮放下限，純�
   // 「寬高兩個縮放比取較小值」，容器與 viewBox 的長寬比不同時，到底是寬還是高在限制縮放
   // 要看實際尺寸，只算寬度在手機直向容器（窄且高）剛好蒙混過關，桌機橫向容器（寬且扁，
   // 比 viewBox 更扁）就會算錯（見下面「1280x610 桌機」那條，這是 task-18 修正的核心案例）。
+  // 以下三個是這一組純函式測試自己的**固定樣本**，不是站台當下的實際值（2026-08-18 換版面後
+  // 正本的 viewBox 是 2000x1700、骰子圖示 46 單位寬）。minReadableScale() 是純算式，換成真實
+  // 資料只會讓期望值跟著資料浮動、失去「這個算式算對了沒」的意義，所以刻意釘死在一組容易手算
+  // 的數字上。要驗「站台實際用的值有沒有接對」，那是 tests/scripts/tree-canvas.test.ts 的事。
   const VIEWBOX_WIDTH = 3400;
   const VIEWBOX_HEIGHT = 2850;
   const DICE_ICON_WIDTH_UNITS = 48;

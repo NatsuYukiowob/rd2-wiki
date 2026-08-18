@@ -49,6 +49,28 @@ describe('buildTreeData', () => {
     expect(n.branch).toBe('nature');
     expect(n.element).toBe('support');
   });
+  it('meta.center 帶出中央樞紐：連線就是五顆起手骰、圖換成建置期輸出的 WebP 網址', () => {
+    const c = data.meta.center!;
+    expect(c).not.toBeNull();
+    // 樞紐畫的是「五顆起手骰從樹心長出來」，連線集合與 meta.roots 必須是同一組
+    expect([...c.links].sort()).toEqual(data.meta.roots);
+    // 正本存 PNG、站台載 WebP：網址是從正本的 href 換副檔名推導的，不是另外寫死一份檔名。
+    // 建置期轉檔用的也是同一個字串（見 build-data.ts 的 CLI 區塊），兩邊各寫一份的話，
+    // 改了 href 就會變成「轉出舊圖、tree.json 指向新網址」，樞紐靜靜地變成 404 破圖。
+    const svgHref = /<image href="([^"]+)"[^>]*\/>\s*<text class="tree-center-label"/.exec(
+      readFileSync('data/dice-tree.svg', 'utf8'),
+    )![1]!;
+    expect(c.url).toBe(`/assets/${svgHref.replace(/\.png$/, '.webp')}`);
+    expect(c.size[0]).toBeGreaterThan(0);
+    expect(c.size[1]).toBeGreaterThan(0);
+  });
+
+  it('樞紐不佔節點名額：nodes 裡沒有它，成本總和也不含它', () => {
+    const c = data.meta.center!;
+    expect(data.nodes.some(n => n.x === c.x && n.y === c.y)).toBe(false);
+    expect(data.nodes).toHaveLength(239);
+  });
+
   it('gzip 後符合效能預算（≤ 20 KB）', () => {
     expect(gzipSync(Buffer.from(JSON.stringify(data))).length).toBeLessThanOrEqual(20 * 1024);
   });

@@ -11,6 +11,61 @@ describe('normalizeSvg', () => {
     const out = normalizeSvg('<svg xmlns="http://www.w3.org/2000/svg"><g class="node" transform="matrix(1 0 0 1 170 127.5)"/></svg>');
     expect(out).toContain('transform="translate(170.00,127.50)"');
   });
+  it('中央樞紐的 g 不會被當成圖層攤平，放射線的 d 仍然照樣正規化', () => {
+    // 攤平圖層那段用的是 `svg > g:not(.node)`，中央樞紐是 <svg> 的直屬 <g>，剛好長得像
+    // Inkscape 留下的圖層 wrapper——少了 `:not(.tree-center)` 就會被拆散、子元素散到 <svg>
+    // 底下，parseTree 找不到 g.tree-center 就當作「這份正本沒有樞紐」，站台安靜地少畫一塊，
+    // validate 也不會抱怨（規則 10 只在 center 存在時才檢查）。
+    const out = normalizeSvg(
+      '<svg xmlns="http://www.w3.org/2000/svg">' +
+        '<g class="tree-center" data-links="1001">' +
+        '<path class="tree-center-link" d="m 100,200 -50,-50"/>' +
+        '<image href="tree-center.png" x="1" y="2" width="96" height="61"/>' +
+        '</g>' +
+        '</svg>',
+    );
+    expect(out).toContain('<g class="tree-center"');
+    expect(out).toContain('d="M 100.00 200.00 L 50.00 150.00"');
+    // 圖與放射線都還留在群組裡（不是被搬到 <svg> 底下）
+    expect(/<g class="tree-center"[^>]*>[\s\S]*tree-center-link[\s\S]*<image[\s\S]*<\/g>/.test(out)).toBe(true);
+  });
+
+  it('樞紐自己帶 transform 時：位移只併入一次、transform 清掉，重跑不會再飄', () => {
+    // 只折 d、不清 transform 的話，位移會被套兩次（座標加過了、transform 還在），而且每跑
+    // 一次 normalize 就再飄一次——冪等性直接破功，且 parseTree 讀到的樞紐中心會一直移動，
+    // validate 全程綠燈。
+    const src =
+      '<svg xmlns="http://www.w3.org/2000/svg"><g class="tree-center" data-links="1001" transform="translate(10,20)">' +
+      '<path class="tree-center-link" d="M 100 200 L 150 250"/>' +
+      '<image href="tree-center.png" x="52" y="70" width="96" height="61"/>' +
+      '</g></svg>';
+    const once = normalizeSvg(src);
+    expect(once).toContain('d="M 110.00 220.00 L 160.00 270.00"');
+    expect(once).toContain('x="62.00"');
+    expect(once).toContain('y="90.00"');
+    expect(/class="tree-center"[^>]*transform/.test(once)).toBe(false);
+    expect(normalizeSvg(once)).toBe(once); // 冪等
+  });
+
+  it('樞紐包在圖層裡時：放射線與圖／標籤一起併入圖層位移，不會只搬一半', () => {
+    // 只折放射線、不折圖與標籤的 x/y，圖層被攤平刪掉之後，五條腳跑到新位置、樹的圖還留在
+    // 原地——正本看起來就是「圖跟腳分家」，而 validate 與測試都看不出來。
+    const src =
+      '<svg xmlns="http://www.w3.org/2000/svg"><g id="layer1" transform="translate(10,20)">' +
+      '<g class="tree-center" data-links="1001">' +
+      '<path class="tree-center-link" d="M 100 200 L 150 250"/>' +
+      '<image href="tree-center.png" x="52" y="70" width="96" height="61"/>' +
+      '<text class="tree-center-label" x="100" y="240">骰子樹</text>' +
+      '</g></g></svg>';
+    const out = normalizeSvg(src);
+    expect(out).toContain('d="M 110.00 220.00 L 160.00 270.00"');
+    expect(out).toContain('x="62.00"'); // image
+    expect(out).toContain('x="110.00"'); // text
+    expect(out).toContain('y="260.00"'); // text
+    expect(out).not.toContain('layer1');
+    expect(normalizeSvg(out)).toBe(out);
+  });
+
   it('把相對路徑指令轉回絕對 M/L', () => {
     const out = normalizeSvg('<svg xmlns="http://www.w3.org/2000/svg"><path class="edge" d="m 100,200 -50,-50"/></svg>');
     expect(out).toContain('d="M 100.00 200.00 L 50.00 150.00"');

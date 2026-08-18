@@ -146,6 +146,25 @@ pre {
   opacity: 0.1;
 }
 
+/*
+ * 中央樞紐（骰子樹本體）是純裝飾、沒有 id、不參與前置鏈判定，所以它拿不到 .in-chain，
+ * 也永遠不會被篩選標成 .filtered-out。若不補這條，選了任一節點之後整張圖淡下去、只有
+ * 樞紐還亮著，反而變成畫面上最搶眼的東西。跟著 .edge 一起淡，讓它安分待在背景。
+ */
+#tree.has-selection .tree-center {
+  opacity: 0.12;
+}
+
+/*
+ * 篩選中也要跟著淡。樞紐拿不到 .filtered-out（那個 class 是 applyFilter() 逐節點／逐邊
+ * 依 matchesFilter() 掛的，樞紐不是節點），所以由 applyFilter() 直接在整組上掛這個 class。
+ * 少了這條，「有篩選但沒選節點」時（例如直接開 /tree?branch=chaos）全部節點與邊掉到 0.1、
+ * 只有樞紐維持全亮，反而變成畫面上最搶眼的東西——正是上一條規則想避免的情形。
+ */
+#tree .tree-center.filtered-out {
+  opacity: 0.1;
+}
+
 #detail {
   position: fixed;
   right: 0;

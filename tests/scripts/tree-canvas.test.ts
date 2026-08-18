@@ -6,7 +6,55 @@
 // （isTypingTarget，已在 tests/lib/filter.test.ts 涵蓋），實際瀏覽器下的 focus 判斷
 // 留給第 18 個任務的 E2E。
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { readFileSync } from 'node:fs';
 import { parseHTML, Event as LinkedomEvent } from 'linkedom';
+import { Viewport, minReadableScale } from '../../src/lib/viewport';
+import { sizeOfType } from '../../src/lib/taxonomy';
+import type { Branch, TreeData } from '../../src/lib/types';
+
+const treeData: TreeData = JSON.parse(readFileSync('src/generated/tree.json', 'utf8'));
+
+/**
+ * 用真正的 `Viewport.fitTo()` 現算「跳到某分支時，還沒套可讀性下限的原始縮放」。
+ *
+ * 以前這些期望值是手算後寫死的小數（例如 2.358946061525727），只要分支包圍盒一動——
+ * 換版面、加一個節點都會動——測試就會紅，而紅的原因跟它要守的行為（點按鈕有沒有真的
+ * 呼叫 fitTo）完全無關。改成拿同一個 Viewport 現算：驗的仍然是「接線對不對」，
+ * 資料變動時兩邊一起變。
+ */
+function rawFitScale(branch: Branch): number {
+  const [, , vbw, vbh] = treeData.meta.viewBox;
+  const svgStub = {
+    getAttribute: (n: string) => (n === 'viewBox' ? `0 0 ${vbw} ${vbh}` : null),
+  } as unknown as SVGSVGElement;
+  const vp = new Viewport(svgStub, { setAttribute: () => {} } as unknown as SVGGElement);
+  vp.fitTo(treeData.meta.bounds[branch]);
+  return vp.scale;
+}
+
+/** 對應 tree-canvas.ts 的 applyReadabilityFloor()：同一組容器尺寸下的可讀性下限。 */
+function readabilityFloor(containerW: number, containerH: number, targetPx: number): number {
+  const [, , vbw, vbh] = treeData.meta.viewBox;
+  return minReadableScale(containerW, containerH, vbw, vbh, sizeOfType('dice')[0], targetPx);
+}
+
+/** 跳到某分支、還沒套下限時的 transform（translate 分量）。 */
+function rawFitTranslate(branch: Branch): [number, number] {
+  const [, , vbw, vbh] = treeData.meta.viewBox;
+  const svgStub = {
+    getAttribute: (n: string) => (n === 'viewBox' ? `0 0 ${vbw} ${vbh}` : null),
+  } as unknown as SVGSVGElement;
+  const vp = new Viewport(svgStub, { setAttribute: () => {} } as unknown as SVGGElement);
+  vp.fitTo(treeData.meta.bounds[branch]);
+  const m = /translate\(([-\d.e]+),([-\d.e]+)\)/.exec(vp.transform)!;
+  return [Number(m[1]), Number(m[2])];
+}
+
+function parseTranslate(transform: string): [number, number] {
+  const m = /translate\(([-\d.e]+),([-\d.e]+)\)/.exec(transform);
+  if (!m) throw new Error(`transform 格式不符預期，取不出 translate：${transform}`);
+  return [Number(m[1]), Number(m[2])];
+}
 
 const BRANCH_VALUES = ['nature', 'engineering', 'magic', 'order', 'chaos'];
 const TYPE_VALUES = ['dice', 'rune', 'passive', 'support'];
@@ -257,11 +305,11 @@ describe('tree-canvas 整合：分支快速跳轉（task-17，spec §6.2.6）', 
     stubDesktopRect(page); // 先掛真實桌機容器尺寸的 stub，再觸發點擊——點擊當下才會重新讀 rect
     const btn = page.document.querySelector<HTMLButtonElement>('#branch-nav button[data-branch="engineering"]')!;
     fireClick(btn);
-    // meta.bounds.engineering = [479.18, 1598.47, 1264.7000000000003, 1087.3500000000001]；
-    // raw = min(3400/1264.7000000000003, 2850/1087.3500000000001) * 0.9 ≈ 2.358946061525727
-    // （node -e 手算，過程與 tests/lib/viewport.test.ts 的 nature 分支測試相同套路），
-    // 桌機可讀性下限（1280x610 容器、目標 24px）≈ 2.336，raw 已經超過下限，不會被拉高。
-    expect(parseScale(page.viewportEl.getAttribute('transform') ?? '')).toBeCloseTo(2.358946061525727, 9);
+    // raw fitTo 已經超過桌機可讀性下限（1280x610 容器、目標 24px），下限不該把畫面往下拉，
+    // 最終縮放應該就是 raw 本身。先斷言前提成立，否則這條測試會退化成驗另一件事還照樣綠。
+    const raw = rawFitScale('engineering');
+    expect(raw).toBeGreaterThan(readabilityFloor(1280, 610, 24));
+    expect(parseScale(page.viewportEl.getAttribute('transform') ?? '')).toBeCloseTo(raw, 9);
   });
 
   it('手機底部 chip 與桌機側欄共用同一個 handler：點 #branch-chips 的按鈕效果跟點 #branch-nav 一樣', async () => {
@@ -269,21 +317,42 @@ describe('tree-canvas 整合：分支快速跳轉（task-17，spec §6.2.6）', 
     stubDesktopRect(page);
     const chip = page.document.querySelector<HTMLButtonElement>('#branch-chips button[data-branch="magic"]')!;
     fireClick(chip);
-    expect(parseScale(page.viewportEl.getAttribute('transform') ?? '')).toBeCloseTo(2.358946061525727, 9);
+    expect(parseScale(page.viewportEl.getAttribute('transform') ?? '')).toBeCloseTo(rawFitScale('magic'), 9);
   });
 
   it('桌機：raw fitTo(bounds) 低於可讀性下限時，也會被拉高到下限（task-18 修正的核心案例——桌機不再是永遠不套下限）', async () => {
     const page = await loadTreePage('');
     stubDesktopRect(page);
-    // nature 分支 raw fitTo scale ≈ 2.258479（見 tests/lib/viewport.test.ts 的手算值），
-    // 低於桌機可讀性下限 2.3360655737704916（1280x610 容器、目標 24px），下限應該勝出。
-    // 精確的 boosted transform 已經用 node -e 手算過（過程與 viewport.ts 的 zoomAt() 邏輯
-    // 一致，degenerate CTM：kx=ky=1、ex=ey=0，跟這個測試環境一致）。
+    // 容器刻意用 1280x400（瀏覽器視窗被壓扁的桌機情境）而不是上面那組 1280x610：2026-08-18
+    // 換版面後 viewBox 從 3400x2850 縮成 2000x1700，同樣的容器換算出來的每單位 CSS px 變多、
+    // 可讀性下限跟著降到 1.45，已經低於任何分支的 raw fitTo（1.96～2.13）——也就是新版面在
+    // 一般桌機視窗下本來就夠清楚、根本不會走到 boost 這條路。要繼續守住「桌機也會套下限」
+    // 這個 task-18 修正的回歸，就得挑一個下限真的會勝出的容器尺寸。下面那條 toBeLessThan
+    // 就是在把這個前提釘住：哪天它不成立了，測試會直接紅，而不是安靜地退化成驗別的事。
+    Object.assign(page.svg, {
+      getBoundingClientRect: () => ({ x: 0, y: 0, left: 0, top: 0, right: 1280, bottom: 400, width: 1280, height: 400 }),
+    });
+    // 最終縮放要正好落在下限上。這裡只斷言縮放值，不重算 zoomAt 的置中位移——那等於在測試裡
+    // 抄一份 viewport.ts 的實作，抄錯了測試反而會跟著錯下去。
+    const raw = rawFitScale('nature');
+    const floor = readabilityFloor(1280, 400, 24);
+    expect(raw).toBeLessThan(floor);
     const btn = page.document.querySelector<HTMLButtonElement>('#branch-nav button[data-branch="nature"]')!;
     fireClick(btn);
-    expect(page.viewportEl.getAttribute('transform')).toBe(
-      'translate(-2272.565960837887,-433.50291438979946) scale(2.3360655737704916)',
-    );
+    const after = page.viewportEl.getAttribute('transform') ?? '';
+    expect(parseScale(after)).toBeCloseTo(floor, 9);
+
+    // 縮放對了還不夠——boost 是用 `zoomAt(k, 容器中心)` 疊上去的，錨點挑錯（例如拿 viewBox
+    // 中心當錨點）縮放值一樣正確，畫面卻會整個滑走。這裡驗的是 zoomAt 的定義本身：
+    // 錨點底下的那個內容座標，縮放前後必須是同一點。不重算 zoomAt 的位移公式（那等於在測試
+    // 裡抄一份實作），只用「(錨點 - 位移) / 縮放」這個座標換算來檢查不變性。
+    // 容器 stub 的 left/top 都是 0，所以容器中心的螢幕座標就是 (1280/2, 400/2)；本環境
+    // getScreenCTM() 不存在，Viewport 退化成 1:1，螢幕座標即使用者座標。
+    const [ax, ay] = [1280 / 2, 400 / 2];
+    const [rx, ry] = rawFitTranslate('nature');
+    const [bx, by] = parseTranslate(after);
+    expect((ax - bx) / parseScale(after)).toBeCloseTo((ax - rx) / raw, 6);
+    expect((ay - by) / parseScale(after)).toBeCloseTo((ay - ry) / raw, 6);
   });
 
   it('手機：fitTo 給的倍率低於最小可讀縮放下限時，會再拉高到下限（task-17 裁決）', async () => {
@@ -296,26 +365,27 @@ describe('tree-canvas 整合：分支快速跳轉（task-17，spec §6.2.6）', 
     });
     const btn = page.document.querySelector<HTMLButtonElement>('#branch-chips button[data-branch="engineering"]')!;
     fireClick(btn);
-    // minReadableScale(390, 800, 3400, 2850, 48, 32) = 5.811965811965812（見
-    // tests/lib/viewport.test.ts；390 寬遠小於 800 高，寬度限制縮放，跟舊版只算寬度的公式
-    // 同一個數字，不是巧合），遠大於 engineering 分支原始 fitTo scale 2.358946061525727，
+    // 手機直向容器（390x800）算出來的可讀性下限遠大於 engineering 分支的 raw fitTo，
     // 下限應該勝出。容差放寬到 1e-6：這條路徑會先算 fitTo 的 scale 再乘上 (floor/scale)
     // 換算成 zoomAt 的縮放係數，比 minReadableScale() 本身多一次浮點乘除，可能有比純函式
     // 測試更大一點的浮點誤差。
-    expect(parseScale(page.viewportEl.getAttribute('transform') ?? '')).toBeCloseTo(5.811965811965812, 6);
+    const floor = readabilityFloor(390, 800, 32);
+    expect(rawFitScale('engineering')).toBeLessThan(floor);
+    expect(parseScale(page.viewportEl.getAttribute('transform') ?? '')).toBeCloseTo(floor, 6);
   });
 
   it('手機：fitTo 給的倍率已經超過下限時，不會被下限往下拉，維持原本的 fitTo 結果', async () => {
     const page = await loadTreePage('', { mobile: true });
-    // 容器故意設得很寬（4000x2000），算出來的下限（minReadableScale(4000,2000,...)
-    // ≈0.950，2000/2850≈0.702 比 4000/3400≈1.176 小，這裡改由高度限制縮放）遠小於
-    // engineering 分支的 fitTo scale（2.359），驗證「下限只往上拉、不往下拉」。
+    // 容器故意設得很寬（4000x2000），算出來的下限遠小於 engineering 分支的 raw fitTo，
+    // 驗證「下限只往上拉、不往下拉」。
     Object.assign(page.svg, {
       getBoundingClientRect: () => ({ x: 0, y: 0, left: 0, top: 0, right: 4000, bottom: 2000, width: 4000, height: 2000 }),
     });
+    const raw = rawFitScale('engineering');
+    expect(raw).toBeGreaterThan(readabilityFloor(4000, 2000, 32));
     const btn = page.document.querySelector<HTMLButtonElement>('#branch-chips button[data-branch="engineering"]')!;
     fireClick(btn);
-    expect(parseScale(page.viewportEl.getAttribute('transform') ?? '')).toBeCloseTo(2.358946061525727, 9);
+    expect(parseScale(page.viewportEl.getAttribute('transform') ?? '')).toBeCloseTo(raw, 9);
   });
 
   it('手機初始視角：沒有選取節點時預設對準 nature 分支（環境限制記錄，見下方說明）', async () => {

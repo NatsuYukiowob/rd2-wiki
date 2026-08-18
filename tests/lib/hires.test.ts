@@ -9,12 +9,16 @@ const data: TreeData = JSON.parse(readFileSync('src/generated/tree.json', 'utf8'
 
 describe('visibleNodeIds', () => {
   it('只回傳落在指定矩形內的節點', () => {
-    const ids = visibleNodeIds(data, { x: 1600, y: 1200, w: 200, h: 200 });
+    // 矩形以節點 1001 的實際座標為中心現算，不寫死——版面一改，寫死的矩形就會落在空白處，
+    // 測試變成「空集合不含 1001」的假紅（或更糟：改成含別的節點時假綠）。
+    const root = data.nodes.find(n => n.id === '1001')!;
+    const ids = visibleNodeIds(data, { x: root.x - 50, y: root.y - 50, w: 100, h: 100 });
     expect(ids).toContain('1001');
     expect(ids.length).toBeLessThan(data.nodes.length);
   });
   it('整張畫布時回傳全部', () => {
-    expect(visibleNodeIds(data, { x: 0, y: 0, w: 3400, h: 2850 })).toHaveLength(239);
+    const [vx, vy, vw, vh] = data.meta.viewBox;
+    expect(visibleNodeIds(data, { x: vx, y: vy, w: vw, h: vh })).toHaveLength(data.nodes.length);
   });
 });
 

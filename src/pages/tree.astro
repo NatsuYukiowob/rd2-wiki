@@ -199,6 +199,28 @@ const TYPES: Array<[string, string]> = [
     cursor: pointer;
   }
 
+  /* 中央樞紐：放射線比一般的邊粗一點、亮一點，讓「五顆起手骰從樹心長出來」讀得出來；
+     整組不吃 pointer-events，點下去要穿透到底下的畫布（拖曳平移），不要變成一個點得到
+     卻沒有反應的死區。 */
+  .tree-center {
+    pointer-events: none;
+  }
+
+  .tree-center-link {
+    stroke: var(--muted);
+    stroke-width: 3;
+    stroke-linecap: round;
+    /* 刻意不設 opacity：`.edge` 是全不透明的，這裡設 0.9 反而比一般的邊更暗，
+       跟上面註解說的「粗一點、亮一點」相反。層次感交給 stroke-width 就夠了。 */
+  }
+
+  .tree-center-label {
+    font-size: 12px;
+    font-weight: 700;
+    fill: var(--fg);
+    text-anchor: middle;
+  }
+
   .node .label {
     font-size: 11px;
     fill: var(--fg);

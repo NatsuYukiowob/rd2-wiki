@@ -1,5 +1,6 @@
 import { readFileSync, writeFileSync, mkdirSync, readdirSync } from 'node:fs';
 import { gzipSync } from 'node:zlib';
+import sharp from 'sharp';
 import { parseTree } from './lib/svg-parse.js';
 import { buildSprite, buildHiRes, type IconEntry } from './lib/icons.js';
 import { parseCost } from '../src/lib/cost.js';
@@ -19,6 +20,9 @@ interface BuildOpts {
 
 export function buildTreeData(svgText: string, opts: BuildOpts): TreeData {
   const { meta: rawMeta, nodes: rawNodes, edges: rawEdges } = parseTree(svgText);
+  // rawMeta.center 是「正本裡怎麼寫」的形狀（帶 PNG 檔名），meta.center 是「站台要怎麼畫」的形狀
+  // （帶 WebP 網址），欄位名同、內容不同，所以先把它從展開的 rawMeta 裡拆出來，避免覆蓋。
+  const { center: rawCenter, ...restMeta } = rawMeta;
 
   const nodes: TreeNode[] = rawNodes.map(r => {
     const type = typeOfZh(r.typeZh);
@@ -69,11 +73,28 @@ export function buildTreeData(svgText: string, opts: BuildOpts): TreeData {
       Math.max(...xs) - Math.min(...xs) + 120, Math.max(...ys) - Math.min(...ys) + 120];
   }
 
+  // 樞紐的放射線是寫在正本裡的 id 清單，不是從幾何推回來的——這裡當場檢查它們真的存在。
+  // 站台端拿到不存在的 id 只會安靜地少畫一條線，等於樞紐悄悄斷了一隻腳；建置期擋掉才看得見。
+  const nodeIds = new Set(nodes.map(n => n.id));
+  for (const id of rawCenter?.links ?? []) {
+    if (!nodeIds.has(id)) throw new Error(`tree-center 的 data-links 指向不存在的節點 ${id}`);
+  }
+  const center = rawCenter && {
+    x: rawCenter.x,
+    y: rawCenter.y,
+    size: rawCenter.size,
+    // 正本存的是 data/ 底下的 PNG 檔名，站台載的是建置期轉出的 WebP（見下方 CLI 區塊）。
+    url: `/assets/${rawCenter.image.replace(/\.png$/, '.webp')}`,
+    links: rawCenter.links,
+    label: rawCenter.label,
+  };
+
   return {
     meta: {
-      ...rawMeta, roots, bounds,
+      ...restMeta, roots, bounds,
       totalUnlockCost,
       sprite: { url: '/assets/sprite.webp', size: opts.spriteSize, index: opts.spriteIndex },
+      center: center ?? null,
     },
     nodes, edges,
   };
@@ -84,7 +105,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const keywords = JSON.parse(readFileSync('data/keywords.json', 'utf8'));
   const unlockExceptions = JSON.parse(readFileSync('data/unlock-exceptions.json', 'utf8'));
 
-  const { nodes: rawNodes } = parseTree(svgText);
+  const { meta: rawMeta, nodes: rawNodes } = parseTree(svgText);
   const typeByHash = new Map(rawNodes.map(n => [n.icon, typeOfZh(n.typeZh)]));
   const entries: IconEntry[] = readdirSync('data/icons')
     .filter(f => f.endsWith('.png'))
@@ -99,6 +120,23 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   mkdirSync('public/assets/icons', { recursive: true });
   mkdirSync('src/generated', { recursive: true });
   writeFileSync('public/assets/sprite.webp', sprite);
+  // 中央樞紐圖：正本存 PNG（可讀、可 diff、跟 data/icons 一致），站台載 WebP。它只有一張、
+  // 尺寸固定，沒有理由塞進 sprite（sprite 依「節點類型的顯示尺寸」分區打包，樞紐不屬於任何類型）。
+  // 這裡輸出兩倍顯示尺寸，跟 buildHiRes() 的高 DPI 原則一致。
+  //
+  // 讀檔路徑與輸出檔名都從 rawMeta.center.image 推導，不另外寫死一份檔名——buildTreeData() 裡
+  // 的 meta.center.url 是用同一個字串換副檔名組出來的，兩邊各寫一份的話，改了正本的 href 就會
+  // 變成「轉出舊圖、tree.json 指向新網址」，樞紐靜靜地變成 404 破圖而所有檢查照樣全綠。
+  const center = rawMeta.center;
+  if (center) {
+    writeFileSync(
+      `public/assets/${center.image.replace(/\.png$/, '.webp')}`,
+      await sharp(`data/${center.image}`)
+        .resize({ width: center.size[0] * 2, height: center.size[1] * 2, fit: 'inside', withoutEnlargement: true })
+        .webp({ quality: 90 })
+        .toBuffer()
+    );
+  }
   for (const [hash, buf] of hiRes) writeFileSync(`public/assets/icons/${hash}.webp`, buf);
 
   const data = buildTreeData(svgText, { keywords, unlockExceptions, spriteIndex: index, spriteSize: size });

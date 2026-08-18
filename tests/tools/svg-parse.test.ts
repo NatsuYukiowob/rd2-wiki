@@ -30,10 +30,55 @@ describe('parseTree（真實資料）', () => {
     expect(r.edges).toHaveLength(248);
   });
   it('meta 來自 svg 屬性與 metadata', () => {
-    expect(r.meta.svgVersion).toBe('1.0.4');
-    expect(r.meta.gameBundle).toBe('0.0.4');
-    expect(r.meta.updated).toBe('2026-08-15');
-    expect(r.meta.viewBox).toEqual([0, 0, 3400, 2850]);
+    // 期望值從正本的原始文字現場取，不寫死版本號與畫布尺寸。這條測的是「parser 有沒有把
+    // 屬性讀對」這個性質，不是「現在剛好是 1.0.4 / 3400x2850」這個事實；寫死的話每次改版面
+    // 或改版本都得回來改測試，而真正該擋的（parser 讀錯欄位）反而測不出來。
+    const attr = (name: string) => new RegExp(`${name}="([^"]*)"`).exec(svg)![1]!;
+    expect(r.meta.svgVersion).toBe(attr('data-version'));
+    expect(r.meta.updated).toBe(attr('data-updated'));
+    expect(r.meta.gameBundle).toBe(/resource bundle ([\d.]+)/.exec(svg)![1]);
+    expect(r.meta.viewBox).toEqual(attr('viewBox').split(/\s+/).map(Number));
+  });
+  it('meta.center 解析出樞紐的中心、尺寸、圖檔與連線 id', () => {
+    const c = r.meta.center!;
+    expect(c).not.toBeNull();
+    // 中心取自放射線的共同起點，不是圖的左上角
+    const first = /tree-center-link" d="M ([\d.]+) ([\d.]+)/.exec(svg)!;
+    expect([c.x, c.y]).toEqual([Number(first[1]), Number(first[2])]);
+    expect(c.image).toBe('tree-center.png');
+    expect(c.links).toEqual(['1001', '2001', '3001', '4008', '5002']);
+    expect(c.label).toBe('骰子樹');
+  });
+  it('沒有 g.tree-center 時 meta.center 是 null，不拋錯（樞紐是選用的）', () => {
+    const without = svg.replace(/<g class="tree-center"[\s\S]*?<\/g>\n/, '');
+    expect(without).not.toBe(svg);
+    expect(parseTree(without).meta.center).toBeNull();
+  });
+  it('放射線起點不一致時直接拋錯，不畫出五條從不同位置發散的線', () => {
+    const broken = svg.replace('<path class="tree-center-link" d="M ', '<path class="tree-center-link" d="M 1 1 L 2 2" data-x="');
+    expect(broken).not.toBe(svg);
+    expect(() => parseTree(broken)).toThrow(/起點不一致/);
+  });
+  it('樞紐沒跑過 normalize（包在圖層裡或帶 transform）時直接擋下，不悄悄畫錯位置', () => {
+    const nested = svg
+      .replace('<g class="tree-center"', '<g id="layer1" transform="translate(200,150)"><g class="tree-center"')
+      .replace('</g>\n<g class="node"', '</g></g>\n<g class="node"');
+    expect(() => parseTree(nested)).toThrow(/normalize/);
+    const withTransform = svg.replace('<g class="tree-center" ', '<g class="tree-center" transform="translate(5,5)" ');
+    expect(withTransform).not.toBe(svg);
+    expect(() => parseTree(withTransform)).toThrow(/transform/);
+  });
+  it('樞紐的 <image> href 只接受 data/ 底下的純檔名，擋掉路徑穿越', () => {
+    // validate 會拿這個字串做 readFileSync，而 validate 是唯一跑在不受信任 fork PR 上的工作。
+    const evil = svg.replace('href="tree-center.png"', 'href="../../../../etc/passwd"');
+    expect(() => parseTree(evil)).toThrow(/不可含路徑/);
+    const sub = svg.replace('href="tree-center.png"', 'href="sub/dir/x.png"');
+    expect(() => parseTree(sub)).toThrow(/不可含路徑/);
+  });
+  it('樞紐的圖沒有以中心對齊時擋下（正本與站台會畫在不同位置）', () => {
+    const off = svg.replace('<image href="tree-center.png" x="952.00"', '<image href="tree-center.png" x="900.00"');
+    expect(off).not.toBe(svg);
+    expect(() => parseTree(off)).toThrow(/以樞紐中心對齊/);
   });
   it('形狀由子元素判定：rect / 4 點 polygon / circle / 6 點 polygon', () => {
     const count = (s: string) => r.nodes.filter(n => n.shape === s).length;

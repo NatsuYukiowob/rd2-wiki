@@ -27,11 +27,11 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: '24', cache: npm }
       - run: npm ci
-      - name: 資料驗證（規則 0–9，見 CONTRIBUTING.md）
+      - name: 資料驗證（規則 0–10，見 CONTRIBUTING.md）
         run: npm run validate
       - name: 建置資料與站台
         # npm run build = build:data + astro build；build:data 的 CLI 區塊本身就會檢查
-        # tree.json gzip 與 sprite.webp 是否超過效能預算（規則 11），超過會讓這一步直接失敗、
+        # tree.json gzip 與 sprite.webp 是否超過效能預算（規則 12），超過會讓這一步直接失敗、
         # 並印出目前用量與剩餘餘裕。下面「效能預算」步驟是對同一批產物再做一次獨立的檔案層級
         # 覆核，兩邊算出來的數字理論上會一致。
         #
@@ -43,7 +43,7 @@ jobs:
         run: npm run build
       - name: 單元測試
         run: npm test
-      - name: 效能預算（規則 11：對建置產物做獨立覆核，並印出用量／剩餘餘裕）
+      - name: 效能預算（規則 12：對建置產物做獨立覆核，並印出用量／剩餘餘裕）
         run: |
           gz_budget=20480
           sprite_budget=409600
@@ -55,7 +55,7 @@ jobs:
           echo "sprite.webp   = ${sprite} bytes / 預算 ${sprite_budget} bytes，餘裕 ${sprite_margin} bytes"
           test "$gz" -le "$gz_budget" || { echo "::error::tree.json gzip 後 ${gz} bytes 超過效能預算 ${gz_budget} bytes"; exit 1; }
           test "$sprite" -le "$sprite_budget" || { echo "::error::sprite.webp ${sprite} bytes 超過效能預算 ${sprite_budget} bytes"; exit 1; }
-      - name: 產生差異摘要（規則 10：id 變動警告）
+      - name: 產生差異摘要（規則 11：id 變動警告）
         if: github.event_name == 'pull_request'
         run: |
           cp src/generated/tree.json /tmp/head.json

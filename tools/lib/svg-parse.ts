@@ -23,12 +23,33 @@ export interface RawEdge {
   to: [number, number];
 }
 
+/**
+ * 骰子樹正中央的樞紐裝飾（遊戲內的「骰子樹」本體）。它不是 239 個節點之一——沒有 id、
+ * 沒有花費、不參與成本計算與祖先高亮，純粹是版面上的錨點，五顆起手骰從它放射出去。
+ */
+export interface RawCenter {
+  /** 樞紐圖的中心座標（＝五條放射線的共同起點）。 */
+  x: number;
+  y: number;
+  /** 樞紐圖在畫布上的顯示尺寸 [寬, 高]。 */
+  size: [number, number];
+  /** 樞紐圖的檔名（相對於 `data/`，不含路徑）。 */
+  image: string;
+  /** 樞紐連到的節點 id，依 `data-links` 的順序。 */
+  links: string[];
+  /** 各條放射線的終點座標，順序與 `links` 對應；驗證端用它比對是否真的落在該節點中心。 */
+  linkEnds: [number, number][];
+  /** 樞紐底下的文字標籤。 */
+  label: string;
+}
+
 /** SVG 根節點與 `<metadata>` 帶出的圖表中繼資料。 */
 export interface RawMeta {
   svgVersion: string;
   gameBundle: string;
   updated: string;
   viewBox: [number, number, number, number];
+  center: RawCenter | null;
 }
 
 const TRANSLATE = /^translate\(\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*\)$/;
@@ -88,6 +109,71 @@ function strokeOf(g: Element): string {
   return s;
 }
 
+/**
+ * 解析中央樞紐 `<g class="tree-center">`。整組是選用的——沒有這一組時回傳 null，站台就不畫樞紐，
+ * 不會讓舊版正本或精簡測試資料解析失敗。有這一組時每個欄位都必須齊全：缺一個就代表正本被改壞了，
+ * 與其畫出半截樞紐（少了圖、或連線接到不存在的節點），不如當場丟錯講清楚是哪個欄位。
+ */
+function parseCenter(doc: Document, svg: Element): RawCenter | null {
+  const g = doc.querySelector('g.tree-center');
+  if (!g) return null;
+
+  // 跟節點同一條規矩：正規化後的樞紐必須是 <svg> 直屬子元素、且不帶 transform。少了這兩道，
+  // 貢獻者在 Inkscape 裡把樞紐拖進圖層、忘了跑 normalize，解析出來的中心會是「沒有併入圖層
+  // 位移」的座標——validate 全綠、站台卻把樞紐畫在跟正本差一個圖層位移的地方。節點那邊丟的是
+  // 一樣的錯誤訊息（含「請先執行 npm run normalize」的引導語）。
+  if (g.parentNode !== svg) throw new Error('tree-center 必須是 <svg> 直屬子元素，請先執行 npm run normalize');
+  if (g.getAttribute('transform')) {
+    throw new Error(`tree-center 不可帶 transform（請先執行 npm run normalize）：${g.getAttribute('transform')}`);
+  }
+
+  const img = g.querySelector('image');
+  if (!img) throw new Error('tree-center 缺少 <image>');
+  const image = img.getAttribute('href') ?? '';
+  // 檔名格式跟節點圖示一樣要嚴格比對，不能拿 href 直接去接路徑：validate 會用它做 readFileSync，
+  // 而 validate 是唯一跑在「不受信任的 fork PR」上的工作。放行任意字串等於送對方一個
+  // 「這個路徑存不存在、是不是 PNG」的探測器，而且同一個字串還會被拿去組公開資產的網址。
+  if (!/^[a-z0-9][a-z0-9-]*\.png$/.test(image)) {
+    throw new Error(`tree-center 的 <image> href 只能是 data/ 底下的 .png 檔名、不可含路徑：${JSON.stringify(image)}`);
+  }
+  const w = Number(img.getAttribute('width'));
+  const h = Number(img.getAttribute('height'));
+  if (!Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0) {
+    throw new Error(`tree-center 的 <image> 尺寸無效：width="${img.getAttribute('width')}" height="${img.getAttribute('height')}"`);
+  }
+
+  // 五條放射線的起點都是樞紐中心，取第一條的起點即可；順帶檢查其餘幾條沒有各自跑掉——
+  // 起點不一致代表正本被手改壞了，畫出來會是五條從不同位置發散的線。
+  const links = [...g.querySelectorAll('path.tree-center-link')];
+  if (links.length === 0) throw new Error('tree-center 缺少 path.tree-center-link');
+  const paths = links.map(p => parseEdgePath(p.getAttribute('d') ?? ''));
+  const [x, y] = paths[0]!.from;
+  for (const { from: [ox, oy] } of paths) {
+    if (ox !== x || oy !== y) throw new Error(`tree-center 的放射線起點不一致：(${x}, ${y}) 與 (${ox}, ${oy})`);
+  }
+
+  // 圖必須以樞紐中心對齊——站台端（src/lib/render.ts）就是用 c.x - w/2, c.y - h/2 擺這張圖，
+  // 正本若擺在別的地方，兩邊畫出來的樞紐會差一段位移，而且沒有任何東西看得出來。
+  const ix = Number(img.getAttribute('x'));
+  const iy = Number(img.getAttribute('y'));
+  if (ix !== x - w / 2 || iy !== y - h / 2) {
+    throw new Error(
+      `tree-center 的 <image> 必須以樞紐中心對齊：預期 x="${x - w / 2}" y="${y - h / 2}"，實際 x="${ix}" y="${iy}"`,
+    );
+  }
+
+  const linkIds = (g.getAttribute('data-links') ?? '').trim().split(/\s+/).filter(Boolean);
+  if (linkIds.length !== links.length) {
+    throw new Error(`tree-center 的 data-links 有 ${linkIds.length} 個 id，但有 ${links.length} 條放射線`);
+  }
+
+  return {
+    x, y, size: [w, h], image, links: linkIds,
+    linkEnds: paths.map(p => p.to),
+    label: g.querySelector('text')?.textContent ?? '',
+  };
+}
+
 /** 解析資料正本 SVG，抽出節點、邊與中繼資料，供後續任務轉換為站台可用的語意資料。 */
 export function parseTree(svgText: string): { meta: RawMeta; nodes: RawNode[]; edges: RawEdge[] } {
   const doc = loadSvg(svgText);
@@ -101,6 +187,7 @@ export function parseTree(svgText: string): { meta: RawMeta; nodes: RawNode[]; e
     gameBundle: bundle,
     updated: svg.getAttribute('data-updated') ?? '',
     viewBox: [vb[0]!, vb[1]!, vb[2]!, vb[3]!],
+    center: parseCenter(doc, svg),
   };
 
   const nodes: RawNode[] = [...doc.querySelectorAll('g.node')].map(g => {

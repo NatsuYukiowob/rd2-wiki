@@ -8,6 +8,7 @@ import { computeSelection } from '../lib/selection.js';
 import { renderDetail } from '../components/NodeDetail.js';
 import { matchesFilter, stateToQueryString, queryStringToState, isTypingTarget } from '../lib/filter.js';
 import { visibleNodeIds, upgradeIcons } from '../lib/hires.js';
+import { sizeOfType } from '../lib/taxonomy.js';
 import type { Branch, NodeType, TreeData } from '../lib/types.js';
 
 // tree.json 是建置期由 tools/build-data.ts 產生、結構保證符合 TreeData；
@@ -79,10 +80,14 @@ let currentSelected: string | null = initialSelected;
 const isMobile = typeof matchMedia === 'function' && matchMedia('(max-width: 720px)').matches;
 
 // 骰子圖示的顯示寬度（使用者座標，見 tree.json 節點的 size 欄位／render.ts）。分支包圍盒
-// 裡最小的節點是骰子符文／被動（20～24 單位寬），但「至少要看得清一顆骰子圖示」是 task-17
-// 裁決原文明確舉的例子（48 單位寬）——拿骰子的尺寸當基準，比骰子小的圖示縮放後只會更清楚
-// 不會反而不夠，不需要每個節點各自算一個下限再取最大值，徒增複雜度換不到實質好處。
-const DICE_ICON_WIDTH_UNITS = 48;
+// 裡最小的節點是骰子符文／被動，但「至少要看得清一顆骰子圖示」是 task-17 裁決原文明確舉的
+// 例子——拿骰子的尺寸當基準，比骰子小的圖示縮放後只會更清楚不會反而不夠，不需要每個節點
+// 各自算一個下限再取最大值，徒增複雜度換不到實質好處。
+//
+// 這個值直接取自 sizeOfType('dice')，不再抄一份數字：2026-08-18 換版面時尺寸表從 48 改成
+// 46，這裡如果還是寫死的 48，可讀性下限就會照著一個已經不存在的尺寸算，而且畫面上看起來
+// 「差不多」，沒有任何測試或型別會抱怨。
+const DICE_ICON_WIDTH_UNITS = sizeOfType('dice')[0];
 // 手機用手指操作、桌機用滑鼠，桌機的精準度門檻可以比手機低一些，兩者都遠高於「完全看不清」
 // 的舊 bug 數字（約 9～13px），差別只是要拉到多高的下限。
 const MOBILE_ICON_TARGET_PX = 32;
@@ -95,7 +100,8 @@ const DESKTOP_ICON_TARGET_PX = 24;
  *
  * task-17 裁決原文只把這件事套用在手機版：手機直向容器窄，`fitTo` 塞整個分支包圍盒進去
  * 算出來的倍率（約 2.17～2.36）換算成 CSS px 只有約 11～13px，看不清。task-18 E2E 第二輪
- * 找到同一個問題也發生在桌機：桌機橫向容器（例如 1280x610）比 viewBox（3400x2850）更扁，
+ * 找到同一個問題也發生在桌機：桌機橫向容器（例如 1280x610）比當時的 viewBox（3400x2850，
+ * 2026-08-18 換版面後是 2000x1700）更扁，
  * `fitTo` 整棵樹（bounds＝整個 viewBox）固定給 0.9x，換算出來一顆骰子圖示只有約 9 CSS
  * px——跟手機修正前一樣不可讀，只是先前只想到手機螢幕窄、沒想到桌機瓶頸在容器高度而不是
  * 寬度（`minReadableScale()` 本身的公式修正見該函式的說明）。所以這個下限現在桌機／手機、
@@ -405,6 +411,12 @@ function applyFilter(): void {
       .querySelector(`line.edge[data-from="${from}"][data-to="${to}"]`)
       ?.classList.toggle('filtered-out', bothFiltered);
   }
+  // 中央樞紐不是節點、拿不到上面那個逐節點掛的 .filtered-out，但畫面上它跟節點一樣佔位置：
+  // 只要有任何節點被篩掉（＝使用者正在縮小注意範圍），樞紐就該一起淡下去，否則它會變成
+  // 全畫面唯一還亮著的東西（樣式見 global.css 的 `#tree .tree-center.filtered-out`）。
+  const anyFiltered = data.nodes.some(n => !matchesFilter(n, filterState));
+  svg.querySelector('g.tree-center')?.classList.toggle('filtered-out', anyFiltered);
+
   // 沒有選取節點時，select() 不會被呼叫、syncUrl() 也就不會跑，這裡補呼叫一次，
   // 確保單純調整篩選（沒選節點）也會把 ?branch=/?type=/?q= 寫回網址。
   if (currentSelected) select(currentSelected);

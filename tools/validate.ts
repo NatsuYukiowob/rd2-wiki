@@ -21,6 +21,12 @@ export interface ValidateOpts {
   keywords: string[];
   /** 圖示所在目錄；驗證器會實際讀取此目錄下的檔案內容做 sha256／PNG 結構檢查，並列出孤兒圖示。 */
   iconsDir: string;
+  /**
+   * 資料正本所在目錄，用來解析 SVG 裡的相對圖檔路徑（目前只有中央樞紐的 `tree-center.png`）。
+   * 刻意跟 iconsDir 分開、也刻意不預設成 `dirname(iconsDir)`：測試會把圖示複製到暫存目錄再驗，
+   * 那時 iconsDir 的上層根本不是資料目錄，靠推導只會去錯的地方找檔案然後報一個假的錯。
+   */
+  dataDir: string;
 }
 
 export interface ValidateResult {
@@ -131,6 +137,53 @@ export function validate(svgText: string, opts: ValidateOpts): ValidateResult {
     if (!iconHashSet.has(n.icon)) push(`規則 7(a): 節點 ${n.id} 引用的圖示 ${n.icon} 不存在`);
   }
 
+  // 規則 10: 中央樞紐。整組是選用的（正本沒有 g.tree-center 時 parseTree 回傳 null），但只要有，
+  // 就必須真的畫得出來：圖檔存在且是有效 PNG、放射線接到真實存在的節點。少了任何一項，站台端
+  // 只會安靜地畫出破圖或斷腳的樞紐，不會有錯誤訊息——這正是 CI 該擋下來的那種「沉默的壞掉」。
+  const center = parsed.meta.center;
+  if (center) {
+    const centerPath = join(opts.dataDir, center.image);
+    let centerBuf: Buffer | null = null;
+    try {
+      centerBuf = readFileSync(centerPath);
+    } catch {
+      push(`規則 10: 中央樞紐的圖 ${center.image} 不存在（找不到 ${centerPath}）`);
+    }
+    if (centerBuf && !readPngSize(centerBuf)) push(`規則 10: 中央樞紐的圖 ${center.image} 不是有效的 PNG`);
+
+    if (centerBuf) {
+      // 最低解析度：樞紐圖會被建置期放大到顯示尺寸的兩倍（高 DPI），來源比那還小就只是被
+      // 拉糊。節點圖示有規則 7(c) 的 96px 下限守著，樞紐這張過去什麼都沒守。
+      const size = readPngSize(centerBuf);
+      const [needW, needH] = [center.size[0] * 2, center.size[1] * 2];
+      if (size && (size.width < needW || size.height < needH)) {
+        push(`規則 10: 中央樞紐的圖 ${center.image} 只有 ${size.width}x${size.height}，小於顯示尺寸的兩倍（${needW}x${needH}）`);
+      }
+    }
+
+    const byId = new Map(nodes.map(n => [n.id, n]));
+    for (const [i, id] of center.links.entries()) {
+      const n = byId.get(id);
+      if (!n) { push(`規則 10: 中央樞紐的 data-links 指向不存在的節點 ${id}`); continue; }
+      // 放射線的終點必須真的落在該節點中心，順序也要跟 data-links 對上——這是規則 5 對一般
+      // 邊做的同一件事。站台端是拿 links 的 id 去查節點座標、自己重畫這五條線的，所以正本
+      // 這邊畫歪了或把 data-links 順序調換了，站台完全看不出來：正本與線上版會安靜地長得
+      // 不一樣，而這份 SVG 正是貢獻者用來確認自己改了什麼的東西。
+      const [ex, ey] = center.linkEnds[i]!;
+      if (Math.abs(ex - n.x) >= 0.5 || Math.abs(ey - n.y) >= 0.5) {
+        push(`規則 10: 中央樞紐第 ${i + 1} 條放射線的終點 (${ex}, ${ey}) 沒對上 data-links 指定的節點 ${id} 的中心 (${n.x}, ${n.y})`);
+      }
+    }
+    // 樞紐畫的是「五顆起手骰從樹心長出來」，所以連線集合本來就該等於根集合。日後資料改版多一個
+    // 分支時，這裡會先亮黃燈提醒一併更新樞紐，而不是讓新分支的根悄悄少一條線。
+    const linkSet = new Set(center.links);
+    const rootDiff = [
+      ...EXPECTED_ROOTS.filter(r => !linkSet.has(r)),
+      ...center.links.filter(id => !EXPECTED_ROOTS.includes(id)),
+    ];
+    if (rootDiff.length > 0) warn(`規則 10: 中央樞紐的連線與預期的根不一致（差異：${rootDiff.join('、')}）`);
+  }
+
   // 規則 5: 邊端點對齊（marker-end 已由 parseTree 在解析階段強制檢查並提早失敗，
   // 走到這裡代表所有邊都已經有 marker-end，此處不需要也不可能再測到缺失的情況）。
   const at = (x: number, y: number) =>
@@ -170,6 +223,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const { errors, warnings } = validate(readFileSync('data/dice-tree.svg', 'utf8'), {
     keywords: JSON.parse(readFileSync('data/keywords.json', 'utf8')),
     iconsDir: 'data/icons',
+    dataDir: 'data',
   });
   warnings.forEach(w => console.warn(`⚠️  ${w}`));
   errors.forEach(e => console.error(e));

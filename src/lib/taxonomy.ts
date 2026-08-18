@@ -11,7 +11,7 @@ const TYPE_BY_ZH: Record<string, NodeType> = {
   '骰子': 'dice', '骰子符文': 'rune', '玩家被動': 'passive', '支援': 'support',
 };
 const SIZE_BY_TYPE: Record<NodeType, [number, number]> = {
-  dice: [48, 52], rune: [24, 26], passive: [20, 20], support: [30, 34],
+  dice: [46, 57], rune: [26, 29], passive: [33, 33], support: [45, 47],
 };
 
 /** 分支由 id 首碼決定；支援節點的分支也跟著 id 首碼走，不是固定的 support。 */

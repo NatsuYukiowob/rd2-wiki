@@ -491,3 +491,26 @@ test('K. 手機版詳情面板的重置警告不被底部分支 chip 蓋住（sp
   // "visible"（Playwright 的 toBeVisible() 不會檢查有沒有被別的元素蓋住）。
   expect(warnBox.y + warnBox.height).toBeLessThanOrEqual(chipsBox.y + 1); // 留 1px 容錯
 });
+
+test('L. 中央樞紐真的畫得出來：五條腿都在、圖不是 404，篩選時跟著淡出', async ({ page }) => {
+  // 樞紐的圖是唯一一張不走 sprite 的資產，網址由正本的 href 換副檔名推導。整條鏈路（正本
+  // href → tree.json 的 url → 建置期轉出的檔名）任何一段對不上，站台就是一張破圖——
+  // 而單元測試只驗字串、不會真的去要那個檔，首屏體積測試也只加總 content-length，
+  // 404 的回應照樣有 content-length。要抓到這種靜靜壞掉的情形，只能真的發一次請求。
+  await page.goto('/tree');
+  const hub = page.locator('#tree g.tree-center');
+  await expect(hub).toHaveCount(1);
+  await expect(hub.locator('line.tree-center-link')).toHaveCount(5);
+
+  const href = await hub.locator('image').getAttribute('href');
+  if (!href) throw new Error('樞紐的 <image> 沒有 href');
+  const res = await page.request.get(new URL(href, page.url()).toString());
+  expect(res.status()).toBe(200);
+  expect(Number((await res.body()).length)).toBeGreaterThan(0);
+
+  // 有篩選但沒選任何節點時，其餘節點／邊會掉到 opacity 0.1；樞紐拿不到逐節點掛的
+  // .filtered-out，必須由 applyFilter() 另外掛上去，否則它會變成全畫面唯一還亮著的東西。
+  await page.goto('/tree?branch=chaos');
+  await expect(page.locator('#tree g.tree-center')).toHaveClass(/filtered-out/);
+  await expect(page.locator('#tree')).not.toHaveClass(/has-selection/);
+});

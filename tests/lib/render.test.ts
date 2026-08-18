@@ -14,6 +14,59 @@ describe('renderTree', () => {
     expect(svg.querySelectorAll('g.node')).toHaveLength(239);
     expect(svg.querySelectorAll('line.edge')).toHaveLength(248);
   });
+  it('中央樞紐畫成獨立的 g.tree-center：放射線接到每個 links 節點、圖用 meta.center 的網址與尺寸', () => {
+    const c = data.meta.center!;
+    expect(c).not.toBeNull();
+    const hub = svg.querySelector('g.tree-center')!;
+    expect(hub).not.toBeNull();
+
+    const links = hub.querySelectorAll('line.tree-center-link');
+    expect(links).toHaveLength(c.links.length);
+    const byId = new Map(data.nodes.map(n => [n.id, n]));
+    for (const [i, id] of c.links.entries()) {
+      const n = byId.get(id)!;
+      const line = links[i]!;
+      // 起點是樞紐中心、終點是該節點中心；接錯會變成一條指向空白處的線，畫面上看起來
+      // 「樞紐長了一隻多餘的腳」，不會有任何錯誤。
+      expect([line.getAttribute('x1'), line.getAttribute('y1')]).toEqual([String(c.x), String(c.y)]);
+      expect([line.getAttribute('x2'), line.getAttribute('y2')]).toEqual([String(n.x), String(n.y)]);
+    }
+
+    const img = hub.querySelector('image')!;
+    expect(img.getAttribute('href')).toBe(c.url);
+    expect([img.getAttribute('width'), img.getAttribute('height')]).toEqual([String(c.size[0]), String(c.size[1])]);
+    // 以中心對齊，跟節點圖示的 -w/2, -h/2 同一套規則
+    expect(img.getAttribute('x')).toBe(String(c.x - c.size[0] / 2));
+    expect(img.getAttribute('y')).toBe(String(c.y - c.size[1] / 2));
+  });
+
+  it('樞紐不是節點：不帶 data-id、拿不到 tabindex，選取／篩選／鍵盤巡覽的 .node 選擇器碰不到它', () => {
+    const hub = svg.querySelector('g.tree-center')!;
+    expect(hub.getAttribute('data-id')).toBeNull();
+    expect(hub.getAttribute('tabindex')).toBeNull();
+    expect(hub.classList.contains('node')).toBe(false);
+    // g.node 的數量不能因為多了樞紐而變成 240
+    expect(svg.querySelectorAll('g.node')).toHaveLength(data.nodes.length);
+  });
+
+  it('樞紐的 links 出現不存在的 id 時只少畫一條腿，不會整張畫布消失', () => {
+    // renderTree() 是在 tree-canvas.ts 的模組頂層呼叫的：這裡丟例外，整個模組掛掉、
+    // 使用者看到一片空白。樞紐只是裝飾，為了它賠掉整張骰子樹不成比例
+    // （真正的守門在 build-data.ts，那裡會在建置期擋下不存在的 id）。
+    const { document: doc3 } = parseHTML('<html><body></body></html>');
+    const bad = { ...data, meta: { ...data.meta, center: { ...data.meta.center!, links: ['1001', '9999'] } } };
+    const svg3 = renderTree(bad, doc3 as unknown as Document);
+    expect(svg3.querySelectorAll('g.tree-center line.tree-center-link')).toHaveLength(1);
+    expect(svg3.querySelectorAll('g.node')).toHaveLength(data.nodes.length);
+  });
+
+  it('meta.center 為 null 時完全不畫樞紐（舊版正本／精簡測試資料不該因此壞掉）', () => {
+    const { document: doc2 } = parseHTML('<html><body></body></html>');
+    const noCenter = { ...data, meta: { ...data.meta, center: null } };
+    const svg2 = renderTree(noCenter, doc2 as unknown as Document);
+    expect(svg2.querySelectorAll('g.tree-center')).toHaveLength(0);
+  });
+
   it('節點帶有 data-id / data-branch / data-type 供篩選使用', () => {
     const n = svg.querySelector('g.node[data-id="1001"]')!;
     expect(n.getAttribute('data-branch')).toBe('nature');

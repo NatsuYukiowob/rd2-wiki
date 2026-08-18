@@ -159,6 +159,59 @@ export function renderTree(data: TreeData, doc: Document): SVGSVGElement {
     viewport.appendChild(line);
   }
 
+  // 中央樞紐（遊戲內的「骰子樹」本體）。畫在邊之後、節點之前：放射線要壓在邊上面、
+  // 樞紐圖要被節點壓住，跟資料正本 SVG 的堆疊順序一致。
+  //
+  // 它刻意不是 <g class="node">：選取、祖先高亮、篩選、鍵盤巡覽全都以 .node 為選擇器，
+  // 樞紐若混進去會變成一個點得下去卻沒有資料的節點（詳情面板讀不到 id、成本算不出來）。
+  // 這裡用 class="tree-center"、不給 tabindex、不給 data-id，讓它在互動上完全隱形。
+  if (data.meta.center) {
+    const c = data.meta.center;
+    const hub = doc.createElementNS(NS, 'g');
+    hub.setAttribute('class', 'tree-center');
+
+    for (const id of c.links) {
+      const n = byId.get(id);
+      // 跳過而不是丟錯：id 對不上在建置期就會被 build-data.ts 擋下來（那裡是真正的守門），
+      // 走到這裡代表拿到一份不該存在的 tree.json。renderTree() 是在 tree-canvas.ts 的模組
+      // 頂層呼叫的，這裡丟例外會讓整個模組掛掉、使用者看到一片空白；樞紐只是裝飾，為了它
+      // 賠掉整張骰子樹不成比例。少畫一條腿的代價小得多，跟上面「sprite 格子對不到就 continue」
+      // 同一個取捨。
+      if (!n) continue;
+      const link = doc.createElementNS(NS, 'line');
+      link.setAttribute('class', 'tree-center-link');
+      link.setAttribute('x1', String(c.x));
+      link.setAttribute('y1', String(c.y));
+      link.setAttribute('x2', String(n.x));
+      link.setAttribute('y2', String(n.y));
+      hub.appendChild(link);
+    }
+
+    const [cw, ch] = c.size;
+    const img = doc.createElementNS(NS, 'image');
+    img.setAttribute('class', 'tree-center-image');
+    img.setAttribute('href', c.url);
+    img.setAttribute('x', String(c.x - cw / 2));
+    img.setAttribute('y', String(c.y - ch / 2));
+    img.setAttribute('width', String(cw));
+    img.setAttribute('height', String(ch));
+    // 樞紐圖是純裝飾，語意由下面的 <text> 標籤承擔；沒有 alt 的 <image> 對螢幕閱讀器
+    // 是一個無名的圖形節點，明確標成 presentation 讓它不要被念出來。
+    img.setAttribute('role', 'presentation');
+    hub.appendChild(img);
+
+    if (c.label) {
+      const text = doc.createElementNS(NS, 'text');
+      text.setAttribute('class', 'tree-center-label');
+      text.setAttribute('x', String(c.x));
+      text.setAttribute('y', String(c.y + ch / 2 + 12));
+      text.textContent = c.label;
+      hub.appendChild(text);
+    }
+
+    viewport.appendChild(hub);
+  }
+
   for (const n of data.nodes) {
     const g = doc.createElementNS(NS, 'g');
     g.setAttribute('class', 'node');
