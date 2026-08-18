@@ -65,6 +65,25 @@ npm run e2e         # 有 pree2e 自動跑 build
   的輸出也必須維持這個不變量（見下面「踩過的坑」的「資料解析」一節）
 - 規則 0/1/3/5 對編輯器使用者不可能違反（產出即正規形式、`<title>` 由 `data-*` 生成、
   stroke 由分支反查、邊端點取自節點中心）
+- **`src/lib/svg-emit.ts` 的逃逸邏輯，規格是「輸出必須逐字等於 linkedom 序列化器」，不是
+  「合法 XML 就好」**——CI 的守門條件是 `normalizeSvg(檔案) === 檔案`（`.github/workflows/
+  ci.yml` 的正規化定點檢查），`normalizeSvg` 內部用 linkedom 解析、重新序列化。從 XML
+  規範第一原理推導逃逸字元集合（「屬性值要處理 `&``<``"`，內容只需要 `&``<`」）會漏掉
+  linkedom 實際還會轉的 `>`／`U+00A0`（屬性值另外還有 `\r`，那是 `normalizeSvg()` 的
+  `encodeAttributeNewlines()` 後處理層轉的）——這正是 2026-08-18 全分支審查抓到的
+  Critical bug：這幾個字元在現行 239 節點資料裡出現次數皆為 0，往返測試完全遮蔽不到，
+  玩家一旦在欄位打進 `>` 或貼上 NBSP，emitter 產出的檔案就不再是 CI 的定點，PR 送出後 CI
+  才會失敗，玩家在編輯器裡完全看不出原因。下次要改這裡的逃逸規則：先用
+  `tests/lib/svg-emit.test.ts` 的 property test（拿一組對抗性字元跑
+  `normalizeSvg(out) === out`）驗證，不要只憑 XML 規範推導字元清單
+- **`/edit` 的信任邊界**：`functions/api/github/submit.ts` 收到的 `body.summary`（PR 標題／
+  內文摘要）完全由玩家瀏覽器算出、伺服器不重算也不驗證，任何人可用 curl 送一份「整份改寫的
+  svgText ＋ 宣稱只改了 1 個節點的 summary」——`renderPrBody()` 已經在內文開頭加了一行
+  「摘要未經伺服器驗證」的說明，維護者該信任的是 CI 自動貼的差異摘要留言（`tools/
+  diff-summary.ts`，規則 10），不是線上編輯器組出來的 PR 內文。節流（`lastSubmitAt`）存在
+  使用者自己持有的 cookie 裡，用 curl 保留舊 cookie 重放就能繞過——這只防得住「不小心連點
+  兩次」，**硬性防護必須另外在 Cloudflare 儀表板對 `/api/github/submit` 設 Rate Limiting
+  規則**，沒設的話濫用防護等於不存在
 - `functions/api/github/*` 是 Cloudflare Pages Functions；GitHub token 只存在加密的
   HttpOnly cookie，永遠不進瀏覽器 JS
 - `functions/` 與 `src/` 是兩個不同的執行環境，型別檢查分兩套：`npx tsc --noEmit`（根
@@ -80,6 +99,10 @@ npm run e2e         # 有 pree2e 自動跑 build
   `SESSION_SECRET`（任意長隨機字串，加密 session cookie 用）、`UPSTREAM_REPO`（形如
   `NatsuYukiowob/rd2-wiki`）。沒設的話 `/edit` 的「下載 SVG」仍能正常使用，只有「送出 PR」
   會失敗
+- **部署清單再加一項：必須在 Cloudflare 儀表板對 `/api/github/submit` 設 Rate Limiting
+  規則**（I6）。這個端點自己的節流（cookie 存 `lastSubmitAt`）只防得住「不小心連點兩次」，
+  對願意帶 curl 重放舊 cookie 的人完全無效——沒設這條規則，`/edit` 的送出端點事實上沒有
+  硬性的濫用防護
 
 ## 踩過的坑
 
