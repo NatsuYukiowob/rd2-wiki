@@ -11,12 +11,14 @@ import { estimateGzipBytes } from '../lib/budget.js';
 import { parseXmlInBrowser } from '../lib/dom.js';
 import { allocateId } from '../lib/id-alloc.js';
 import { checkIcon } from '../lib/icon-hash.js';
+import { diffTrees, type EditSummary } from '../lib/pr-summary.js';
 import { renderTree } from '../lib/render.js';
 import { locateNodeBlocks, replaceNode, insertNode, insertEdge, removeNode, removeEdge } from '../lib/svg-edit.js';
 import { emitNodeBlock, emitEdgeLine, newNodeBlock, parseNodeBlock, setImageHref, type NodeBlock } from '../lib/svg-emit.js';
 import { strokeOfElement } from '../lib/taxonomy.js';
 import { validateWith, type IconSource } from '../lib/validate-rules.js';
 import { Viewport } from '../lib/viewport.js';
+import { mountSubmitPanel, type SubmitPanelHandle, type SubmitPayload } from '../components/SubmitPanel.js';
 import type { Branch, NodeType, TreeData, TreeNode, UnlockVia } from '../lib/types.js';
 
 // tree.json 是建置期產物，結構保證符合 TreeData，但 TS 對 JSON 匯入的型別推論會把
@@ -91,7 +93,86 @@ let currentMode: EditMode = 'select';
  */
 let linkFromId: string | null = null;
 
+/**
+ * Task 21 登入／送出面板（`src/components/SubmitPanel.ts`）的控制 handle，`boot()` 掛載
+ * 時取得。跟 `currentViewport`／`currentUnlockExceptions` 同一類模組級狀態：`runValidation()`
+ * 每次跑完都要用它把「有沒有驗證錯誤、有沒有改動」這個結果轉告面板，用來切換送出鍵的可用
+ * 狀態（見該函式收尾那幾行）。掛載本身在 `#edit-submit-panel` 找不到時會是 `null`（理論上
+ * 不會發生，edit.astro 的模板固定有這個容器），下游一律用 `?.` 保護，不假設它一定存在。
+ */
+let submitPanelHandle: SubmitPanelHandle | null = null;
+
+/** `atob`／`btoa` 只吃字串，瀏覽器沒有 `Buffer.from(...).toString('base64')` 這條路——跟
+ *  `functions/api/github/_lib/gh.ts` 的同名函式（伺服器端版本）是同一招，這裡重新寫一份
+ *  而不是想辦法共用：那個檔案在 `functions/` 底下，是 Cloudflare Pages Functions 的程式，
+ *  用另一套 tsconfig／打包單元，`src/` 不該（也不能）反向 import 它（Global Constraints）。
+ *
+ *  ⚠️ 不能寫成 `String.fromCharCode(...bytes)` 展開成一次函式呼叫的多個引數（任務簡報
+ *  特別點名的坑）：`editorState.newIcons` 存的圖示約 20KB，展開等於一次呼叫塞 2 萬個
+ *  引數，會直接超出 JS engine 對函式呼叫引數數量的限制而炸掉（不同瀏覽器的實際上限不同，
+ *  但幾萬這個量級穩定會炸）。逐 byte 累加字串雖然多一層迴圈，沒有這個引數數量上限問題。 */
+function toBase64(bytes: Uint8Array): string {
+  let binary = '';
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary);
+}
+
+/**
+ * 組出送去 `/api/github/submit` 的 payload，由 SubmitPanel.ts 在玩家按下送出那一刻呼叫
+ * （見 mountSubmitPanel() 的 `getPayload` 參數）。
+ *
+ * `summary` 用 `diffTrees` 比較 `editorState.original`（玩家開始編輯前、boot() 讀到的原始
+ * SVG）與 `editorState.svgText`（目前狀態）算出來——`diffTrees` 吃的是 `TreeData`，不是
+ * 原始 SVG 字串，所以兩邊都要重新跑一次 `buildTreeDataWith`，用跟 `rerender()`／
+ * `runValidation()` 完全相同的一組 opts（keywords／unlockExceptions／spriteIndex／
+ * spriteSize），才能保證這裡算出的 `TreeNode[]` 形狀跟其他地方一致，`diffTrees` 內部的
+ * `JSON.stringify` 比對才有意義。
+ *
+ * `keywords`／`icons` 只在玩家本次真的有新增時才帶，對應 `functions/api/github/submit.ts`
+ * 對這兩個欄位的 optional 處理（該檔 `body.keywords && body.keywords.length > 0`／
+ * `body.icons ?? []` 那兩段）——沒有新增就完全不用碰 `data/keywords.json`／新增圖示檔案，
+ * 送一個不存在的空陣列語意上等價但沒有必要。
+ *
+ * 送出鍵只在 `runValidation()` 判定「沒有 error 且有改動」時才會被 `submitPanelHandle`
+ * 設成可按（見該函式收尾），所以呼叫這個函式時 `editorState.svgText` 理論上一定能被
+ * `buildTreeDataWith` 成功解析；`editorState.original` 是從未被玩家修改過的正本，更不可能
+ * 解析失敗。這裡仍不吞掉例外——SubmitPanel.ts 的 submit() 有 try/catch 接住任何意外，
+ * 顯示可讀錯誤，好過在這裡默默塞一份假資料送出去。
+ */
+function buildSubmitPayload(): SubmitPayload {
+  if (!currentUnlockExceptions) throw new Error('buildSubmitPayload：unlockExceptions 尚未就緒');
+
+  const opts = {
+    keywords: editorState.keywords,
+    unlockExceptions: currentUnlockExceptions,
+    spriteIndex: treeMeta.meta.sprite.index,
+    spriteSize: treeMeta.meta.sprite.size,
+  };
+  const before = buildTreeDataWith(editorState.original, opts, parseXmlInBrowser);
+  const after = buildTreeDataWith(editorState.svgText, opts, parseXmlInBrowser);
+  const summary: EditSummary = {
+    ...diffTrees(before, after),
+    newIcons: [...editorState.newIcons.keys()],
+    newKeywords: editorState.newKeywords,
+  };
+
+  const payload: SubmitPayload = { svgText: editorState.svgText, summary };
+  if (editorState.newKeywords.length > 0) payload.keywords = editorState.newKeywords;
+  if (editorState.newIcons.size > 0) {
+    payload.icons = [...editorState.newIcons].map(([hash, bytes]) => ({ hash, base64: toBase64(bytes) }));
+  }
+  return payload;
+}
+
 async function boot(): Promise<void> {
+  // 掛載跟其餘 boot() 流程平行、不互相依賴：登入狀態查詢（/api/github/me）不需要等
+  // 樹狀資料（svgText／keywords／…）載完才開始，愈早掛出去，玩家愈早看到登入鈕或
+  // 「已登入為 X」，不需要陪著等一份它根本用不到的資料。`buildSubmitPayload` 只在
+  // 玩家真的按下送出時才會被呼叫，那時候下面的 Promise.all 早就完成了，不會有
+  // currentUnlockExceptions 還沒就緒的競態（見該函式開頭的防禦性檢查）。
+  const submitHost = document.querySelector<HTMLElement>('#edit-submit-panel');
+  if (submitHost) submitPanelHandle = mountSubmitPanel(submitHost, buildSubmitPayload);
+
   const [svgText, keywords, unlockExceptions, iconHashes] = await Promise.all([
     fetch('/data/dice-tree.svg').then(r => r.text()),
     fetch('/data/keywords.json').then(r => r.json()),
@@ -666,8 +747,15 @@ async function runValidation(): Promise<void> {
   // 不該讓玩家下載一份會被 CI 擋下的檔案；沒有任何改動（dirty 是空的）則單純沒有東西可下載
   // ——`#edit-download` 在 edit.astro 裡本來就預設 `disabled`（見該檔），這裡是每次驗證後
   // 重新算一次，讓「剛修好最後一個 error」「剛完成第一次編輯」這兩種情況都能即時轉為可用。
+  //
+  // Task 21 的送出鍵（submitPanelHandle.setEnabled）套用完全相同的條件，理由也相同：
+  // 有 error 不該讓玩家送出一個會被 CI 擋下的 PR；沒有改動則沒有東西可送。跟下載鍵共用
+  // 同一個布林值（而不是分別各寫一次判斷式），避免兩處各自維護一份「該不該擋住」的邏輯，
+  // 日後這個條件要調整時只需要改一個地方。
+  const blocked = result.errors.length > 0 || editorState.dirty.size === 0;
   const downloadBtn = document.querySelector<HTMLButtonElement>('#edit-download');
-  if (downloadBtn) downloadBtn.disabled = result.errors.length > 0 || editorState.dirty.size === 0;
+  if (downloadBtn) downloadBtn.disabled = blocked;
+  submitPanelHandle?.setEnabled(!blocked);
 
   const status = document.querySelector<HTMLElement>('#edit-status');
   if (status) {

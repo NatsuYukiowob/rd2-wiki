@@ -24,6 +24,12 @@ import Base from '../layouts/Base.astro';
   <aside id="edit-panel">
     <p id="edit-hint">點一個節點開始編輯。</p>
     <div id="edit-validation"></div>
+    <!-- Task 21：登入／送出面板的掛載點，由 edit-canvas.ts 的 mountSubmitPanel() 填內容。
+         刻意放在 #edit-validation 之後、當作 #edit-panel 的固定「頁尾」，不是 #edit-form／
+         #new-node 那種「按需出現」的內容——clearPanelContent() 切換模式／選取節點時只清
+         #edit-form／#new-node／#edit-hint 這三個（見該函式），不動這裡，讓登入狀態與送出鍵
+         不受玩家切換模式或選取哪個節點影響，全程可見。 -->
+    <div id="edit-submit-panel"></div>
   </aside>
   <script>
     import '../scripts/edit-canvas.ts';
@@ -226,5 +232,61 @@ import Base from '../layouts/Base.astro';
      tree.astro 的 .node { cursor: pointer } 是同一個道理。 */
   #edit-canvas-host .node {
     cursor: pointer;
+  }
+
+  /* Task 21：登入／送出面板的最小可用樣式。跟 #edit-form/#new-node 的表單樣式同一個
+     指導原則（該區塊的說明）：只解決「可用」，不做視覺打磨，配色沿用既有 CSS 變數。
+     用一條上邊框跟 #edit-validation 分隔，視覺上讀成「頁尾」，跟它固定顯示、不隨選取
+     節點而消失的行為（見 edit.astro 模板裡 #edit-submit-panel 的說明）互相呼應。 */
+  #edit-submit-panel {
+    margin-top: 1rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--border);
+  }
+
+  /* #edit-login 是 <a>（點下去要整頁導向 /api/github/login 觸發 302，不是 JS 處理的
+     互動），外觀刻意跟 #edit-submit／#edit-download 這些 <button> 一致，玩家不需要
+     分辨「這個看起來像按鈕的東西其實是連結」。 */
+  #edit-login,
+  #edit-submit {
+    display: inline-block;
+    background: var(--bg);
+    color: var(--fg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 0.35rem 0.75rem;
+    font: inherit;
+    text-decoration: none;
+    cursor: pointer;
+  }
+
+  #edit-submit:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  #edit-permission-note,
+  #edit-login-status {
+    margin: 0.5rem 0 0;
+    color: var(--muted);
+    font-size: 0.9em;
+  }
+
+  /* OAuth 失敗導回 /edit?login=failed 時顯示的訊息（見 SubmitPanel.ts init() 的說明）。
+     跟 #edit-permission-note 用不同顏色，讓它比常態說明文字更醒目、不會被忽略成背景雜訊
+     ——沿用既有的 --gold 強調色（跟 #edit-mode-buttons 選中狀態同一色），不新增
+     error/danger 之類的新色票（這個檔案裡目前也還沒有這種 token，見 ValidationPanel.ts
+     的 .error/.warning class 目前同樣是沒上色的裸樣式，Task 21 沒有理由率先補上）。 */
+  #edit-login-failed {
+    margin: 0 0 0.5rem;
+    color: var(--gold);
+  }
+
+  #edit-submit-result {
+    margin-top: 0.5rem;
+  }
+
+  #edit-submit-result a {
+    color: var(--gold);
   }
 </style>
