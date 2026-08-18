@@ -36,9 +36,27 @@ jobs:
           script: |
             const fs = require('fs');
             const body = fs.readFileSync('diff-summary.md', 'utf8');
-            const prs = context.payload.workflow_run.pull_requests;
-            if (prs.length === 0) return;
+
+            // ⚠️ 不要用 context.payload.workflow_run.pull_requests。
+            // 那個欄位在實際送達的 webhook payload 裡幾乎總是空陣列（GitHub 的已知行為），
+            // 即使同一個 run 用 REST API 查得到關聯的 PR 也一樣。舊版寫成
+            // `if (prs.length === 0) return;`，於是這支 workflow 每次都「成功但靜默什麼都沒做」
+            // ——規則 10 的差異摘要留言從 v1 起就從來沒有真正貼出來過，而且因為 workflow 是綠的，
+            // 沒有任何跡象顯示它壞了。2026-08-18 開出本 repo 第一個真實 PR 時才發現。
+            //
+            // 正確做法是用 head SHA 反查：這條在同 repo 分支與 fork PR 上都成立。
+            const { data: prs } = await github.rest.repos.listPullRequestsAssociatedWithCommit({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              commit_sha: context.payload.workflow_run.head_sha,
+            });
+            const open = prs.filter(pr => pr.state === 'open');
+            if (open.length === 0) {
+              core.info('找不到與這個 commit 關聯的開啟中 PR，不貼留言');
+              return;
+            }
             await github.rest.issues.createComment({
               owner: context.repo.owner, repo: context.repo.repo,
-              issue_number: prs[0].number, body,
+              issue_number: open[0].number, body,
             });
+            core.info(`已貼上差異摘要到 PR #${open[0].number}`);
