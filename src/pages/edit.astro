@@ -274,9 +274,7 @@ import Base from '../layouts/Base.astro';
 
   /* OAuth 失敗導回 /edit?login=failed 時顯示的訊息（見 SubmitPanel.ts init() 的說明）。
      跟 #edit-permission-note 用不同顏色，讓它比常態說明文字更醒目、不會被忽略成背景雜訊
-     ——沿用既有的 --gold 強調色（跟 #edit-mode-buttons 選中狀態同一色），不新增
-     error/danger 之類的新色票（這個檔案裡目前也還沒有這種 token，見 ValidationPanel.ts
-     的 .error/.warning class 目前同樣是沒上色的裸樣式，Task 21 沒有理由率先補上）。 */
+     ——沿用既有的 --gold 強調色（跟 #edit-mode-buttons 選中狀態同一色）。 */
   #edit-login-failed {
     margin: 0 0 0.5rem;
     color: var(--gold);
@@ -288,5 +286,22 @@ import Base from '../layouts/Base.astro';
 
   #edit-submit-result a {
     color: var(--gold);
+  }
+
+  /* I8（全分支審查抓到、22 輪任務審查都漏掉的 Important）：計畫寫「紅色的 errors、黃色的
+     warnings」，CONTRIBUTING.md 寫「有問題當場紅字告訴你」，但 ValidationPanel.ts 產生的
+     `.error`／`.warning` 這兩個 class 在這個檔案、global.css、Base.astro 都沒有對應的顏色
+     規則——真實資料恆有 4 條規則 9 warning，玩家一打開編輯器就看到一堆沒有顏色分級的黑白
+     文字，沒辦法一眼分辨哪一條是「我剛剛弄壞的」。
+     沿用 global.css 既有的色票變數，不新增配色：`--nature`（#ef625e，紅）在 global.css
+     的 `#detail .warn` 已經是「有問題」的既定用法，這裡延續同一個語意；`--order`
+     （#f3bd55，黃）用於 warning——不用 `--gold`，是因為 `--gold` 在這個頁面已經是
+     「選中／可互動的強調色」（模式按鈕選中狀態、送出結果連結），跟「這裡有個警告」是
+     兩種不同語意，混用會讓玩家分不清一則訊息是在提示他「可以點」還是「要注意」。 */
+  #edit-validation .error {
+    color: var(--nature);
+  }
+  #edit-validation .warning {
+    color: var(--order);
   }
 </style>

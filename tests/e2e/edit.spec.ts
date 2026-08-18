@@ -394,6 +394,65 @@ test.describe('線上編輯器', () => {
     await expect(page.locator('#edit-status')).toContainText('尚未修改');
   });
 
+  // I1（全分支審查抓到的 Important，22 輪任務審查都漏掉）：bindFormEdits() 的 'focusout'
+  // 事件委派用 closest('[data-field]') 撈到觸發元素，圖示欄位 <input type="file"
+  // data-field="icon"> 也符合這個選擇器，卻沒有對應的 FieldEdits case，會撞進
+  // toFieldEdits() 的 default 分支 throw。真實觸發路徑是主流程：玩家選圖 → 接著點名稱欄位
+  // 打字 → file input 失焦。這支測試特意呼叫 `.focus()` 再切走焦點來重現這條路徑——
+  // `setInputFiles()` 本身不會改變焦點，所以既有的「換圖示」測試完全踩不到這個 bug
+  // （見任務報告），必須像這裡一樣手動 focus 再 blur 才踩得到。
+  test('選好圖示後 file input 失焦不會拋出未捕捉例外（I1 回歸測試）', async ({ page }) => {
+    const pageErrors: Error[] = [];
+    page.on('pageerror', err => pageErrors.push(err));
+
+    await page.goto('/edit');
+    await page.locator('#edit-canvas-host svg .node[data-id="1002"]').click();
+    await page.locator('#edit-panel [data-field="icon"]').setInputFiles('tests/fixtures/icon-128.png');
+    await expect(page.locator('#edit-panel [data-icon-hash]')).toBeVisible();
+
+    // 重現「選圖 → 接著點名稱欄位打字」：file input 先拿到焦點，再切到名稱欄位，
+    // 讓 file input 觸發 focusout。
+    await page.locator('#edit-panel [data-field="icon"]').focus();
+    await page.locator('#edit-panel [data-field="name"]').click();
+
+    // 修法前這裡會因為 toFieldEdits('icon', ...) 的 default 分支 throw 而留下一則
+    // 未捕捉的 pageerror；修法後 focusout 委派應該直接忽略圖示欄位，不拋出任何例外。
+    expect(pageErrors).toEqual([]);
+    // 圖示欄位的改動不受影響：換過的圖示雜湊應該還在，不會因為這次額外的 focusout 被清掉。
+    await expect(page.locator('#edit-panel [data-icon-hash]')).toBeVisible();
+  });
+
+  // D15（全分支審查抓到、22 輪任務審查都漏掉、從 deferred minor 提升為必修）：
+  // clearPanelContent() 移除 #edit-hint 且原本永不還原。玩家第一次點節點之後，切模式或
+  // 取消新增節點，右側面板會永久空白、沒有任何引導文字——在編輯器的主流程上直接製造
+  // 「我是不是把它弄壞了」的困惑。修法：`restoreHintIfEmpty()` 在面板清空後若沒有其他內容
+  // 要接著顯示，就把提示放回去（見 edit-canvas.ts 的說明）。這支測試涵蓋兩條 D15 描述的
+  // 具體路徑：切模式、取消新增節點。
+  test('切模式或取消新增節點後，右側面板顯示提示文字，不會永久留白（D15 回歸測試）', async ({ page }) => {
+    await page.goto('/edit');
+    await page.locator('#edit-canvas-host svg .node[data-id="1002"]').click();
+    await expect(page.locator('#edit-form')).toBeVisible();
+    await expect(page.locator('#edit-hint')).toHaveCount(0);
+
+    // 切到新增模式：原本開著的欄位表單被清掉，面板不該永久留白，而是顯示提示文字。
+    await page.locator('#edit-mode-add').click();
+    await expect(page.locator('#edit-form')).toHaveCount(0);
+    await expect(page.locator('#edit-hint')).toBeVisible();
+
+    // 在新增模式點畫布開新增節點表單，提示文字應該被表單蓋掉（三者互斥）。
+    const host = page.locator('#edit-canvas-host');
+    const box = await host.boundingBox();
+    if (!box) throw new Error('#edit-canvas-host 沒有 bounding box');
+    await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+    await expect(page.locator('#new-node')).toBeVisible();
+    await expect(page.locator('#edit-hint')).toHaveCount(0);
+
+    // 按「取消」後，提示文字要再放回來，不是留白。
+    await page.locator('#new-node [data-action="cancel"]').click();
+    await expect(page.locator('#new-node')).toHaveCount(0);
+    await expect(page.locator('#edit-hint')).toBeVisible();
+  });
+
   test('用了白名單外的關鍵字會報規則 8，按下加入白名單後轉綠', async ({ page }) => {
     await page.goto('/edit');
     await page.locator('#edit-canvas-host svg .node[data-id="1002"]').click();

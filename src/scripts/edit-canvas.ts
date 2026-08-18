@@ -10,7 +10,7 @@ import { buildTreeDataWith } from '../lib/build-tree.js';
 import { estimateGzipBytes } from '../lib/budget.js';
 import { parseXmlInBrowser } from '../lib/dom.js';
 import { allocateId } from '../lib/id-alloc.js';
-import { checkIcon } from '../lib/icon-hash.js';
+import { checkIcon, sha256Hex12 } from '../lib/icon-hash.js';
 import { diffTrees, type EditSummary } from '../lib/pr-summary.js';
 import { renderTree } from '../lib/render.js';
 import { locateNodeBlocks, replaceNode, insertNode, insertEdge, removeNode, removeEdge } from '../lib/svg-edit.js';
@@ -102,6 +102,17 @@ let linkFromId: string | null = null;
  */
 let submitPanelHandle: SubmitPanelHandle | null = null;
 
+/** `boot()` 一開始從 edit.astro 模板裡的初始 `#edit-hint` clone 下來的樣板，供
+ *  `restoreHintIfEmpty()`（D15）在面板被清空後需要放回提示文字時使用，見該函式的說明。 */
+let hintTemplate: Element | null = null;
+
+/** `boot()` 一開始（在 `sha256Hex12` 算完之前）快取的「玩家開始編輯前」骰子樹雜湊，供
+ *  `buildSubmitPayload()` 塞進送出 payload 的 `baseSvgHash`（I4）——伺服器收到後會用同一個
+ *  演算法對 `baseSha`（PR 建 commit 用的上游基底）上的 `data/dice-tree.svg` 重算一次雜湊，
+ *  兩者不同就代表玩家編輯期間上游又有新的合併，回 409 請玩家重新整理，避免 PR 靜默還原掉
+ *  那段時間別人剛合併的改動（見 functions/api/github/submit.ts 的說明）。 */
+let baseSvgHash: string | null = null;
+
 /** `atob`／`btoa` 只吃字串，瀏覽器沒有 `Buffer.from(...).toString('base64')` 這條路——跟
  *  `functions/api/github/_lib/gh.ts` 的同名函式（伺服器端版本）是同一招，這裡重新寫一份
  *  而不是想辦法共用：那個檔案在 `functions/` 底下，是 Cloudflare Pages Functions 的程式，
@@ -138,9 +149,17 @@ function toBase64(bytes: Uint8Array): string {
  * `buildTreeDataWith` 成功解析；`editorState.original` 是從未被玩家修改過的正本，更不可能
  * 解析失敗。這裡仍不吞掉例外——SubmitPanel.ts 的 submit() 有 try/catch 接住任何意外，
  * 顯示可讀錯誤，好過在這裡默默塞一份假資料送出去。
+ *
+ * `baseSvgHash`（I4，全分支審查抓到、跟 keywords.json 早就修過的漂移問題是同一類）：伺服器
+ * 端 `data/dice-tree.svg` 走的是「整份拿玩家頁面載入時的舊快照覆蓋」這條路，跟 keywords.json
+ * 曾經被否決的做法一樣——玩家開著 `/edit` 編輯期間，若維護者剛好合併了另一個 PR，玩家送出
+ * 時會靜默還原掉那個 PR 的改動。這裡把 `boot()` 讀到的原始 SVG 雜湊一起送給伺服器，讓伺服器
+ * 用同一個 `baseSha` 重新讀一次上游現在的內容比對雜湊，不同就代表上游已經變了，回 409 並顯示
+ * 「請重新整理頁面後再改一次」（見 functions/api/github/submit.ts 的說明）。
  */
 function buildSubmitPayload(): SubmitPayload {
   if (!currentUnlockExceptions) throw new Error('buildSubmitPayload：unlockExceptions 尚未就緒');
+  if (!baseSvgHash) throw new Error('buildSubmitPayload：baseSvgHash 尚未就緒');
 
   const opts = {
     keywords: editorState.keywords,
@@ -156,7 +175,7 @@ function buildSubmitPayload(): SubmitPayload {
     newKeywords: editorState.newKeywords,
   };
 
-  const payload: SubmitPayload = { svgText: editorState.svgText, summary };
+  const payload: SubmitPayload = { svgText: editorState.svgText, summary, baseSvgHash };
   if (editorState.newKeywords.length > 0) payload.keywords = editorState.newKeywords;
   if (editorState.newIcons.size > 0) {
     payload.icons = [...editorState.newIcons].map(([hash, bytes]) => ({ hash, base64: toBase64(bytes) }));
@@ -165,6 +184,12 @@ function buildSubmitPayload(): SubmitPayload {
 }
 
 async function boot(): Promise<void> {
+  // D15：在任何 clearPanelContent() 有機會執行之前，先把 edit.astro 模板裡的初始
+  // #edit-hint clone 一份存起來，供之後 restoreHintIfEmpty() 需要「放回」提示文字時使用
+  // （見該函式的說明）。這裡只 clone、不動 DOM，所以放在 boot() 最前面、比任何事件綁定都早
+  // 執行沒有風險。
+  hintTemplate = document.querySelector('#edit-panel #edit-hint')?.cloneNode(true) as Element ?? null;
+
   // 掛載跟其餘 boot() 流程平行、不互相依賴：登入狀態查詢（/api/github/me）不需要等
   // 樹狀資料（svgText／keywords／…）載完才開始，愈早掛出去，玩家愈早看到登入鈕或
   // 「已登入為 X」，不需要陪著等一份它根本用不到的資料。`buildSubmitPayload` 只在
@@ -184,6 +209,10 @@ async function boot(): Promise<void> {
   editorState.keywords = keywords;
   editorState.iconHashes = new Set<string>(iconHashes);
   currentUnlockExceptions = unlockExceptions;
+  // I4：算「玩家開始編輯前」這份骰子樹的雜湊，送出時一併帶給伺服器比對（見 baseSvgHash 的
+  // 宣告、buildSubmitPayload() 的說明）。不併進上面的 Promise.all：這裡依賴的是剛拿到的
+  // svgText 本身，不是另一個獨立的網路請求，沒有理由跟其他 fetch 搶跑。
+  baseSvgHash = await sha256Hex12(new TextEncoder().encode(svgText));
   rerender();
   bindNodeClicks();
   bindViewportInteractions();
@@ -368,11 +397,42 @@ function ensureNewNodeFormHost(panel: HTMLElement): HTMLElement {
  * #edit-panel 裡，欄位 id 沒有衝突（各自用 data-field 委派，不靠 DOM id 選取單一表單），
  * 但畫面會很混亂。刻意不動 #edit-validation：那是 runValidation() 的地盤，跟「哪個表單
  * 顯示中」是獨立的兩件事，見 setMode() 的說明。
+ *
+ * ⚠️ 這個函式本身**不會**把 `#edit-hint` 放回去（D15，全分支審查抓到、22 輪任務審查都漏掉
+ * 的 Minor→必修）：呼叫端有兩種收尾方式——「清空後馬上補新內容」（bindNodeClicks() 選取節點
+ * 開表單、handleAddModeClick() 開新增節點表單）跟「清空後沒有新內容」（setMode() 切模式、
+ * deleteSelectedNode() 刪掉正在編輯的節點、bindNewNodeFormActions() 取消／建立新節點）。
+ * 若這裡自動補回 hint，前者會出現「hint 補回來、下一行馬上又被表單蓋掉」的閃爍，且
+ * `ensureFormHost()`／`ensureNewNodeFormHost()` 只是 `prepend`，不會順手把這裡剛塞回去的
+ * hint 移除，會變成表單跟 hint 同時顯示（違反「三者互斥」）。後者才需要補 hint，見
+ * `restoreHintIfEmpty()`，由這些呼叫端自己決定要不要接著呼叫。
  */
 function clearPanelContent(panel: HTMLElement): void {
   panel.querySelector('#edit-form')?.remove();
   panel.querySelector('#new-node')?.remove();
   panel.querySelector('#edit-hint')?.remove();
+}
+
+/**
+ * `clearPanelContent()` 之後，面板陷入「三者（表單／新增表單／提示）都沒有」的空白狀態時，
+ * 把初始提示放回去（D15）。修法前，玩家點過一次節點之後，切模式或取消新增節點，`#edit-panel`
+ * 會永久留白、沒有任何引導文字——在編輯器的主流程上直接製造「我是不是把它弄壞了」的困惑。
+ *
+ * 只有「清空後不會馬上補新內容」的呼叫端（setMode()／deleteSelectedNode()／
+ * bindNewNodeFormActions() 的取消與建立分支）需要呼叫這個函式，見 clearPanelContent() 的
+ * 說明；`ensureFormHost()`／`ensureNewNodeFormHost()` 兩條「清空後馬上補新內容」的路徑不呼叫
+ * 它，避免 hint 曇花一現又被蓋掉、或跟表單同時顯示。
+ *
+ * 提示文字不在這裡重新硬編碼一份字面量：`hintTemplate` 是 `boot()` 一開始（在任何
+ * `clearPanelContent()` 有機會執行之前）從 edit.astro 模板裡的初始 `#edit-hint` clone
+ * 下來的，這裡永遠 clone 一份新的插回去——提示文案只在 edit.astro 定義一次，不會因為兩處
+ * 各自維護一份字串而漂移。
+ */
+function restoreHintIfEmpty(panel: HTMLElement): void {
+  if (panel.querySelector('#edit-form') || panel.querySelector('#new-node')) return;
+  if (panel.querySelector('#edit-hint')) return;
+  if (!hintTemplate) return; // 理論上不會發生：boot() 一定會在任何呼叫端有機會執行前設好
+  panel.prepend(hintTemplate.cloneNode(true) as Element);
 }
 
 /**
@@ -587,12 +647,18 @@ const MODE_BUTTON_ID: Record<EditMode, string> = {
  * 刻意不清 #edit-validation：那裡顯示的是 validateWith() 對目前 svgText 的驗證結果（或
  * handleLinkModeNodeClick() 借位顯示的連線提示），跟「現在是哪個模式」是獨立的兩件事——
  * 玩家若還有未解決的規則錯誤，切模式不該讓那則訊息憑空消失。
+ *
+ * `restoreHintIfEmpty()`（D15）：切模式之後不會有任何呼叫端接著幫面板補新內容（跟
+ * bindNodeClicks()／handleAddModeClick() 不同），清空後若不補回提示，面板就會永久留白。
  */
 function setMode(mode: EditMode): void {
   currentMode = mode;
   linkFromId = null;
   const panel = document.querySelector<HTMLElement>('#edit-panel');
-  if (panel) clearPanelContent(panel);
+  if (panel) {
+    clearPanelContent(panel);
+    restoreHintIfEmpty(panel);
+  }
   currentEditId = null;
   for (const [m, id] of Object.entries(MODE_BUTTON_ID) as [EditMode, string][]) {
     document.getElementById(id)?.setAttribute('aria-pressed', String(m === mode));
@@ -800,6 +866,18 @@ function bindFormEdits(): void {
     const field = el.dataset.field;
     if (!field) return;
 
+    // 圖示欄位（<input type="file" data-field="icon">）也掛在 #edit-panel 底下，同樣會被
+    // 這個委派的 closest('[data-field]') 撈到——但它的改動走的是 bindIconUpload() 的
+    // 'change' 委派（讀檔、算雜湊、驗證尺寸），不是這裡的「讀 el.value 套進 FieldEdits」這條
+    // 路：file input 的 `.value` 是瀏覽器出於安全性只給假路徑的字串（例如
+    // `C:\fakepath\icon.png`），toFieldEdits() 也沒有 'icon' 這個 case（default 分支
+    // throw）。主流程「玩家選圖 → 接著點名稱欄位打字」會讓 file input 先失焦，一路撞進這條
+    // throw（I1，全分支審查抓到的 Important、22 輪任務審查都漏掉：E2E 測不到是因為
+    // `setInputFiles()` 不會改變焦點，這個真實使用者路徑因此完全沒有自動化測試覆蓋過）。
+    // 在這裡提早 return，讓圖示欄位的失焦事件單純被忽略——它的改動已經由 bindIconUpload()
+    // 處理完了，這裡不需要（也不能）再對它做任何事。
+    if (field === 'icon') return;
+
     const block = getNodeBlock(currentEditId);
     const edits = toFieldEdits(field, el.value);
     const nextBlockText = emitNodeBlock(applyFieldEdits(block, edits));
@@ -982,6 +1060,11 @@ function createNewNodeFromForm(x: number, y: number, form: HTMLElement): void {
  * 委派在 #edit-panel 上監聽 #new-node 裡「建立」／「取消」兩顆按鈕的 click（跟
  * bindFormEdits() 的 focusout 委派同一個容器、同一個理由：#new-node 是按需建立的，
  * 監聽器掛在活得比它久的 #edit-panel 上才不會漏接）。
+ *
+ * 兩個分支收尾都呼叫 `restoreHintIfEmpty()`（D15）：`form.remove()` 之後面板沒有任何呼叫端
+ * 會接著補新內容（不像選取節點／新增模式點畫布那兩條「清空後馬上補表單」的路徑），不補回
+ * 提示的話，玩家取消新增節點、或成功建立節點後（新節點不會自動被選取、開出它的欄位表單，
+ * 那是另一個問題，不在這次修的範圍），面板會永久留白。
  */
 function bindNewNodeFormActions(): void {
   const panel = document.querySelector<HTMLElement>('#edit-panel');
@@ -994,6 +1077,7 @@ function bindNewNodeFormActions(): void {
 
     if (target.closest('[data-action="cancel"]')) {
       form.remove();
+      restoreHintIfEmpty(panel);
       return;
     }
     if (target.closest('[data-action="create"]')) {
@@ -1006,6 +1090,7 @@ function bindNewNodeFormActions(): void {
       const y = Number(form.dataset.y);
       createNewNodeFromForm(x, y, form);
       form.remove();
+      restoreHintIfEmpty(panel);
     }
   });
 }
@@ -1043,8 +1128,14 @@ function deleteSelectedNode(): void {
   }
   next = removeNode(next, id);
 
+  // restoreHintIfEmpty()（D15）：刪掉的正是目前開著表單的節點，清空後不會有任何呼叫端接著
+  // 補新內容（applyEdit() 只重繪畫布／跑驗證，不碰 #edit-panel），不補回提示的話面板會永久
+  // 留白。
   const panel = document.querySelector<HTMLElement>('#edit-panel');
-  if (panel) clearPanelContent(panel);
+  if (panel) {
+    clearPanelContent(panel);
+    restoreHintIfEmpty(panel);
+  }
   currentEditId = null;
   applyEdit(next, id);
 }

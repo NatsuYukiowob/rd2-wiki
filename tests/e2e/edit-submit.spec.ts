@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { test, expect } from '@playwright/test';
 
 /** 攔下所有 GitHub 相關端點，E2E 不真的打 GitHub。 */
@@ -78,5 +79,41 @@ test.describe('送出 PR', () => {
     // 失敗訊息只在「這次載入」有意義，不該留在網址列讓玩家重新整理後還卡著，見
     // SubmitPanel.ts init() 的說明。
     await expect.poll(() => new URL(page.url()).searchParams.get('login')).toBeNull();
+  });
+
+  // D35（全分支審查抓到、22 輪任務審查都漏掉的必修 Minor）：上傳圖示 → 送出這條路徑，
+  // base64 編解碼串了三次——`toBase64`（前端 edit-canvas.ts）→ `fromBase64`（後端
+  // submit.ts）→ `toBase64`（gh.ts，建 blob 用）——各自有單元測試，但從來沒有一支測試
+  // 完整跑過這整條路。`tests/e2e/edit.spec.ts` 的「下載時一併給那張 PNG」測試驗過
+  // 前端 toBase64 → 下載的那一段，`tests/functions/submit.test.ts` 驗過後端
+  // fromBase64 → 送進 tree 的那一段，但兩者中間「前端編出來的 base64，後端解碼後是否真的
+  // 是原始檔案的位元組」這個交界，只有這支測試會實際攔截 `/api/github/submit` 的 request
+  // body、解碼、拿去跟原始 fixture 逐位元組比對。這條路徑一旦錯，玩家上傳的圖示會靜默損壞，
+  // 而 CI 的規則 7(b) 只會報一個雜湊不符的錯——玩家完全看不懂那跟他選的圖片有什麼關係。
+  test('上傳圖示送出後，request body 裡的 base64 解碼後與原始檔案位元組完全相同（D35）', async ({ page }) => {
+    await mockApi(page, { loggedIn: true });
+
+    let capturedIconBase64: string | undefined;
+    // 蓋掉 mockApi() 已經註冊的 '**/api/github/submit' route：Playwright 對同一個 pattern
+    // 多次呼叫 page.route() 時，後註冊的 handler 先執行（可以呼叫 route.fallback() 才會退回
+    // 前一個），這裡不需要 fallback——直接接手處理並回傳跟 mockApi() 一樣的成功回應即可。
+    await page.route('**/api/github/submit', async route => {
+      const body = route.request().postDataJSON() as { icons?: { hash: string; base64: string }[] };
+      capturedIconBase64 = body.icons?.[0]?.base64;
+      await route.fulfill({ json: { number: 42, url: 'https://github.com/NatsuYukiowob/rd2-wiki/pull/42' } });
+    });
+
+    await page.goto('/edit');
+    await page.locator('#edit-canvas-host svg .node[data-id="1002"]').click();
+    await page.locator('#edit-panel [data-field="icon"]').setInputFiles('tests/fixtures/icon-128.png');
+    await expect(page.locator('#edit-panel [data-icon-hash]')).toBeVisible();
+
+    await page.locator('#edit-submit').click();
+    await expect(page.locator('#edit-submit-result')).toContainText('#42');
+
+    expect(capturedIconBase64).toBeTruthy();
+    const decoded = Buffer.from(capturedIconBase64!, 'base64');
+    const original = readFileSync('tests/fixtures/icon-128.png');
+    expect(decoded.equals(original)).toBe(true);
   });
 });

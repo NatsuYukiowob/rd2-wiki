@@ -30,6 +30,13 @@ import type { EditSummary } from '../lib/pr-summary.js';
  *  打包單元，`src/` 也不該反向依賴 `functions/`，見 Global Constraints）。 */
 export interface SubmitPayload {
   svgText: string;
+  /** `editorState.original`（玩家開始編輯前那份骰子樹）的 sha256 前 12 碼——伺服器用同一個
+   *  `baseSha` 重讀一次上游現在的 `data/dice-tree.svg` 比對雜湊，不同就代表上游在玩家編輯
+   *  期間又有新的合併，回 409 請玩家重新整理（I4，見 edit-canvas.ts 的 `baseSvgHash` 說明與
+   *  `functions/api/github/submit.ts`）。跟 `keywords`／`icons` 不同，這個欄位永遠會帶
+   *  （不是「有新增才帶」），因為每次送出都要做這個比對，不是「玩家本次有沒有動到某樣東西」
+   *  的條件式欄位。 */
+  baseSvgHash: string;
   keywords?: string[];
   icons?: { hash: string; base64: string }[];
   summary: EditSummary;
