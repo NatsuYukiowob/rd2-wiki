@@ -44,7 +44,7 @@ export interface SubmitBody {
  *  任意檔案系統操作（GitHub Contents/Git Data API 本身就會擋掉路徑穿越之類的異常字元組合，
  *  頂多是建出一個檔名很怪的檔案，不是本地檔案系統風險），但沒有格式檢查就等於把「這串字會
  *  被拼進公開 repo 的哪個路徑」完全交給匿名輸入決定，值得在進 GitHub API 之前就擋下、給一句
- *  可讀錯誤，而不是让 GitHub API 用一個不透明的 4xx 擋（或者更糟：真的建出一個檔名詭異的
+ *  可讀錯誤，而不是讓 GitHub API 用一個不透明的 4xx 擋（或者更糟：真的建出一個檔名詭異的
  *  檔案）。跟資料正本的雜湊格式（12 碼小寫 hex）用同一個規則，見 `src/lib/icon-hash.ts`。 */
 const ICON_HASH_RE = /^[0-9a-f]{12}$/;
 
