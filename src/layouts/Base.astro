@@ -17,7 +17,11 @@ const { title } = Astro.props;
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>{title} — rd2-wiki</title>
+    <title>{title} rd2-wiki</title>
+    <!-- 分頁圖示用陰陽骰子（節點 4008）的骰子本體，不含節點底板：底板在 32px 下會吃掉四周
+         約四分之一的面積，把中間的陰陽符號擠到看不清。圖是方形畫布置中的透明 PNG——favicon
+         的顯示位置是正方形，直接放長方形圖會被壓扁。 -->
+    <link rel="icon" type="image/png" href="/favicon.png" />
     <meta
       name="description"
       content="Random Dice 2 骰子樹非官方玩家攻略站：收錄全部節點、解鎖條件與前置關係。"

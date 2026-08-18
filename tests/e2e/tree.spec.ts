@@ -690,3 +690,18 @@ test('P. 工具列對齊：搜尋框與分支側欄切齊同一條左邊界，�
   // 內容之間本來就該有分隔線。
   expect(borders.siteNav).not.toBe('0px');
 });
+
+test('R. 分頁標題不帶破折號，分頁圖示指向實際存在的檔案', async ({ page }) => {
+  await page.goto('/tree');
+  const title = await page.title();
+  expect(title).toBe('骰子樹 rd2-wiki');
+  expect(title).not.toContain('—'); // 破折號拿掉了（2026-08-18 要求）
+
+  // 圖示只寫在 <head> 是不夠的：路徑打錯時瀏覽器只會安靜地退回預設圖示，沒有任何錯誤。
+  // 這裡實際發一次請求確認它真的存在、而且是圖片。
+  const href = await page.locator('link[rel="icon"]').getAttribute('href');
+  expect(href).toBe('/favicon.png');
+  const res = await page.request.get(href!);
+  expect(res.status()).toBe(200);
+  expect(res.headers()['content-type']).toContain('image/png');
+});
