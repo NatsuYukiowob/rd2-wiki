@@ -1,28 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { ensureFork, openPr } from '../../functions/api/github/_lib/gh';
-
-function fakeGitHub(overrides: Record<string, () => Response> = {}) {
-  const calls: { method: string; url: string; body?: any }[] = [];
-  const f = (async (input: RequestInfo | URL, init?: RequestInit) => {
-    const url = String(input);
-    const method = init?.method ?? 'GET';
-    const body = init?.body ? JSON.parse(String(init.body)) : undefined;
-    calls.push({ method, url, body });
-    for (const [pattern, make] of Object.entries(overrides)) {
-      if (url.includes(pattern)) return make();
-    }
-    if (url.endsWith('/forks') && method === 'POST') return new Response('{}', { status: 202 });
-    if (/\/repos\/someplayer\/rd2-wiki$/.test(url)) return new Response('{}', { status: 200 });
-    if (url.includes('/git/ref/heads/main')) return new Response(JSON.stringify({ object: { sha: 'base-sha' } }));
-    if (url.includes('/git/blobs')) return new Response(JSON.stringify({ sha: `blob-${calls.length}` }), { status: 201 });
-    if (url.includes('/git/trees')) return new Response(JSON.stringify({ sha: 'tree-sha' }), { status: 201 });
-    if (url.includes('/git/commits')) return new Response(JSON.stringify({ sha: 'commit-sha' }), { status: 201 });
-    if (url.includes('/git/refs')) return new Response('{}', { status: 201 });
-    if (url.includes('/pulls')) return new Response(JSON.stringify({ number: 42, html_url: 'https://github.com/x/y/pull/42' }), { status: 201 });
-    throw new Error(`未預期的請求: ${method} ${url}`);
-  }) as typeof fetch;
-  return { f, calls };
-}
+import { fakeGitHub } from './helpers';
 
 const input = {
   token: 'gho_fake', login: 'someplayer', upstream: 'NatsuYukiowob/rd2-wiki',
