@@ -49,6 +49,38 @@ npm run e2e         # 有 pree2e 自動跑 build
 - `dataIssue==='placeholder'` **4** 個、`no-growth` **5** 個
 - 效能預算硬斷言：`tree.json` gzip ≤ 20KB（目前 16.7KB）、sprite ≤ 400KB（目前 106KB）
 
+## 線上編輯器（/edit）
+
+- 設計文件：本機 `docs/superpowers/specs/2026-08-18-rd2-wiki-online-editor-design.md`
+- **正本仍是 `data/dice-tree.svg`**，編輯器對它的「原始字串」做行區塊替換，不重新序列化
+  ——整檔 diff 會讓維護者失去審查能力（CI 是唯一防線，但 CI 之後還是要有人看）
+- 規則邏輯在 `src/lib/`（`svg-parse` / `build-tree` / `validate-rules`），DOM 與圖示來源都是
+  注入的，Node 端在 `tools/` 各有一層薄包裝。**改規則時改 `src/lib/`，不要改 `tools/`**
+- 讀「作者輸入的文字」屬性（`data-name`／`data-description`／`data-cost`⋯）一律用
+  `getAttributeNode(name)?.value`，**不要用 `getAttribute(name)`**——linkedom 對具名實體
+  （`&amp;`／`&lt;`）不解碼、Chromium 會解碼，兩邊讀出來的值不一樣（完整根因見
+  `src/lib/svg-parse.ts` 與 `src/lib/validate-rules.ts` 開頭的註解）
+- 屬性值內的換行要寫 XML 實體 `&#10;`，`<title>` 元素內容內的換行則寫字面換行——XML 規範
+  要求 parser 把屬性值內的字面換行正規化成空格，Chromium 遵守、linkedom 沒有；編輯器產生
+  的輸出也必須維持這個不變量（見下面「踩過的坑」的「資料解析」一節）
+- 規則 0/1/3/5 對編輯器使用者不可能違反（產出即正規形式、`<title>` 由 `data-*` 生成、
+  stroke 由分支反查、邊端點取自節點中心）
+- `functions/api/github/*` 是 Cloudflare Pages Functions；GitHub token 只存在加密的
+  HttpOnly cookie，永遠不進瀏覽器 JS
+- `functions/` 與 `src/` 是兩個不同的執行環境，型別檢查分兩套：`npx tsc --noEmit`（根
+  tsconfig，瀏覽器 DOM lib）與 `npm run typecheck:functions`（`functions/tsconfig.json`，
+  `@cloudflare/workers-types`）。**不要把 `functions/` 併回根 tsconfig**——
+  `@cloudflare/workers-types` 的全域 `Response`／`Element` 會跟瀏覽器端 DOM lib 的同名全域
+  型別衝突（`functions/tsconfig.json` 開頭有完整根因記錄，實測過會讓 `src/` 的 DOM 程式碼
+  炸開一堆型別錯誤）
+- 本機跑 Functions：`npm run build && npm run pages:dev`（需要 `.dev.vars`，不進版控）
+- 要讓 `/edit` 的「送出 PR」功能運作，必須先在 GitHub 建一個 OAuth App（Authorization
+  callback URL 設成 `<部署網址>/api/github/callback`，scope 只要 `public_repo`），並在
+  Cloudflare Pages 專案設四個環境變數：`GITHUB_CLIENT_ID`、`GITHUB_CLIENT_SECRET`、
+  `SESSION_SECRET`（任意長隨機字串，加密 session cookie 用）、`UPSTREAM_REPO`（形如
+  `NatsuYukiowob/rd2-wiki`）。沒設的話 `/edit` 的「下載 SVG」仍能正常使用，只有「送出 PR」
+  會失敗
+
 ## 踩過的坑
 
 ### ⚠️ 寫死的版面偏移量咬過三次
