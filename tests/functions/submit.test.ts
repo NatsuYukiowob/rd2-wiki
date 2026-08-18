@@ -234,6 +234,16 @@ describe('submit', () => {
       expect(body.message).toContain('../../etc/passwd');
     });
 
+    it('icons 不是陣列（例如物件）時回 400，不會拋例外讓 handleSubmit 不回傳 Response', async () => {
+      // 複審抓到的回退：這道檢查補回來之前，`for (const icon of body.icons ?? [])` 在
+      // try 之外對不可迭代的值（例如物件）直接拋 TypeError，handleSubmit 連 Response
+      // 都不回傳。這支測試要證明的是「有回傳 400」這件事本身，不只是狀態碼數字。
+      const req = await loggedInRequest({ ...validBody, icons: { a: 1 } });
+      const res = await handleSubmit(req, env, { fetch: noFetch });
+      expect(res).toBeInstanceOf(Response);
+      expect(res.status).toBe(400);
+    });
+
     it('icon.hash 格式正確時正常送出（不會誤擋合法輸入）', async () => {
       const { f } = fakeGitHub();
       const req = await loggedInRequest({

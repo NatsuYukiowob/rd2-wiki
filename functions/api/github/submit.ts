@@ -171,6 +171,16 @@ export async function handleSubmit(
       headers: { 'content-type': 'application/json' },
     });
   }
+  // 複審抓到的回退：`body.icons` 是非 undefined 又不可迭代的值（例如物件 `{"a":1}`）時，
+  // 下面的 `for...of` 在 `try` 之外會直接拋 TypeError，冒到請求層變成不透明的平台錯誤，
+  // `handleSubmit` 連 Response 都不回傳。這裡跟 svgText／baseSvgHash 走同一種「先擋形狀」
+  // 寫法，用 400 收斂掉，不依賴下面 try/catch 把例外轉成 502。
+  if (body.icons !== undefined && !Array.isArray(body.icons)) {
+    return new Response(JSON.stringify({ message: 'icons 格式不正確' }), {
+      status: 400,
+      headers: { 'content-type': 'application/json' },
+    });
+  }
   for (const icon of body.icons ?? []) {
     if (!ICON_HASH_RE.test(icon.hash)) {
       return new Response(JSON.stringify({ message: `圖示雜湊格式不正確：${icon.hash}` }), {
