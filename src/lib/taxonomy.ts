@@ -26,16 +26,6 @@ export function elementOfStroke(stroke: string): Element {
   if (!e) throw new Error(`未知的 stroke: ${stroke}`);
   return e;
 }
-/**
- * element → stroke 的反查（`elementOfStroke` 的反函式）。
- * 線上編輯器新增節點時用它決定外框顏色——顏色由分支推導、不讓玩家選，
- * 所以 CI 規則 3「外框顏色要跟屬性分支對得上」對編輯器使用者不可能違反。
- */
-export function strokeOfElement(element: Element): string {
-  const entry = Object.entries(ELEMENT_BY_STROKE).find(([, e]) => e === element);
-  if (!entry) throw new Error(`未知的 element: ${element}`);
-  return entry[0];
-}
 /** SVG `data-type` 中文對照到站台用的 NodeType。 */
 export function typeOfZh(zh: string): NodeType {
   const t = TYPE_BY_ZH[zh];

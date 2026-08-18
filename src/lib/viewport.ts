@@ -182,31 +182,4 @@ export class Viewport {
     this.y = vbh / 2 - (by + bh / 2) * next;
     this.apply();
   }
-
-  /**
-   * 重新綁定到新一輪渲染出的 `<svg>`／`<g id="viewport">`，套用目前既有的 x/y/s（完全不
-   * 重新計算，也不夾制範圍）。
-   *
-   * 用途（task-12 對 task-11 留下的已知取捨的修正）：`src/scripts/edit-canvas.ts` 的
-   * `rerender()` 每次成功渲染都用 `replaceChildren()` 整批換掉畫布內容，舊的
-   * `<svg>`／`<g id="viewport">` 元素被丟棄。task-11 的做法是每次都重新 `fitTo()`，
-   * 代價是玩家每改一個欄位、畫面就跳回整棵樹視角——他好不容易縮放到想改的節點，
-   * 一打字就彈開，對非開發者是很挫折的體驗。玩家的平移縮放屬於「這次編輯 session」的
-   * 操作狀態，不該因為底下 DOM 被換掉就被重置。
-   *
-   * 跟 `fitTo()` 的差異：`fitTo()` 會依 `bounds` 重新算出 x/y/s；`rebind()` 完全不碰這
-   * 三個值，只是把既有的值 `apply()` 到新的 `layer` 上——語意上仍是「同一個 viewport」，
-   * 只是它畫在哪個 `<svg>` 元素上換了。`this.svg` 也要一併換掉：後續 `pan()`／`zoomAt()`
-   * 讀的 `getScreenCTM()` 必須是新 `<svg>` 的，舊 `<svg>` 已經從文件裡被拔掉，
-   * `getScreenCTM()` 在分離的元素上不保證能拿到正確（甚至任何）版面資訊。
-   *
-   * 呼叫端（`rerender()`）只在「這個分頁第一次成功畫出東西」（`currentViewport` 還是
-   * `null`）才建新 `Viewport` 並呼叫 `fitTo()`；之後每一輪成功渲染都呼叫這個方法，
-   * 不再呼叫 `fitTo()`。
-   */
-  rebind(svg: SVGSVGElement, layer: SVGGElement): void {
-    this.svg = svg;
-    this.layer = layer;
-    this.apply();
-  }
 }

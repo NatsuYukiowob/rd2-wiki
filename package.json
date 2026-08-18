@@ -2,9 +2,7 @@
   "name": "rd2-wiki",
   "private": true,
   "type": "module",
-  "engines": {
-    "node": ">=24"
-  },
+  "engines": { "node": ">=24" },
   "scripts": {
     "pretest": "npm run build:data",
     "test": "vitest run",
@@ -17,21 +15,17 @@
     "build": "npm run build:data && astro build",
     "dev": "npm run build:data && astro dev",
     "pree2e": "npm run build",
-    "e2e": "playwright test",
-    "pages:dev": "wrangler pages dev dist --compatibility-date=2026-08-01",
-    "typecheck:functions": "tsc --noEmit -p functions/tsconfig.json"
+    "e2e": "playwright test"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^5.20260817.1",
-    "@playwright/test": "^1.49.0",
     "@types/node": "^24.0.0",
     "astro": "^5.0.0",
     "linkedom": "^0.18.0",
-    "serve": "^14.2.0",
     "sharp": "^0.34.0",
     "tsx": "^4.19.0",
     "typescript": "^5.7.0",
     "vitest": "^2.1.0",
-    "wrangler": "^4.123.0"
+    "@playwright/test": "^1.49.0",
+    "serve": "^14.2.0"
   }
 }

@@ -2,7 +2,6 @@ node_modules/
 dist/
 .astro/
 public/assets/
-public/data/
 src/generated/
 test-results/
 playwright-report/
@@ -10,6 +9,3 @@ diff-summary.md
 
 # 開發文件（規格、計畫、部署步驟、已知問題）不進版控，保留在本機與 Samba 備份
 docs/
-
-# Cloudflare Pages Functions 本機開發用的機密（Client secret 等），絕對不進版控
-.dev.vars
