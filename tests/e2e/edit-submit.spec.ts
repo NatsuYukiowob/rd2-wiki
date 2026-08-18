@@ -94,12 +94,17 @@ test.describe('送出 PR', () => {
     await mockApi(page, { loggedIn: true });
 
     let capturedIconBase64: string | undefined;
+    let capturedBaseSvgHash: string | undefined;
     // 蓋掉 mockApi() 已經註冊的 '**/api/github/submit' route：Playwright 對同一個 pattern
     // 多次呼叫 page.route() 時，後註冊的 handler 先執行（可以呼叫 route.fallback() 才會退回
     // 前一個），這裡不需要 fallback——直接接手處理並回傳跟 mockApi() 一樣的成功回應即可。
     await page.route('**/api/github/submit', async route => {
-      const body = route.request().postDataJSON() as { icons?: { hash: string; base64: string }[] };
+      const body = route.request().postDataJSON() as {
+        icons?: { hash: string; base64: string }[];
+        baseSvgHash?: string;
+      };
       capturedIconBase64 = body.icons?.[0]?.base64;
+      capturedBaseSvgHash = body.baseSvgHash;
       await route.fulfill({ json: { number: 42, url: 'https://github.com/NatsuYukiowob/rd2-wiki/pull/42' } });
     });
 
@@ -115,5 +120,11 @@ test.describe('送出 PR', () => {
     const decoded = Buffer.from(capturedIconBase64!, 'base64');
     const original = readFileSync('tests/fixtures/icon-128.png');
     expect(decoded.equals(original)).toBe(true);
+
+    // I4 順帶驗證：baseSvgHash 有確實算出來並送上去（12 碼小寫 hex，跟 sha256Hex12() 的
+    // 輸出格式一致）——這是 buildSubmitPayload() 唯一一次在真實瀏覽器環境（不是 vitest 的
+    // node 環境）跑過 sha256Hex12(new TextEncoder().encode(svgText))，順手在這支已經攔截
+    // request body 的測試裡驗一下，不另開一支測試。
+    expect(capturedBaseSvgHash).toMatch(/^[0-9a-f]{12}$/);
   });
 });
