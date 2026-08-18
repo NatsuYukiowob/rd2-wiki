@@ -117,5 +117,22 @@ export function renderEditForm(block: NodeBlock, host: HTMLElement): void {
     <label>等級上限（留白代表無）
       <input type="number" data-field="maxLevel" min="1" step="1" value="${escapeHtml(maxLevelValue)}">
     </label>
+    <div class="icon-field">
+      <label>圖示（PNG，最長邊 ≥ 96px）
+        <input type="file" accept="image/png" data-field="icon">
+      </label>
+      <!-- 選檔案後的狀態訊息，由 edit-canvas.ts 的 change 委派寫入（這個元件不掛事件，
+           理由見檔頭）。成功時只在這個元素掛 data-icon-hash 屬性（給自動化測試掛鉤用），
+           不把雜湊值印成看得見的文字——玩家從頭到尾不需要知道「雜湊」是什麼（任務簡報的
+           設計要點）。失敗時原樣顯示 checkIcon() 回傳的 reason，不自己改寫措辭（那句話
+           刻意跟 CI 規則 7(c) 用語逐字一致，有 tests/lib/icon-hash.test.ts 守著）。
+           用 div.icon-field 包住這組欄位，不讓 label 直接掛在 #edit-form 底下：
+           tests/e2e/edit.spec.ts「表單六個欄位縱向堆疊」那支測試用「#edit-form 直接子元素
+           的 label／p.meta」數固定 6 列，若圖示欄位的 label 也是 #edit-form 的直接子元素，
+           數量會變 7 把那支既有測試考壞——包一層 div 讓它變成孫層級，CSS 的 #edit-form
+           label 選擇器沒有用子代限定，樣式不受影響，但那支計數測試的直接子元素選擇器不會
+           多算到它。 -->
+      <p class="icon-status" data-icon-status></p>
+    </div>
   `;
 }

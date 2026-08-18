@@ -358,4 +358,48 @@ test.describe('線上編輯器', () => {
     await expect(page.locator('#edit-canvas-host svg .node[data-id="1301"]')).toHaveCount(0);
     await expect(page.locator('#edit-canvas-host svg .edge')).toHaveCount(247);
   });
+
+  // task-14：換圖示與新增關鍵字。
+
+  test('換圖示：選一張合法 PNG 後節點的 href 更新且驗證通過', async ({ page }) => {
+    await page.goto('/edit');
+    await page.locator('#edit-canvas-host svg .node[data-id="1002"]').click();
+    await page.locator('#edit-panel [data-field="icon"]').setInputFiles('tests/fixtures/icon-128.png');
+    // `data-icon-hash` 是內部實作細節（sha256 前 12 碼）給自動化測試掛鉤用的屬性，不是玩家
+    // 會在畫面上讀到的文字——設計上玩家從頭到尾不需要知道「雜湊」是什麼（見任務簡報）。
+    await expect(page.locator('#edit-panel [data-icon-hash]')).toBeVisible();
+    // 「驗證通過」量的是 errors（會擋 PR 的那些），不是「面板完全沒有『規則 7』字樣」——
+    // 這支測試原本（任務簡報 Step 1 原始版本）用 `not.toContainText('規則 7')`，實測發現
+    // 是假陰性：1002 原本的圖示雜湊 193187e4e921 只有它自己引用（`grep -c` 驗證過），換掉
+    // 之後這個雜湊變成沒有任何節點引用，會觸發規則 7(d)「圖示未被任何節點引用」的 warning
+    // ——這是正確、預期的行為（不擋 PR，只是提醒），不是這次實作的 bug。跟同檔案「改名字」
+    // 「新增節點」兩支既有測試踩過的坑同一類（那邊是規則 9 的 warning），改成跟它們一致的
+    // 量法：有沒有 errors 區塊、送出按鈕有沒有被停用，才是真正代表「通過」的訊號。
+    await expect(page.locator('#edit-validation .errors')).toHaveCount(0);
+    await expect(page.locator('#edit-download')).toBeEnabled();
+    await expect(page.locator('#edit-status')).toContainText('已修改 1 處');
+  });
+
+  test('換圖示：太小的圖會被當場擋下並說明原因', async ({ page }) => {
+    await page.goto('/edit');
+    await page.locator('#edit-canvas-host svg .node[data-id="1002"]').click();
+    await page.locator('#edit-panel [data-field="icon"]').setInputFiles('tests/fixtures/icon-32.png');
+    // 這句話是 checkIcon() 的 reason，跟 CI 規則 7(c) 用語逐字一致（見 icon-hash.ts 與
+    // tests/lib/icon-hash.test.ts 的回歸測試），這裡原樣顯示，不是這支測試自己重寫的字串。
+    await expect(page.locator('#edit-panel')).toContainText('最長邊 32px，小於最低要求 96px');
+    // 太小的圖被擋下時不可以進 dirty：玩家沒有成功做出任何改動，狀態列應該維持「尚未修改」，
+    // 不能因為選過一次檔案就誤判成「已修改」（見任務簡報 Step 4：驗證失敗「不進 dirty，不改
+    // svgText」）。
+    await expect(page.locator('#edit-status')).toContainText('尚未修改');
+  });
+
+  test('用了白名單外的關鍵字會報規則 8，按下加入白名單後轉綠', async ({ page }) => {
+    await page.goto('/edit');
+    await page.locator('#edit-canvas-host svg .node[data-id="1002"]').click();
+    await page.locator('#edit-panel [data-field="description"]').fill('造成#超新星傷害');
+    await page.locator('#edit-panel [data-field="description"]').blur();
+    await expect(page.locator('#edit-validation')).toContainText('規則 8');
+    await page.locator('#edit-validation [data-action="add-keyword"]').click();
+    await expect(page.locator('#edit-validation')).not.toContainText('規則 8');
+  });
 });

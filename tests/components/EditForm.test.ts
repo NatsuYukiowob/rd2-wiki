@@ -108,6 +108,16 @@ describe('renderEditForm', () => {
     expect(host.querySelector<HTMLTextAreaElement>('[data-field="cost"]')?.value).toBe(b.cost);
   });
 
+  it('圖示欄位是只接受 PNG 的檔案輸入（Task 14）', () => {
+    const { host } = render('1002');
+    const iconInput = host.querySelector<HTMLInputElement>('[data-field="icon"]');
+    // 讀原始屬性而不是 .accept 這個 IDL 屬性：linkedom 對 <input> 沒有實作 accept 的屬性
+    // 反射（讀回來是 undefined），跟 CLAUDE.md「測試環境」一節記錄的其他 linkedom 落差
+    // 同一類問題，這裡改用 getAttribute 繞開，不依賴 linkedom 沒實作的那塊 IDL。
+    expect(iconInput?.getAttribute('type')).toBe('file');
+    expect(iconInput?.getAttribute('accept')).toBe('image/png');
+  });
+
   it('欄位值含 HTML 特殊字元時會逃逸，不會破壞表單結構或造成注入', () => {
     const { document } = parseHTML('<html><body><div id="host"></div></body></html>');
     const host = document.getElementById('host') as unknown as HTMLElement;
@@ -121,7 +131,8 @@ describe('renderEditForm', () => {
     const html = host.innerHTML;
     expect(html).toContain('傷害 &lt;100&gt; &amp; &quot;測試&quot;');
     expect(html).not.toContain('傷害 <100>'); // 沒有逃逸的話會直接出現在這裡，被解析成新元素
-    // 同時確認沒有意外多出一顆標籤或把後面的欄位吃掉（結構仍然完整，5 個可編輯欄位都在）。
-    expect(host.querySelectorAll('[data-field]').length).toBe(5);
+    // 同時確認沒有意外多出一顆標籤或把後面的欄位吃掉（結構仍然完整，6 個可編輯欄位都在——
+    // Task 14 加了圖示上傳欄位，見 renderEditForm() 的 icon-field）。
+    expect(host.querySelectorAll('[data-field]').length).toBe(6);
   });
 });

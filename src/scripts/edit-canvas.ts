@@ -10,9 +10,10 @@ import { buildTreeDataWith } from '../lib/build-tree.js';
 import { estimateGzipBytes } from '../lib/budget.js';
 import { parseXmlInBrowser } from '../lib/dom.js';
 import { allocateId } from '../lib/id-alloc.js';
+import { checkIcon } from '../lib/icon-hash.js';
 import { renderTree } from '../lib/render.js';
 import { locateNodeBlocks, replaceNode, insertNode, insertEdge, removeNode, removeEdge } from '../lib/svg-edit.js';
-import { emitNodeBlock, emitEdgeLine, newNodeBlock, parseNodeBlock, type NodeBlock } from '../lib/svg-emit.js';
+import { emitNodeBlock, emitEdgeLine, newNodeBlock, parseNodeBlock, setImageHref, type NodeBlock } from '../lib/svg-emit.js';
 import { strokeOfElement } from '../lib/taxonomy.js';
 import { validateWith, type IconSource } from '../lib/validate-rules.js';
 import { Viewport } from '../lib/viewport.js';
@@ -51,6 +52,14 @@ let currentNodesById = new Map<string, TreeNode>();
 // 事件 handler 每次觸發時讀的都是「當下」這個變數的值，才會操作到最新一輪畫面的座標系。
 // rerender() 失敗時同樣不更新它，理由跟 currentNodesById 一致：畫面沒換，操作對象也不該換。
 let currentViewport: Viewport | null = null;
+
+// 目前畫布上疊在新圖示（editorState.newIcons，還沒進 sprite.webp）之上的 blob URL 清單，
+// 供 overlayNewIcons() 在下一輪 rerender() 建立新 URL 之前先 revoke 用。跟
+// currentNodesById／currentViewport 同一類「屬於目前這一輪畫面」的模組級狀態，見
+// overlayNewIcons() 的說明——重點是「revoke 的時機」：只在正要建出新一輪畫面時才 revoke
+// 上一輪的，rerender() 失敗（畫面沒換）時不會走到這裡，舊畫面用的 blob URL 因此不會被
+// 提早收掉而變成破圖。
+let activeIconBlobUrls: string[] = [];
 
 // boot() 讀一次就固定不變的 unlockExceptions，之後 rerender()／runValidation() 都要用
 // 同一份（buildTreeDataWith 的 BuildOpts 需要它）。放模組級變數而不是每次呼叫端各自傳
@@ -98,9 +107,61 @@ async function boot(): Promise<void> {
   bindNodeClicks();
   bindViewportInteractions();
   bindFormEdits();
+  bindIconUpload();
+  bindValidationActions();
   bindModeButtons();
   bindNewNodeFormActions();
   bindDeleteShortcut();
+}
+
+const SVG_NS = 'http://www.w3.org/2000/svg';
+
+/**
+ * 換圖示的畫布顯示（Task 14）：新圖示還沒進 `sprite.webp`（那是建置期批次打包的產物，
+ * 見 CLAUDE.md「既有 202 張圖示是打包在 sprite 圖集裡渲染的」），`render.ts` 對雜湊查不到
+ * `spriteIndex` 的圖示只會 `continue`、整個跳過那個雜湊的 `<pattern>`（見該檔 iconSizes
+ * 迴圈的說明），節點的 `.icon` `<rect fill="url(#...)">` 因此指到一個不存在的 pattern，
+ * 畫面上會是空白——這裡在每次 `rerender()` 成功建出新 svg 後，對雜湊落在
+ * `editorState.newIcons` 的節點，疊一張 `URL.createObjectURL()` 生出的 `<image>` 蓋在
+ * `.icon` 之上。不動 `.icon` 本身（不拔掉、不改它的 x/y/width/height）：`bindNodeClicks()`
+ * 的點選判定是用 `closest('.node')` 找最近的節點群組，不管實際點到 `.icon` 還是蓋在它
+ * 上面的這張 `<image>`，兩者都在同一個 `<g class="node">` 底下，判定不受影響。
+ *
+ * ⚠️ 每次呼叫都先 revoke 上一輪建立的 blob URL，再建這一輪的——這是任務簡報明講的坑：
+ * 玩家反覆換圖示、改欄位都會觸發 `rerender()`，若不 revoke，每一輪都會新增一批不會被
+ * 自動回收的 blob，分頁的記憶體會隨編輯次數線性成長。revoke 的時機刻意選在「正要建立
+ * 新一輪畫面」的當下（`rerender()` 的 try 區塊成功跑到這裡才會呼叫這個函式）：`rerender()`
+ * 失敗時完全不會走到這裡，上一輪成功畫面連同它用的 blob URL 原封不動留著繼續顯示，這是
+ * 對的行為——沒有新畫面可以換上去時，還在用的 blob URL 不能被 revoke，否則畫面上正顯示
+ * 中的圖示會直接消失變空白（見 rerender() 的 try/catch 說明：「失敗時完全不動 DOM」）。
+ */
+function overlayNewIcons(svg: SVGSVGElement, nodes: TreeNode[]): void {
+  for (const url of activeIconBlobUrls) URL.revokeObjectURL(url);
+  activeIconBlobUrls = [];
+  if (editorState.newIcons.size === 0) return;
+
+  for (const n of nodes) {
+    const bytes = editorState.newIcons.get(n.icon);
+    if (!bytes) continue; // 這個節點的圖示不是本次新增的，既有 sprite 查得到，不需要疊圖
+    const iconRect = svg.querySelector(`.node[data-id="${n.id}"] .icon`);
+    if (!iconRect) continue; // 理論上不會發生：n.id／n.icon 都是剛剛 renderTree() 用同一份 data 畫出來的
+
+    // 包一層 new Uint8Array(bytes)：跟 icon-hash.ts 的 sha256Hex12() 同一個型別坑
+    // （TS 5.7+ 把 TypedArray 的 buffer 泛型化成 ArrayBufferLike，含 SharedArrayBuffer，
+    // 但 DOM 的 BlobPart 只收 ArrayBuffer-backed 的 TypedArray），內容不變，只是讓型別對得上。
+    const url = URL.createObjectURL(new Blob([new Uint8Array(bytes)], { type: 'image/png' }));
+    activeIconBlobUrls.push(url);
+
+    const [w, h] = n.size;
+    const img = document.createElementNS(SVG_NS, 'image');
+    img.setAttribute('x', String(-w / 2));
+    img.setAttribute('y', String(-h / 2));
+    img.setAttribute('width', String(w));
+    img.setAttribute('height', String(h));
+    img.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+    img.setAttribute('href', url);
+    iconRect.after(img);
+  }
 }
 
 /**
@@ -148,6 +209,7 @@ function rerender(): void {
       parseXmlInBrowser,
     );
     const svg = renderTree(data, document);
+    overlayNewIcons(svg, data.nodes); // 疊在 replaceChildren() 之前，畫面只換一次，不會閃一下空白圖示
     host.replaceChildren(svg);
     const viewportGroup = svg.querySelector<SVGGElement>('#viewport');
     if (viewportGroup) {
@@ -650,6 +712,105 @@ function bindFormEdits(): void {
     const nextBlockText = emitNodeBlock(applyFieldEdits(block, edits));
     const nextSvgText = replaceNode(editorState.svgText, currentEditId, nextBlockText);
     applyEdit(nextSvgText, currentEditId);
+  });
+}
+
+/**
+ * 換圖示（Task 14）：委派在 #edit-panel 上監聽 'change'（跟 bindFormEdits() 的 'focusout'
+ * 委派同一個容器、同一個理由——#edit-form 是按需建立的，監聽器掛在活得比它久的 #edit-panel
+ * 上才不會漏接）。`<input type="file">` 選好檔案後會觸發會冒泡的原生 'change' 事件，
+ * 委派可以直接接住，不需要像 focusout 那樣改聽別的事件名。
+ *
+ * 玩家從頭到尾不需要知道「雜湊」是什麼（任務簡報的設計要點）：這裡只把 `checkIcon()` 算好
+ * 的雜湊拿去命名／存檔／改 `<image href>`，不在畫面上印出雜湊字串本身——成功時只把它掛成
+ * `data-icon-hash` 屬性（給自動化測試掛鉤用，見 EditForm.ts 的說明），不當文字內容顯示。
+ *
+ * 驗證失敗（`check.ok === false`）：**不進 dirty、不改 svgText**，原樣顯示 `check.reason`
+ * 就直接 return（任務簡報 Step 4 明講）。這跟其餘欄位「先套用、讓 CI 規則說明哪裡錯」的
+ * 哲學不同，是刻意的：圖示的合法性／尺寸不是那種「先套用、CI 規則訊息會講清楚怎麼修」的
+ * 錯——玩家沒辦法在表單裡『打對』一張圖片，唯一的修法是重選一張檔案，提早在瀏覽器端擋下、
+ * 給出跟 CI 逐字一致的原因，比讓它繞去 svgText 一圈、再被 runValidation() 報同一句話更直接，
+ * 也才能滿足「狀態列在這種情況下仍顯示尚未修改」（見任務簡報自我審查清單）。
+ *
+ * `id`／`statusEl` 都在兩個 `await`（讀檔、算雜湊）之前先算好、存成區域變數，不是等到用的
+ * 時候才去讀 `currentEditId`／重新查 DOM：玩家選檔案到瀏覽器讀完位元組、算完雜湊這段期間
+ * 是非同步的，若中途切去選了別的節點（`clearPanelContent()` 會把 #edit-form 整個換掉），
+ * 這次上傳的圖理應套用到「選檔案當下」那個節點，狀態訊息也該寫回「選檔案當下」那份表單
+ * （即使它可能已經被拔出 DOM，寫入不會報錯，只是玩家看不到——這是可以接受的邊界情況，好過
+ * 誤把訊息寫進「下一個」節點的表單、或誤把圖套用到「現在」選取的節點）。
+ */
+function bindIconUpload(): void {
+  const panel = document.querySelector<HTMLElement>('#edit-panel');
+  if (!panel) return;
+
+  panel.addEventListener('change', async e => {
+    const input = (e.target as Element).closest?.('[data-field="icon"]') as HTMLInputElement | null;
+    if (!input || !currentEditId) return;
+    const file = input.files?.[0];
+    if (!file) return;
+
+    const id = currentEditId;
+    const statusEl = input.closest<HTMLElement>('#edit-form')?.querySelector<HTMLElement>('[data-icon-status]') ?? null;
+
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const check = await checkIcon(bytes);
+
+    if (!check.ok) {
+      if (statusEl) {
+        statusEl.textContent = check.reason;
+        statusEl.removeAttribute('data-icon-hash');
+      }
+      return; // 不進 dirty，不改 svgText
+    }
+
+    editorState.newIcons.set(check.hash, bytes);
+    const block = getNodeBlock(id);
+    const next = { ...block, imageXml: setImageHref(block.imageXml, check.hash) };
+    if (statusEl) {
+      statusEl.textContent = '圖示已更新';
+      statusEl.setAttribute('data-icon-hash', check.hash);
+    }
+    applyEdit(replaceNode(editorState.svgText, id, emitNodeBlock(next)), id);
+  });
+}
+
+/**
+ * 「把『詞』加進白名單」按鈕（Task 14，規則 8）：`renderValidation()`（ValidationPanel.ts）
+ * 對比對不到白名單的 `#` 標記提供這顆按鈕（純 DOM 寫入，不掛事件——理由同 EditForm.ts），
+ * 這裡接住點擊，把按鈕上 `data-keyword` 帶的詞同時寫進 `editorState.newKeywords`
+ * （送出時併入 `data/keywords.json`，見任務簡報「Produces」那行）與 `editorState.keywords`
+ * （讓下一輪驗證立刻認得這個詞），再重繪＋重跑一次驗證讓面板轉綠。
+ *
+ * 委派掛在 #edit-validation（而不是逐一在按鈕上掛監聽器）：`renderValidation()` 每次都用
+ * `host.innerHTML` 整段換掉內容，個別掛在按鈕上的監聽器會跟著被丟棄，跟 `bindNodeClicks()`
+ * 對節點的事件委派同一個理由；#edit-validation 這個容器本身不會被換掉（只有它的 innerHTML
+ * 被覆寫），掛在它上面的監聽器不會失效。
+ *
+ * 兩個 `includes()` 檢查是防重複，不是防競態：`runValidation()` 是非同步的，這個 handler
+ * 不等它跑完就結束，若玩家在它跑完之前又點了同一顆按鈕（此時舊按鈕理論上還沒被新一輪
+ * `renderValidation()` 換掉），沒有這兩個檢查會把同一個詞塞進陣列兩次。
+ *
+ * 這裡呼叫 `rerender()`（不只 `runValidation()`）：加入白名單前，`rerender()` 很可能因為
+ * `buildTreeDataWith` 內部的 `extractKeywords` 對這個新詞丟例外而失敗過一次（見該函式的
+ * try/catch 說明），畫布因此還停在「加詞之前」的最後一次成功畫面。白名單補上後
+ * `buildTreeDataWith` 不會再因為這個詞失敗，重新呼叫 `rerender()` 才能讓畫布跟上這次修正
+ * ——跟 `applyEdit()` 的收尾同一個組合（rerender 先、runValidation 後），只是這裡沒有新的
+ * svgText／dirty 要記錄，所以不能直接呼叫 applyEdit()，得照抄它的收尾兩步。
+ */
+function bindValidationActions(): void {
+  const validation = document.querySelector<HTMLElement>('#edit-validation');
+  if (!validation) return;
+
+  validation.addEventListener('click', e => {
+    const btn = (e.target as Element).closest?.('[data-action="add-keyword"]') as HTMLElement | null;
+    if (!btn) return;
+    const word = btn.dataset.keyword;
+    if (!word) return;
+
+    if (!editorState.newKeywords.includes(word)) editorState.newKeywords.push(word);
+    if (!editorState.keywords.includes(word)) editorState.keywords.push(word);
+    rerender();
+    runValidation();
   });
 }
 
