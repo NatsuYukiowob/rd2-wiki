@@ -5,9 +5,20 @@ const SECRET = 'test-secret-do-not-use-in-production';
 
 describe('session', () => {
   it('封裝後可以解回原本的內容', async () => {
-    const s = { token: 'gho_abc123', login: 'someplayer', iat: 1_700_000_000 };
+    // iat 用「現在」：這支測試驗的是加解密的往返正確性，不是過期邏輯（過期邏輯見下方
+    // 專屬測試）。寫死的舊時間戳記在加了伺服器端過期檢查後會被判定過期，讓這支測試變成
+    // 意外失敗而不是真的驗到問題。
+    const s = { token: 'gho_abc123', login: 'someplayer', iat: Math.floor(Date.now() / 1000) };
     const opened = await openSession(await sealSession(s, SECRET), SECRET);
     expect(opened).toEqual(s);
+  });
+
+  it('iat 超過 SESSION_MAX_AGE_SECONDS 就算過期，回傳 null（伺服器端過期檢查）', async () => {
+    // 只靠 cookie 的 Max-Age 不夠：那只在瀏覽器端生效。密文本身若以其他方式外洩
+    // （log、磁碟存取…），沒有這道檢查會一直有效到 SESSION_SECRET 輪替為止。
+    const longAgo = Math.floor(Date.now() / 1000) - SESSION_MAX_AGE_SECONDS - 1;
+    const sealed = await sealSession({ token: 'gho_abc123', login: 'p', iat: longAgo }, SECRET);
+    expect(await openSession(sealed, SECRET)).toBeNull();
   });
 
   it('密文裡看不到明文 token', async () => {
