@@ -64,6 +64,13 @@ export interface RawCenter {
 export interface RawMeta {
   svgVersion: string;
   gameBundle: string;
+  /**
+   * 遊戲版本，讀自 `<svg data-game-version>`。
+   *
+   * 跟 `gameBundle` 是兩件事：gameBundle 是「資料抄自哪一版遊戲資源包」（0.0.x 這種內部
+   * 編號），這個是玩家在遊戲裡看得到的版本號（v1.0.1）。兩者會各自獨立變動，所以分開存。
+   */
+  gameVersion: string;
   updated: string;
   viewBox: [number, number, number, number];
   center: RawCenter | null;
@@ -203,6 +210,7 @@ export function parseTree(svgText: string): { meta: RawMeta; nodes: RawNode[]; e
 
   const meta: RawMeta = {
     svgVersion: svg.getAttribute('data-version') ?? '',
+    gameVersion: svg.getAttribute('data-game-version') ?? '',
     gameBundle: bundle,
     updated: svg.getAttribute('data-updated') ?? '',
     viewBox: [vb[0]!, vb[1]!, vb[2]!, vb[3]!],

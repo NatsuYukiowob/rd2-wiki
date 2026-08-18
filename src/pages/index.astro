@@ -1,18 +1,19 @@
 ---
-// 首頁：概覽數字全部從 src/generated/tree.json 讀出，不寫死，資料改版時自動同步。
+// 首頁：版本與更新日期全部從 src/generated/tree.json 讀出，不寫死，資料改版時自動同步。
 import Base from '../layouts/Base.astro';
 import data from '../generated/tree.json';
-
-const diceCount = data.nodes.filter((n) => n.type === 'dice').length;
 ---
 
 <Base title="首頁">
   <section style="padding:2rem">
     <h1>Random Dice 2 骰子樹</h1>
-    <p>
-      收錄 {data.nodes.length} 個節點、{diceCount} 顆骰子，涵蓋自然、機械、魔法、秩序、渾沌五大屬性分支。解鎖前先看清楚整棵樹，避免點錯路線浪費資源。
-    </p>
     <p><a href="/tree">開啟骰子樹 →</a></p>
-    <p style="color:var(--muted)">資料版本 {data.meta.gameBundle}（更新於 {data.meta.updated}）</p>
+    <!-- 三個數字是三件不同的事，不要合併：遊戲版本是玩家在遊戲裡看得到的號碼；資料版本是
+         這份資料抄自哪一版遊戲資源包；更新日期是這個站最後一次跟上游對過資料的日子。
+         全部讀自資料正本（<svg> 的 data-game-version／<metadata> 的 resource bundle／
+         data-updated），不寫死在頁面上——寫死的版本號一定會忘記跟著改。 -->
+    <p style="color:var(--muted)">
+      遊戲版本v{data.meta.gameVersion} ・ 資料版本 {data.meta.gameBundle}（更新於 {data.meta.updated}）
+    </p>
   </section>
 </Base>

@@ -37,6 +37,8 @@ export type Edge = [string, string];
 export interface TreeMeta {
   svgVersion: string;
   gameBundle: string;
+  /** 玩家在遊戲裡看得到的版本號（例如 1.0.1），跟 gameBundle 的內部資源包編號是兩件事。 */
+  gameVersion: string;
   updated: string;
   viewBox: [number, number, number, number];
   roots: string[];

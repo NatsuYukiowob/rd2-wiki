@@ -42,6 +42,7 @@
 //    蓋到那個節點；斷言本身沒有任何調整。
 import { test, expect, type Page, type Locator } from '@playwright/test';
 import sharp from 'sharp';
+import { readFileSync } from 'node:fs';
 
 /**
  * locator 目前的中心點（CSS px）。
@@ -727,4 +728,19 @@ test('S. 連結預覽卡片：標題全站固定，網址與圖片都是絕對�
   // 標題刻意不隨分頁變動：換一頁再驗一次，避免有人日後改成 `${title} - …` 而沒人發現。
   await page.goto('/about');
   expect(await meta('meta[property="og:title"]')).toBe('Random Dice 2 wiki - Fan made');
+});
+
+test('T. 首頁的版本資訊全部來自資料正本，不是寫死在頁面上', async ({ page }) => {
+  // 三個數字是三件不同的事：遊戲版本（玩家看得到的號碼）、資料版本（抄自哪一版遊戲資源包）、
+  // 更新日期。期望值從建置產物現讀，不寫死——寫死的話下次改資料版本又要回頭改測試，
+  // 而真正該擋的（頁面沒跟著資料變）反而測不出來。
+  const meta = JSON.parse(
+    readFileSync(new URL('../../src/generated/tree.json', import.meta.url), 'utf8'),
+  ).meta as { gameVersion: string; gameBundle: string; updated: string };
+
+  await page.goto('/');
+  const text = (await page.locator('section').innerText()).replace(/\s+/g, '');
+  expect(text).toContain(`遊戲版本v${meta.gameVersion}`);
+  expect(text).toContain(`資料版本${meta.gameBundle}`);
+  expect(text).toContain(meta.updated);
 });
