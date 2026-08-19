@@ -1,5 +1,22 @@
-import { loadSvg } from './dom.js';
+import { loadSvg, attr } from './dom.js';
 import type { Shape } from '../../src/lib/types.js';
+
+/**
+ * 判定「邊的端點對到哪顆節點」「樞紐放射線有沒有接準」時的座標容差（單位＝畫布座標）。
+ *
+ * 這個數字原本在 tools/validate.ts、tools/build-data.ts、parseCenter 各寫一份 0.5。三份要是
+ * 漂開，會出現「validate 認為這條邊接到 A、build-data 認為接到 B」這種兩邊都不報錯的裂縫。
+ */
+export const COORD_TOLERANCE = 0.5;
+
+/**
+ * 座標數字的字面格式。
+ *
+ * 用 `-?\d+(?:\.\d+)?` 而不是 `-?[\d.]+`：後者會吃下 `1.2.3`、`.`、`...` 這種東西，
+ * `Number()` 給回 NaN，而 NaN 一路傳下去只會變成「這條邊哪個節點都對不上」或畫布上一個
+ * 看不見的節點——沒有任何一步會說「這裡有個數字是壞的」。
+ */
+const NUM = String.raw`-?\d+(?:\.\d+)?`;
 
 /** 從 SVG `<g class="node">` 抽出的原始節點資料，尚未做語意轉換（分支/元素/花費解析等留給後續任務）。 */
 export interface RawNode {
@@ -15,6 +32,14 @@ export interface RawNode {
   stroke: string;
   shape: Shape;
   icon: string;
+  /**
+   * `data-wip="1"`＝「先佔位、之後再接線」。規則 6 讓它豁免根／可達性檢查，所以它是資料裡
+   * 唯一一種「不接線也合法」的節點——正因如此，規則 6(d) 反過來禁止它出現在任何邊上。
+   *
+   * 以前這個旗標只有 validate 自己再查一次 DOM 拿得到，build-data 完全不知道它的存在。
+   * 放進 RawNode 讓兩邊看到的是同一份事實。
+   */
+  wip: boolean;
   /**
    * 節點在畫面上的顯示尺寸 [寬, 高]，直接讀自 `<image>` 的 width/height。
    *
@@ -76,8 +101,51 @@ export interface RawMeta {
   center: RawCenter | null;
 }
 
-const TRANSLATE = /^translate\(\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*\)$/;
-const EDGE_D = /^M\s+(-?[\d.]+)\s+(-?[\d.]+)\s+L\s+(-?[\d.]+)\s+(-?[\d.]+)$/;
+const TRANSLATE = new RegExp(String.raw`^translate\(\s*(${NUM})\s*,\s*(${NUM})\s*\)$`);
+const EDGE_D = new RegExp(String.raw`^M\s+(${NUM})\s+(${NUM})\s+L\s+(${NUM})\s+(${NUM})$`);
+
+/** 把比對到的座標字串轉成數字，並確保它真的是有限數。 */
+function finite(raw: string, ctx: string): number {
+  const n = Number(raw);
+  if (!Number.isFinite(n)) throw new Error(`${ctx} 的座標不是有限數：${JSON.stringify(raw)}`);
+  return n;
+}
+
+/**
+ * 從 `<title>` 的內容拆出「敘述本體」與「最高等級：N」那一行。
+ *
+ * svg-parse（取 titleMaxLevel）與 validate（規則 1 比對 title 與 data-*）以前各寫一份判斷，
+ * 而且一邊有 `.trim()`、一邊沒有——最後一行寫成 `最高等級：5 `（多一個空格）時，
+ * 這裡會把它當等級行剝掉、validate 不會，於是規則 1 拿兩個「看起來一模一樣」的字串報不一致。
+ * 兩邊改成呼叫這一個函式。
+ */
+export function splitTitleLevel(title: string): { content: string; maxLevel: number | null } {
+  const lines = title.split('\n');
+  if (lines.length > 1) {
+    const m = /^最高等級：(\d+)$/.exec(lines[lines.length - 1]!.trim());
+    if (m) return { content: lines.slice(0, -1).join('\n'), maxLevel: Number(m[1]) };
+  }
+  return { content: title, maxLevel: null };
+}
+
+/**
+ * 節點與邊都不准帶這些「讓東西看不見」的屬性。
+ *
+ * 少了這道，一條邊可以帶著 `display="none"` 或 `opacity="0"` 躺在正本裡：validate 照樣把它
+ * 算進圖遍歷（解析看的是 `d`，不是可見性），前置鏈與成本跟著變，但**打開 SVG 的人什麼都看不到**。
+ * 貢獻者送 PR 時附的那張圖、維護者點開正本看到的畫面，都不會有那條線。
+ */
+const HIDING_ATTRS = ['display', 'visibility', 'style'];
+
+function assertNotHidden(el: Element, ref: string): void {
+  for (const a of HIDING_ATTRS) {
+    if (el.hasAttribute(a)) throw new Error(`${ref} 不可帶 ${a} 屬性（會讓它在畫面上消失卻仍被算進資料）：${a}="${el.getAttribute(a)}"`);
+  }
+  for (const a of ['opacity', 'fill-opacity', 'stroke-opacity']) {
+    const v = el.getAttribute(a);
+    if (v !== null && Number(v) === 0) throw new Error(`${ref} 的 ${a} 不可為 0（會讓它在畫面上消失卻仍被算進資料）`);
+  }
+}
 
 /**
  * 解析 `transform="translate(x,y)"`。
@@ -86,7 +154,7 @@ const EDGE_D = /^M\s+(-?[\d.]+)\s+(-?[\d.]+)\s+L\s+(-?[\d.]+)\s+(-?[\d.]+)$/;
 export function parseTranslate(t: string): [number, number] {
   const m = TRANSLATE.exec(t.trim());
   if (!m) throw new Error(`transform 必須是 translate(x,y)，請先執行 npm run normalize：${t}`);
-  return [Number(m[1]), Number(m[2])];
+  return [finite(m[1]!, 'transform'), finite(m[2]!, 'transform')];
 }
 
 /**
@@ -96,7 +164,10 @@ export function parseTranslate(t: string): [number, number] {
 export function parseEdgePath(d: string): { from: [number, number]; to: [number, number] } {
   const m = EDGE_D.exec(d.trim());
   if (!m) throw new Error(`邊必須是絕對 "M x y L x y"，請先執行 npm run normalize：${d}`);
-  return { from: [Number(m[1]), Number(m[2])], to: [Number(m[3]), Number(m[4])] };
+  return {
+    from: [finite(m[1]!, '邊'), finite(m[2]!, '邊')],
+    to: [finite(m[3]!, '邊'), finite(m[4]!, '邊')],
+  };
 }
 
 /**
@@ -180,7 +251,7 @@ function parseCenter(doc: Document, svg: Element): RawCenter | null {
   // 正本若擺在別的地方，兩邊畫出來的樞紐會差一段位移，而且沒有任何東西看得出來。
   const ix = Number(img.getAttribute('x'));
   const iy = Number(img.getAttribute('y'));
-  if (ix !== x - w / 2 || iy !== y - h / 2) {
+  if (Math.abs(ix - (x - w / 2)) >= COORD_TOLERANCE || Math.abs(iy - (y - h / 2)) >= COORD_TOLERANCE) {
     throw new Error(
       `tree-center 的 <image> 必須以樞紐中心對齊：預期 x="${x - w / 2}" y="${y - h / 2}"，實際 x="${ix}" y="${iy}"`,
     );
@@ -204,7 +275,15 @@ function parseCenter(doc: Document, svg: Element): RawCenter | null {
 export function parseTree(svgText: string): { meta: RawMeta; nodes: RawNode[]; edges: RawEdge[] } {
   const doc = loadSvg(svgText);
   const svg = doc.querySelector('svg')!;
-  const vb = (svg.getAttribute('viewBox') ?? '').split(/\s+/).map(Number);
+  // viewBox 過去是 `.split(/\s+/).map(Number)` 直接取四格：空字串、逗號分隔、前導空白、
+  // 少一個數字、寫成 `0 0 -5 abc`——全都會安靜地產出 undefined／NaN 塞進 meta，站台拿到
+  // `viewBox="0 0 NaN NaN"` 就是一片空白，而 CI 全綠。
+  const vbRaw = (svg.getAttribute('viewBox') ?? '').trim();
+  const vb = vbRaw.split(/[\s,]+/).filter(Boolean).map(Number);
+  if (vb.length !== 4 || vb.some(n => !Number.isFinite(n))) {
+    throw new Error(`viewBox 必須是四個數字：${JSON.stringify(vbRaw)}`);
+  }
+  if (vb[2]! <= 0 || vb[3]! <= 0) throw new Error(`viewBox 的寬高必須大於 0：${JSON.stringify(vbRaw)}`);
   const metaText = doc.querySelector('metadata')?.textContent ?? '';
   const bundle = /resource bundle ([\d.]+)/.exec(metaText)?.[1] ?? '';
 
@@ -219,6 +298,7 @@ export function parseTree(svgText: string): { meta: RawMeta; nodes: RawNode[]; e
 
   const nodes: RawNode[] = [...doc.querySelectorAll('g.node')].map(g => {
     if (g.parentNode !== svg) throw new Error(`${nodeRef(g)} 必須是 <svg> 直屬子元素，請先執行 npm run normalize`);
+    assertNotHidden(g, nodeRef(g));
     const [x, y] = parseTranslate(g.getAttribute('transform') ?? '');
     const title = g.querySelector('title')?.textContent ?? '';
     // 等級行必須取「最後一行」，不是「第二行」——跟 tools/validate.ts 的判定方式一致
@@ -227,9 +307,7 @@ export function parseTree(svgText: string): { meta: RawMeta; nodes: RawNode[]; e
     // 一樣固定取 index 1（第二行），遇到三行以上的多行描述時取到的只是描述本身的第二行，
     // 等級行會被吃掉、maxLevel 靜默變成 1，而且 validate.ts 用的是「最後一行」判定，
     // 兩邊邏輯不一致時 validate 還是會通過，這個 bug 完全沒有防線。
-    const titleLines = title.split('\n');
-    const levelLine = titleLines.length > 1 ? titleLines[titleLines.length - 1] : undefined;
-    const lm = levelLine ? /^最高等級：(\d+)$/.exec(levelLine.trim()) : null;
+    const { maxLevel: titleMaxLevel } = splitTitleLevel(title);
     const img = g.querySelector('image');
     const href = img?.getAttribute('href') ?? '';
     const icon = /^icons\/([0-9a-f]{12})\.png$/.exec(href)?.[1] ?? '';
@@ -239,13 +317,16 @@ export function parseTree(svgText: string): { meta: RawMeta; nodes: RawNode[]; e
       throw new Error(`${nodeRef(g)} 的 <image> 缺少有效的 width/height（顯示尺寸靠它決定）`);
     }
     return {
-      id: g.getAttribute('data-id') ?? '',
-      typeZh: g.getAttribute('data-type') ?? '',
-      name: g.getAttribute('data-name') ?? '',
+      // 這幾個欄位都用 attr()（會解 XML 實體）而不是 getAttribute：名稱含 `&` 的節點在正本裡
+      // 必須寫成 `&amp;`，而 linkedom 只解 <title> 那邊、不解屬性那邊，兩邊會對不起來。見 dom.ts。
+      id: attr(g, 'data-id'),
+      typeZh: attr(g, 'data-type'),
+      name: attr(g, 'data-name'),
       label: g.querySelector('text')?.textContent ?? '',
-      description: g.getAttribute('data-description') ?? '',
-      costRaw: g.getAttribute('data-cost') ?? '',
-      titleMaxLevel: lm ? Number(lm[1]) : null,
+      description: attr(g, 'data-description'),
+      costRaw: attr(g, 'data-cost'),
+      titleMaxLevel,
+      wip: g.getAttribute('data-wip') === '1',
       // 順序很重要：shapeOf 先判斷「有沒有形狀元素」，strokeOf 才去讀該元素的 stroke。
       // 兩者的「找不到元素」條件完全重疊（都是 querySelector('rect, circle, polygon') 落空），
       // 若順序相反，缺形狀元素的節點會先被 strokeOf 攔截、shapeOf 的「缺少形狀元素」分支永遠打不到。
@@ -253,9 +334,27 @@ export function parseTree(svgText: string): { meta: RawMeta; nodes: RawNode[]; e
     };
   });
 
+  // 正本裡定義過的 marker id（`<marker id="arrow">`）。marker-end 只准指向這些。
+  const markerIds = new Set([...doc.querySelectorAll('marker')].map(m => m.getAttribute('id') ?? ''));
+
   const edges: RawEdge[] = [...doc.querySelectorAll('path.edge')].map(p => {
     const dAttr = p.getAttribute('d') ?? '';
-    if (!p.getAttribute('marker-end')) throw new Error(`邊缺少 marker-end，無法判定方向：d="${dAttr}"`);
+    const ref = `邊 d="${dAttr}"`;
+    // 跟節點同一條規矩：邊必須是 <svg> 直屬子元素。少了這道，一條邊可以藏在 <defs> 裡或塞進
+    // 某個節點的 <g> 內——querySelectorAll('path.edge') 照樣找得到、圖遍歷照樣把它算進去，
+    // 但 <defs> 底下的東西瀏覽器根本不會畫出來。看正本的人不會知道那條前置存在。
+    if (p.parentNode !== svg) throw new Error(`${ref} 必須是 <svg> 直屬子元素（不可放在 <defs>、圖層或節點群組裡）`);
+    assertNotHidden(p, ref);
+    const markerEnd = p.getAttribute('marker-end');
+    if (!markerEnd) throw new Error(`邊缺少 marker-end，無法判定方向：d="${dAttr}"`);
+    // 方向是靠箭頭表示的。marker-end 指向一個不存在的 id 時瀏覽器不畫箭頭也不報錯，
+    // 畫面上就是一條沒有方向的線，而資料端仍然照 M→L 的順序當成有向邊。
+    const markerId = /^url\(#([^)]+)\)$/.exec(markerEnd)?.[1];
+    if (!markerId || !markerIds.has(markerId)) {
+      throw new Error(`${ref} 的 marker-end 必須指向正本定義過的箭頭（目前定義：${[...markerIds].join('、') || '無'}），實際：${markerEnd}`);
+    }
+    // marker-start 會在起點也畫一個箭頭，看起來像雙向前置，但資料端只認 M→L 一個方向。
+    if (p.hasAttribute('marker-start')) throw new Error(`${ref} 不可帶 marker-start（畫面上會像雙向，資料端只有單向）`);
     return parseEdgePath(dAttr);
   });
 

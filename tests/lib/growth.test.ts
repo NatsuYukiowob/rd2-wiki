@@ -57,3 +57,27 @@ describe('round2', () => {
     expect(round2(0.44999998807907104)).toBe(0.45);
   });
 });
+
+describe('parseGrowth 的輸入防護', () => {
+  it('超長數字不會讓正則爆炸——validate 是 fork PR 也跑得到的工作', () => {
+    // 舊的 `[\d.]+` 字元類配上後面的 `\s*\(` 會災難性回溯：實測 2 萬位輸入要 2.5 秒、
+    // 20 萬位要數十秒。描述欄位是貢獻者填的，等於送人一個燒 CI 額度的按鈕。
+    const evil = `傷害增加${'1'.repeat(200_000)}(`;
+    const t = performance.now();
+    parseGrowth(evil);
+    expect(performance.now() - t).toBeLessThan(100);
+  });
+
+  it('float32 雜訊那種 17 位小數仍要解得出來（正本裡真的有）', () => {
+    expect(parseGrowth('增加10%(+1.2000000476837158%)').growth?.perLevel).toBe(1.2);
+  });
+
+  it('位數超過上限會報錯，不會安靜地只解出後六位', () => {
+    // 正則沒有錨點，所以「限制位數」擋不住「從第二位數字開始比對」——這條測的是那個補丁。
+    expect(() => parseGrowth(`增加${'9'.repeat(7)}%(+1%)`)).toThrow(/寫壞/);
+  });
+
+  it('1.2.3 這種壞數字會報錯，不會被解成 2.3', () => {
+    expect(() => parseGrowth('增加1.2.3%(+1%)')).toThrow(/寫壞/);
+  });
+});

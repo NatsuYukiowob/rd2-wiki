@@ -249,3 +249,123 @@ function makeMinimalPng(width: number, height: number): Buffer {
   const crc = Buffer.alloc(4); // readPngSize 不驗證 CRC，填 0 即可
   return Buffer.concat([signature, length, type, ihdrData, crc]);
 }
+
+/**
+ * 2026-08-19 review 報告 P2 補上的守門規則。
+ *
+ * 這一組的共通點是：**壞掉的資料在畫面上看不出來**。邊藏在 `<defs>` 裡、節點疊在一起、
+ * wip 節點偷偷接線——打開 SVG 看到的畫面跟改動前一模一樣，而站台算出來的前置鏈與成本變了。
+ * 每一條都配一個「照舊會過、現在會擋」的反例。
+ */
+describe('validate：邊與座標的守門（P2）', () => {
+  it('規則 6(d)：wip 節點不准接線——而且在它之前，這件事沒有任何規則擋得住', () => {
+    // 這是報告裡「幽靈根」那條攻擊的核心：data-wip="1" 讓節點豁免「非預期的根」與
+    // 「從根不可達」兩項檢查，而那是圖結構唯一的守門員。豁免＋能接線＝可以把任意節點
+    // 切下來再接到別的分支，成本跟著變，validate 全綠、節點數與邊數都不變。
+    const broken = svg.replace('data-id="1002"', 'data-id="1002" data-wip="1"');
+    expect(broken).not.toBe(svg);
+
+    const { errors } = validate(broken, opts);
+    expect(errors.some(e => /規則 6\(d\).*1002/.test(e))).toBe(true);
+    // 這一行才是重點：整份規則裡只有 6(d) 攔得到它。拿掉 6(d) 這個測試就會變成「零錯誤」。
+    expect(errors.every(e => /規則 6\(d\)/.test(e))).toBe(true);
+  });
+
+  it('規則 6(c)：真正沒接線的 wip 節點仍然只警告、不擋 PR', () => {
+    // 6(d) 不能連「wip 的本意」一起擋掉：新增一顆完全沒接線的 wip 節點（＝先佔位、之後再接線
+    // 這個功能本身），應該只有警告。這條是 6(d) 的正對照——沒有它，把 6(d) 寫成
+    // 「只要有 wip 就報錯」也會全綠，而那等於把這個功能整個廢掉。
+    const template = svg.split('\n').find(l => l.startsWith('<g class="node"'))!;
+    const placeholder = template
+      .replace(/data-id="\d+"/, 'data-id="1099" data-wip="1"')
+      .replace(/transform="translate\([-\d.]+,[-\d.]+\)"/, 'transform="translate(50.00,50.00)"');
+    const withPlaceholder = svg.replace('</svg>', `${placeholder}\n</svg>`);
+    expect(withPlaceholder).not.toBe(svg);
+
+    const { errors, warnings } = validate(withPlaceholder, opts);
+    expect(errors).toEqual([]);
+    expect(warnings.some(w => /規則 6\(c\).*1099/.test(w))).toBe(true);
+  });
+
+  it('規則 0：邊藏在 <defs> 裡會被擋（瀏覽器不畫，資料端照算）', () => {
+    const line = svg.split('\n').find(l => l.startsWith('<path class="edge"'))!;
+    const broken = svg.replace(line, `<defs>${line}</defs>`);
+    expect(broken).not.toBe(svg);
+    expect(validate(broken, opts).errors.some(e => /直屬子元素/.test(e))).toBe(true);
+  });
+
+  it('規則 0：邊帶 display="none" 會被擋', () => {
+    const broken = svg.replace('<path class="edge"', '<path class="edge" display="none"');
+    expect(broken).not.toBe(svg);
+    expect(validate(broken, opts).errors.some(e => /display/.test(e))).toBe(true);
+  });
+
+  it('規則 0：邊的 opacity="0" 會被擋', () => {
+    const broken = svg.replace('<path class="edge"', '<path class="edge" opacity="0"');
+    expect(validate(broken, opts).errors.some(e => /opacity/.test(e))).toBe(true);
+  });
+
+  it('規則 0：marker-end 指向不存在的箭頭會被擋（畫面上沒有方向，資料端仍是有向邊）', () => {
+    const broken = svg.replace('marker-end="url(#arrow)"', 'marker-end="url(#nope)"');
+    expect(broken).not.toBe(svg);
+    expect(validate(broken, opts).errors.some(e => /marker-end/.test(e))).toBe(true);
+  });
+
+  it('規則 0：邊不可帶 marker-start（畫面上像雙向，資料端只有單向）', () => {
+    const broken = svg.replace('<path class="edge"', '<path class="edge" marker-start="url(#arrow)"');
+    expect(validate(broken, opts).errors.some(e => /marker-start/.test(e))).toBe(true);
+  });
+
+  it('規則 0：座標寫成 1.2.3 會被擋，不再靜靜變成 NaN', () => {
+    const t = /transform="translate\([-\d.]+,[-\d.]+\)"/.exec(svg)![0];
+    const broken = svg.replace(t, 'transform="translate(1.2.3,700.00)"');
+    expect(broken).not.toBe(svg);
+    expect(validate(broken, opts).errors.some(e => /translate|normalize/.test(e))).toBe(true);
+  });
+
+  it('規則 0：viewBox 少一個數字會被擋，不再產出 NaN 畫布', () => {
+    const broken = svg.replace('viewBox="0 0 2000 1700"', 'viewBox="0 0 2000"');
+    expect(broken).not.toBe(svg);
+    expect(validate(broken, opts).errors.some(e => /viewBox/.test(e))).toBe(true);
+  });
+
+  it('規則 13：viewBox 被改成別的尺寸會被擋', () => {
+    const broken = svg.replace('viewBox="0 0 2000 1700"', 'viewBox="0 0 2000 1800"');
+    expect(broken).not.toBe(svg);
+    expect(validate(broken, opts).errors.some(e => /規則 13.*viewBox/.test(e))).toBe(true);
+  });
+
+  it('規則 13：節點被挪到畫布之外會被擋', () => {
+    const t = /transform="translate\([-\d.]+,[-\d.]+\)"/.exec(svg)![0];
+    const broken = svg.replace(t, 'transform="translate(5000.00,5000.00)"');
+    expect(validate(broken, opts).errors.some(e => /規則 13.*畫布之外/.test(e))).toBe(true);
+  });
+
+  it('規則 13 ＋ 規則 5：兩顆節點疊在一起會被擋（邊會分不清接到誰）', () => {
+    // 疊在一起時，邊接到哪一顆只取決於兩顆節點在檔案裡的先後順序——把其中一顆往上挪一行
+    // 就能換掉整條前置鏈，而 diff 只有兩行位置對調。
+    const transforms = [...svg.matchAll(/transform="translate\(([-\d.]+),([-\d.]+)\)"/g)];
+    const [first, second] = [transforms[0]![0], transforms[1]![0]];
+    const broken = svg.replace(second, first);
+    expect(broken).not.toBe(svg);
+    const { errors } = validate(broken, opts);
+    expect(errors.some(e => /規則 13.*相距/.test(e))).toBe(true);
+    expect(errors.some(e => /規則 5.*同時對上/.test(e))).toBe(true);
+  });
+
+  it('規則 1：超長的 data-name 會被擋', () => {
+    const broken = svg.replace('data-name="火骰子"', `data-name="${'火'.repeat(600)}"`);
+    expect(broken).not.toBe(svg);
+    expect(validate(broken, opts).errors.some(e => /規則 1.*長度.*超過上限/.test(e))).toBe(true);
+  });
+
+  it('規則 4：data-cost 與 title 的等級上限不一致會被擋', () => {
+    // 兩個來源：data-cost 第二行「最高 N 級」與 title 最後一行「最高等級：N」。
+    // build-data 取前者優先，兩者不一致時站台顯示一個數字、正本上寫著另一個。
+    const g = /<g class="node"[^>]*data-cost="([^"]*)"[^>]*>\s*<title>[^<]*最高等級：15<\/title>/.exec(svg);
+    expect(g).not.toBeNull();
+    const broken = svg.replace(`data-cost="${g![1]}"`, `data-cost="${g![1]}\n最高 3 級"`);
+    expect(broken).not.toBe(svg);
+    expect(validate(broken, opts).errors.some(e => /規則 4.*等級上限不一致/.test(e))).toBe(true);
+  });
+});

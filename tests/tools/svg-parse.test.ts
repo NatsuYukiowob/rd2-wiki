@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { parseTree, parseTranslate, parseEdgePath } from '../../tools/lib/svg-parse';
+import { parseTree, parseTranslate, parseEdgePath, splitTitleLevel } from '../../tools/lib/svg-parse';
+import { loadSvg, attr } from '../../tools/lib/dom';
 
 describe('parseTranslate', () => {
   it('解析標準 translate', () => {
@@ -195,5 +196,50 @@ describe('parseTree（畸形資料的錯誤訊息要能定位是哪個節點／�
       <path class="edge" d="M 1 2 L 3 4" />
     `);
     expect(() => parseTree(svg)).toThrow('M 1 2 L 3 4');
+  });
+});
+
+describe('splitTitleLevel（svg-parse 與 validate 共用的等級行判斷）', () => {
+  it('最後一行是「最高等級：N」時剝掉，並回傳等級', () => {
+    expect(splitTitleLevel('骰子｜火骰子｜說明\n最高等級：15'))
+      .toEqual({ content: '骰子｜火骰子｜說明', maxLevel: 15 });
+  });
+
+  it('等級行帶多餘空白也算——兩邊共用同一個判斷，才不會一邊 trim 一邊沒 trim', () => {
+    // 以前 svg-parse 有 .trim()、validate 沒有：最後一行寫成「最高等級：5 」時，
+    // 一邊把它當等級行剝掉、一邊沒剝，規則 1 就拿兩個看起來一模一樣的字串報不一致。
+    expect(splitTitleLevel('a｜b｜c\n最高等級：5 ').maxLevel).toBe(5);
+    expect(splitTitleLevel('a｜b｜c\n  最高等級：5').content).toBe('a｜b｜c');
+  });
+
+  it('多行描述本身的換行不會被誤剝', () => {
+    expect(splitTitleLevel('a｜b｜第一行\n第二行'))
+      .toEqual({ content: 'a｜b｜第一行\n第二行', maxLevel: null });
+  });
+
+  it('只有一行時原樣回傳', () => {
+    expect(splitTitleLevel('最高等級：3')).toEqual({ content: '最高等級：3', maxLevel: null });
+  });
+});
+
+describe('attr（linkedom 的屬性實體沒解掉）', () => {
+  const doc = loadSvg('<svg xmlns="http://www.w3.org/2000/svg"><g data-a="A&amp;B" data-b="&amp;lt;" data-c="&lt;i&gt;" /></svg>');
+  const g = doc.querySelector('g')!;
+
+  it('屬性裡的實體會被解回原字元——名稱含 & 的節點才過得了規則 1', () => {
+    // linkedom 解 <title> 的實體、不解屬性的：data-name="A&amp;B" 讀出 "A&amp;B"、
+    // <title>A&amp;B</title> 讀出 "A&B"，規則 1 的全等比對就永遠對不起來。
+    expect(g.getAttribute('data-a')).toBe('A&amp;B');
+    expect(attr(g, 'data-a')).toBe('A&B');
+    expect(attr(g, 'data-c')).toBe('<i>');
+  });
+
+  it('&amp; 最後解：`&amp;lt;` 是要顯示的字面文字，不能被連解兩次變成 <', () => {
+    expect(attr(g, 'data-b')).toBe('&lt;');
+  });
+
+  it('屬性不存在時回空字串', () => {
+    expect(attr(g, 'data-zzz')).toBe('');
+    expect(attr(null, 'data-a')).toBe('');
   });
 });
