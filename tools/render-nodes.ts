@@ -50,8 +50,13 @@ const SCALE = 2;
 /** PNG 像素 → 站台顯示尺寸的換算倍率。 */
 const PX_PER_SITE_UNIT = SCALE / DRAWING_TO_SITE;
 
-const SRC = process.argv[2]
-  ?? '/mnt/data/share/Yuki/random dice 2 dice tree/RD2骰子樹v1.0.1/dice_tree_v1.0.1_fixed.svg';
+// 來源是遊戲原圖，**不在版控內**（各自放在自己機器上）。以前這裡有一個指向維護者本機的
+// 預設路徑：對別人來說那只會變成一個看不懂的 ENOENT，而且那條路徑不該出現在公開 repo 裡。
+const SRC = process.argv[2];
+if (!SRC) {
+  console.error('用法：npm run render-nodes -- <遊戲原圖 SVG 的路徑>');
+  process.exit(1);
+}
 const OUT_DIR = 'data/icons';
 const CANONICAL = 'data/dice-tree.svg';
 
