@@ -62,10 +62,13 @@ PR 送出後會自動跑資料驗證、正規化定點檢查、型別檢查、�
 需要維護者按一下核准，CI 才會開始跑（GitHub 的預設保護機制，不是壞掉，見
 [`CONTRIBUTING.md`](./CONTRIBUTING.md) 第 7 節）。
 
-部署方面，`main` 的變更由 Cloudflare Pages 的 Git 整合自動部署；這條路徑**與 CI 平行進行、
-不等 CI 結果**。CI 內已備妥 `deploy` job，等維護者設好 `CLOUDFLARE_API_TOKEN` 與
-`CLOUDFLARE_ACCOUNT_ID` 兩個 repository secret 並關閉 Git 整合後，就會改成「CI 全綠才上線」。
-Cloudflare Pages 專案本身要在網頁介面手動建立，設定步驟見維護者自行保存的部署文件。
+部署方面，**`main` 的變更要 CI 全綠才會上線**：`deploy` job 等 `verify` 與 `e2e` 都通過之後，
+把 `verify` 驗過的那一份建置產物上傳到 Cloudflare Pages（Direct Upload）。上線的位元組就是
+通過資料驗證、效能預算、單元測試與端對端測試的那一份，不是另外重建的。Cloudflare Pages 的
+Git 自動建置已關閉，所以不會有「還沒過 CI 就先上線」的第二條路徑。
+
+副作用：PR 不再有 Cloudflare 的 preview 網址（fork PR 本來就沒有）。想看視覺效果請在本機
+`npm run dev`。Cloudflare Pages 專案本身要在網頁介面手動建立，設定步驟見維護者自行保存的部署文件。
 
 ## 授權
 
