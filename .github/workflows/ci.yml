@@ -186,6 +186,20 @@ jobs:
           else
             echo "ready=true" >> "$GITHUB_OUTPUT"
           fi
+      - name: 取出 repo（Pages Functions 要從工作目錄打包）
+        # ⚠️ **這一步必須排在 download-artifact 之前**：actions/checkout 預設 `clean: true`
+        # 會清空工作目錄，順序反了會把下載好的 dist/ 洗掉，然後部署一個空目錄——
+        # 而且 wrangler 大概不會報錯。
+        #
+        # 為什麼需要它：Cloudflare Pages 的 Functions 是看「執行指令的那個目錄底下有沒有
+        # functions/」來決定要不要打包的（wrangler 內部是 path.join(process.cwd(), "functions")），
+        # **不存在就整段跳過，沒有 warning、部署照樣回成功**。這個 job 原本刻意不做 checkout
+        # （只拿 verify 驗過的 dist），代價就是 repo 根的 functions/ 永遠到不了 runner。
+        #
+        # 這裡只取原始碼、不跑 npm ci：Functions 由 wrangler 內建的 esbuild 打包，
+        # 而 dist/ 仍然來自下一步的 artifact——**上線的靜態產物依舊是被驗過的那一份**。
+        if: steps.creds.outputs.ready == 'true'
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: 取回 verify 驗過的建置產物
         # 刻意不在這裡重建：要上線的就是通過 validate／效能預算／單元測試／E2E 的那一份 dist。
         if: steps.creds.outputs.ready == 'true'
