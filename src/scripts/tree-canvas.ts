@@ -8,11 +8,14 @@ import {
   MOBILE_ICON_TARGET_PX,
   Viewport,
   minReadableScale,
+  effectiveDevicePx,
+  HIRES_UPGRADE_AT,
+  HIRES_DOWNGRADE_AT,
 } from '../lib/viewport.js';
 import { computeSelection } from '../lib/selection.js';
 import { renderDetail } from '../components/NodeDetail.js';
 import { matchesFilter, stateToQueryString, queryStringToState, isTypingTarget } from '../lib/filter.js';
-import { visibleNodeIds, upgradeIcons } from '../lib/hires.js';
+import { visibleNodeIds, upgradeIcons, downgradeIcons, buildIconIndex } from '../lib/hires.js';
 import { FEATURES } from '../lib/flags.js';
 import type { Branch, NodeType, TreeData, TreeNode } from '../lib/types.js';
 
@@ -265,18 +268,55 @@ svg.addEventListener('pointermove', e => {
 // 例外，但「縮放後圖示真的換成高解析版本」這個實際效果本環境驗不到，留給第 18 個任務的
 // E2E 或真機——src/lib/hires.ts 的 upgradeIcons() 本身（拿到正確的可視節點清單之後，
 // DOM 要怎麼改）已經在 tests/lib/hires.test.ts 用真實 SVG DOM 驗過。
+// 節點是建置期一次畫好、之後不再增刪的，圖示元素索引建一次就永遠有效——不必每次縮放都
+// 對每個可見節點各跑一次 querySelector。
+const iconIndex = buildIconIndex(svg);
+
+/**
+ * 目前一個使用者座標單位攤到幾個**裝置**像素。用它決定要不要換 2× 素材，見
+ * `effectiveDevicePx()` 的說明（舊版只看 `vp.scale`，兩個方向都判斷錯）。
+ */
+function currentDevicePx(): number {
+  const box = svg.getBoundingClientRect();
+  const dpr = typeof devicePixelRatio === 'number' && devicePixelRatio > 0 ? devicePixelRatio : 1;
+  return effectiveDevicePx(box.width, box.height, data.meta.viewBox[2], data.meta.viewBox[3], vp.scale, dpr);
+}
+
+/** 每批處理幾個節點。24 是一個手機首屏大致的可見節點量級，夠小到不會卡住一幀。 */
+const UPGRADE_BATCH = 24;
+
+/** 排一段閒置工作（Safari 沒有 requestIdleCallback，照本檔慣例做存在性檢查後退回 setTimeout）。 */
+function whenIdle(fn: () => void): void {
+  if (typeof requestIdleCallback === 'function') requestIdleCallback(() => fn(), { timeout: 1000 });
+  else if (typeof setTimeout === 'function') setTimeout(fn, 0);
+}
+
+function upgradeInBatches(ids: string[], start = 0): void {
+  upgradeIcons(ids.slice(start, start + UPGRADE_BATCH), svg, undefined, iconIndex);
+  if (start + UPGRADE_BATCH < ids.length) whenIdle(() => upgradeInBatches(ids, start + UPGRADE_BATCH));
+}
+
 function maybeUpgradeIcons(): void {
   if (typeof cancelAnimationFrame === 'function') cancelAnimationFrame(upgradeRaf);
   if (typeof requestAnimationFrame !== 'function') return;
   upgradeRaf = requestAnimationFrame(() => {
-    if (vp.scale <= 1) return;
+    const devicePx = currentDevicePx();
+    // 遲滯：縮小到明顯不需要 2× 素材時把已升級的換回 sprite（pattern 只增不減會一路吃記憶體，
+    // 實測整棵樹全升級後多出約 4.6MB），但門檻比升級低一截，免得在邊界反覆縮放時來回抖動。
+    if (devicePx < HIRES_DOWNGRADE_AT) {
+      downgradeIcons(iconIndex.values());
+      return;
+    }
+    if (devicePx <= HIRES_UPGRADE_AT) return;
     const g = svg.querySelector<SVGGElement>('#viewport');
     const ctm = g?.getScreenCTM?.()?.inverse();
     if (!ctm) return; // 沒有版面引擎（測試環境）或畫布尚未真正掛進有版面的 DOM，無法換算
     const box = svg.getBoundingClientRect();
     const tl = new DOMPoint(box.left, box.top).matrixTransform(ctm);
     const br = new DOMPoint(box.right, box.bottom).matrixTransform(ctm);
-    upgradeIcons(visibleNodeIds(data, { x: tl.x, y: tl.y, w: br.x - tl.x, h: br.y - tl.y }), svg);
+    // 分批：一次可見節點可能有近百個，全部一口氣建 pattern＋發請求會在同一幀裡卡住主執行緒。
+    // 每個閒置時段做一批，其餘排到下一次——畫面上是圖示陸續變清晰，不是整個卡一下。
+    upgradeInBatches(visibleNodeIds(data, { x: tl.x, y: tl.y, w: br.x - tl.x, h: br.y - tl.y }));
   });
 }
 svg.addEventListener('wheel', maybeUpgradeIcons);
@@ -294,7 +334,13 @@ svg.addEventListener('pointerup', maybeUpgradeIcons);
 // 就 <1 的極端狀況）本來就會被 maybeUpgradeIcons() 內部擋掉，不用在外面再判斷一次
 // isMobile，改成無條件呼叫更準確反映「哪個裝置的初始縮放實際上超過門檻」這件事跟裝置種類
 // 沒有必然關係，是純粹看縮放數字。
-maybeUpgradeIcons();
+// 首屏這一次改成閒置時才做：它有可能一口氣建立上百個 pattern、發出上百個圖片請求，擠在
+// 首次繪製的同一批工作裡只會拖慢「使用者看到第一畫面」的時間，而高解析與否是漸進增強。
+// Safari 沒有 requestIdleCallback（照本檔慣例做存在性檢查後退回 setTimeout）。
+//
+// ⚠️ 門檻修正之後，1280×720 dpr1 的桌機首屏**不會**再升級（實測每單位只有 0.52 裝置像素，
+// sprite 綽綽有餘）——這正是修正的重點，不是退步。高 DPI 螢幕與手機才會在這裡真的升級。
+whenIdle(maybeUpgradeIcons);
 
 // --- 鍵盤：方向鍵平移、+/- 縮放 ---
 // 這個 handler 掛在 window 上、原本不判斷 focus（「不管焦點在哪都該生效」）；但下面

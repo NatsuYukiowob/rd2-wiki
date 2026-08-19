@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { parseHTML } from 'linkedom';
-import { Viewport, minReadableScale } from '../../src/lib/viewport';
+import { Viewport, minReadableScale, effectiveDevicePx, HIRES_UPGRADE_AT, HIRES_DOWNGRADE_AT } from '../../src/lib/viewport';
 
 function make() {
   const { document } = parseHTML('<html><body></body></html>');
@@ -219,5 +219,41 @@ describe('minReadableScale（task-17/18 裁決：最小可讀縮放下限，純�
     const mobile = minReadableScale(390, 800, VIEWBOX_WIDTH, VIEWBOX_HEIGHT, DICE_ICON_WIDTH_UNITS, 32);
     const desktop = minReadableScale(1200, 800, VIEWBOX_WIDTH, VIEWBOX_HEIGHT, DICE_ICON_WIDTH_UNITS, 32);
     expect(mobile).toBeGreaterThan(desktop);
+  });
+});
+
+describe('effectiveDevicePx（高解析升級的真正判準）', () => {
+  // viewBox 固定 2000×1700（見 CLAUDE.md 的不變量）。
+  const VB: [number, number] = [2000, 1700];
+  const px = (w: number, h: number, scale: number, dpr: number) =>
+    effectiveDevicePx(w, h, VB[0], VB[1], scale, dpr);
+
+  it('1280×720 桌機 dpr1：初始視角不該升級——舊版在這裡白抓了 213 張圖', () => {
+    // 畫布高 595（1280×720 扣掉 nav 與 footer），可讀性下限把 scale 拉到約 1.49。
+    const v = px(1280, 595, 1.49, 1);
+    expect(v).toBeCloseTo(0.52, 1);
+    expect(v).toBeLessThan(HIRES_UPGRADE_AT);
+  });
+
+  it('2560×1440 dpr2：該升級——舊版在這裡一張都沒升', () => {
+    const v = px(2560, 1315, 1.49, 2);
+    expect(v).toBeGreaterThan(HIRES_UPGRADE_AT);
+  });
+
+  it('Pixel 7 手機（412×678 dpr2.625，分支視角 scale≈5.5）：該升級', () => {
+    expect(px(412, 678, 5.5, 2.625)).toBeGreaterThan(HIRES_UPGRADE_AT);
+  });
+
+  it('桌機放大之後就會跨過門檻', () => {
+    expect(px(1280, 595, 1.49, 1)).toBeLessThan(HIRES_UPGRADE_AT);
+    expect(px(1280, 595, 4, 1)).toBeGreaterThan(HIRES_UPGRADE_AT);
+  });
+
+  it('遲滯：升級門檻高於降級門檻，避免在邊界反覆抖動', () => {
+    expect(HIRES_UPGRADE_AT).toBeGreaterThan(HIRES_DOWNGRADE_AT);
+  });
+
+  it('viewBox 壞掉時回 0，不會變成 NaN 一路傳下去', () => {
+    expect(effectiveDevicePx(1280, 595, 0, 1700, 2, 1)).toBe(0);
   });
 });

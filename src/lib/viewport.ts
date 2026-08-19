@@ -56,6 +56,47 @@ const MAX = 8;
 export const DESKTOP_ICON_TARGET_PX = 26;
 export const MOBILE_ICON_TARGET_PX = 35;
 
+/**
+ * 升級成高解析圖示的門檻（單位：**裝置像素 / 使用者座標單位**）。
+ *
+ * sprite 的格子就是節點的顯示尺寸 1×（例如骰子 50×53），個別的高解析 WebP 是 2×。
+ * 所以「值不值得換」要問的是：一個使用者座標單位，現在攤到幾個**實體**裝置像素上？
+ * 超過 1 才代表 sprite 的來源解析度已經不夠、需要 2× 素材。
+ *
+ * 兩個門檻不同（遲滯）是為了避免在門檻附近反覆縮放時，圖示在 sprite 與高解析之間來回抖動。
+ */
+export const HIRES_UPGRADE_AT = 1.2;
+export const HIRES_DOWNGRADE_AT = 0.9;
+
+/**
+ * 算出「一個使用者座標單位目前攤到幾個裝置像素」。
+ *
+ * ⚠️ 這是 2026-08-19 review 報告 C05 的核心：舊版的判斷是 `if (vp.scale <= 1) return;`，
+ * 只看 `#viewport` 的**內部倍率**，完全沒有考慮
+ * ①畫布元素相對 viewBox 的基礎縮放、②裝置像素比。結果兩個方向都錯：
+ *
+ * - 1280×720 dpr1：實際每單位只有 0.52 裝置像素（骰子 26 CSS px），卻因為 vp.scale ≈ 1.49
+ *   而升級了 213 張圖（約 500KB）——完全白抓，sprite 綽綽有餘。
+ * - 2560×1440 dpr2：實際 1.41 裝置像素／單位，真的需要 2× 素材，卻因為 vp.scale 沒超過 1
+ *   而一張都不升。
+ *
+ * 公式跟畫布實際怎麼畫是同一套：SVG 用 `preserveAspectRatio` 的 meet 行為，
+ * 基礎縮放＝`min(元素寬/viewBox寬, 元素高/viewBox高)`，再乘上 `#viewport` 的 transform 倍率，
+ * 最後乘裝置像素比換算成實體像素。
+ */
+export function effectiveDevicePx(
+  svgWidth: number,
+  svgHeight: number,
+  viewBoxWidth: number,
+  viewBoxHeight: number,
+  scale: number,
+  devicePixelRatio: number,
+): number {
+  if (viewBoxWidth <= 0 || viewBoxHeight <= 0) return 0;
+  const base = Math.min(svgWidth / viewBoxWidth, svgHeight / viewBoxHeight);
+  return base * scale * devicePixelRatio;
+}
+
 export function minReadableScale(
   containerWidthPx: number,
   containerHeightPx: number,
