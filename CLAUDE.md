@@ -90,14 +90,38 @@ CI 規則 10 守它（`<svg>` 直屬、不帶 transform、圖檔存在且解析�
 
 ## 踩過的坑
 
-### ⚠️ 寫死的版面偏移量咬過三次
+### ⚠️ 寫死的版面偏移量咬過四次
 
-`#branch-nav` 曾寫死 `top: 6rem` 假設工具列恆 3rem 高；`#tree-controls`／`#detail` 曾寫死
-`top: 3rem` 假設 nav 恆 48px 高（實際 50.59px，差 2.59px 造成右上角 1px 突出）。
+1. `#branch-nav` 寫死 `top: 6rem`，假設工具列恆 3rem 高。
+2. `#tree-controls`／`#detail` 寫死 `top: 3rem`，假設 nav 恆 48px 高（實際 50.59px，
+   差 2.59px 造成右上角 1px 突出）。
+3. 手機篩選抽屜 `translateY(-110%)`，假設「自身高度的 110%」一定蓋得過 `top: 3rem`。
+4. **（2026-08-19）** `#canvas-host` 寫死 `height: calc(100vh - 110px)`，而 nav ＋ footer
+   實際是 124.53（桌機）／165.47（手機）——每個尺寸多出 15–55px 的捲動，捲到底時 fixed 的
+   `#tree-controls` 與 nav 之間裂開一條縫。
 
-**現在都改成量實際高度**（`tree-canvas.ts` 量 nav 寫進 CSS 變數 `--nav-h`）。
+**現在的做法**：`body:has(#canvas-host)` 是 flex column，`<main>` `flex: 1`，
+`#canvas-host` 也 `flex: 1`，畫布自然吃掉剩餘空間，零偏移量。
+`--nav-h` 仍由 `tree-canvas.ts` 量 nav 寫進 CSS 變數（量的是文件座標 `rect.bottom + scrollY`，
+不是視窗座標——頁面可捲時 resize 會把它烤成負數）。
+
+⚠️ **`#tree` 必須是 `position: absolute; inset: 0`**，不能用 `width/height: 100%`：SVG 有內建
+長寬比（viewBox 2000×1700），`height: 100%` 在父層高度未定案時退回 auto，用寬度反推出一個
+內在高度（1280 寬 → 1088 高）把 `<main>` 撐開，版面又捲得動。
+⚠️ `main:has(#canvas-host)` 要加 `margin-inline: 0; width: 100%`：global.css 的
+`main { margin: 0 auto }` 在 flex 容器裡會**取消 stretch**，畫布會縮成 SVG 預設的 300px 寬。
+
 **動版面時不要再引入新的固定偏移量**，並且驗收要用**幾何斷言**（兩個矩形不相交、
-top 差距 < 0.5px），不是看截圖。
+top 差距 < 0.5px、`scrollHeight === innerHeight`），不是看截圖。
+E2E 的 U（不該捲動）、V（詳情卡片避開側欄）、J（手機抽屜不蓋住工具列）就是這三條防線。
+
+### 已知未修：手機版 `#branch-chips` 蓋住 footer
+
+`#branch-chips` 是 `position: fixed; bottom: 0`，頁面不捲動之後它永遠疊在 footer 上緣
+（實測 390×844：chips 791.75–844、footer 729.13–844）。要修得動整個手機底部區
+（`#detail` 是 `inset: auto 0 0 0` 的底部抽屜，靠 `padding-bottom: 4.5rem` 讓警告文字避開
+chips，而 chips 靠 DOM 順序畫在抽屜之上）——把 chips 放回文件流程會連帶改變抽屜的行為。
+這是設計決定不是 bug 修正，留待日後一併處理。
 
 ### 資料解析
 

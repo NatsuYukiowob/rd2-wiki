@@ -485,15 +485,108 @@ test('I. 初次載入未經任何互動，只要初始縮放超過 1x，可見�
   expect(fill).toMatch(/^url\(#icon-hires-[0-9a-f]+\)$/);
 });
 
-test('J. 手機版收起的篩選抽屜完全滑出畫面，不再露出一截', async ({ page, isMobile }) => {
-  test.skip(!isMobile, '僅手機版：篩選抽屜收合行為只在手機版存在');
+test('J. 手機版篩選抽屜：展開後不蓋住工具列，而且關得掉', async ({ page, isMobile }) => {
+  test.skip(!isMobile, '僅手機版：篩選抽屜只在手機版存在');
   await page.goto('/tree');
-  const box = await page.locator('#filters').boundingBox();
-  if (!box) throw new Error('#filters 沒有 bounding box');
-  // 收起狀態下，面板的「底緣」（y + height）應該落在視窗頂端（y=0）或更上面，完全看不到；
-  // 舊 bug（top:3rem + translateY(-110%)）在面板換行變高後，底緣會落在 y≈30-40px，
-  // 露出最後一排 checkbox。
-  expect(box.y + box.height).toBeLessThanOrEqual(1); // 留 1px 容錯給次像素捨入
+
+  const filters = page.locator('#filters');
+  const toggle = page.locator('#filters-toggle');
+  const search = page.locator('#search');
+
+  // 收起狀態：整個不存在於版面上（display:none）。這同時解掉「看不見卻仍可 Tab 聚焦、
+  // 螢幕閱讀器仍唸得到」的問題——舊版是 transform 移出畫面，元素還在。
+  await expect(filters).toBeHidden();
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  await expect(page.locator('#filters input[type=checkbox]').first()).toBeHidden();
+
+  await toggle.click();
+  await expect(filters).toBeVisible();
+  await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+
+  // 核心斷言：抽屜與工具列上的兩個東西都不相交。
+  // 舊 bug 是 `#filters.open { transform: translateY(var(--nav-h)) }` 跟
+  // `#tree-controls { top: var(--nav-h) }` 用同一個基準，抽屜從工具列**頭上**開始蓋，
+  // 把搜尋框和切換鈕自己都蓋住（實測 Pixel 7：抽屜 50.59–119.66、切換鈕 58.59–97.38）。
+  const [f, t, se] = await Promise.all([filters.boundingBox(), toggle.boundingBox(), search.boundingBox()]);
+  if (!f || !t || !se) throw new Error('取不到 bounding box');
+  const disjoint = (a: typeof f, b: typeof f) =>
+    a.x + a.width <= b.x + 0.5 || b.x + b.width <= a.x + 0.5 ||
+    a.y + a.height <= b.y + 0.5 || b.y + b.height <= a.y + 0.5;
+  expect(disjoint(f, t), '抽屜不可與切換鈕相交').toBe(true);
+  expect(disjoint(f, se), '抽屜不可與搜尋框相交').toBe(true);
+
+  // 切換鈕真的點得到（矩形不相交還不夠——中間可能隔著別的透明疊層）。
+  const hit = await page.evaluate(() => {
+    const r = document.querySelector('#filters-toggle')!.getBoundingClientRect();
+    return document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)?.id ?? null;
+  });
+  expect(hit).toBe('filters-toggle');
+
+  // 關得掉：再點一次（Playwright 的 actionability 檢查本身就會抓到「被蓋住」）。
+  await toggle.click();
+  await expect(filters).toBeHidden();
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+
+  // Esc 也是出路。
+  await toggle.click();
+  await expect(filters).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(filters).toBeHidden();
+});
+
+test('U. 畫布頁不該捲動：畫布剛好填滿 nav 與 footer 之間', async ({ page }) => {
+  // 舊 bug：`#canvas-host { height: calc(100vh - 110px) }`，而 nav ＋ footer 實測是
+  // 124.53（桌機）／165.47（手機），每個尺寸多出 15–55px 的捲動；捲到底時 fixed 的
+  // #tree-controls 會跟 nav 之間裂開一條縫。這是「寫死版面偏移量」在這個 repo 的第四次。
+  for (const [w, h] of [[390, 844], [768, 1024], [1280, 720]] as const) {
+    await page.setViewportSize({ width: w, height: h });
+    await page.goto('/tree');
+    await page.waitForSelector('#tree g.node');
+
+    const m = await page.evaluate(() => {
+      const nav = document.querySelector('#site-nav')!.getBoundingClientRect();
+      const ctl = document.querySelector('#tree-controls')!.getBoundingClientRect();
+      const host = document.querySelector('#canvas-host')!.getBoundingClientRect();
+      return {
+        overflow: document.documentElement.scrollHeight - window.innerHeight,
+        gap: ctl.top - nav.bottom,
+        hostWidth: host.width,
+        hostHeight: host.height,
+      };
+    });
+    expect(m.overflow, `${w}x${h} 不該捲得動`).toBeLessThanOrEqual(0);
+    expect(Math.abs(m.gap), `${w}x${h} 工具列要貼齊 nav 下緣`).toBeLessThan(0.5);
+    // 順帶釘住「畫布真的有填滿」：SVG 有內建長寬比，用百分比高度會縮成 300px 寬（實測）。
+    expect(m.hostWidth, `${w}x${h} 畫布寬度`).toBeCloseTo(w, 0);
+    expect(m.hostHeight, `${w}x${h} 畫布高度`).toBeGreaterThan(h * 0.5);
+  }
+});
+
+test('V. 窄桌機視窗下詳情卡片不壓在分支側欄上，也不被推出畫面', async ({ page, isMobile }) => {
+  test.skip(isMobile, '僅桌機版：#branch-nav 側欄在手機版是 display:none');
+  // 舊 bug：positionPanel() 只避 #toolbar 不避 #branch-nav，760px 寬時卡片被夾到 left=12，
+  // 正好壓在側欄按鈕上並攔截點擊（實測 #detail 12–364、#branch-nav 0–79.19，垂直也相交）。
+  // 修法量的是 #branch-nav 本身，不是它的父層 #tree-controls——後者的盒子會撐到最寬子元素
+  // 的寬度，右邊一大片是 pointer-events:none 的透明空白，拿它當障礙物會把卡片推出畫面
+  // （實測 1280 寬下 left 被推到 1001、右緣 1353）。
+  for (const [w, h] of [[760, 800], [1280, 720]] as const) {
+    await page.setViewportSize({ width: w, height: h });
+    await page.goto('/tree?node=1001');
+    await page.waitForSelector('#tree g.node');
+    await expect(page.locator('#detail')).toBeVisible();
+
+    const m = await page.evaluate(() => {
+      const d = document.querySelector('#detail')!.getBoundingClientRect();
+      const b = document.querySelector('#branch-nav')!.getBoundingClientRect();
+      return {
+        intersects: d.left < b.right && d.right > b.left && d.top < b.bottom && d.bottom > b.top,
+        left: d.left, right: d.right,
+      };
+    });
+    expect(m.intersects, `${w}x${h} 詳情卡片不可與分支側欄相交`).toBe(false);
+    expect(m.left, `${w}x${h} 卡片左緣不可跑出畫面`).toBeGreaterThanOrEqual(0);
+    expect(m.right, `${w}x${h} 卡片右緣不可跑出畫面`).toBeLessThanOrEqual(w);
+  }
 });
 
 test('K. 手機版詳情面板的重置警告不被底部分支 chip 蓋住（spec §2.1 強制要求的災情警告）', async ({ page, isMobile }) => {
