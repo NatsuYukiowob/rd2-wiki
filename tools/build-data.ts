@@ -1,7 +1,7 @@
 import { readFileSync, writeFileSync, mkdirSync, readdirSync } from 'node:fs';
 import { gzipSync } from 'node:zlib';
 import sharp from 'sharp';
-import { parseTree } from './lib/svg-parse.js';
+import { parseTree, COORD_TOLERANCE } from './lib/svg-parse.js';
 import { buildSprite, buildHiRes, type IconEntry } from './lib/icons.js';
 import { parseCost } from '../src/lib/cost.js';
 import { parseGrowth } from '../src/lib/growth.js';
@@ -46,7 +46,9 @@ export function buildTreeData(svgText: string, opts: BuildOpts): TreeData {
     };
   });
 
-  const at = (x: number, y: number) => nodes.find(n => Math.abs(n.x - x) < 0.5 && Math.abs(n.y - y) < 0.5);
+  // 容差跟 validate 共用同一個常數：兩邊各寫一份 0.5 的話，一旦漂開就會出現
+  // 「validate 認為這條邊接到 A、build-data 認為接到 B」這種兩邊都不報錯的裂縫。
+  const at = (x: number, y: number) => nodes.find(n => Math.abs(n.x - x) < COORD_TOLERANCE && Math.abs(n.y - y) < COORD_TOLERANCE);
   const edges: Edge[] = rawEdges.map(e => {
     const a = at(e.from[0], e.from[1]);
     const b = at(e.to[0], e.to[1]);
@@ -54,13 +56,19 @@ export function buildTreeData(svgText: string, opts: BuildOpts): TreeData {
     return [a.id, b.id] as Edge;
   });
 
+  // wip 節點（data-wip="1"＝先佔位、還沒接線）依規則 6(d) 完全不接線，所以在圖上必然是孤點。
+  // 不把它們排除的話，findRoots 會把每一顆都當成「根」報出去，站台就會多畫幾條不存在的起手分支。
+  const wipIds = new Set(rawNodes.filter(r => r.wip).map(r => r.id));
   const { parents } = buildAdjacency(edges);
-  const roots = findRoots(nodes.map(n => n.id), parents).sort();
+  const roots = findRoots(nodes.map(n => n.id), parents).filter(id => !wipIds.has(id)).sort();
 
   // meta.totalUnlockCost 是「SVG 成本總和」，刻意不排除 unlockVia !== 'cost' 的節點：
   // spec §2.1 說明此總和本來就不等於玩家實際支出（任務／預設解鎖節點另有例外標註），
   // 與前置鏈計算（graph.ts 的 sumUnlockCost，會排除非 cost 節點）用途不同，不可混用。
-  const totalUnlockCost = nodes.reduce(
+  //
+  // 但 wip 節點要排除：它們的語意是「這顆之後才會接進樹裡」，還沒接線就先把成本算進「全樹解鎖
+  // 成本」，等於讓一個佔位節點去動首頁上那個數字。目前正本沒有 wip 節點，所以這條不改變現值。
+  const totalUnlockCost = nodes.filter(n => !wipIds.has(n.id)).reduce(
     (acc, n) => ({ core: acc.core + n.unlockCost.core, gold: acc.gold + n.unlockCost.gold }),
     { core: 0, gold: 0 }
   );

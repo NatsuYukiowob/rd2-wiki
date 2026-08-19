@@ -39,3 +39,22 @@ describe('parseCost', () => {
     expect(() => parseCost('金幣 100,000／金幣 200,000')).toThrow(/重複|多次|無法解析/);
   });
 });
+
+describe('parseCost 的數值上限', () => {
+  it('核心超過上限會被擋', () => {
+    expect(() => parseCost('核心 99999')).toThrow(/上限/);
+  });
+
+  it('金幣超過上限會被擋', () => {
+    expect(() => parseCost('金幣 999,999,999')).toThrow(/上限/);
+  });
+
+  it('大到失去精度的數字會被擋——不然全樹成本會安靜地算錯', () => {
+    expect(() => parseCost('核心 99999999999999999999')).toThrow(/安全整數|上限/);
+  });
+
+  it('正常範圍照常通過', () => {
+    expect(parseCost('核心 66').cost).toEqual({ core: 66, gold: 0 });
+    expect(parseCost('金幣 23,000／核心 5').cost).toEqual({ core: 5, gold: 23000 });
+  });
+});

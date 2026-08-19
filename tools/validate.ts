@@ -1,7 +1,7 @@
 import { readFileSync, readdirSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { join } from 'node:path';
-import { parseTree } from './lib/svg-parse.js';
+import { parseTree, splitTitleLevel, COORD_TOLERANCE } from './lib/svg-parse.js';
 import { parseCost } from '../src/lib/cost.js';
 import { parseGrowth } from '../src/lib/growth.js';
 import { extractKeywords } from '../src/lib/keywords.js';
@@ -16,6 +16,25 @@ import type { Edge } from '../src/lib/types.js';
  * 若真實資料的根集合與此不同，代表結構被改壞或有節點斷線，必須人工確認再更新此常數。
  */
 const EXPECTED_ROOTS = ['1001', '2001', '3001', '4008', '5002'];
+
+/**
+ * 畫布尺寸。改這個數字＝改整張圖的座標系，`src/scripts/tree-canvas.ts` 的縮放推算、
+ * `tests/e2e` 的幾何斷言、以及 CLAUDE.md 記的那組不變量都跟著它——所以它是常數不是變數。
+ * 遊戲改版真的需要換畫布時，是連同上面那些一起改，不是讓 CI 默默放行。
+ */
+const EXPECTED_VIEWBOX: [number, number, number, number] = [0, 0, 2000, 1700];
+
+/**
+ * 兩顆節點中心至少要離這麼遠。
+ *
+ * 規則 5 是用「離這個座標最近、容差 0.5 以內」的節點來決定邊接到誰的。兩顆節點疊在一起時，
+ * 同一個端點會同時對上兩顆，`find()` 取到哪一顆只看它們在 SVG 裡的先後順序——把重複的那顆
+ * 往上挪一行，整條前置鏈就換人了，而 diff 只有兩行位置對調。實測正本最近的一對相距 40。
+ */
+const MIN_NODE_DISTANCE = 5;
+
+/** 文字欄位長度上限。正本實測最長 46 字；這個上限擋的是「把整篇文章塞進 data-description」。 */
+const MAX_TEXT_LENGTH = 500;
 
 export interface ValidateOpts {
   keywords: string[];
@@ -79,17 +98,23 @@ export function validate(svgText: string, opts: ValidateOpts): ValidateResult {
     for (const [k, v] of Object.entries({ id: n.id, type: n.typeZh, name: n.name, cost: n.costRaw, description: n.description })) {
       if (!v) push(`規則 1: 節點 ${n.id} 缺少 data-${k}`);
     }
+    // 長度上限：這些欄位會被原封不動放進 tree.json（吃 20KB 的 gzip 預算）、放進 PR 留言、
+    // 放進畫布的 <title>。沒有上限的話，一個節點就能把整份預算吃光。
+    for (const [k, v] of Object.entries({ name: n.name, description: n.description })) {
+      if (v.length > MAX_TEXT_LENGTH) push(`規則 1: 節點 ${n.id} 的 data-${k} 長度 ${v.length} 超過上限 ${MAX_TEXT_LENGTH}`);
+    }
+
     // title 與 data-* 必須「全等」一致，不能只是字串包含關係——包含關係無法抓出
     // 例如 title 被改成別的節點內容、卻剛好是另一段文字子字串的情況。
     // 注意：data-description 本身可能內嵌換行（多行技能敘述），title 會原封不動帶著這些
     // 換行，所以不能無條件砍掉 title 的第二行——只有「最後一行剛好是『最高等級：N』」
-    // 這種玩家被動專屬的附加行才要剝掉，其餘情況一律整段全等比對。
+    // 這種玩家被動專屬的附加行才要剝掉（交給 splitTitleLevel），其餘情況一律整段全等比對。
     const titleEl = nodeElById.get(n.id)?.querySelector('title');
     const titleText = titleEl?.textContent ?? '';
-    const titleLines = titleText.split('\n');
-    const lastLine = titleLines[titleLines.length - 1] ?? '';
-    const hasLevelSuffix = titleLines.length > 1 && /^最高等級：\d+$/.test(lastLine);
-    const contentTitle = hasLevelSuffix ? titleLines.slice(0, -1).join('\n') : titleText;
+    if (titleText.length > MAX_TEXT_LENGTH * 3) push(`規則 1: 節點 ${n.id} 的 <title> 長度 ${titleText.length} 過長`);
+    // 「最後一行是不是等級行」的判斷跟 svg-parse 共用同一個函式：兩邊各寫一份時，
+    // 一邊 trim、一邊沒 trim，會讓規則 1 拿兩個看起來一模一樣的字串報不一致。
+    const contentTitle = splitTitleLevel(titleText).content;
     const expectTitle = `${n.typeZh}｜${n.name}｜${n.description}`;
     if (contentTitle !== expectTitle) push(`規則 1: 節點 ${n.id} 的 title 與 data-* 不一致（title: ${JSON.stringify(contentTitle)}，預期: ${JSON.stringify(expectTitle)}）`);
 
@@ -102,7 +127,15 @@ export function validate(svgText: string, opts: ValidateOpts): ValidateResult {
     } catch (e) { push(`規則 3: 節點 ${n.id} ${(e as Error).message}`); }
 
     // 規則 4: 成本文法
-    try { parseCost(n.costRaw); } catch (e) { push(`規則 4: 節點 ${n.id} 成本 ${(e as Error).message}`); }
+    try {
+      const { maxLevel } = parseCost(n.costRaw);
+      // 等級上限在正本裡有兩個來源：data-cost 的第二行「最高 N 級」與 <title> 最後一行
+      // 「最高等級：N」。build-data 取的是前者優先（maxLevel ?? titleMaxLevel），兩者不一致時
+      // 沒有任何一邊會抱怨——站台顯示一個數字、正本上寫著另一個。
+      if (maxLevel !== null && n.titleMaxLevel !== null && maxLevel !== n.titleMaxLevel) {
+        push(`規則 4: 節點 ${n.id} 的等級上限不一致（data-cost 寫「最高 ${maxLevel} 級」，title 寫「最高等級：${n.titleMaxLevel}」）`);
+      }
+    } catch (e) { push(`規則 4: 節點 ${n.id} 成本 ${(e as Error).message}`); }
 
     // 規則 8: 關鍵字白名單（# 標記必須能比對到白名單詞）
     try { extractKeywords(n.description, opts.keywords); } catch (e) { push(`規則 8: 節點 ${n.id} ${(e as Error).message}`); }
@@ -207,22 +240,42 @@ export function validate(svgText: string, opts: ValidateOpts): ValidateResult {
 
   // 規則 5: 邊端點對齊（marker-end 已由 parseTree 在解析階段強制檢查並提早失敗，
   // 走到這裡代表所有邊都已經有 marker-end，此處不需要也不可能再測到缺失的情況）。
+  // 回傳「這個座標對上的所有節點」而不是第一個：對上兩顆代表有節點疊在一起，
+  // 這條邊接到誰完全取決於它們在檔案裡的先後順序（見 MIN_NODE_DISTANCE 的說明）。
   const at = (x: number, y: number) =>
-    nodes.find(n => Math.abs(n.x - x) < 0.5 && Math.abs(n.y - y) < 0.5);
+    nodes.filter(n => Math.abs(n.x - x) < COORD_TOLERANCE && Math.abs(n.y - y) < COORD_TOLERANCE);
   const idEdges: Edge[] = [];
   for (const e of edges) {
-    const a = at(e.from[0], e.from[1]);
-    const b = at(e.to[0], e.to[1]);
-    if (!a || !b) { push(`規則 5: 邊端點未對齊任何節點中心 ${JSON.stringify(e)}`); continue; }
-    idEdges.push([a.id, b.id]);
+    const [a, b] = [at(e.from[0], e.from[1]), at(e.to[0], e.to[1])];
+    let ambiguous = false;
+    for (const [end, hits] of [['起點', a], ['終點', b]] as const) {
+      if (hits.length > 1) {
+        push(`規則 5: 邊的${end} ${JSON.stringify(e)} 同時對上 ${hits.length} 顆節點（${hits.map(n => n.id).join('、')}），無法判定接到誰`);
+        ambiguous = true;
+      }
+    }
+    if (ambiguous) continue;
+    if (a.length === 0 || b.length === 0) { push(`規則 5: 邊端點未對齊任何節點中心 ${JSON.stringify(e)}`); continue; }
+    idEdges.push([a[0]!.id, b[0]!.id]);
   }
 
   // 規則 6: 無環 + 可達性（data-wip="1" 的節點豁免可達性檢查，讓貢獻者可以先接資料再接線；
   // 這些節點改為列入 warnings，供 PR 摘要顯示「待接線節點」）
-  const wip = new Set(
-    [...doc.querySelectorAll('g.node[data-wip="1"]')].map(g => g.getAttribute('data-id') ?? ''),
-  );
+  const wip = new Set(nodes.filter(n => n.wip).map(n => n.id));
   for (const id of wip) warn(`規則 6(c): 節點 ${id} 為待接線節點（data-wip="1"），尚未加入圖遍歷，請於 PR 摘要留意`);
+
+  // 規則 6(d): 待接線節點不得出現在任何邊上。
+  //
+  // ⚠️ 這條是整份規則裡最要緊的一道。`data-wip="1"` 的語意就是「還沒接線」，而規則 6 為它
+  // 豁免了「非預期的根」與「從根不可達」兩項檢查——那正是圖結構唯一的守門員。少了這條，
+  // 一個 PR 可以：把某顆現有節點標成 wip（於是它斷開上游也不會被抓），再拉一條邊從它接到
+  // 別的分支去。結果是 validate 全綠、節點數與邊數都不變、四個不變量都對，而某條前置鏈的
+  // 成本被改掉了（review 報告實測：5201 鏈從 66 核心變成 86）。
+  // 既然 wip 的意思是「沒接線」，那就真的不准它接線——豁免與能力二選一。
+  for (const [from, to] of idEdges) {
+    if (wip.has(from)) push(`規則 6(d): 節點 ${from} 標了 data-wip="1"（待接線）卻有一條出邊接到 ${to}；wip 節點必須完全不接線`);
+    if (wip.has(to)) push(`規則 6(d): 節點 ${to} 標了 data-wip="1"（待接線）卻有一條入邊來自 ${from}；wip 節點必須完全不接線`);
+  }
   const ids = nodes.map(n => n.id);
   const { parents, children } = buildAdjacency(idEdges);
   const cycle = detectCycle(ids, children);
@@ -237,6 +290,35 @@ export function validate(svgText: string, opts: ValidateOpts): ValidateResult {
       if (!wip.has(id)) push(`規則 6: 節點 ${id} 從根不可達`);
     }
   }
+
+  // 規則 13: 幾何健全性（畫布尺寸、座標範圍、節點不得重疊）。
+  //
+  // 這一組守的是「打開 SVG 看到的東西」與「站台算出來的東西」是同一件事。畫布或座標被改壞時
+  // 站台只會安靜地把節點畫到視野外或糊成一團，沒有任何一步會說話。
+  const vb = parsed.meta.viewBox;
+  if (vb.join(' ') !== EXPECTED_VIEWBOX.join(' ')) {
+    push(`規則 13: viewBox 必須是 "${EXPECTED_VIEWBOX.join(' ')}"，實際為 "${vb.join(' ')}"（改畫布要連同 CLAUDE.md 的不變量與 E2E 幾何斷言一起改）`);
+  }
+  const [vx, vy, vw, vh] = EXPECTED_VIEWBOX;
+  const inside = (x: number, y: number) => x >= vx && x <= vx + vw && y >= vy && y <= vy + vh;
+  for (const n of nodes) {
+    if (!inside(n.x, n.y)) push(`規則 13: 節點 ${n.id} 的座標 (${n.x}, ${n.y}) 落在畫布之外`);
+  }
+  for (const e of edges) {
+    if (!inside(e.from[0], e.from[1]) || !inside(e.to[0], e.to[1])) {
+      push(`規則 13: 邊的端點落在畫布之外 ${JSON.stringify(e)}`);
+    }
+  }
+  for (let i = 0; i < nodes.length; i++) {
+    for (let j = i + 1; j < nodes.length; j++) {
+      const [a, b] = [nodes[i]!, nodes[j]!];
+      const d = Math.hypot(a.x - b.x, a.y - b.y);
+      if (d < MIN_NODE_DISTANCE) {
+        push(`規則 13: 節點 ${a.id} 與 ${b.id} 的中心只相距 ${d.toFixed(2)}（至少要 ${MIN_NODE_DISTANCE}），邊會分不清接到哪一顆`);
+      }
+    }
+  }
+
   return { errors, warnings };
 }
 
