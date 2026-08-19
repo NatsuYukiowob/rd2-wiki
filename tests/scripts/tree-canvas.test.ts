@@ -287,7 +287,11 @@ describe('tree-canvas 整合：分支快速跳轉（task-17，spec §6.2.6）', 
   // 子元素，吃掉 nav（50.59）與 footer（73.94）之外的剩餘高度。**這裡不要再自己算一個
   // `視窗高 − 某個常數`**：舊註解寫的 610 是從 `calc(100vh - 110px)` 那個寫死偏移量推來的，
   // 而那個 110 本身就是錯的（實際 124.53），版面改成 flex 之後那條 CSS 已經不存在了。
-  const DESKTOP_CANVAS_HEIGHT = 595;
+  // 寫成算式而不是一個裸數字，是為了讓「這個數字打哪來」跟著它一起走：實測 nav 50.59、
+  // footer 73.94（Playwright Desktop Chrome 1280×720）。它只是給 stub 用的近似容器尺寸，
+  // 真正的版面正確性由 E2E 的 U（scrollHeight === innerHeight、畫布填滿）守著；這裡寫錯
+  // 只會讓可讀性下限測在一個略微失真的容器上，不會讓錯誤的版面過關。
+  const DESKTOP_CANVAS_HEIGHT = Math.round(720 - 50.59 - 73.94);
   function stubDesktopRect(page: { svg: HTMLElement }): void {
     Object.assign(page.svg, {
       getBoundingClientRect: () => ({

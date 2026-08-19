@@ -1,7 +1,7 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { parseHTML } from 'linkedom';
-import { visibleNodeIds, upgradeIcons } from '../../src/lib/hires';
+import { visibleNodeIds, upgradeIcons, downgradeIcons, resetFailedIcons } from '../../src/lib/hires';
 import { renderTree } from '../../src/lib/render';
 import type { TreeData } from '../../src/lib/types';
 
@@ -143,5 +143,70 @@ describe('upgradeIcons', () => {
     const pattern = svg.querySelector(`defs > pattern#icon-hires-${hash}`)!;
     const img = pattern.querySelector<SVGImageElement>('image')!;
     expect(img.getAttribute('href')).toBe(`/custom/base/${hash}.webp`);
+  });
+});
+
+describe('降級與載入失敗（2026-08-19 review 追加）', () => {
+  beforeEach(() => resetFailedIcons());
+
+  it('降級不只換 fill，還要把沒人用的 pattern 從 <defs> 移掉——那才是真的把記憶體還回去', () => {
+    const svg = renderInto();
+    upgradeIcons(['1001'], svg);
+    expect(svg.querySelectorAll('defs > pattern[id^=icon-hires-]')).toHaveLength(1);
+
+    downgradeIcons([...svg.querySelectorAll<SVGRectElement>('rect.icon')], svg);
+
+    expect(svg.querySelectorAll('defs > pattern[id^=icon-hires-]')).toHaveLength(0);
+    expect(iconRect(svg, '1001').getAttribute('fill')).toMatch(/icon-pattern-/);
+  });
+
+  it('還有節點在用的 pattern 不會被誤刪', () => {
+    const svg = renderInto();
+    upgradeIcons(['1001', '1002'], svg);
+    const first = iconRect(svg, '1001');
+    const second = iconRect(svg, '1002');
+    // 兩個節點各有各的圖示雜湊時互不影響；只降級第一個，第二個的 pattern 要留著。
+    downgradeIcons([first], svg);
+    expect(second.getAttribute('fill')).toMatch(/icon-hires-/);
+    expect(svg.querySelector(`#icon-hires-${second.getAttribute('data-icon')}`)).not.toBeNull();
+  });
+
+  it('沒有 fill 可記的節點不升級——升了就永遠降不回來，連載入失敗都救不了', () => {
+    const svg = renderInto();
+    const icon = iconRect(svg, '1001');
+    icon.removeAttribute('fill');
+
+    upgradeIcons(['1001'], svg);
+
+    expect(icon.dataset.hires).toBeUndefined();
+    expect(svg.querySelectorAll('defs > pattern[id^=icon-hires-]')).toHaveLength(0);
+  });
+});
+
+describe('載入失敗不會變成無限重抓', () => {
+  beforeEach(() => resetFailedIcons());
+
+  it('高解析圖載入失敗後：換回 sprite、移除 pattern，而且下一次不再重抓同一張', () => {
+    const svg = renderInto();
+    upgradeIcons(['1001'], svg);
+    const icon = iconRect(svg, '1001');
+    const hash = icon.getAttribute('data-icon')!;
+    expect(icon.getAttribute('fill')).toBe(`url(#icon-hires-${hash})`);
+
+    // 模擬那張 webp 404（雜湊改了沒重建圖，就是 CLAUDE.md 記過的 render-nodes 事故）。
+    // linkedom 的 dispatchEvent 只吃它自己那個 Event 類別，Node 的全域 Event 會在
+    // 設定 eventPhase 時炸掉（只有 getter）。從文件的 defaultView 取。
+    const LinkedomEvent = (svg.ownerDocument as unknown as { defaultView: { Event: typeof Event } }).defaultView.Event;
+    svg.querySelector(`#icon-hires-${hash} image`)!.dispatchEvent(new LinkedomEvent('error'));
+
+    expect(icon.getAttribute('fill')).toMatch(/icon-pattern-/);
+    expect(svg.querySelector(`#icon-hires-${hash}`)).toBeNull();
+
+    // 關鍵：再升一次不可以又把它建回來。沒有失敗名單的話，「pattern 不存在」與
+    // 「節點沒升級過」兩個條件又同時成立，於是重建 pattern、重發那個 404——使用者每滾一次
+    // 滾輪就重演一次，節點還會 sprite→空白→sprite 閃一下。
+    upgradeIcons(['1001'], svg);
+    expect(svg.querySelector(`#icon-hires-${hash}`)).toBeNull();
+    expect(icon.getAttribute('fill')).toMatch(/icon-pattern-/);
   });
 });

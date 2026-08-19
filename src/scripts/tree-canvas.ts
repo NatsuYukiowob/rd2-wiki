@@ -40,13 +40,14 @@ const byId = new Map(data.nodes.map(n => [n.id, n]));
 function updateNavHeight(): void {
   const nav = document.getElementById('site-nav');
   if (!nav) return;
-  // ⚠️ 量的是**文件座標**（offsetTop + offsetHeight），不是 getBoundingClientRect().bottom。
-  // 後者是視窗座標：頁面只要能捲動，捲到 y=100 時 resize 一次，--nav-h 就會被寫成
-  // 「nav 高度 − 100」甚至負數，#tree-controls 與 #detail 跟著跳到 nav 上面去。
-  // 版面改成 flex 之後畫布頁本來就不該捲得動，這條是保險。
-  // getBoundingClientRect() 保留次像素（nav 實測 50.59px，offsetHeight 會四捨五入成 51），
-  // 再補回 scrollY 換算成文件座標。
-  const bottom = nav.getBoundingClientRect().bottom + window.scrollY;
+  // ⚠️ 這裡要的是**視窗座標**：`--nav-h` 的兩個消費者（#tree-controls、#detail）都是
+  // `position: fixed`，`top` 本來就是相對視窗算的。一度改成 `+ window.scrollY` 換算成文件
+  // 座標是錯的——捲到 y=100 時會把兩者放到 nav 下方 100px，畫布頂端多出一條 nav 高的死區。
+  //
+  // 真正要防的是「頁面可捲時 nav 的視窗下緣變成負數」——那時固定層應該貼齊視窗頂端，而不是
+  // 跟著 nav 跑出畫面，所以夾在 0 以上。版面改成 flex 之後畫布頁本來就不該捲得動，這條是給
+  // 退化情境（例如 :has() 不支援）的保險。
+  const bottom = Math.max(0, nav.getBoundingClientRect().bottom);
   // 單元測試環境（linkedom）沒有版面引擎，getBoundingClientRect() 預設全 0，
   // bottom <= 0 一定不是真實渲染結果，跳過寫入、讓 CSS 的 3rem fallback 留著
   // （tests/scripts/tree-canvas.test.ts 的頁面 fixture 也沒有 #site-nav，上面
@@ -57,7 +58,34 @@ function updateNavHeight(): void {
   }
 }
 updateNavHeight();
-window.addEventListener('resize', updateNavHeight);
+
+/**
+ * 手機版底部分支列的實際高度，寫進 `--chips-h` 供 footer 讓位用。
+ *
+ * `#branch-chips` 是 `position: fixed; bottom: 0`，頁面改成不捲動之後它會永遠疊在 footer
+ * 上緣——而 footer 第二行正是「遊戲圖示與文字著作權屬 111 Percent Inc.」這句必須看得到的
+ * 聲明，手機上因此完全讀不到。讓 footer 加一段等於 chip 列高度的下內距把文字頂上來；
+ * `<main>` 是 `flex: 1`，footer 變高只會讓畫布跟著縮，不會把捲軸叫回來。
+ *
+ * 一樣是**量出來**而不是寫一個 3.5rem——這個 repo 的固定偏移量已經咬過四次（見 CLAUDE.md）。
+ */
+function updateChipsHeight(): void {
+  const chips = document.getElementById('branch-chips');
+  if (!chips) return;
+  const h = chips.getBoundingClientRect().height;
+  if (h > 0) document.documentElement.style.setProperty('--chips-h', `${h}px`);
+}
+updateChipsHeight();
+
+window.addEventListener('resize', () => {
+  updateNavHeight();
+  updateChipsHeight();
+  // 升級門檻的兩個輸入（畫布尺寸、devicePixelRatio）都會隨視窗變動：瀏覽器縮放到 200%
+  // （dpr 1→2）、手機轉向、進入全螢幕、把視窗拖到高 DPI 螢幕，全都只發 resize。不在這裡
+  // 重算的話，使用者會一直停在糊掉的 sprite（或反過來，停在已經沒必要的高解析圖），
+  // 直到剛好在畫布上滾一次滾輪為止。
+  maybeUpgradeIcons();
+});
 
 const host = document.getElementById('canvas-host');
 if (!host) {
@@ -97,6 +125,17 @@ let currentSelected: string | null = initialSelected;
 // 整個模組掛掉。測試環境剛好驗不到（linkedom 沒有 cancelAnimationFrame，函式會提早 return，
 // 根本讀不到這個變數），只有真瀏覽器會炸。
 let upgradeRaf = 0;
+
+/**
+ * 高解析升級的批次世代號。跟 `upgradeRaf` 同一個理由提到這裡（見上面那段說明）：
+ * `jumpToBranch()` 在模組初始化階段就會呼叫 `maybeUpgradeIcons()`，宣告留在函式旁邊會落進
+ * 暫時死區。目前是因為工作都排在 rAF／閒置回呼裡才躲過，那是碰巧安全、不是設計。
+ *
+ * 每次重新評估門檻就 +1，排隊中的批次看到號碼變了就自己停下來——沒有它的話，使用者
+ * 放大→鬆手（排了五批）→立刻縮小（觸發整批降級）之後，那五批仍會照原計畫把圖示一個個
+ * 升回去，在一個 sprite 已經綽綽有餘的倍率上憑空多抓幾十個檔案。
+ */
+let upgradeGeneration = 0;
 
 /** 手機版斷點。要跟 src/pages/tree.astro 的媒體查詢保持一致，兩邊改動時一起改。 */
 const NARROW_QUERY = '(max-width: 720px)';
@@ -273,50 +312,73 @@ svg.addEventListener('pointermove', e => {
 const iconIndex = buildIconIndex(svg);
 
 /**
- * 目前一個使用者座標單位攤到幾個**裝置**像素。用它決定要不要換 2× 素材，見
- * `effectiveDevicePx()` 的說明（舊版只看 `vp.scale`，兩個方向都判斷錯）。
+ * 目前一個使用者座標單位攤到幾個**裝置**像素，連同量到的畫布盒子一起回傳。
+ *
+ * 判準本身見 `effectiveDevicePx()`（舊版只看 `vp.scale`，兩個方向都判斷錯）。盒子一起回傳是
+ * 因為下面換算可視範圍還要用同一個矩形——`getBoundingClientRect()` 是強制版面計算，在每一幀
+ * 都會跑的縮放路徑上讀兩次沒有意義。
  */
-function currentDevicePx(): number {
+function currentDevicePx(): { devicePx: number; box: DOMRect } {
   const box = svg.getBoundingClientRect();
   const dpr = typeof devicePixelRatio === 'number' && devicePixelRatio > 0 ? devicePixelRatio : 1;
-  return effectiveDevicePx(box.width, box.height, data.meta.viewBox[2], data.meta.viewBox[3], vp.scale, dpr);
+  return {
+    devicePx: effectiveDevicePx(box.width, box.height, data.meta.viewBox[2], data.meta.viewBox[3], vp.scale, dpr),
+    box,
+  };
 }
 
 /** 每批處理幾個節點。24 是一個手機首屏大致的可見節點量級，夠小到不會卡住一幀。 */
 const UPGRADE_BATCH = 24;
 
-/** 排一段閒置工作（Safari 沒有 requestIdleCallback，照本檔慣例做存在性檢查後退回 setTimeout）。 */
+/**
+ * 排一段閒置工作。
+ *
+ * Safari 沒有 `requestIdleCallback`（照本檔慣例做存在性檢查）。fallback 刻意是 32ms 而不是 0：
+ * `setTimeout(fn, 0)` 只是「下一個 macrotask」，一串批次會在載入後幾毫秒內接力跑完——那正是
+ * 這個延後想避開的首屏爭用，而 Safari 又正是 fallback 唯一的服務對象。32ms 約兩幀，讓渲染插得進去。
+ */
 function whenIdle(fn: () => void): void {
   if (typeof requestIdleCallback === 'function') requestIdleCallback(() => fn(), { timeout: 1000 });
-  else if (typeof setTimeout === 'function') setTimeout(fn, 0);
+  else if (typeof setTimeout === 'function') setTimeout(fn, 32);
 }
 
-function upgradeInBatches(ids: string[], start = 0): void {
+function upgradeInBatches(ids: string[], generation: number, start = 0): void {
+  // 排隊中的批次要自己確認「當初排隊的理由現在還成立嗎」：使用者可能已經縮小、平移，
+  // 甚至整批降級過了。號碼對不上就直接停，不要把畫面推回一個已經被推翻的狀態。
+  if (generation !== upgradeGeneration) return;
   upgradeIcons(ids.slice(start, start + UPGRADE_BATCH), svg, undefined, iconIndex);
-  if (start + UPGRADE_BATCH < ids.length) whenIdle(() => upgradeInBatches(ids, start + UPGRADE_BATCH));
+  if (start + UPGRADE_BATCH < ids.length) {
+    whenIdle(() => upgradeInBatches(ids, generation, start + UPGRADE_BATCH));
+  }
 }
 
 function maybeUpgradeIcons(): void {
   if (typeof cancelAnimationFrame === 'function') cancelAnimationFrame(upgradeRaf);
   if (typeof requestAnimationFrame !== 'function') return;
   upgradeRaf = requestAnimationFrame(() => {
-    const devicePx = currentDevicePx();
-    // 遲滯：縮小到明顯不需要 2× 素材時把已升級的換回 sprite（pattern 只增不減會一路吃記憶體，
-    // 實測整棵樹全升級後多出約 4.6MB），但門檻比升級低一截，免得在邊界反覆縮放時來回抖動。
+    // 重新評估＝先讓所有排隊中的批次失效（見 upgradeGeneration 的說明）。
+    const generation = ++upgradeGeneration;
+    const { devicePx, box } = currentDevicePx();
+    // devicePx 為 0 代表**量不到**（畫布還沒排版、祖先暫時 display:none、容器尺寸為 0），
+    // 不是「小到不需要高解析」。少了這道，那個瞬間會走進下面的降級分支，把 239 個圖示全部
+    // 打回 sprite，而且要等到下一次滾輪／放開拖曳才補得回來。
+    if (devicePx <= 0) return;
+    // 遲滯：縮小到明顯不需要 2× 素材時把已升級的換回 sprite（連同 <defs> 裡的 pattern 一起
+    // 移除，那才是真的把記憶體還回去——實測整棵樹全升級後多出約 4.6MB），但門檻比升級低一截，
+    // 免得在邊界反覆縮放時來回抖動。
     if (devicePx < HIRES_DOWNGRADE_AT) {
-      downgradeIcons(iconIndex.values());
+      downgradeIcons(iconIndex.values(), svg);
       return;
     }
     if (devicePx <= HIRES_UPGRADE_AT) return;
     const g = svg.querySelector<SVGGElement>('#viewport');
     const ctm = g?.getScreenCTM?.()?.inverse();
     if (!ctm) return; // 沒有版面引擎（測試環境）或畫布尚未真正掛進有版面的 DOM，無法換算
-    const box = svg.getBoundingClientRect();
     const tl = new DOMPoint(box.left, box.top).matrixTransform(ctm);
     const br = new DOMPoint(box.right, box.bottom).matrixTransform(ctm);
     // 分批：一次可見節點可能有近百個，全部一口氣建 pattern＋發請求會在同一幀裡卡住主執行緒。
     // 每個閒置時段做一批，其餘排到下一次——畫面上是圖示陸續變清晰，不是整個卡一下。
-    upgradeInBatches(visibleNodeIds(data, { x: tl.x, y: tl.y, w: br.x - tl.x, h: br.y - tl.y }));
+    upgradeInBatches(visibleNodeIds(data, { x: tl.x, y: tl.y, w: br.x - tl.x, h: br.y - tl.y }), generation);
   });
 }
 svg.addEventListener('wheel', maybeUpgradeIcons);
