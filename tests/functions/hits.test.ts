@@ -55,6 +55,8 @@ describe('onRequestPost', () => {
     const res = await onRequestPost(ctx('POST', db, { 'Sec-Fetch-Site': 'cross-site' }));
     expect(res.status).toBe(403);
     expect(sqls).toHaveLength(0);
+    // 403 要說 forbidden 不能說 internal：線上除錯時得分得出「訪客被誤擋」和「資料庫掛了」。
+    expect(await res.text()).toBe('{"error":"forbidden"}');
   });
 
   it('沒有 Sec-Fetch-Site 標頭時放行（舊瀏覽器不送這個標頭）', async () => {
