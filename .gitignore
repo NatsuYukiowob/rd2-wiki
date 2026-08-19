@@ -5,6 +5,8 @@ public/assets/
 src/generated/
 test-results/
 playwright-report/
+# wrangler pages dev 的本機狀態（含本機 D1），只在本機 smoke 時產生
+.wrangler/
 diff-summary.md
 diff-summary.json
 comment.md

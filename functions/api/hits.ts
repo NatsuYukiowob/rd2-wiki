@@ -23,10 +23,16 @@ function ok(n: number): Response {
   return new Response(JSON.stringify({ n }), { status: 200, headers: HEADERS });
 }
 
-/** 錯誤一律回固定字串。錯誤訊息含 SQL 與 key 名，這是公開端點，不能吐出去。 */
-function fail(status: number, err: unknown): Response {
+/**
+ * 錯誤一律回固定字串。錯誤訊息含 SQL 與 key 名，這是公開端點，不能吐出去。
+ *
+ * code 只有兩個值、都不洩漏任何東西，但要分開：403 是「你被擋了」、500 是「我壞了」。
+ * 全部回 internal 的話，線上除錯時分不出「Sec-Fetch-Site 判斷把真實訪客誤擋」
+ * 和「資料庫真的掛了」——兩者的處理方式完全不同。
+ */
+function fail(status: number, code: 'forbidden' | 'internal', err?: unknown): Response {
   if (err !== undefined) console.error('[hits]', err);
-  return new Response('{"error":"internal"}', { status, headers: HEADERS });
+  return new Response(JSON.stringify({ error: code }), { status, headers: HEADERS });
 }
 
 /**
@@ -45,11 +51,11 @@ function isCrossSite(request: Request): boolean {
 }
 
 export async function onRequestPost(ctx: HitsContext): Promise<Response> {
-  if (isCrossSite(ctx.request)) return fail(403, undefined);
+  if (isCrossSite(ctx.request)) return fail(403, 'forbidden');
   try {
     return ok(await bumpCounter(ctx.env.DB, COUNTER_KEY));
   } catch (err) {
-    return fail(500, err);
+    return fail(500, 'internal', err);
   }
 }
 
@@ -57,6 +63,6 @@ export async function onRequestGet(ctx: HitsContext): Promise<Response> {
   try {
     return ok(await readCounter(ctx.env.DB, COUNTER_KEY));
   } catch (err) {
-    return fail(500, err);
+    return fail(500, 'internal', err);
   }
 }
