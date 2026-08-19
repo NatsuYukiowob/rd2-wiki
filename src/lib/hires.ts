@@ -48,7 +48,46 @@ function hiresPatternId(icon: string): string {
  * 用 `icon.dataset.hires === '1'` 記錄「已經升級過」，避免同一個節點被重複處理（例如使用者
  * 反覆縮放、同一個節點多次落在可視範圍內）時重複改寫 DOM。
  */
-export function upgradeIcons(ids: string[], svg: SVGSVGElement, base = '/assets/icons'): void {
+/**
+ * 一次把 `g.node[data-id] > rect.icon` 全部索引起來，供 `upgradeIcons()` 重複使用。
+ *
+ * 沒有它的話，每次縮放（rAF 節流後仍然是每幾個影格一次）都要對每個可見節點各跑一次
+ * `svg.querySelector('g.node[data-id="…"] > rect.icon')`。節點是建置期一次畫好、之後不再
+ * 增刪的，索引建一次就永遠有效。
+ */
+export function buildIconIndex(svg: SVGSVGElement): Map<string, SVGRectElement> {
+  const index = new Map<string, SVGRectElement>();
+  for (const icon of svg.querySelectorAll<SVGRectElement>('g.node > rect.icon')) {
+    const id = (icon.parentElement as Element | null)?.getAttribute('data-id');
+    if (id) index.set(id, icon);
+  }
+  return index;
+}
+
+/**
+ * 把圖示換回共用的 sprite。
+ *
+ * 兩個用途：①縮小到不再需要 2× 素材時回收（見 tree-canvas.ts 的遲滯門檻）；
+ * ②高解析 WebP 載入失敗時止血——沒有這條的話，`<pattern>` 裡是一張永遠載不到的
+ * `<image>`，貼上去的 `<rect>` 就是一塊什麼都沒有的空白，畫面上是一個「破圖」節點，
+ * 而且沒有任何錯誤訊息。
+ */
+export function downgradeIcons(icons: Iterable<SVGRectElement>): void {
+  for (const icon of icons) {
+    if (icon.dataset.hires !== '1') continue;
+    const sprite = icon.dataset.spriteFill;
+    if (!sprite) continue;
+    icon.setAttribute('fill', sprite);
+    delete icon.dataset.hires;
+  }
+}
+
+export function upgradeIcons(
+  ids: string[],
+  svg: SVGSVGElement,
+  base = '/assets/icons',
+  index?: Map<string, SVGRectElement>,
+): void {
   const doc = svg.ownerDocument;
   // render.ts 現在一定會建立 <defs>（不管有沒有圖示都會），這裡直接假設它存在、找不到就是
   // 呼叫端傳了一個不是 renderTree() 產生的 svg，用法錯誤，不需要再防禦性地自己建一個。
@@ -61,7 +100,7 @@ export function upgradeIcons(ids: string[], svg: SVGSVGElement, base = '/assets/
   const patternedThisCall = new Set<string>();
 
   for (const id of ids) {
-    const icon = svg.querySelector<SVGRectElement>(`g.node[data-id="${id}"] > rect.icon`);
+    const icon = index?.get(id) ?? svg.querySelector<SVGRectElement>(`g.node[data-id="${id}"] > rect.icon`);
     if (!icon || icon.dataset.hires === '1') continue;
 
     const hash = icon.getAttribute('data-icon');
@@ -96,11 +135,24 @@ export function upgradeIcons(ids: string[], svg: SVGSVGElement, base = '/assets/
       img.setAttribute('href', `${base}/${hash}.webp`);
       img.setAttribute('width', w);
       img.setAttribute('height', h);
+      // 載入失敗（檔案被刪、雜湊改了沒重建、CDN 出問題）時把用到這個 pattern 的節點全部
+      // 換回 sprite，並把 pattern 移除，免得後面的節點又貼上同一個壞掉的圖案。
+      // 不做這件事的話，畫面上就是一個空白的節點，而且沒有任何錯誤訊息。
+      img.addEventListener('error', () => {
+        const affected = [...svg.querySelectorAll<SVGRectElement>(`rect.icon[data-icon="${hash}"]`)];
+        downgradeIcons(affected);
+        pattern.remove();
+      });
       pattern.appendChild(img);
       defs.appendChild(pattern);
     }
     patternedThisCall.add(hash);
 
+    // 記下原本的 sprite fill，降級時要換回來（縮小回門檻以下、或高解析圖載入失敗）。
+    if (!icon.dataset.spriteFill) {
+      const current = icon.getAttribute('fill');
+      if (current) icon.dataset.spriteFill = current;
+    }
     icon.setAttribute('fill', `url(#${patId})`);
     icon.dataset.hires = '1';
   }

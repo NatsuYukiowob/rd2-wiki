@@ -174,15 +174,60 @@ test('手機版預設聚焦單一分支且有分支 chip', async ({ page, isMobi
   expect(await getViewportScale(page)).toBeGreaterThan(1.5);
 });
 
-test('首屏資產體積在預算內', async ({ page }) => {
-  let bytes = 0;
-  page.on('response', async r => {
-    if (r.url().includes('/assets/') || r.url().endsWith('.js') || r.url().endsWith('.css')) {
-      bytes += Number((await r.allHeaders())['content-length'] ?? 0);
-    }
+/** 目前一個使用者座標單位攤到幾個裝置像素——高解析升級的真正判準，見 src/lib/viewport.ts。 */
+async function devicePxPerUnit(page: Page): Promise<number> {
+  return page.evaluate(() => {
+    const svg = document.querySelector('#tree') as SVGSVGElement;
+    const vp = document.querySelector('#viewport');
+    const box = svg.getBoundingClientRect();
+    const vb = svg.getAttribute('viewBox')!.split(/\s+/).map(Number);
+    const scale = Number(/scale\(([-\d.]+)\)/.exec(vp?.getAttribute('transform') ?? '')?.[1] ?? 1);
+    return Math.min(box.width / vb[2]!, box.height / vb[3]!) * scale * window.devicePixelRatio;
   });
+}
+
+/** 縮到門檻以下，讓已升級的圖示換回 sprite（遲滯門檻 0.9，見 viewport.ts）。 */
+async function zoomOutToSprite(page: Page): Promise<void> {
+  const box = (await page.locator('#tree').boundingBox())!;
+  const point = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+  await page.mouse.move(point.x, point.y);
+  for (let i = 0; i < 40; i++) await page.mouse.wheel(0, 120);
+  await page.waitForTimeout(200);
+}
+
+test('首屏資產體積在預算內', async ({ page }) => {
+  // ⚠️ 舊版是假綠的（review 報告 C06）：`page.on('response', async r => …)` 的回呼是
+  // async，Playwright 不會 await 它，`await r.allHeaders()` 還沒回來 goto 就結束了——
+  // 同一頁重跑量到 196KB～646KB 不等。而且靠 content-length，壓縮回應根本沒有這個標頭。
+  //
+  // 改成在頁面端讀 Resource Timing：transferSize 是實際過網路的位元組（含標頭、已壓縮），
+  // 快取命中時是 0，所以退回 encodedBodySize 當下限。這是瀏覽器自己記的帳，不會漏。
   await page.goto('/tree', { waitUntil: 'networkidle' });
-  expect(bytes).toBeLessThan(500 * 1024);
+  // ⚠️ 首屏的高解析升級排在 requestIdleCallback（timeout 1000ms）裡，networkidle 會在它
+  // 開火之前就滿足。不等這一段的話，這個測試量到的永遠是「還沒開始抓圖示」的快照——
+  // 把門檻改回舊版的 `vp.scale <= 1`（桌機會白抓 213 張）它一樣是綠的，等於什麼都沒守。
+  await page.waitForTimeout(1500);
+  await page.waitForLoadState('networkidle');
+  const m = await page.evaluate(() => {
+    const entries = performance.getEntriesByType('resource') as PerformanceResourceTiming[];
+    const counted = entries.filter(e =>
+      e.name.includes('/assets/') || e.name.endsWith('.js') || e.name.endsWith('.css'));
+    return {
+      bytes: counted.reduce((a, e) => a + (e.transferSize || e.encodedBodySize || 0), 0),
+      iconRequests: entries.filter(e => e.name.includes('/assets/icons/')).length,
+      names: counted.map(e => e.name.split('/').pop()).slice(0, 5),
+    };
+  });
+  expect(m.bytes, `首屏資產 ${(m.bytes / 1024).toFixed(1)}KB（前幾項：${m.names.join(', ')}）`)
+    .toBeLessThan(500 * 1024);
+
+  // 請求數：這條守的是「不需要 2× 素材時，一張都不該抓」——修正前桌機（每單位 0.52 裝置
+  // 像素）無條件抓 213 張高解析圖示約 500KB，純屬浪費。真的需要 2× 的高 DPI 裝置會抓
+  // （Pixel 7 實測 68 張，體積仍在預算內），那是該做的事，不設上限。
+  const devicePx = await devicePxPerUnit(page);
+  if (devicePx <= 1.2) {
+    expect(m.iconRequests, `每單位 ${devicePx.toFixed(2)} 裝置像素，sprite 已足夠，不該抓個別圖示`).toBe(0);
+  }
 });
 
 // ---------------------------------------------------------------------------
@@ -238,12 +283,22 @@ test('C. 縮放 > 1x 後，可見節點圖示從 sprite pattern 換成高解析 
   // 升級過），不是的話代表這個測試的前提不成立，用 test.skip 誠實記錄，不是硬凹。
   await goToNatureBranch(page, isMobile);
   const icon = page.locator('g.node[data-id="1002"] > rect.icon');
-  const startFill = await icon.getAttribute('fill');
-  test.skip(!startFill?.includes('icon-pattern-'), '這個裝置/縮放組合下，分支導覽跳轉後已經是高解析圖示，沒有可觀察的轉換窗口');
+  // 先確保起始狀態真的是 sprite。門檻改成裝置像素後，手機／高 DPI 裝置一載入就已經升級，
+  // 那時沒有可觀察的轉換窗口——先縮到門檻以下把它換回 sprite，測試才有前提可驗。
+  if (!(await icon.getAttribute('fill'))?.includes('icon-pattern-')) {
+    await zoomOutToSprite(page);
+  }
+  await expect
+    .poll(async () => (await icon.getAttribute('fill')) ?? '', { timeout: 5000 })
+    .toContain('icon-pattern-');
 
+  // 放大到跨過裝置像素門檻。用 poll 而不是固定圈數：不同 project 的初始倍率與 DPR 不同，
+  // 「幾圈才夠」不是一個跨裝置成立的常數。
   const point = await centerOf(page.locator('g.node[data-id="1002"]'));
-  await zoomInAt(page, point, 8);
-  expect(await getViewportScale(page)).toBeGreaterThan(1);
+  await expect.poll(async () => {
+    await zoomInAt(page, point, 4);
+    return devicePxPerUnit(page);
+  }, { timeout: 15000 }).toBeGreaterThan(1.2);
 
   // upgradeIcons 是用 wheel 事件節流的 requestAnimationFrame 觸發的（見 tree-canvas.ts），
   // 給瀏覽器一次繪圖機會讓它真的跑完。
@@ -457,13 +512,13 @@ test('H. 鍵盤 focus 的金邊貼合圖示輪廓：圓形節點得到圓環，�
   for (const [x, y] of corners) expect(isGold(at(x, y))).toBe(false);
 });
 
-test('I. 初次載入未經任何互動，只要初始縮放超過 1x，可見節點就已經是高解析圖示', async ({ page }) => {
+test('I. 初次載入未經任何互動，只要真的需要 2× 素材，可見節點就已經是高解析圖示', async ({ page }) => {
   await page.goto('/tree'); // 網址沒帶 ?node=，桌機整棵樹置中、手機預設對準 nature 分支
-  const scale = await getViewportScale(page);
-  // bug 4 修正後，兩種裝置的初始視角都可能超過 1x（手機幾乎必然；桌機則看可讀性下限
-  // 是否高於 fitTo 整棵樹的 0.9x，容器夠扁時會超過，見上面的修正記錄）——只有真的超過
-  // 1x 時，bug 2 的修正才有東西可驗，沒超過就 skip，不是硬凹一個不成立的前提。
-  test.skip(scale <= 1, `初始縮放 ${scale} ≤ 1x，這個裝置/環境下沒有可觀察的「初次載入已經是高解析」窗口`);
+  const devicePx = await devicePxPerUnit(page);
+  // 門檻從「vp.scale > 1」改成「每單位裝置像素 > 1.2」（見 src/lib/viewport.ts 的
+  // effectiveDevicePx）。1280×720 dpr1 的桌機算出來只有約 0.52——**不升級才是對的**，
+  // sprite 的來源解析度綽綽有餘，舊版在這裡白抓 213 張圖約 500KB。
+  test.skip(devicePx <= 1.2, `每單位 ${devicePx.toFixed(2)} 裝置像素 ≤ 1.2，這個裝置不需要 2× 素材（sprite 已足夠）`);
 
   // 完全不做任何滑鼠/觸控互動（不 wheel、不拖曳）。如果 bug 2 還在，這裡會停在 sprite
   // pattern，要等使用者互動一次才會升級。waitForFunction 給 rAF 一次跑的機會（跟測試 C
