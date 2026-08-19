@@ -53,10 +53,19 @@ npm run dev      # 先產生資料，再啟動本機開發伺服器
 
 ## CI 與部署
 
-PR 送出後會自動跑資料驗證、單元測試、建置、效能預算與端對端測試，並在 PR 底下貼「資料差異
-摘要」留言（詳見 [`CONTRIBUTING.md`](./CONTRIBUTING.md) 第 5、6 節）；`main` 分支的變更會
-自動部署到 Cloudflare Pages。Cloudflare Pages 專案本身要在網頁介面手動建立，設定步驟見
-維護者自行保存的部署文件。
+PR 送出後會自動跑資料驗證、正規化定點檢查、型別檢查、單元測試、建置、效能預算與端對端測試，
+資料有變動時還會在 PR 底下貼一則「資料差異摘要」留言（同一個 PR 重複推送會更新同一則，詳見
+[`CONTRIBUTING.md`](./CONTRIBUTING.md) 第 5、6 節）。
+
+**這兩項檢查（`verify`／`e2e`）是 merge 的必要條件**：`main` 受分支規則保護，不接受直接推送，
+所有變更——包含維護者自己的——都必須經過 PR 且 CI 全綠才能合併。外部貢獻者從 fork 送來的 PR
+需要維護者按一下核准，CI 才會開始跑（GitHub 的預設保護機制，不是壞掉，見
+[`CONTRIBUTING.md`](./CONTRIBUTING.md) 第 7 節）。
+
+部署方面，`main` 的變更由 Cloudflare Pages 的 Git 整合自動部署；這條路徑**與 CI 平行進行、
+不等 CI 結果**。CI 內已備妥 `deploy` job，等維護者設好 `CLOUDFLARE_API_TOKEN` 與
+`CLOUDFLARE_ACCOUNT_ID` 兩個 repository secret 並關閉 Git 整合後，就會改成「CI 全綠才上線」。
+Cloudflare Pages 專案本身要在網頁介面手動建立，設定步驟見維護者自行保存的部署文件。
 
 ## 授權
 
