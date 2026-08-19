@@ -15,5 +15,33 @@ import data from '../generated/tree.json';
     <p style="color:var(--muted)">
       遊戲版本v{data.meta.gameVersion} ・ 資料版本 {data.meta.gameBundle}（更新於 {data.meta.updated}）
     </p>
+
+    <!-- 訪客計數器。
+         ⚠️ 刻意放在現有的 section 元素裡面，而不是自成一個新的：tests/e2e/tree.spec.ts
+         的 T 用 page.locator('section') 讀首頁，頁面上多一個 section 會讓那條測試以
+         Playwright strict mode violation 紅掉。
+         預設 hidden，拿到數字才顯示——但 hidden 在 global.css 裡被改成
+         visibility: hidden（保留高度），所以顯示與否都不會讓下面的 footer 跳動。 -->
+    <p id="hit-counter" hidden>
+      你是第<span id="hit-number"></span>位訪客
+    </p>
   </section>
 </Base>
+
+<script>
+  // 數字只能在瀏覽器端取得：站台是 output: 'static'，頁面在建置期產生、由邊緣快取送出，
+  // render 的時候不可能知道「這次訪問」。
+  import { fetchHitNumber } from '../lib/hit-counter';
+
+  const block = document.getElementById('hit-counter');
+  const slot = document.getElementById('hit-number');
+  if (block && slot) {
+    fetchHitNumber().then(n => {
+      // null = 顯示不出來（endpoint 不在、逾時、CSP 擋下、儲存被拒……）。
+      // 一律保持 hidden，不顯示 0，也不留一個空的數字框。
+      if (n === null) return;
+      slot.textContent = n.toLocaleString('en-US');
+      block.removeAttribute('hidden');
+    });
+  }
+</script>

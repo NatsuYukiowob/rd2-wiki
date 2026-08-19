@@ -224,3 +224,43 @@ pre {
 #detail.kw-clickable .kw:hover {
   text-decoration: underline;
 }
+
+/*
+ * 首頁訪客計數器（S2：金色等寬數字）。
+ *
+ * 只用既有變數，不新增 CSS 變數也不新增字型檔——--gold 已經是全站唯一的強調色
+ * （連結、前置鏈高亮都是它），等寬字型堆疊 code/pre 早就定義過。
+ *
+ * ⚠️ 失敗時用 visibility 而不是 display: none。display: none 會把已經佔好位的區塊
+ * 收掉、footer 往上跳，而「失敗」是 astro dev、E2E、以及 deploy job 補上 checkout 之前
+ * 的線上環境的預設狀態——等於幾乎每次載入都會位移一下。保留高度，成功與失敗兩條路徑
+ * 版面才一致。
+ */
+#hit-counter {
+  margin-top: 2rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--border);
+  text-align: center;
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+#hit-counter[hidden] {
+  /* [hidden] 預設是 display: none，這裡蓋掉它——理由見上面。 */
+  display: block;
+  visibility: hidden;
+}
+
+#hit-number {
+  display: inline-block;
+  margin: 0 0.4rem;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 1.6rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--gold);
+  /* 等寬數字：數值變動時字寬不變，版面不會左右抽動。 */
+  font-variant-numeric: tabular-nums;
+  /* 數字回填前先把位子撐開，填進去的那一刻不會位移。 */
+  min-width: 6ch;
+}
