@@ -41,7 +41,12 @@ jobs:
         with: { node-version: '24', cache: npm }
       # --ignore-scripts：fork PR 改得動 package.json 的 lifecycle script，而 `npm ci` 會在
       # runner 上執行它。這個 repo 的相依套件不需要安裝腳本也能用（sharp 的原生二進位走
-      # optionalDependencies 的預建檔），拿掉它等於關掉「送 PR 就能在 CI 執行任意程式」這條路。
+      # optionalDependencies 的預建檔），拿掉它就少一條「不必動任何原始碼就能在 CI 執行任意程式」的路。
+      #
+      # ⚠️ 這**不代表這個 job 是沙箱**：下面每一步（validate／build／typecheck／test）跑的都是
+      # PR 端的 tools/、src/、tests/ 與 package.json 裡的 script 本體，fork PR 一律能在這裡執行程式碼。
+      # 所以這個 job 永遠只給 `contents: read`，也永遠不要往它加 secret 或提權——真正的隔離靠的是
+      # 權限最小化與 pr-comment.yml 那條信任邊界，不是這個旗標。
       - run: npm ci --ignore-scripts
       - name: 資料驗證（規則 0–10，見 CONTRIBUTING.md）
         run: npm run validate
@@ -90,8 +95,20 @@ jobs:
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: github.event_name == 'pull_request'
         with:
+          # 上傳的是**資料**（JSON）不是版面（Markdown）。這一步跑的是 PR 端的程式碼，
+          # fork 想寫什麼進去都可以；留言長什麼樣由 pr-comment.yml 用 default branch 的
+          # 渲染器決定，見 tools/diff-summary.ts 的 renderDiffComment 說明。
           name: diff-summary
-          path: diff-summary.md
+          path: diff-summary.json
+      - name: 上傳建置產物（給 deploy 用）
+        # 「CI 綠才上線」要成立，上線的就得是**被驗過的那份 dist**，不是另外再建一次的產物。
+        # 重建會引入 sharp 編碼、astro 資產雜湊、兩次 npm ci 之間 registry 變動等不確定性。
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: dist
+          path: dist/
+          retention-days: 1
 
   e2e:
     name: e2e
@@ -107,7 +124,13 @@ jobs:
       # 用快取省掉；快取的 key 綁 Playwright 的實際版本，升版自然 miss、不會用到舊瀏覽器。
       - name: 讀取 Playwright 版本
         id: pw
-        run: echo "version=$(node -p "require('./node_modules/@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+        # 版本讀不到時要當場失敗。放著不管的話 key 會退化成版本無關的 `Linux-playwright-`，
+        # 下次升 Playwright 會 cache hit → 跳過安裝 → 找不到瀏覽器執行檔，而 e2e 是必要檢查，
+        # 等於每個 PR 都被一個看起來與 PR 無關的錯誤擋住。
+        run: |
+          v=$(node -p "require('./node_modules/@playwright/test/package.json').version")
+          test -n "$v"
+          echo "version=$v" >> "$GITHUB_OUTPUT"
       - name: 快取 Playwright 瀏覽器
         id: pw-cache
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
@@ -127,16 +150,17 @@ jobs:
         # `npm run build`，多加一步等於整包資料與站台建兩次（多花 5–7 秒且兩份產物可能不同步）。
         # 看到這裡覺得「怎麼沒建置」而想補回來的人，先看這行註解。
         run: npm run e2e
-      - name: 上傳失敗報告
-        # E2E 在 CI 上紅掉時，光看記錄檔很難知道是哪個斷言、畫面長怎樣；Playwright 的
-        # HTML 報告與 trace／截圖都在這兩個目錄裡。
+      - name: 上傳失敗痕跡
+        # E2E 在 CI 上紅掉時，光看記錄檔很難知道是哪個斷言、畫面長怎樣。
+        # ⚠️ 這裡**沒有** HTML 報告：playwright.config.ts 刻意用 `reporter: 'list'`（見該檔註解），
+        # 所以 playwright-report/ 不會產生，只有 test-results/ 裡的截圖與 trace
+        # （config 的 screenshot: only-on-failure、trace: retain-on-failure）。
+        # 想要 HTML 報告就得先改 config 的 reporter，不是在這裡多列一個目錄。
         if: failure()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: playwright-report
-          path: |
-            playwright-report/
-            test-results/
+          name: playwright-failure-traces
+          path: test-results/
           retention-days: 7
 
   deploy:
@@ -149,9 +173,6 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        with: { node-version: '24', cache: npm }
       - name: 檢查部署憑證
         id: creds
         # secrets 不能用在 job 層的 `if`（GitHub 的 context 限制），所以在這裡判斷：
@@ -167,10 +188,13 @@ jobs:
           else
             echo "ready=true" >> "$GITHUB_OUTPUT"
           fi
-      - run: npm ci --ignore-scripts
+      - name: 取回 verify 驗過的建置產物
+        # 刻意不在這裡重建：要上線的就是通過 validate／效能預算／單元測試／E2E 的那一份 dist。
         if: steps.creds.outputs.ready == 'true'
-      - run: npm run build
-        if: steps.creds.outputs.ready == 'true'
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: dist
+          path: dist
       - name: 部署到 Cloudflare Pages
         if: steps.creds.outputs.ready == 'true'
         uses: cloudflare/wrangler-action@9acf94ace14e7dc412b076f2c5c20b8ce93c79cd # v3
