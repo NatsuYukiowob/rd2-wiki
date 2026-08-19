@@ -120,20 +120,29 @@ jobs:
         with: { node-version: '24', cache: npm }
       - run: npm ci --ignore-scripts
       # E2E 驗證的是「建置後、真實瀏覽器裡」的行為（見 playwright.config.ts 開頭註解），
-      # 所以要先裝瀏覽器本體＋作業系統相依套件。
+      # 所以要先把 Chromium 抓下來。
       #
-      # ⚠️ **不要再加 actions/cache 快取 ~/.cache/ms-playwright**。2026-08-19 加過一次，
-      # 想省下瀏覽器本體約 170MB 的下載，實測是純負收益：
+      # ⚠️ **刻意不加 `--with-deps`，也不要加 actions/cache 快取 ~/.cache/ms-playwright。**
+      # 2026-08-19 這一天在同一份 workflow、同一個指令上量到的四個點：
       #
-      #   cache miss → `install --with-deps chromium`   23 秒   （run 32213164990）
-      #   cache hit  → `install-deps chromium`        3 分 13 秒（run 32228165427）
-      #   cache hit  → `install-deps chromium`        掛住 19 分鐘後撞 timeout（run 32230510120）
+      #   03:43Z  install --with-deps chromium   23 秒        run 32213164990
+      #   07:31Z  install-deps chromium          3 分 13 秒    run 32228165427（cache hit 路徑）
+      #   08:00Z  install-deps chromium          掛住 19 分撞 timeout   run 32230510120（main）
+      #   08:22Z  install --with-deps chromium   掛住 6 分以上          run 32232296660
       #
-      # 快取只存得下瀏覽器本體，apt 裝到系統目錄的共用函式庫不在裡面，所以命中時仍得補跑
-      # `install-deps`——而那一步比「下載瀏覽器＋裝相依」整包還慢 8 倍，還會卡死。
-      # e2e 是 main 的必要檢查，卡住等於每個 PR 都 merge 不了，省那 20 秒不值得。
+      # 一開始我歸因成「install-deps 比 install --with-deps 慢」，那是錯的：把時間排開來看，
+      # 兩個指令都在變慢，而它們的共通點是**都會跑 apt-get**。真正的變因是 GitHub runner 的
+      # apt 來源，不是指令選擇，也不是快取。快取反而讓情況更糟——它只存得下瀏覽器本體，
+      # 命中時仍得補跑 install-deps，等於把「唯一會慢的那件事」變成唯一還在做的事。
+      #
+      # 既然 apt 是我們控制不了的外部變因，作法是**完全不碰它**：只抓瀏覽器，不裝系統套件。
+      # 前提是 GitHub 的 ubuntu-latest runner image 本來就內建 Chromium 需要的共用函式庫——
+      # 這是**假設，不是已知**（本機環境跟 runner image 不同，驗不準）。若 Chromium 起不來，
+      # 會在「端對端測試」那步立刻噴 launch 失敗，是幾秒內就看得到的紅燈，不是 20 分鐘的卡死。
+      # 那時的下一手是改用官方容器（`container: mcr.microsoft.com/playwright:v1.62.1-noble`，
+      # tag 要 pin 具體版本），image 內建瀏覽器與函式庫，整個問題類別消失。
       - name: 安裝 Playwright 瀏覽器
-        run: npx playwright install --with-deps chromium
+        run: npx playwright install chromium
       - name: 端對端測試（含建置）
         # 這裡刻意沒有獨立的「建置站台」步驟：package.json 的 `pree2e` 已經會跑一次
         # `npm run build`，多加一步等於整包資料與站台建兩次（多花 5–7 秒且兩份產物可能不同步）。
