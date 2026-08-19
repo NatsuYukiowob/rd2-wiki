@@ -148,6 +148,18 @@ E2E 的 U（不該捲動）、V（詳情卡片避開側欄）、J（手機抽屜
 所以 CSP 之類的標頭要兩邊都寫：靜態頁走 `_headers`，Function 在程式碼裡自己放進 `Response`。
 驗收也要分開驗——`curl -sI` 打靜態頁**和**打 Function 的路徑。
 
+### ⚠️ `#hit-counter` 抓得到 HTML 不代表看得到
+
+首頁的訪客計數器（`functions/api/hits.ts` ＋ D1）預設 `hidden`，前端拿到數字才顯示——
+endpoint 掛掉時它會**安靜地不出現**，那是刻意的降級。
+
+所以 `curl https://rd2-wiki.pages.dev/ | grep -c "位訪客"` 回 1 只證明**標記在 HTML 裡**，
+不證明使用者看得到。要驗顯示就用瀏覽器（Playwright `isVisible()` ＋ 讀 `#hit-number` 的文字），
+這跟版面驗收要用幾何斷言是同一條原則。
+
+順帶：前端判斷 API 成功與否**不看 status code**，只看 payload 形狀
+（`typeof body.n === 'number'`）——因為未知路徑回 200、Functions 沒部署時回 405。
+
 ### ⚠️ 未知路徑目前回 200 加一份首頁，不是 404
 
 `dist/` 裡沒有 `404.html` 時，Cloudflare Pages 會當成 SPA 處理、拿 index.html 當 fallback。
