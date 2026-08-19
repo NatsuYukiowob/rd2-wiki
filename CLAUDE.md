@@ -242,6 +242,34 @@ Playwright 直接重用了它 → 測到的是**別份產物**。症狀是「ele
   → 這類行為只能靠 E2E 驗
 - 臨時的 Playwright 腳本要放在 **repo 目錄下**才 import 得到 `@playwright/test`
 
+## README 與門面素材
+
+README 是產品頁形式（banner ＋ 徽章 ＋ `> [!WARNING]` 免責 ＋ 分讀者章節），對標
+`github.com/moeru-ai/airi`。2026-08-19 PR #17／#18。
+
+- 素材在 **`.github/media/`**：`banner.webp`（1280×640）、`screenshot-tree.webp`、
+  `screenshot-mobile.webp`，外加 banner 的原始碼 **`banner.src.html`**（重產所需的兩個輸入與
+  指令寫在該檔開頭的註解裡）。**不要放進 `public/`**——那會被打包進站台，還要吃規則 12 的效能預算。
+- ⚠️ **banner 裡不要放節點數這類會隨資料改動的數字**。第一版烤了「239 節點／248 條連線」，
+  2026-08-19 拿掉：資料 PR 一改數字，圖就會說謊，而 CI 完全擋不住。會變的事實只放文字。
+- banner 與 tagline 的文案**沿用 `src/layouts/Base.astro` 的 `OG_TITLE`／`DESCRIPTION`**
+  （連結預覽那組），不維護第二份。
+- 已知限制與 `src/lib/flags.ts` 的暫停功能**刻意不寫進 README**——那是維護者資訊，留在這份檔案。
+- ⚠️ **不要用 `[/about](/about)` 這種 root-relative 連結**：GitHub 會把它連到 `github.com/about`。
+  README 與 `CONTRIBUTING.md`（會被 `about.astro` import）都要寫完整網址，站台端一樣正常。
+- ⚠️ `LICENSE` 尾端有「MIT 只涵蓋程式碼」的附註 → GitHub 判成 `license.key = "other"`，
+  shields 的動態 license 徽章顯示 *not identifiable by github*。徽章已改成靜態的，
+  **不要為了讓徽章好看去刪那段附註**。
+- **推上去之前先在本機看渲染結果**（不是想像）：
+
+  ```bash
+  jq -Rs '{text:., mode:"gfm", context:"NatsuYukiowob/rd2-wiki"}' README.md > /tmp/md.json
+  gh api -X POST /markdown --input /tmp/md.json > /tmp/readme.html
+  # 套 github-markdown-css 後用 Playwright 截 fullPage，light/dark 各一張
+  ```
+
+  這樣抓到過上面那條 root-relative 連結與失效的 license 徽章——兩個都是純讀 Markdown 看不出來的。
+
 ## 不進版控
 
 `docs/`（規格書、實作計畫、部署步驟、已知問題）**刻意移出版控**，只留本機，
