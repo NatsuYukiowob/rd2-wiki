@@ -123,6 +123,55 @@ E2E 的 U（不該捲動）、V（詳情卡片避開側欄）、J（手機抽屜
 `--chips-h` 由 `tree-canvas.ts` 量 chip 列的實際高度寫入（**不要寫死 3.5rem**）。
 `<main>` 是 `flex: 1`，footer 變高只會讓畫布跟著縮，不會把捲軸叫回來。E2E 的 W 守這條。
 
+### ⚠️ deploy job 沒有 checkout：任何靠 repo 根目錄的東西都不會上線
+
+`ci.yml` 的 `deploy` job **刻意沒有 `actions/checkout`**，只 `download-artifact` 拿 `verify` 驗過的
+`dist/`，然後 `wrangler pages deploy dist`。這是為了讓「上線的位元組＝被驗過的位元組」。
+
+代價是 runner 的工作目錄裡**只有 dist/**。Cloudflare Pages 的 Functions 是看
+「執行指令的那個目錄底下有沒有 `functions/`」來決定要不要打包的
+（`node_modules/wrangler/.../cli.js`：`path.join(process.cwd(), "functions")`，
+不存在就整段跳過，**沒有 warning、部署照樣回成功**）。所以哪天要加 Pages Functions，
+必須在 deploy job 補一步 checkout：
+
+- ⚠️ **checkout 要放在 `download-artifact` 之前**。`actions/checkout` 預設 `clean: true` 會清空
+  工作目錄，順序反了會把下載好的 `dist/` 洗掉，然後部署一個空目錄——而且大概不會報錯。
+- ⚠️ action 要 pin 40 碼 SHA（repo 開了 `sha_pinning_required`）。
+- 加了 Functions 之後，**deploy 後面要補一步 smoke**（例如 `curl -fsS <endpoint> | grep -q ...`），
+  否則「binding 沒綁／表沒建／functions 沒上傳／CSP 擋掉」四種失敗都會收斂成
+  「那塊功能靜靜消失」，沒有任何人會知道。
+
+### ⚠️ `public/_headers` 對 Pages Functions 的回應無效
+
+官方文件明載 `_headers` 定義的自訂標頭**不會套用到 Pages Functions 產生的回應**
+（https://developers.cloudflare.com/pages/configuration/headers/ ）。
+所以 CSP 之類的標頭要兩邊都寫：靜態頁走 `_headers`，Function 在程式碼裡自己放進 `Response`。
+驗收也要分開驗——`curl -sI` 打靜態頁**和**打 Function 的路徑。
+
+### ⚠️ 未知路徑目前回 200 加一份首頁，不是 404
+
+`dist/` 裡沒有 `404.html` 時，Cloudflare Pages 會當成 SPA 處理、拿 index.html 當 fallback。
+實測 `curl -sI https://rd2-wiki.pages.dev/this-does-not-exist-12345` → `HTTP/2 200`，
+內容是 `<title>首頁 rd2-wiki</title>`。打錯的網址與失效的分享連結都會被搜尋引擎和連結預覽
+當成有效頁面。要修就是加一個 `public/404.html`（尚未做）。
+
+### ⚠️ 兩個工作區同時跑 E2E 會互相偷 server
+
+`playwright.config.ts` 的 `reuseExistingServer: true` 配上寫死的埠，意思是
+**只要那個埠上有人在聽，就拿它當受測站台——不管那是不是你自己建的 dist**。
+
+2026-08-19 實際咬到人：這台機器上同時有主 checkout 與一個 git worktree 在動，主 checkout
+留了一個沒收掉的 `serve dist -l 4321`（`npm run e2e` 結束後殘留），worktree 那邊跑 E2E 時
+Playwright 直接重用了它 → 測到的是**別份產物**。症狀是「element(s) not found」，
+看起來完全像自己的程式沒輸出那個元素。破案靠 `curl localhost:4321 | grep -c <自己的東西>` 回 0。
+
+現在埠可以用 `E2E_PORT` 覆蓋：平行開兩個工作區時，其中一邊
+`E2E_PORT=4399 npm run e2e` 就互不干擾（CI 上沒有這個變數，行為不變）。
+**收工前也順手確認一下 `pgrep -af "bin/serve"` 沒有殘留。**
+
+這跟下面那條是同一族的坑——**都是「你以為在測自己的東西，其實不是」**：
+一個測到舊產物，一個測到別人的產物。
+
 ### ⚠️ `npx playwright test` 不會重新建置
 
 `npm run e2e` 有 `pree2e` 會先 `npm run build`；**直接跑 `npx playwright test` 不會**。
