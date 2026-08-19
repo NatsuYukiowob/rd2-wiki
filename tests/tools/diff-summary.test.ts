@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { TreeData, TreeNode, Edge } from '../../src/lib/types';
-import { buildDiffSummary } from '../../tools/diff-summary';
+import { buildDiffSummary, escapeMarkdown, SUMMARY_MARKER, NO_CHANGE_MARKER } from '../../tools/diff-summary';
 
 /** 最小可用的 TreeNode 替身，個別測試只覆寫需要的欄位。 */
 const n = (p: Partial<TreeNode>): TreeNode =>
@@ -29,7 +29,7 @@ const tree = (nodes: TreeNode[], edges: Edge[] = [], totalUnlockCost = { core: 0
   edges,
 });
 
-describe('buildDiffSummary（規則 10：id 變動警告）', () => {
+describe('buildDiffSummary（規則 11：id 變動警告）', () => {
   it('新增節點：計入「新增」計數，不觸發 id 消失警告', () => {
     const base = tree([n({ id: '1001' })], [], { core: 10, gold: 1000 });
     const head = tree([n({ id: '1001' }), n({ id: '1002', name: '風骰子' })], [], { core: 25, gold: 2000 });
@@ -73,5 +73,81 @@ describe('buildDiffSummary（規則 10：id 變動警告）', () => {
 
     expect(summary).not.toContain('⚠️');
     expect(summary).not.toContain('<details>');
+  });
+});
+
+/**
+ * 這則留言是由擁有 `pull-requests: write` 的 workflow 貼出去的，而內容裡的節點名稱與 id
+ * 來自 `data/dice-tree.svg`——送 PR 的人改得動。不逃逸就等於讓 fork 決定留言裡渲染什麼。
+ */
+describe('escapeMarkdown（PR 留言的注入防護）', () => {
+  it('HTML 標籤被轉成實體，不會在留言裡渲染成標籤', () => {
+    expect(escapeMarkdown('<script>alert(1)</script>')).toBe('&lt;script&gt;alert(1)&lt;/script&gt;');
+    expect(escapeMarkdown('<img src=x onerror=alert(1)>')).toBe('&lt;img src=x onerror=alert(1)&gt;');
+  });
+
+  it('& 先處理，不會把自己插入的實體再逃逸一次', () => {
+    expect(escapeMarkdown('A&B')).toBe('A&amp;B');
+    expect(escapeMarkdown('&lt;')).toBe('&amp;lt;');
+  });
+
+  it('@ 轉成 &#64;：顯示仍是 @，但不會提及到無關的人', () => {
+    expect(escapeMarkdown('@NatsuYukiowob')).toBe('&#64;NatsuYukiowob');
+  });
+
+  it('Markdown 行內語法字元被反斜線逃逸，連結與程式碼區塊不會成形', () => {
+    expect(escapeMarkdown('[看這裡](http://evil.example)')).toBe('\\[看這裡\\](http://evil.example)');
+    expect(escapeMarkdown('`rm -rf /`')).toBe('\\`rm -rf /\\`');
+    expect(escapeMarkdown('a|b')).toBe('a\\|b');
+    expect(escapeMarkdown('*粗*_斜_~刪~')).toBe('\\*粗\\*\\_斜\\_\\~刪\\~');
+  });
+
+  it('一般名稱原樣通過', () => {
+    expect(escapeMarkdown('火骰子')).toBe('火骰子');
+  });
+});
+
+describe('buildDiffSummary 的留言標記與逃逸', () => {
+  it('永遠帶識別標記，pr-comment 才找得到上一則就地更新', () => {
+    const base = tree([n({ id: '1001' })], [], { core: 10, gold: 1000 });
+    const head = tree([n({ id: '1002' })], [], { core: 10, gold: 1000 });
+
+    expect(buildDiffSummary(base, head)).toContain(SUMMARY_MARKER);
+  });
+
+  it('兩份 tree.json 逐字元相同時標成「無變動」，pr-comment 據此不貼留言', () => {
+    const same = () => tree([n({ id: '1001' })], [['1001', '1002']], { core: 10, gold: 1000 });
+
+    expect(buildDiffSummary(same(), same())).toContain(NO_CHANGE_MARKER);
+  });
+
+  it('只要有任何差異就不標「無變動」——包含只有邊被改接（節點計數全部是 0）的情況', () => {
+    const base = tree([n({ id: '1001' })], [['1001', '1002']], { core: 10, gold: 1000 });
+    const head = tree([n({ id: '1001' })], [['1001', '1003']], { core: 10, gold: 1000 });
+
+    const summary = buildDiffSummary(base, head);
+
+    expect(summary).toContain('新增 0｜刪除 0｜修改 0');
+    expect(summary).not.toContain(NO_CHANGE_MARKER);
+  });
+
+  it('修改清單裡的節點名稱有逃逸', () => {
+    const base = tree([n({ id: '1001', name: '火骰子', unlockCost: { core: 10, gold: 1000 } })]);
+    const head = tree([n({ id: '1001', name: '<img src=x onerror=alert(1)> @yuki', unlockCost: { core: 20, gold: 1000 } })]);
+
+    const summary = buildDiffSummary(base, head);
+
+    expect(summary).toContain('&lt;img src=x onerror=alert(1)&gt; &#64;yuki');
+    expect(summary).not.toContain('<img src=x');
+  });
+
+  it('id 消失警告裡的 id 有逃逸', () => {
+    const base = tree([n({ id: '1001' }), n({ id: '<b>1002</b>' })]);
+    const head = tree([n({ id: '1001' })]);
+
+    const summary = buildDiffSummary(base, head);
+
+    expect(summary).toContain('&lt;b&gt;1002&lt;/b&gt;');
+    expect(summary).not.toContain('<b>1002</b>');
   });
 });

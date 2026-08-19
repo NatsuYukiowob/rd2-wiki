@@ -7,6 +7,9 @@
 # 因此拆成兩段：ci.yml 用 `pull_request` 觸發、唯讀權限，負責產生 diff-summary.md 並上傳成
 # artifact；這支 workflow 改用 `workflow_run` 觸發——在「目標 repo 的情境」下執行（不是 fork
 # 的情境），才拿得到真正有寫入權限的 token，下載上一支 workflow 的 artifact 後再貼留言。
+#
+# ⚠️ `workflow_run` 一律執行 **default branch 上的這份檔案**，不是 PR 分支上的版本。也就是說
+# 這支 workflow 的任何修改都只有在合進 main 之後才生效，在 PR 上驗不到（改壞了也看不出來）。
 name: PR Comment
 on:
   workflow_run:
@@ -17,28 +20,72 @@ permissions:
   actions: read
 jobs:
   comment:
-    # 只在觸發來源是 pull_request（而不是 push to main）時才動作。
-    # 注意：diff-summary artifact 只有在 ci.yml 的「資料驗證／單元測試／建置」都成功、跑到
-    # 「產生差異摘要」那一步時才會存在（同一個 job 裡前面的步驟失敗，預設會跳過後面步驟）。
-    # 也就是說如果 PR 連 `npm run validate` 都沒過，這裡會因為找不到 artifact 而失敗、不會
-    # 貼出留言——這是預期行為：資料本身有問題時，PR 頁面上的 CI 紅燈本身就已經是最直接的提醒，
-    # 差異摘要要能算出來，前提是兩邊的 tree.json 都成功建置。
-    if: github.event.workflow_run.event == 'pull_request'
+    # 兩個條件缺一不可：
+    # - 觸發來源是 pull_request（不是 push to main）。
+    # - CI 本身是成功的。CI 紅的時候 diff-summary artifact 根本不存在（產生它的步驟排在測試
+    #   後面），這支會因為抓不到 artifact 而失敗——而 workflow_run 的失敗會標在 main 的最新
+    #   commit 上（PR 頁面反而看不到），變成「main 無故長出一個紅叉」。直接不跑最乾淨。
+    if: github.event.workflow_run.event == 'pull_request' && github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: diff-summary
           run-id: ${{ github.event.workflow_run.id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
-      - uses: actions/github-script@v7
+      - uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
         with:
           script: |
             const fs = require('fs');
-            const body = fs.readFileSync('diff-summary.md', 'utf8');
-            const prs = context.payload.workflow_run.pull_requests;
-            if (prs.length === 0) return;
-            await github.rest.issues.createComment({
-              owner: context.repo.owner, repo: context.repo.repo,
-              issue_number: prs[0].number, body,
+            const MARKER = '<!-- rd2-diff-summary -->';
+            const NO_CHANGE = '<!-- rd2-no-change -->';
+            const MAX_BODY = 60000;
+
+            let body = fs.readFileSync('diff-summary.md', 'utf8');
+
+            // 資料完全沒變（只改前端程式或文件的 PR）就不貼，避免機器人留言洗版。
+            if (body.includes(NO_CHANGE)) {
+              core.info('資料無變動，不貼留言');
+              return;
+            }
+
+            // 內容來自 fork 可控的 artifact，留言 API 有上限（65536 字元），過長會整個 422。
+            if (body.length > MAX_BODY) {
+              body = body.slice(0, MAX_BODY) + '\n\n…摘要過長已截斷，完整內容見 CI 的 diff-summary artifact。';
+            }
+
+            // ⚠️ 不能用 context.payload.workflow_run.pull_requests：fork 送來的 PR 在這個欄位
+            // 一律是空陣列（GitHub 只在同 repo 的 PR 才填），照抄會讓 fork PR 永遠拿不到留言，
+            // 而 CONTRIBUTING §6／§7 明白承諾「fork PR 也會有」。改用 commit 反查。
+            const { data: associated } = await github.rest.repos.listPullRequestsAssociatedWithCommit({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              commit_sha: context.payload.workflow_run.head_sha,
             });
+            const open = associated.filter(pr => pr.state === 'open');
+            if (open.length === 0) {
+              core.info('找不到對應的開啟中 PR，跳過');
+              return;
+            }
+            const issue_number = open[0].number;
+
+            // 找出自己上次貼的那則就地更新；同一個 PR 連推五次不該長出五則一樣的留言。
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner: context.repo.owner, repo: context.repo.repo, issue_number, per_page: 100,
+            });
+            const mine = comments.find(c => c.user?.type === 'Bot' && c.body?.includes(MARKER));
+
+            if (mine) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner, repo: context.repo.repo,
+                comment_id: mine.id, body,
+              });
+              core.info(`已更新留言 ${mine.id}`);
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner, repo: context.repo.repo,
+                issue_number, body,
+              });
+              core.info(`已在 PR #${issue_number} 貼上留言`);
+            }
