@@ -120,31 +120,20 @@ jobs:
         with: { node-version: '24', cache: npm }
       - run: npm ci --ignore-scripts
       # E2E 驗證的是「建置後、真實瀏覽器裡」的行為（見 playwright.config.ts 開頭註解），
-      # 所以要先裝瀏覽器本體＋作業系統相依套件。瀏覽器本體約 170MB、每次下載要 20–60 秒，
-      # 用快取省掉；快取的 key 綁 Playwright 的實際版本，升版自然 miss、不會用到舊瀏覽器。
-      - name: 讀取 Playwright 版本
-        id: pw
-        # 版本讀不到時要當場失敗。放著不管的話 key 會退化成版本無關的 `Linux-playwright-`，
-        # 下次升 Playwright 會 cache hit → 跳過安裝 → 找不到瀏覽器執行檔，而 e2e 是必要檢查，
-        # 等於每個 PR 都被一個看起來與 PR 無關的錯誤擋住。
-        run: |
-          v=$(node -p "require('./node_modules/@playwright/test/package.json').version")
-          test -n "$v"
-          echo "version=$v" >> "$GITHUB_OUTPUT"
-      - name: 快取 Playwright 瀏覽器
-        id: pw-cache
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
-        with:
-          path: ~/.cache/ms-playwright
-          key: ${{ runner.os }}-playwright-${{ steps.pw.outputs.version }}
+      # 所以要先裝瀏覽器本體＋作業系統相依套件。
+      #
+      # ⚠️ **不要再加 actions/cache 快取 ~/.cache/ms-playwright**。2026-08-19 加過一次，
+      # 想省下瀏覽器本體約 170MB 的下載，實測是純負收益：
+      #
+      #   cache miss → `install --with-deps chromium`   23 秒   （run 32213164990）
+      #   cache hit  → `install-deps chromium`        3 分 13 秒（run 32228165427）
+      #   cache hit  → `install-deps chromium`        掛住 19 分鐘後撞 timeout（run 32230510120）
+      #
+      # 快取只存得下瀏覽器本體，apt 裝到系統目錄的共用函式庫不在裡面，所以命中時仍得補跑
+      # `install-deps`——而那一步比「下載瀏覽器＋裝相依」整包還慢 8 倍，還會卡死。
+      # e2e 是 main 的必要檢查，卡住等於每個 PR 都 merge 不了，省那 20 秒不值得。
       - name: 安裝 Playwright 瀏覽器
-        if: steps.pw-cache.outputs.cache-hit != 'true'
         run: npx playwright install --with-deps chromium
-      - name: 安裝瀏覽器系統相依套件
-        # 快取只存得下 ~/.cache/ms-playwright 裡的瀏覽器本體；apt 裝到系統目錄的那些
-        # 共用函式庫不在裡面，快取命中時仍要補這一步，否則瀏覽器起不來。
-        if: steps.pw-cache.outputs.cache-hit == 'true'
-        run: npx playwright install-deps chromium
       - name: 端對端測試（含建置）
         # 這裡刻意沒有獨立的「建置站台」步驟：package.json 的 `pree2e` 已經會跑一次
         # `npm run build`，多加一步等於整包資料與站台建兩次（多花 5–7 秒且兩份產物可能不同步）。
