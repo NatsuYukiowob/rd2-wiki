@@ -43,6 +43,8 @@ export function buildTreeData(svgText: string, opts: BuildOpts): TreeData {
       growth,
       dataIssue: dataIssue ?? (level > 1 && !growth ? 'no-growth' : null),
       icon: r.icon,
+      // 只在為真時才放欄位：現況 0 個 wip 節點，等於完全不佔 tree.json 的 gzip 預算。
+      ...(r.wip ? { wip: true as const } : {}),
     };
   });
 

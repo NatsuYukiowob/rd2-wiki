@@ -32,6 +32,20 @@ export interface DiffSummaryData {
   counts: { added: number; removed: number; changed: number };
   removedIds: string[];
   changed: { id: string; name: string }[];
+  /**
+   * 新增／刪除的邊，附兩端節點的名稱。
+   *
+   * 沒有這一段的話，「把一條前置改接到別的節點」產生的摘要與「完全沒改」逐字相同——
+   * 節點集合沒變、逐節點內容沒變、邊的**數量**也沒變。維護者不可能逐行讀 SVG 的 diff，
+   * 這則留言是唯一的替代品。
+   */
+  addedEdges: { from: string; to: string; fromName: string; toName: string }[];
+  removedEdges: { from: string; to: string; fromName: string; toName: string }[];
+  /** 邊的數量沒變、集合卻變了＝有前置被改接。這種改動最容易在摘要裡消失，單獨標一行。 */
+  edgesRewired: boolean;
+  /** 被加上／取消 `data-wip="1"` 的節點 id。這個標記會讓節點豁免圖結構檢查，改動它要留下痕跡。 */
+  wipAdded: string[];
+  wipRemoved: string[];
   cost: {
     base: { core: number; gold: number };
     head: { core: number; gold: number };
@@ -95,6 +109,11 @@ export function computeDiff(base: unknown, head: unknown): DiffSummaryData {
     counts: { added: 0, removed: 0, changed: 0 },
     removedIds: [],
     changed: [],
+    addedEdges: [],
+    removedEdges: [],
+    edgesRewired: false,
+    wipAdded: [],
+    wipRemoved: [],
     cost: { base: { core: 0, gold: 0 }, head: { core: 0, gold: 0 } },
   };
   if (!looksLikeTree(base) || !looksLikeTree(head)) return empty;
@@ -109,10 +128,34 @@ export function computeDiff(base: unknown, head: unknown): DiffSummaryData {
     return o && JSON.stringify(o) !== JSON.stringify(n);
   });
 
+  // 邊以 `from>to` 當索引鍵比集合，不是比數量。名稱優先取 head 的（新增的邊只有 head 有），
+  // 取不到再退回 base（刪除的邊只有 base 有）。
+  const nameOf = (id: string) =>
+    head.nodes.find(n => n.id === id)?.name ?? base.nodes.find(n => n.id === id)?.name ?? '';
+  const key = (e: readonly [string, string]) => `${e[0]}>${e[1]}`;
+  const bEdges = new Set(base.edges.map(key));
+  const hEdges = new Set(head.edges.map(key));
+  const toEntry = (k: string) => {
+    const [from = '', to = ''] = k.split('>');
+    return { from, to, fromName: nameOf(from), toName: nameOf(to) };
+  };
+  const addedEdges = [...hEdges].filter(k => !bEdges.has(k)).map(toEntry);
+  const removedEdges = [...bEdges].filter(k => !hEdges.has(k)).map(toEntry);
+
+  const wipOf = (t: TreeData) => new Set(t.nodes.filter(n => n.wip).map(n => n.id));
+  const bWip = wipOf(base);
+  const hWip = wipOf(head);
+
   return {
-    // 刻意用「整份 tree.json 逐字元相同」當作沒變動的判準，而不是「上面幾個計數都是 0」：
-    // 這裡只比節點集合與逐節點內容，比不到邊的接法（改接一條前置的摘要與完全沒改一字不差，
-    // 見 review 報告 P3）。用最保守的判準，才不會把「其實有改」誤判成「沒變動」。
+    addedEdges,
+    removedEdges,
+    // 數量一樣、集合不一樣＝有前置被改接。這正是舊摘要完全看不見的那種改動。
+    edgesRewired: base.edges.length === head.edges.length && (addedEdges.length > 0 || removedEdges.length > 0),
+    wipAdded: [...hWip].filter(id => !bWip.has(id)),
+    wipRemoved: [...bWip].filter(id => !hWip.has(id)),
+    // 「沒變動」用「整份 tree.json 逐字元相同」判斷，而不是「上面幾個計數都是 0」：
+    // 計數只涵蓋看得見的那幾個維度，而輸入是貢獻者寫的，總會有沒想到的第 N 個維度。
+    // 用最保守的判準，才不會把「其實有改」誤判成「沒變動」而讓留言整則消失。
     identical: JSON.stringify(base) === JSON.stringify(head),
     schemaChanged: false,
     nodes: [base.nodes.length, head.nodes.length],
@@ -180,6 +223,22 @@ export function renderDiffComment(raw: unknown): string {
 
   const removed = clampList<string>(d.removedIds);
   const changed = clampList<{ id: unknown; name: unknown }>(d.changed);
+  const addedEdges = clampList<Record<string, unknown>>(d.addedEdges);
+  const removedEdges = clampList<Record<string, unknown>>(d.removedEdges);
+  const wipAdded = clampList<string>(d.wipAdded);
+  const wipRemoved = clampList<string>(d.wipRemoved);
+
+  const edgeLine = (e: Record<string, unknown>) =>
+    `- ${safeText(e.from)} ${safeText(e.fromName)} → ${safeText(e.to)} ${safeText(e.toName)}`;
+  const edgeBlock = (title: string, list: { items: Record<string, unknown>[]; rest: number }) =>
+    list.items.length === 0 ? '' :
+      `\n**${title}**（${list.items.length + list.rest} 條）\n\n`
+      + list.items.map(edgeLine).join('\n')
+      + (list.rest > 0 ? `\n- …還有 ${list.rest} 條` : '');
+
+  const wipBlock = (title: string, list: { items: string[]; rest: number }) =>
+    list.items.length === 0 ? '' :
+      `\n${title}：${list.items.map(safeText).join(', ')}${list.rest > 0 ? ` …還有 ${list.rest} 個` : ''}`;
 
   const removedLine = counts.removed > 0 && removed.items.length > 0
     ? `\n⚠️ **有節點 id 消失**：${removed.items.map(safeText).join(', ')}`
@@ -205,6 +264,13 @@ export function renderDiffComment(raw: unknown): string {
     `- 新增 ${counts.added}｜刪除 ${counts.removed}｜修改 ${counts.changed}`,
     `- 全樹解鎖成本：核心 ${cost.base.core} → ${cost.head.core}，金幣 ${cost.base.gold.toLocaleString('en-US')} → ${cost.head.gold.toLocaleString('en-US')}`,
     removedLine,
+    d.edgesRewired === true
+      ? '\n⚠️ **邊數不變但前置關係被改動**——解鎖成本可能已經改變，請逐條確認下面的清單。'
+      : '',
+    edgeBlock('新增的前置關係', addedEdges),
+    edgeBlock('刪除的前置關係', removedEdges),
+    wipBlock('⚠️ 新標記為待接線（data-wip，會豁免圖結構檢查）', wipAdded),
+    wipBlock('取消待接線標記', wipRemoved),
     changedBlock,
   ].filter(Boolean).join('\n');
 }

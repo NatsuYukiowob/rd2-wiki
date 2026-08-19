@@ -30,6 +30,14 @@ export interface TreeNode {
   growth: Growth | null;
   dataIssue: 'placeholder' | 'no-growth' | null;
   icon: string;
+  /**
+   * `data-wip="1"`＝先佔位、還沒接線（規則 6(c)／6(d)）。只有在為真時才寫進 tree.json，
+   * 所以現況（0 個 wip 節點）不佔任何 gzip 預算。
+   *
+   * 它進到產物裡是為了讓 PR 差異摘要看得見「誰被標成 wip、誰被取消 wip」——那個標記會讓節點
+   * 豁免圖結構檢查，是資料裡權限最大的一個開關，改動它必須在留言上留下痕跡。
+   */
+  wip?: true;
 }
 
 export type Edge = [string, string];

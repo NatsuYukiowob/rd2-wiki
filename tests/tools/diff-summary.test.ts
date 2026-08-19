@@ -152,3 +152,68 @@ describe('buildDiffSummary 的留言標記與逃逸', () => {
     expect(summary).not.toContain('<b>1002</b>');
   });
 });
+
+/**
+ * 2026-08-19 review 報告 P3：摘要要看得見「邊」。
+ *
+ * 在這之前，摘要只比節點集合、逐節點內容、以及**邊的數量**——把一條前置改接到別的節點，
+ * 產出的摘要與「完全沒改」逐字相同。維護者不可能逐行讀 SVG 的 diff，這則留言是唯一的替代品，
+ * 所以它看不見的東西，等於沒有人在看。
+ */
+describe('buildDiffSummary：邊與 wip 的變化（P3）', () => {
+  const withEdges = (edges: Edge[], extra: Partial<TreeNode>[] = []) =>
+    tree([n({ id: '1001', name: '火骰子' }), n({ id: '1002', name: '尖刺骰子' }), n({ id: '1003', name: '冰骰子' }),
+      ...extra.map(p => n(p))], edges, { core: 10, gold: 1000 });
+
+  it('邊數不變但接法變了：要有顯眼警告，且摘要不能跟「完全沒改」長得一樣', () => {
+    const base = withEdges([['1001', '1002']]);
+    const head = withEdges([['1001', '1003']]);
+
+    const summary = buildDiffSummary(base, head);
+
+    expect(summary).toContain('邊數不變但前置關係被改動');
+    expect(summary).not.toBe(buildDiffSummary(base, base));
+  });
+
+  it('列出新增與刪除的邊，並帶上兩端節點的名稱', () => {
+    const base = withEdges([['1001', '1002']]);
+    const head = withEdges([['1001', '1003']]);
+
+    const summary = buildDiffSummary(base, head);
+
+    expect(summary).toContain('1001 火骰子');
+    expect(summary).toContain('1003 冰骰子');
+    expect(summary).toContain('1002 尖刺骰子');
+  });
+
+  it('邊完全沒動時不出現邊的區塊', () => {
+    const base = withEdges([['1001', '1002']]);
+
+    expect(buildDiffSummary(base, base)).not.toContain('邊數不變但前置關係被改動');
+  });
+
+  it('wip 集合的變化要列出來——那個標記會讓節點豁免圖結構檢查', () => {
+    const base = withEdges([['1001', '1002']]);
+    const head = tree(
+      [n({ id: '1001', name: '火骰子' }), n({ id: '1002', name: '尖刺骰子' }), n({ id: '1003', name: '冰骰子', wip: true })],
+      [['1001', '1002']], { core: 10, gold: 1000 },
+    );
+
+    const summary = buildDiffSummary(base, head);
+
+    expect(summary).toContain('待接線');
+    expect(summary).toContain('1003');
+  });
+
+  it('邊的改動很多時截斷，並說明還有幾條', () => {
+    const many = (offset: number): Edge[] =>
+      Array.from({ length: 50 }, (_, i) => ['1001', String(2000 + i + offset)] as Edge);
+    const base = withEdges(many(0));
+    const head = withEdges(many(100));
+
+    const summary = buildDiffSummary(base, head);
+
+    expect(summary).toContain('…還有');
+    expect(summary.length).toBeLessThan(20000);
+  });
+});
