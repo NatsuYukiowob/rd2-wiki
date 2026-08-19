@@ -137,6 +137,18 @@ const TYPES: Array<[string, string]> = [
     position: relative;
   }
 
+  /* ⚠️ 上面整條高度鏈都掛在 `:has()` 上。不支援 `:has()` 的引擎（Firefox 121 之前、較舊的
+     WebKit）會把整條選擇器當成無效**整條丟掉**——body/main 不是 flex、`flex: 1` 沒有作用、
+     而 #tree 是 absolute 對版面高度貢獻 0，結果 #canvas-host 高 0px，整頁一片空白且沒有
+     任何錯誤訊息。改版前 `height: calc(100vh - 110px)` 是無條件的，退化時只是版面偏一點。
+     這裡補一條 fallback：只在不支援 `:has()` 的引擎生效，畫布退回一個「不好看但看得到」的
+     視窗比例高度。CLAUDE.md 記著本站只在 Chromium 驗過，這種整頁空白的失敗模式不能留。 */
+  @supports not selector(:has(*)) {
+    #canvas-host {
+      height: 70vh;
+    }
+  }
+
   /* ⚠️ 絕對定位、不是 width/height: 100%。
      SVG 有內建的長寬比（viewBox 2000×1700），`height: 100%` 在父層高度還沒定案時會退回
      auto，於是它用「寬度 ÷ 長寬比」算出一個內在高度（1280 寬 → 1088 高）反過來把 <main>
@@ -491,6 +503,14 @@ const TYPES: Array<[string, string]> = [
     }
     #filters.open {
       display: flex;
+    }
+    /* footer 讓位給 chip 列：#branch-chips 是 fixed bottom:0，頁面改成不捲動之後它會永遠
+       疊在 footer 上緣，而 footer 第二行是「著作權屬 111 Percent Inc.」這句必須看得到的
+       聲明——手機上完全讀不到。--chips-h 由 tree-canvas.ts 量實際高度寫入（不寫死數字，
+       這個 repo 的固定偏移量已經咬過四次）。<main> 是 flex: 1，footer 變高只會讓畫布跟著
+       縮，不會把捲軸叫回來。 */
+    body:has(#canvas-host) footer {
+      padding-bottom: calc(1rem + var(--chips-h, 3.5rem));
     }
     #branch-chips {
       position: fixed;

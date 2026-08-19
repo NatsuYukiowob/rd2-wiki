@@ -26,6 +26,21 @@ function hiresPatternId(icon: string): string {
 }
 
 /**
+ * 載入失敗過的圖示雜湊。
+ *
+ * 沒有這份名單的話，失敗處理本身會變成一個無限重抓迴圈：`error` 監聽器把 pattern 移除、
+ * 把節點的 `data-hires` 清掉 → 下一次縮放時「pattern 不存在、節點也沒升級過」兩個條件又都
+ * 成立 → 重建 pattern、重發那個 404（404 通常不會被負快取），節點也跟著 sprite→空白→sprite
+ * 閃一次。整個工作階段每一次縮放都會重演。
+ */
+const failedIcons = new Set<string>();
+
+/** 清空失敗名單（測試用；正式路徑沒有「檔案會自己變回來」這種事）。 */
+export function resetFailedIcons(): void {
+  failedIcons.clear();
+}
+
+/**
  * 把指定節點的圖示從 sprite 換成個別的高解析 WebP。
  *
  * DOM 結構（見 src/lib/render.ts，task-18 bug 修正後的版本——第二輪從「巢狀 svg +
@@ -72,13 +87,25 @@ export function buildIconIndex(svg: SVGSVGElement): Map<string, SVGRectElement> 
  * `<image>`，貼上去的 `<rect>` 就是一塊什麼都沒有的空白，畫面上是一個「破圖」節點，
  * 而且沒有任何錯誤訊息。
  */
-export function downgradeIcons(icons: Iterable<SVGRectElement>): void {
+export function downgradeIcons(icons: Iterable<SVGRectElement>, svg?: SVGSVGElement): void {
+  const touched = new Set<string>();
   for (const icon of icons) {
     if (icon.dataset.hires !== '1') continue;
     const sprite = icon.dataset.spriteFill;
     if (!sprite) continue;
+    const hash = icon.getAttribute('data-icon');
+    if (hash) touched.add(hash);
     icon.setAttribute('fill', sprite);
     delete icon.dataset.hires;
+  }
+
+  // 只換 fill 是不夠的：`<pattern>` 裡的 `<image href="…webp">` 還掛在文件上，那幾 MB 的
+  // 解碼結果一樣沒還回去——降級的整個理由就是要回收它。沒有任何節點還指著的 pattern 才移除。
+  if (!svg) return;
+  for (const hash of touched) {
+    const patId = hiresPatternId(hash);
+    if (svg.querySelector(`rect.icon[fill="url(#${patId})"]`)) continue;
+    svg.querySelector(`#${patId}`)?.remove();
   }
 }
 
@@ -105,6 +132,17 @@ export function upgradeIcons(
 
     const hash = icon.getAttribute('data-icon');
     if (!hash) continue; // render.ts 一定會寫入 data-icon，這裡只是防禦性判斷，不代表正常路徑
+    if (failedIcons.has(hash)) continue; // 這張圖抓過、失敗過，不要再試一次（見 failedIcons）
+
+    // 記下原本的 sprite fill——降級（縮小回門檻以下、或高解析圖載入失敗）時要換回來。
+    // ⚠️ 換不回來就不要換過去：沒有 fill 可記卻仍標 data-hires="1" 的話，這個節點會永遠卡在
+    // 高解析 pattern 上，連載入失敗的止血路徑都救不了它（`downgradeIcons` 會直接 continue），
+    // 結果正是這段程式想避免的「一塊沒有錯誤訊息的空白節點」。
+    if (!icon.dataset.spriteFill) {
+      const current = icon.getAttribute('fill');
+      if (!current) continue;
+      icon.dataset.spriteFill = current;
+    }
 
     const patId = hiresPatternId(hash);
     if (!patternedThisCall.has(hash) && !svg.querySelector(`#${patId}`)) {
@@ -139,8 +177,9 @@ export function upgradeIcons(
       // 換回 sprite，並把 pattern 移除，免得後面的節點又貼上同一個壞掉的圖案。
       // 不做這件事的話，畫面上就是一個空白的節點，而且沒有任何錯誤訊息。
       img.addEventListener('error', () => {
-        const affected = [...svg.querySelectorAll<SVGRectElement>(`rect.icon[data-icon="${hash}"]`)];
-        downgradeIcons(affected);
+        // 先記進失敗名單再降級：順序反過來的話，下一次縮放會把同一個 404 重抓一次。
+        failedIcons.add(hash);
+        downgradeIcons([...svg.querySelectorAll<SVGRectElement>(`rect.icon[data-icon="${hash}"]`)], svg);
         pattern.remove();
       });
       pattern.appendChild(img);
@@ -148,11 +187,6 @@ export function upgradeIcons(
     }
     patternedThisCall.add(hash);
 
-    // 記下原本的 sprite fill，降級時要換回來（縮小回門檻以下、或高解析圖載入失敗）。
-    if (!icon.dataset.spriteFill) {
-      const current = icon.getAttribute('fill');
-      if (current) icon.dataset.spriteFill = current;
-    }
     icon.setAttribute('fill', `url(#${patId})`);
     icon.dataset.hires = '1';
   }

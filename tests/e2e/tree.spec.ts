@@ -283,11 +283,14 @@ test('C. 縮放 > 1x 後，可見節點圖示從 sprite pattern 換成高解析 
   // 升級過），不是的話代表這個測試的前提不成立，用 test.skip 誠實記錄，不是硬凹。
   await goToNatureBranch(page, isMobile);
   const icon = page.locator('g.node[data-id="1002"] > rect.icon');
-  // 先確保起始狀態真的是 sprite。門檻改成裝置像素後，手機／高 DPI 裝置一載入就已經升級，
-  // 那時沒有可觀察的轉換窗口——先縮到門檻以下把它換回 sprite，測試才有前提可驗。
-  if (!(await icon.getAttribute('fill'))?.includes('icon-pattern-')) {
-    await zoomOutToSprite(page);
-  }
+  // 先把畫面縮到門檻以下，確保起始狀態真的是 sprite——門檻改成裝置像素後，手機／高 DPI
+  // 裝置一載入就已經升級，那時沒有可觀察的轉換窗口。
+  //
+  // ⚠️ 這裡**無條件**縮，不能先探測一次 fill 再決定要不要縮：首屏升級排在
+  // requestIdleCallback 裡、又是分批做的，探測很可能落在升級之前，於是跳過縮放、接著去等
+  // 一個幾毫秒後就會消失的 sprite fill，一路等到 timeout 才失敗，而錯誤訊息指向斷言、
+  // 不指向時序。
+  await zoomOutToSprite(page);
   await expect
     .poll(async () => (await icon.getAttribute('fill')) ?? '', { timeout: 5000 })
     .toContain('icon-pattern-');
@@ -642,6 +645,90 @@ test('V. 窄桌機視窗下詳情卡片不壓在分支側欄上，也不被推�
     expect(m.left, `${w}x${h} 卡片左緣不可跑出畫面`).toBeGreaterThanOrEqual(0);
     expect(m.right, `${w}x${h} 卡片右緣不可跑出畫面`).toBeLessThanOrEqual(w);
   }
+});
+
+test('W. 手機版 footer 的著作權聲明不被底部分支 chip 蓋住', async ({ page, isMobile }) => {
+  test.skip(!isMobile, '僅手機版：#branch-chips 只在手機版存在');
+  // 頁面改成不捲動之後，fixed 的 chip 列會永遠疊在 footer 上緣，而 footer 第二行是
+  // 「遊戲圖示與文字著作權屬 111 Percent Inc.」——手機上會完全讀不到，而且沒有捲動可以
+  // 把它露出來。修法是讓 footer 留一段等於 chip 列實際高度（--chips-h，量出來的）的下內距。
+  await page.goto('/tree');
+  await page.waitForSelector('#tree g.node');
+
+  const m = await page.evaluate(() => {
+    const footer = document.querySelector('footer')!;
+    // 量的是「文字實際佔的範圍」不是 footer 的盒子——盒子本來就會延伸到 chip 列底下，
+    // 那正是讓位用的內距。
+    const range = document.createRange();
+    range.selectNodeContents(footer);
+    const text = range.getBoundingClientRect();
+    const chips = document.querySelector('#branch-chips')!.getBoundingClientRect();
+    return {
+      textBottom: text.bottom,
+      chipsTop: chips.top,
+      overflow: document.documentElement.scrollHeight - window.innerHeight,
+      hasCopyright: /111 Percent/.test(footer.textContent ?? ''),
+    };
+  });
+
+  expect(m.hasCopyright, 'footer 應該有著作權聲明').toBe(true);
+  expect(m.textBottom, 'footer 文字底緣不可落到 chip 列裡').toBeLessThanOrEqual(m.chipsTop);
+  // 讓位不可以把捲軸叫回來（main 是 flex: 1，footer 變高應該是畫布縮，不是頁面變長）。
+  expect(m.overflow, '讓位之後仍不該捲得動').toBeLessThanOrEqual(0);
+});
+
+test('X. 縮小之後，排隊中的升級批次不會把圖示又升回去', async ({ page, isMobile }) => {
+  // 驗的是「縮小之後，最終狀態真的乾淨」：沒有節點停在高解析，`<defs>` 裡也沒有沒人用的
+  // pattern（後者才是真的把那幾 MB 的解碼結果還回去，只換 fill 是不夠的）。
+  //
+  // ⚠️ 誠實標註：`upgradeInBatches()` 的世代號檢查（排隊中的批次發現門檻已經被推翻就停手）
+  // **這條測試抓不到**。實測可見節點約 68 個、每批 24 個，三批在 zoomOutToSprite() 走完
+  // 之前就跑完了，等到縮小時已經沒有排隊中的批次可以觀察。要穩定重現得能控制批次時序
+  // （例如把批次大小做成可注入的），代價比它擋到的風險高。這條測試守的是最終狀態，
+  // 不是那個競態本身。
+  await goToNatureBranch(page, isMobile);
+
+  // 先放大到確定跨過升級門檻，讓它排出一串批次。
+  const point = await centerOf(page.locator('g.node[data-id="1001"]'));
+  await expect.poll(async () => {
+    await zoomInAt(page, point, 4);
+    return devicePxPerUnit(page);
+  }, { timeout: 15000 }).toBeGreaterThan(1.2);
+  await page.waitForFunction(() => document.querySelectorAll('rect.icon[data-hires="1"]').length > 0);
+
+  // 立刻縮回門檻以下。
+  await zoomOutToSprite(page);
+  expect(await devicePxPerUnit(page)).toBeLessThan(0.9);
+
+  // 給排隊中的批次充分的時間跑完（閒置回呼的 timeout 是 1000ms）。
+  await page.waitForTimeout(2000);
+  const after = await page.evaluate(() => ({
+    hires: document.querySelectorAll('rect.icon[data-hires="1"]').length,
+    patterns: document.querySelectorAll('defs > pattern[id^=icon-hires-]').length,
+  }));
+  expect(after.hires, '縮小後不該還有節點停在高解析').toBe(0);
+  expect(after.patterns, '沒人用的高解析 pattern 應該一併移除（記憶體才真的還得回去）').toBe(0);
+});
+
+test('Y. 只改變視窗大小（完全不互動）也會重新評估高解析門檻', async ({ page, isMobile }) => {
+  test.skip(!isMobile, '僅手機版：需要一個「一載入就已經升級」的起點');
+  // 門檻的兩個輸入（畫布尺寸、devicePixelRatio）都會隨視窗變動，而 resize 事件原本只接到
+  // updateNavHeight 與 schedulePositionPanel。不重算的話，使用者轉個螢幕方向、把瀏覽器
+  // 縮小、或把視窗拖到另一個 DPI 的螢幕之後，會一直停在已經不需要的高解析圖（或反過來，
+  // 停在糊掉的 sprite），直到剛好在畫布上滾一次滾輪為止。
+  await page.goto('/tree');
+  await page.waitForFunction(() => document.querySelectorAll('rect.icon[data-hires="1"]').length > 0);
+  expect(await devicePxPerUnit(page), 'Pixel 7 載入時應該在升級門檻之上').toBeGreaterThan(1.2);
+
+  // 把視窗變矮（畫布高度是 flex 分到的，視窗一矮畫布跟著矮）→ 每單位裝置像素掉到降級門檻
+  // 以下。412×300 是一個「小視窗／鍵盤彈出」的合理尺寸，不是為了測試硬湊的極端值。
+  await page.setViewportSize({ width: 412, height: 300 });
+  await expect.poll(() => devicePxPerUnit(page), { timeout: 5000 }).toBeLessThan(0.9);
+
+  // 完全沒有滾輪、沒有拖曳——只有 resize。
+  await expect
+    .poll(() => page.evaluate(() => document.querySelectorAll('rect.icon[data-hires="1"]').length), { timeout: 5000 })
+    .toBe(0);
 });
 
 test('K. 手機版詳情面板的重置警告不被底部分支 chip 蓋住（spec §2.1 強制要求的災情警告）', async ({ page, isMobile }) => {
