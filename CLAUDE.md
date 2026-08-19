@@ -115,13 +115,20 @@ CI 規則 10 守它（`<svg>` 直屬、不帶 transform、圖檔存在且解析�
 top 差距 < 0.5px、`scrollHeight === innerHeight`），不是看截圖。
 E2E 的 U（不該捲動）、V（詳情卡片避開側欄）、J（手機抽屜不蓋住工具列）就是這三條防線。
 
-### 已知未修：手機版 `#branch-chips` 蓋住 footer
+### 手機版 footer 要讓位給 `#branch-chips`
 
-`#branch-chips` 是 `position: fixed; bottom: 0`，頁面不捲動之後它永遠疊在 footer 上緣
-（實測 390×844：chips 791.75–844、footer 729.13–844）。要修得動整個手機底部區
-（`#detail` 是 `inset: auto 0 0 0` 的底部抽屜，靠 `padding-bottom: 4.5rem` 讓警告文字避開
-chips，而 chips 靠 DOM 順序畫在抽屜之上）——把 chips 放回文件流程會連帶改變抽屜的行為。
-這是設計決定不是 bug 修正，留待日後一併處理。
+`#branch-chips` 是 `position: fixed; bottom: 0`，頁面不捲動之後它會永遠疊在 footer 上緣——
+而 footer 第二行是「著作權屬 111 Percent Inc.」這句必須看得到的聲明。作法是
+`body:has(#canvas-host) footer { padding-bottom: calc(1rem + var(--chips-h)) }`，
+`--chips-h` 由 `tree-canvas.ts` 量 chip 列的實際高度寫入（**不要寫死 3.5rem**）。
+`<main>` 是 `flex: 1`，footer 變高只會讓畫布跟著縮，不會把捲軸叫回來。E2E 的 W 守這條。
+
+### ⚠️ `npx playwright test` 不會重新建置
+
+`npm run e2e` 有 `pree2e` 會先 `npm run build`；**直接跑 `npx playwright test` 不會**。
+拿它做「把程式碼弄壞，看測試會不會紅」的抽查時，不先 `npm run build` 就是在測舊產物——
+2026-08-19 我就是這樣得到一個假的「沒紅」，差點把一條沒守住的測試當成有效防線。
+抽查的正確順序：改壞 → `npm run build` → `npx playwright test -g ...` → 還原 → 再 build。
 
 ### 資料解析
 
