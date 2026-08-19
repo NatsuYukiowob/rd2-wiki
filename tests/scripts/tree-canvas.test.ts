@@ -279,14 +279,21 @@ describe('tree-canvas 整合：分支快速跳轉（task-17，spec §6.2.6）', 
 
   // task-18 第二輪修正：可讀性下限不再是手機專屬，桌機也會套用（見
   // src/scripts/tree-canvas.ts 的 applyReadabilityFloor() 說明）。桌機測試因此也要掛一個
-  // 真實桌機容器尺寸的 getBoundingClientRect stub（1280x610，跟真實 Desktop Chrome 預設
-  // 視窗實測值一致——1280 寬減不出來，610 是視窗高度 720 扣掉 #canvas-host 的
-  // `calc(100vh - 110px)` 那個 110），不然 linkedom 預設的全 0 版面資訊會讓下限退化成
-  // Infinity、被 Viewport 的硬上限夾到 8（跟下面手機測試「環境限制記錄」那條是同一類
-  // 退化路徑，但這裡的重點是驗證桌機的正常路徑，不是記錄環境限制，所以要掛 stub 避開它）。
+  // 真實桌機容器尺寸的 getBoundingClientRect stub，不然 linkedom 預設的全 0 版面資訊會讓
+  // 下限退化成 Infinity、被 Viewport 的硬上限夾到 8（跟下面手機測試「環境限制記錄」那條是
+  // 同一類退化路徑，但這裡的重點是驗證桌機的正常路徑，不是記錄環境限制，所以要掛 stub 避開它）。
+  //
+  // 1280×595 取自 Playwright Desktop Chrome（1280×720）下的實測值：#canvas-host 是 flex
+  // 子元素，吃掉 nav（50.59）與 footer（73.94）之外的剩餘高度。**這裡不要再自己算一個
+  // `視窗高 − 某個常數`**：舊註解寫的 610 是從 `calc(100vh - 110px)` 那個寫死偏移量推來的，
+  // 而那個 110 本身就是錯的（實際 124.53），版面改成 flex 之後那條 CSS 已經不存在了。
+  const DESKTOP_CANVAS_HEIGHT = 595;
   function stubDesktopRect(page: { svg: HTMLElement }): void {
     Object.assign(page.svg, {
-      getBoundingClientRect: () => ({ x: 0, y: 0, left: 0, top: 0, right: 1280, bottom: 610, width: 1280, height: 610 }),
+      getBoundingClientRect: () => ({
+        x: 0, y: 0, left: 0, top: 0,
+        right: 1280, bottom: DESKTOP_CANVAS_HEIGHT, width: 1280, height: DESKTOP_CANVAS_HEIGHT,
+      }),
     });
   }
 

@@ -37,7 +37,13 @@ const byId = new Map(data.nodes.map(n => [n.id, n]));
 function updateNavHeight(): void {
   const nav = document.getElementById('site-nav');
   if (!nav) return;
-  const bottom = nav.getBoundingClientRect().bottom;
+  // ⚠️ 量的是**文件座標**（offsetTop + offsetHeight），不是 getBoundingClientRect().bottom。
+  // 後者是視窗座標：頁面只要能捲動，捲到 y=100 時 resize 一次，--nav-h 就會被寫成
+  // 「nav 高度 − 100」甚至負數，#tree-controls 與 #detail 跟著跳到 nav 上面去。
+  // 版面改成 flex 之後畫布頁本來就不該捲得動，這條是保險。
+  // getBoundingClientRect() 保留次像素（nav 實測 50.59px，offsetHeight 會四捨五入成 51），
+  // 再補回 scrollY 換算成文件座標。
+  const bottom = nav.getBoundingClientRect().bottom + window.scrollY;
   // 單元測試環境（linkedom）沒有版面引擎，getBoundingClientRect() 預設全 0，
   // bottom <= 0 一定不是真實渲染結果，跳過寫入、讓 CSS 的 3rem fallback 留著
   // （tests/scripts/tree-canvas.test.ts 的頁面 fixture 也沒有 #site-nav，上面
@@ -397,6 +403,16 @@ function positionPanel(): void {
     ? toolbarEl.getBoundingClientRect().bottom
     : parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--nav-h')) || 48;
 
+  // 左緣還要避開 #branch-nav 側欄。只避 #toolbar 是不夠的：側欄比工具列矮但更長，760px 寬時
+  // 卡片會被夾到 left=12，正好壓在側欄按鈕上並攔截點擊（實測 760×800：#detail 12–364 /
+  // 158.91–549.28，#branch-nav 0–79.19 / 146.91–356.75，兩個矩形相交）。
+  //
+  // ⚠️ 量的是 #branch-nav 不是它的父層 #tree-controls：後者是 flex column，盒子會撐到最寬
+  // 子元素（#toolbar）的寬度，右邊一大片是 pointer-events:none 的透明空白（見 tree.astro
+  // 那條規則的註解）。拿它當障礙物會把卡片推到畫面外（實測 1280 寬下 left 被推到 1001，
+  // 卡片右緣 1353 超出視窗）。
+  const obstacle = document.getElementById('branch-nav')?.getBoundingClientRect() ?? null;
+
   // 高度上限也要從同一個基準算。CSS 的 max-height 是用 --nav-h 起算的，但實際起點是工具列
   // 下緣（低了約 68px），兩邊基準不一致時面板下緣會超出視窗——而面板最後一段固定是 spec
   // §2.1 強制要求的「重置需要初期化券」災情警告，捲到底也看不到（code review 實測 1000×480
@@ -407,15 +423,24 @@ function positionPanel(): void {
   const rect = panel.getBoundingClientRect();
   const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(v, hi));
 
-  let left = n.right + GAP;
-  if (left + rect.width > window.innerWidth - GAP) left = n.left - GAP - rect.width;
-  left = clamp(left, GAP, Math.max(GAP, window.innerWidth - rect.width - GAP));
-
   const top = clamp(
     n.top + n.height / 2 - rect.height / 2,
     topLimit + GAP,
     Math.max(topLimit + GAP, window.innerHeight - rect.height - GAP),
   );
+
+  // 只有當卡片的垂直範圍真的跟側欄重疊時才把左緣往右推——卡片落在側欄下方時沒必要浪費那段寬度。
+  // 側欄在手機版是 display:none（width 0），那時也不必推。
+  const overlapsSidebar = !!obstacle && obstacle.width > 0
+    && top < obstacle.bottom && top + rect.height > obstacle.top;
+  const rightLimit = Math.max(GAP, window.innerWidth - rect.width - GAP);
+  // 下限取 min(避障後的左界, 右界)：視窗窄到「避開側欄就一定超出畫面」時，寧可重疊也不要
+  // 把卡片推出視窗——看不到比被壓住更糟。
+  const leftLimit = Math.min(overlapsSidebar ? Math.max(GAP, obstacle!.right + GAP) : GAP, rightLimit);
+
+  let left = n.right + GAP;
+  if (left + rect.width > window.innerWidth - GAP) left = n.left - GAP - rect.width;
+  left = clamp(left, leftLimit, rightLimit);
 
   panel.style.left = `${left}px`;
   panel.style.top = `${top}px`;
@@ -600,16 +625,43 @@ const searchEl = document.getElementById('search');
 if (!(searchEl instanceof HTMLInputElement)) {
   throw new Error('找不到 #search，搜尋功能無法掛載');
 }
-const filtersEl = document.getElementById('filters');
-if (!filtersEl) {
+const filtersElOrNull = document.getElementById('filters');
+if (!filtersElOrNull) {
   throw new Error('找不到 #filters，篩選功能無法掛載');
 }
+// 收窄後的別名：TypeScript 的 narrowing 不會跟著進到下面那些回呼／函式裡。
+const filtersEl: HTMLElement = filtersElOrNull;
 
 // --- 手機版篩選抽屜（task-17）：#filters 預設收起（見 tree.astro 的手機媒體查詢），
 // 點 #filters-toggle 切換展開/收起。桌機版沒有這顆按鈕（CSS 隱藏），這裡用 optional
 // chaining 讓「找不到這個按鈕」不算錯誤——它本來就只在手機版版面才存在。
-document.getElementById('filters-toggle')?.addEventListener('click', () => {
-  filtersEl.classList.toggle('open');
+const filtersToggle = document.getElementById('filters-toggle');
+
+/** 開關抽屜，並把狀態同步到 aria——按鈕的 aria-label 以前永遠是「展開篩選」，也沒有 aria-expanded。 */
+function setFiltersOpen(open: boolean): void {
+  filtersEl.classList.toggle('open', open);
+  filtersToggle?.setAttribute('aria-expanded', String(open));
+  filtersToggle?.setAttribute('aria-label', open ? '收起篩選' : '展開篩選');
+}
+setFiltersOpen(false);
+
+filtersToggle?.addEventListener('click', () => {
+  setFiltersOpen(!filtersEl.classList.contains('open'));
+});
+
+// 抽屜要有出路。舊版展開後會蓋住自己的切換鈕，而且沒有 Esc、沒有點外面關閉——唯一的辦法是
+// 重新整理。版面修好之後切換鈕不再被蓋住，這兩條是額外的出口（也是一般抽屜該有的行為）。
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && filtersEl.classList.contains('open')) {
+    setFiltersOpen(false);
+    filtersToggle?.focus();
+  }
+});
+document.addEventListener('pointerdown', e => {
+  if (!filtersEl.classList.contains('open')) return;
+  const t = e.target as Node | null;
+  if (t && (filtersEl.contains(t) || filtersToggle?.contains(t))) return;
+  setFiltersOpen(false);
 });
 
 // --- 關鍵字 chip 可點擊搜尋（spec §6.2.3，task-17 補漏）---
