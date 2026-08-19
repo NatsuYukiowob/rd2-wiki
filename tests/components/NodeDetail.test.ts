@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { parseHTML } from 'linkedom';
-import { renderDetail } from '../../src/components/NodeDetail';
+import { renderDetail, termViewHtml, awakeningViewHtml } from '../../src/components/NodeDetail';
 import { computeSelection } from '../../src/lib/selection';
 import { formatCost } from '../../src/lib/format';
 import type { TreeData } from '../../src/lib/types';
@@ -15,9 +15,87 @@ function renderNode(id: string) {
   const node = byId.get(id);
   if (!node) throw new Error(`測試資料中找不到節點 ${id}`);
   const sel = computeSelection(id, data);
-  renderDetail(node, sel, host);
+  renderDetail(node, sel, host, data.meta.glossary, data.meta.upgradeCostTable);
   return { host, node, sel };
 }
+
+describe('視圖：節點頁', () => {
+  it('關鍵字是可聚焦的按鈕、帶遊戲內底色與詞條 id（點下去換頁，不是靠 hover tooltip）', () => {
+    const { host } = renderNode('4008');
+    const kw = host.querySelector('.kw') as HTMLElement;
+    expect(kw.tagName).toBe('BUTTON');
+    expect(kw.textContent).toBe('#陰陽');
+    expect(kw.getAttribute('data-term')).toBe('陰陽');
+    expect(kw.getAttribute('style')).toContain(data.meta.glossary['陰陽']!.color);
+  });
+
+  it('節點頁不再攤平解釋清單——那些內容移到各自的關鍵字頁', () => {
+    const { host } = renderNode('5004');
+    expect(host.querySelector('.glossary')).toBeNull();
+    expect(host.querySelectorAll('.kw')).toHaveLength(1);
+  });
+
+  it('骰子只留一列覺醒入口，內容在覺醒頁；非骰子沒有這一列', () => {
+    const { host, node } = renderNode('1003');
+    expect(node.awakening).toBe('達到7骰點時爆炸\n於骰盤上隨機格子發射7個#播種');
+    const link = host.querySelector('.awakening-link') as HTMLElement;
+    expect(link.tagName).toBe('BUTTON');
+    expect(link.hasAttribute('data-detail-awakening')).toBe(true);
+    expect(link.querySelector('.cond')?.textContent).toBe('7 骰點時啟用');
+    // 入口列只是入口，不該把覺醒全文也印上去
+    expect(host.textContent).not.toContain('於骰盤上隨機格子發射');
+
+    expect(renderNode('1101').host.querySelector('.awakening-link')).toBeNull();
+  });
+
+  it('根視圖有 ✕ 沒有 ←（它是堆疊最底層）', () => {
+    const { host } = renderNode('1001');
+    expect(host.querySelector('[data-detail-close]')).not.toBeNull();
+    expect(host.querySelector('[data-detail-back]')).toBeNull();
+  });
+});
+
+describe('視圖：關鍵字頁與覺醒頁', () => {
+  it('關鍵字頁顯示解釋、帶返回與搜尋按鈕', () => {
+    const { document } = parseHTML('<html><body><div id="h"></div></body></html>');
+    const host = document.getElementById('h') as unknown as HTMLElement;
+    host.innerHTML = termViewHtml('破滅', data.meta.glossary);
+    expect(host.querySelector('h2')?.textContent).toBe('#破滅');
+    expect(host.querySelector('.desc')?.textContent).toBe(data.meta.glossary['破滅']!.desc);
+    expect(host.querySelector('[data-detail-back]')).not.toBeNull();
+    const search = host.querySelector('[data-detail-search]') as HTMLElement;
+    expect(search.getAttribute('data-detail-search')).toBe('破滅');
+    expect(search.textContent).toBe('搜尋 #破滅');
+  });
+
+  it('關鍵字頁裡的巢狀關鍵字照樣可點——這就是取代常駐清單的理由', () => {
+    const { document } = parseHTML('<html><body><div id="h"></div></body></html>');
+    const host = document.getElementById('h') as unknown as HTMLElement;
+    host.innerHTML = termViewHtml('破滅', data.meta.glossary);
+    expect([...host.querySelectorAll('.desc .kw')].map(e => e.getAttribute('data-term')))
+      .toEqual(['一般怪物', '菁英怪物']);
+  });
+
+  it('詞彙表查不到的詞不會渲染出一張空白卡片', () => {
+    const { document } = parseHTML('<html><body><div id="h"></div></body></html>');
+    const host = document.getElementById('h') as unknown as HTMLElement;
+    host.innerHTML = termViewHtml('根本沒這個詞', data.meta.glossary);
+    expect(host.querySelector('.warn')?.textContent).toBe('這個詞不在詞彙表裡');
+    expect(host.querySelector('[data-detail-search]')).toBeNull();
+  });
+
+  it('覺醒頁：標題、所屬骰子與啟用條件、換行與關鍵字都在', () => {
+    const { document } = parseHTML('<html><body><div id="h"></div></body></html>');
+    const host = document.getElementById('h') as unknown as HTMLElement;
+    const node = byId.get('1003')!;
+    host.innerHTML = awakeningViewHtml(node, data.meta.glossary);
+    expect(host.querySelector('h2')?.textContent).toBe('骰子覺醒');
+    expect(host.querySelector('.meta')?.textContent).toBe('花骰子 · 7 骰點時啟用');
+    expect(host.querySelectorAll('.desc br')).toHaveLength(1);
+    expect(host.querySelector('.desc .kw')?.getAttribute('data-term')).toBe('播種');
+    expect(host.querySelector('[data-detail-back]')).not.toBeNull();
+  });
+});
 
 describe('renderDetail', () => {
   it('成本數字放在 .cost class（E2E 依此抓取，見 DOM id 契約）', () => {
@@ -46,9 +124,17 @@ describe('renderDetail', () => {
   });
 
   it('佔位符資料節點顯示待補警告', () => {
-    // 2403：dataIssue 為 'placeholder'（描述含未替換的 {1}）。
-    const { host } = renderNode('2403');
+    // ⚠️ 用**合成**節點，不是拿真實資料裡剛好有佔位符的那一顆。2026-08-20 起正本裡一個
+    // 佔位符都沒有了（描述改成遊戲內實際顯示的文字），綁真實節點的話這條測試會跟著消失，
+    // 而這段顯示邏輯還在、上游隨時可能再冒出新的 `{n}`——那時就沒有任何東西守著它。
+    const { document } = parseHTML('<html><body><div id="detail"></div></body></html>');
+    const host = document.getElementById('detail') as unknown as HTMLElement;
+    const node = { ...byId.get('2403')!, dataIssue: 'placeholder' as const };
+    renderDetail(node, computeSelection('2403', data), host, data.meta.glossary, data.meta.upgradeCostTable);
     expect(host.querySelector('.warn')?.textContent).toBe('數值待補（遊戲資料含未替換佔位符）');
+
+    // 正本現在沒有佔位符，所以同一顆節點照原樣渲染不該出現警告
+    expect(renderNode('2403').host.querySelector('.warn')).toBeNull();
   });
 
   // 審查回饋（2026-08-17 第 1 輪修正）：unlockVia 為 quest／default 的節點不能在 meta 列

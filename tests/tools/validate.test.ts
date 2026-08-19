@@ -5,12 +5,14 @@ import { deflateSync } from 'node:zlib';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { validate } from '../../tools/validate';
+import type { GlossaryEntry, UpgradeCostTable } from '../../src/lib/types';
 
 const svg = readFileSync('data/dice-tree.svg', 'utf8');
-const keywords: string[] = JSON.parse(readFileSync('data/keywords.json', 'utf8'));
+const keywords: Record<string, GlossaryEntry> = JSON.parse(readFileSync('data/keywords.json', 'utf8'));
+const upgradeCostTable: UpgradeCostTable = JSON.parse(readFileSync('data/upgrade-cost.json', 'utf8'));
 const iconsDir = 'data/icons';
 const dataDir = 'data';
-const opts = { keywords, iconsDir, dataDir };
+const opts = { keywords, upgradeCostTable, iconsDir, dataDir };
 
 /**
  * 從正本裡把邊的 `d` 屬性全撈出來。規則 5／6 的測試要「挑一條真實存在的邊來破壞」，
@@ -54,12 +56,26 @@ function crc32(buf: Buffer): number {
 }
 
 describe('validate', () => {
-  it('現有資料為黃金樣本，errors 必須為零；warnings 允許有內容（例如 {n} 佔位符）', () => {
+  it('現有資料為黃金樣本：errors 與 warnings 都必須為零', () => {
     const result = validate(svg, opts);
     expect(result.errors).toEqual([]);
-    // 現況資料的所有圖示都存在、雜湊相符、尺寸合格、且都被引用，也沒有 data-wip 節點，
-    // 所以真正會出現的 warnings 只可能來自規則 9 的 {n} 佔位符（上游資料問題，不擋 PR）。
-    expect(result.warnings.every(w => /規則 9/.test(w))).toBe(true);
+    // 圖示都存在、雜湊相符、尺寸合格、且都被引用，沒有 data-wip 節點；2026-08-20 起
+    // 描述裡也不再有 `{n}` 佔位符（改成遊戲內實際顯示的文字），所以警告應該一條都沒有。
+    // ⚠️ 這裡刻意驗「等於空陣列」而不是「每一條都符合某個樣式」——後者在陣列為空時
+    // 恆為真，等於什麼都沒驗。
+    expect(result.warnings).toEqual([]);
+  });
+
+  it('規則 9：描述裡出現 {n} 佔位符會被列進 warnings（不擋 PR）', () => {
+    // 真實資料現在一個佔位符都沒有，這條就是那個機制唯一的守門員——上游隨時可能再冒出
+    // 新的 `{n}`，沒有它的話整段偵測邏輯被拿掉也不會有人發現。
+    // 描述與 <title> 兩處都要改：規則 1 要求兩者逐字相同，只改一邊會被那條先擋下來，
+    // 測到的就不是規則 9 了（第一版就是這樣紅的）。
+    const injected = svg.replaceAll('#僵硬範圍增加30%', '#僵硬範圍增加30%(+{1}%)');
+    expect(injected).not.toBe(svg);
+    const result = validate(injected, opts);
+    expect(result.errors).toEqual([]);                       // 佔位符只警告、不擋
+    expect(result.warnings.some(w => /規則 9.*5302.*佔位符/.test(w))).toBe(true);
   });
 
   it('規則 2：重複 id 會被擋', () => {
@@ -123,7 +139,7 @@ describe('validate', () => {
     for (const f of readdirSync(iconsDir)) writeFileSync(join(tinyDir, f), readFileSync(join(iconsDir, f)));
     // 48x31 的縮圖：建置期會把它放大四倍，成品是一團糊，過去什麼規則都沒擋
     writeFileSync(join(tinyDir, 'tree-center.png'), TINY_PNG);
-    const result = validate(svg, { keywords, iconsDir, dataDir: tinyDir });
+    const result = validate(svg, { keywords, upgradeCostTable, iconsDir, dataDir: tinyDir });
     expect(result.errors.some(e => /規則 10.*小於顯示尺寸的兩倍/.test(e))).toBe(true);
   });
 
@@ -169,7 +185,7 @@ describe('validate', () => {
     // 錯誤，不影響本測試只關心的「不可達」斷言。
     const tmpIconsDir = mkdtempSync(join(tmpdir(), 'rd2-wiki-icons-'));
     writeFileSync(join(tmpIconsDir, '000000000000.png'), Buffer.from('not-a-real-png'));
-    const result = validate(wip, { keywords, iconsDir: tmpIconsDir, dataDir });
+    const result = validate(wip, { keywords, upgradeCostTable, iconsDir: tmpIconsDir, dataDir });
     expect(result.errors.some(e => /不可達/.test(e))).toBe(false);
     expect(result.warnings.some(w => /規則 6\(c\)/.test(w) && w.includes('1099'))).toBe(true);
   });
@@ -177,6 +193,114 @@ describe('validate', () => {
   it('規則 8：# 標記比不到白名單會被擋', () => {
     const broken = svg.replace('#尖刺', '#不存在的關鍵字');
     expect(validate(broken, opts).errors.some(e => /白名單/.test(e))).toBe(true);
+  });
+
+  it('規則 8(b)：詞彙表缺 desc、色碼不合法、或解釋裡的 # 查不到，都會被擋', () => {
+    const bad = (patch: Record<string, unknown>) =>
+      validate(svg, { ...opts, keywords: { ...keywords, ...patch } as typeof keywords }).errors;
+
+    expect(bad({ 冰凍: { code: 'FROZEN', color: '#9B6BFF', desc: '' } }).some(e => /缺少 desc/.test(e))).toBe(true);
+    expect(bad({ 冰凍: { code: 'FROZEN', color: '藍色', desc: '移動速度減少' } }).some(e => /color/.test(e))).toBe(true);
+    expect(bad({ 冰凍: { code: '', color: '#9B6BFF', desc: '移動速度減少' } }).some(e => /缺少 code/.test(e))).toBe(true);
+    // 解釋文字會跟著節點一起顯示給玩家，裡面的 # 指到不存在的詞就是面板上一個查不到東西的標記，
+    // 而逐節點的規則 8 只掃 data-description，永遠掃不到它。
+    expect(bad({ 冰凍: { code: 'FROZEN', color: '#9B6BFF', desc: '對#根本沒這個詞 生效' } })
+      .some(e => /8\(b\).*白名單/.test(e))).toBe(true);
+    // 沒有動過的正本＋正本詞彙表不該有任何 8(b) 問題
+    expect(validate(svg, opts).errors.filter(e => /8\(b\)/.test(e))).toEqual([]);
+  });
+
+  it('規則 14：骰子漏填覺醒、或非骰子多填覺醒，都會被擋', () => {
+    const dropped = svg.replace(/ data-awakening="[^"]*"/, '');
+    expect(validate(dropped, opts).errors.some(e => /規則 14.*缺少 data-awakening/.test(e))).toBe(true);
+
+    // 把覺醒掛到一個符文節點上
+    const misplaced = svg.replace(
+      /(<g class="node"[^>]*data-id="1201"[^>]*data-description="[^"]*")/,
+      '$1 data-awakening="不該出現在這裡"',
+    );
+    expect(validate(misplaced, opts).errors.some(e => /規則 14.*不該有 data-awakening/.test(e))).toBe(true);
+
+    // 覺醒文字裡的 # 一樣要在白名單裡
+    const badKw = svg.replace('data-awakening="對子彈攻擊擊中的怪物賦予#燙傷"', 'data-awakening="賦予#根本沒這個詞"');
+    expect(badKw).not.toBe(svg);
+    expect(validate(badKw, opts).errors.some(e => /規則 14.*白名單/.test(e))).toBe(true);
+  });
+
+  it('規則 8(b)：別名只准指到有解釋的本尊，而且不准鏈', () => {
+    const bad = (patch: Record<string, unknown>) =>
+      validate(svg, { ...opts, keywords: { ...keywords, ...patch } as typeof keywords }).errors;
+    expect(bad({ 播種: { aliasOf: '沒有這個詞' } }).some(e => /aliasOf 指向不存在/.test(e))).toBe(true);
+    expect(bad({ 播種: { aliasOf: '傳送' } }).some(e => /指向另一個別名/.test(e))).toBe(true);
+    expect(validate(svg, opts).errors.filter(e => /8\(b\)/.test(e))).toEqual([]);
+  });
+
+  it('規則 15：升級花費表的等級不連續、或 1 級金額與正本的解鎖金幣對不起來，都會被擋', () => {
+    const withTable = (t: unknown) => validate(svg, { ...opts, upgradeCostTable: t as UpgradeCostTable }).errors;
+
+    const gap = { ...upgradeCostTable, levels: upgradeCostTable.levels.filter(r => r.level !== 3) };
+    expect(withTable(gap).some(e => /規則 15.*連續/.test(e))).toBe(true);
+
+    // 這一條是兩份資料唯一的交點：表格說 1 級要 9,999 金幣，正本卻寫 2,000
+    const drift = {
+      ...upgradeCostTable,
+      levels: upgradeCostTable.levels.map(r => (r.level === 1 ? { ...r, gold: 9999 } : r)),
+    };
+    const errs = withTable(drift);
+    expect(errs.some(e => /規則 15.*解鎖金幣 2000 與升級花費表 1 級的 9999 不一致/.test(e))).toBe(true);
+    expect(errs.filter(e => /規則 15/.test(e)).length).toBe(43);   // 43 個 50 級符文全部報
+
+    expect(withTable({ ...upgradeCostTable, appliesTo: { type: 'rune', maxLevel: 49 } })
+      .some(e => /規則 15.*表格長度/.test(e))).toBe(true);
+    // 只驗金幣的話這條會漏：上游哪天讓符文解鎖也吃核心，表格 1 級仍寫 core: 0，
+    // 面板那句「含解鎖那一次」就少報核心，而規則 15 全綠。
+    const coreDrift = {
+      ...upgradeCostTable,
+      levels: upgradeCostTable.levels.map(r => (r.level === 1 ? { ...r, core: 7 } : r)),
+    };
+    expect(withTable(coreDrift).some(e => /規則 15.*解鎖核心 0 與升級花費表 1 級的 7 不一致/.test(e))).toBe(true);
+
+    expect(withTable(null).filter(e => /規則 15/.test(e))).toEqual([]);
+    expect(validate(svg, opts).errors.filter(e => /規則 15/.test(e))).toEqual([]);
+  });
+
+  it('規則 16：管理 ID 重複／格式錯／漏填，與細分類放錯位置，都會被擋', () => {
+    const dup = svg.replace('data-game-id="D005"', 'data-game-id="D000"');
+    expect(dup).not.toBe(svg);
+    expect(validate(dup, opts).errors.some(e => /規則 16.*重複/.test(e))).toBe(true);
+
+    const badFormat = svg.replace('data-game-id="D000"', 'data-game-id="火骰子"');
+    expect(validate(badFormat, opts).errors.some(e => /規則 16.*不符合/.test(e))).toBe(true);
+
+    const dropped = svg.replace(' data-game-id="D000"', '');
+    expect(validate(dropped, opts).errors.some(e => /規則 16.*不符合/.test(e))).toBe(true);
+
+    const noCat = svg.replace(' data-category="系別屬性"', '');
+    expect(validate(noCat, opts).errors.some(e => /規則 16.*缺少 data-category/.test(e))).toBe(true);
+
+    const badCat = svg.replace('data-category="系別屬性"', 'data-category="隨便寫"');
+    expect(validate(badCat, opts).errors.some(e => /規則 16.*未知的 data-category/.test(e))).toBe(true);
+
+    // 細分類只用在玩家被動上：掛到骰子身上要被擋
+    const misplaced = svg.replace('data-id="1001" data-type="骰子"', 'data-id="1001" data-type="骰子" data-category="系別屬性"');
+    expect(misplaced).not.toBe(svg);
+    expect(validate(misplaced, opts).errors.some(e => /規則 16.*不該有 data-category/.test(e))).toBe(true);
+  });
+
+  it('規則 16：管理 ID 的命名空間綁死節點型別，換成別種型別的合法編號照樣被擋', () => {
+    // 這幾個都是「格式看起來很合理、也不撞號」的改法，寬鬆的 /^[DS]\d{3,4}$/ 全部放行——
+    // 而 data-game-id 不進 tree.json，這條規則是它唯一的防線。
+    const runeAsDice = svg.replace('data-game-id="D0000"', 'data-game-id="D123"');
+    expect(runeAsDice).not.toBe(svg);
+    expect(validate(runeAsDice, opts).errors.some(e => /規則 16.*骰子符文.*D\\d\{4\}/.test(e))).toBe(true);
+
+    const passiveAsDice = svg.replace('data-game-id="S0200"', 'data-game-id="D0200"');
+    expect(passiveAsDice).not.toBe(svg);
+    expect(validate(passiveAsDice, opts).errors.some(e => /規則 16.*玩家被動.*S\\d\{4\}/.test(e))).toBe(true);
+
+    const diceAsRune = svg.replace('data-game-id="D000"', 'data-game-id="D0009"');
+    expect(diceAsRune).not.toBe(svg);
+    expect(validate(diceAsRune, opts).errors.some(e => /規則 16.*骰子.*D\\d\{3\}/.test(e))).toBe(true);
   });
 
   it('規則 1：title 與 data-name 不一致會被擋', () => {
@@ -197,14 +321,14 @@ describe('validate', () => {
     const realBuf = readFileSync(join(iconsDir, realFile));
     const wrongHash = realFile === '000000000000.png' ? '111111111111' : '000000000000';
     writeFileSync(join(tmpIconsDir, `${wrongHash}.png`), realBuf);
-    const result = validate(svg, { keywords, iconsDir: tmpIconsDir, dataDir });
+    const result = validate(svg, { keywords, upgradeCostTable, iconsDir: tmpIconsDir, dataDir });
     expect(result.errors.some(e => /規則 7\(b\)/.test(e) && /sha256/.test(e))).toBe(true);
   });
 
   it('規則 7(c)：非 PNG 檔會被擋', () => {
     const tmpIconsDir = mkdtempSync(join(tmpdir(), 'rd2-wiki-icons-'));
     writeFileSync(join(tmpIconsDir, '222222222222.png'), Buffer.from('this is not a png file at all'));
-    const result = validate(svg, { keywords, iconsDir: tmpIconsDir, dataDir });
+    const result = validate(svg, { keywords, upgradeCostTable, iconsDir: tmpIconsDir, dataDir });
     expect(result.errors.some(e => /規則 7\(c\)/.test(e) && /不是有效的 PNG/.test(e))).toBe(true);
   });
 
@@ -214,7 +338,7 @@ describe('validate', () => {
     const tinyPng = makeMinimalPng(10, 10);
     const tinyHash = createHash('sha256').update(tinyPng).digest('hex').slice(0, 12);
     writeFileSync(join(tmpIconsDir, `${tinyHash}.png`), tinyPng);
-    const result = validate(svg, { keywords, iconsDir: tmpIconsDir, dataDir });
+    const result = validate(svg, { keywords, upgradeCostTable, iconsDir: tmpIconsDir, dataDir });
     expect(result.errors.some(e => /規則 7\(c\)/.test(e) && /小於最低要求 96px/.test(e))).toBe(true);
   });
 
@@ -226,7 +350,7 @@ describe('validate', () => {
     const orphanBuf = makeMinimalPng(100, 100);
     const orphanHash = createHash('sha256').update(orphanBuf).digest('hex').slice(0, 12);
     writeFileSync(join(tmpIconsDir, `${orphanHash}.png`), orphanBuf);
-    const result = validate(svg, { keywords, iconsDir: tmpIconsDir, dataDir });
+    const result = validate(svg, { keywords, upgradeCostTable, iconsDir: tmpIconsDir, dataDir });
     expect(result.errors).toEqual([]);
     expect(result.warnings.some(w => /規則 7\(d\)/.test(w) && w.includes(orphanHash))).toBe(true);
   });
@@ -278,6 +402,8 @@ describe('validate：邊與座標的守門（P2）', () => {
     const template = svg.split('\n').find(l => l.startsWith('<g class="node"'))!;
     const placeholder = template
       .replace(/data-id="\d+"/, 'data-id="1099" data-wip="1"')
+      // 管理 ID 也要換一個：規則 16 要求全檔唯一，照抄範本會撞到被複製的那顆節點
+      .replace(/data-game-id="[^"]*"/, 'data-game-id="D999"')
       .replace(/transform="translate\([-\d.]+,[-\d.]+\)"/, 'transform="translate(50.00,50.00)"');
     const withPlaceholder = svg.replace('</svg>', `${placeholder}\n</svg>`);
     expect(withPlaceholder).not.toBe(svg);

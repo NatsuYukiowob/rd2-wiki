@@ -15,13 +15,4 @@ export const FEATURES = {
    * 要整頁擋掉是另一件事（得動 astro 的路由或加 404），目前沒這個需求。
    */
   contributeLink: false,
-
-  /**
-   * 詳情面板裡 `#關鍵字` 點下去自動搜尋（spec §6.2.3）。
-   *
-   * 開回來時：這個布林值一翻，`#detail` 就會拿回 `.kw-clickable`，游標與 hover 底線
-   * （見 src/styles/global.css）以及點擊接線（見 src/scripts/tree-canvas.ts）會一起復活，
-   * 不需要動別的地方。
-   */
-  keywordSearch: false,
 } as const;

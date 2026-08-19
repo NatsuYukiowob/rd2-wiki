@@ -25,6 +25,12 @@ export interface RawNode {
   name: string;
   label: string;
   description: string;
+  /** `data-awakening`：骰子覺醒效果。只有骰子節點有，其餘節點是空字串（規則 14 守這件事）。 */
+  awakening: string;
+  /** `data-game-id`：遊戲資料表的管理 ID（D000／D0000／S0200）。給貢獻者比對原始資料用。 */
+  gameId: string;
+  /** `data-category`：玩家被動的細分類（中文原字）。只有玩家被動有，其餘是空字串（規則 16）。 */
+  categoryZh: string;
   costRaw: string;
   titleMaxLevel: number | null;
   x: number;
@@ -324,6 +330,9 @@ export function parseTree(svgText: string): { meta: RawMeta; nodes: RawNode[]; e
       name: attr(g, 'data-name'),
       label: g.querySelector('text')?.textContent ?? '',
       description: attr(g, 'data-description'),
+      awakening: attr(g, 'data-awakening'),
+      gameId: attr(g, 'data-game-id'),
+      categoryZh: attr(g, 'data-category'),
       costRaw: attr(g, 'data-cost'),
       titleMaxLevel,
       wip: g.getAttribute('data-wip') === '1',

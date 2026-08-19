@@ -26,6 +26,13 @@ describe('filter', () => {
   it('搜尋同時比對名稱與效果說明', () => {
     expect(matchesFilter(n({ description: '賦予#冰凍' }), { ...emptyState(), query: '冰凍' })).toBe(true);
   });
+  it('搜尋也吃骰子覺醒的文字', () => {
+    // 「冰柱」只出現在冰骰子的覺醒裡，描述與名稱都沒有——搜不到的話，玩家在面板上看得到
+    // 那兩個字、搜尋卻回 0 筆
+    const dice = n({ name: '冰骰子', description: '賦予#冰凍', awakening: '每10秒對最多7個#冰凍狀態怪物發射冰柱' });
+    expect(matchesFilter(dice, { ...emptyState(), query: '冰柱' })).toBe(true);
+    expect(matchesFilter(n({ name: '冰骰子', description: '賦予#冰凍' }), { ...emptyState(), query: '冰柱' })).toBe(false);
+  });
   it('混沌正規化為渾沌', () => {
     expect(normalizeQuery('混沌')).toBe('渾沌');
     expect(matchesFilter(n({ name: '渾沌骰子傷害' }), { ...emptyState(), query: '混沌' })).toBe(true);

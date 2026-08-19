@@ -11,6 +11,13 @@
   --muted: #aaa4c1;
   --gold: #ffd66f;
   --border: #443c63;
+  /* 詳情卡片換頁的節奏。**JS 會讀這兩個值**（src/scripts/tree-canvas.ts 的 SLIDE_MS），
+     動畫收尾的時機跟這裡同步——只改 CSS 不改 JS 的話，收尾會在動畫還沒跑完就把
+     inline style 清掉，看起來像動到一半被切斷。
+     easing 用 ease-out 系（尾段慢）而不是 `ease`：兩端都慢的曲線在 200–300ms 這種短動畫上
+     起步會有一段「頓住」的感覺。 */
+  --slide-ms: 280ms;
+  --slide-ease: cubic-bezier(0.22, 1, 0.36, 1);
 
   --nature: #ef625e;
   --engineering: #50b7d8;
@@ -185,7 +192,11 @@ pre {
   width: 22rem;
   max-width: calc(100% - 1.5rem);
   max-height: calc(100vh - var(--nav-h, 3rem) - 1.5rem);
-  overflow: auto;
+  /* x 一定要明確設成 hidden：視圖堆疊的動畫會把滑入／滑出的那張推到內容區左右兩側，
+     靠這裡裁掉。留 `overflow: auto` 的話橫向會冒出捲軸、甚至捲得動。
+     （兩軸都是非 visible 才是合法組合——只設 overflow-x 的話 overflow-y 會被算成 auto。） */
+  overflow-x: hidden;
+  overflow-y: auto;
   background: var(--panel);
   padding: 1rem;
   border: 1px solid var(--border);
@@ -211,18 +222,175 @@ pre {
   font-size: 1.1rem;
   font-weight: 700;
 }
-/* 關鍵字在描述裡一律用強調色標出來——那是「這個詞在遊戲裡有特定意義」的提示，跟能不能點無關。 */
-#detail .kw {
-  color: var(--support);
+/* --- 詳情面板的視圖堆疊（2026-08-20）---
+   點 `#關鍵字` 或「骰子覺醒」會在同一張卡片裡推出下一頁。平常 .stack 就是一個普通區塊
+   （高度由內容決定，positionPanel() 量得到），只有動畫進行中才變成固定高度的裁切容器。 */
+#detail .stack {
+  position: relative;
+  /* ⚠️ `overflow: hidden` 常駐，不要只掛在 .animating 上。它會建立 BFC，改變子元素邊界外距
+     的收合方式——只在動畫期間加的話，class 一掛上高度就先自己跳 12.4px（實測），
+     那一下會觸發一次多餘的 height transition，卡片在真正的動畫開始前先抖一下。
+     平常高度是 auto、內容不會溢出，常駐它沒有任何視覺代價。 */
+  overflow: hidden;
 }
-/* 「看起來可以點」只在功能真的開著時才給（`.kw-clickable` 由 tree-canvas.ts 依
-   src/lib/flags.ts 的 FEATURES.keywordSearch 掛上）。功能停用時還留著 cursor: pointer
-   與 hover 底線，等於騙使用者去點一個沒有反應的東西。 */
-#detail.kw-clickable .kw {
+#detail .stack.animating {
+  transition: height var(--slide-ms) var(--slide-ease);
+}
+/* 換頁時 top 也要跟著動，卡片的垂直中心才不會漂——高度從 401 縮到 198 而 top 不動的話，
+   卡片是「往上收」而不是「上下往中間收」。這條 transition **只在換頁期間掛上**：
+   拖曳畫布時卡片是每一幀重寫 top 來跟著節點跑，那時候有 transition 會整個變成拖尾。 */
+#detail.panel-sliding {
+  transition: top var(--slide-ms) var(--slide-ease);
+}
+#detail .view[hidden] {
+  display: none;
+}
+/* 換頁後焦點是用程式移進來的（見 tree-canvas.ts 的 focusView），不是使用者自己 Tab 過來的，
+   不該畫成「你選到了這個東西」的樣子。鍵盤操作的可見焦點由裡面各個按鈕自己的 :focus-visible 給。 */
+#detail .view:focus {
+  outline: none;
+}
+/* 滑動中兩張都拉離正常流程，才不會一上一下疊成兩倍高 */
+#detail .view.sliding {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+}
+#detail .view.slide-anim {
+  transition: transform var(--slide-ms) var(--slide-ease), opacity var(--slide-ms) var(--slide-ease);
+}
+
+/* 視圖頂部：返回（只有非根視圖有）／標題／關閉。
+   欄寬用 auto 不用固定的 2rem：根視圖沒有返回鍵，固定寬度會留下一條 32px 的空軌道，
+   標題比底下的內文縮排 36px，看起來就是憑空多一格空白（實測 h2 700.8 / 內文 664.8）。
+   間距也不放在 gap 上、改由按鈕自己的 margin 給——gap 一樣會在空軌道旁邊留 4px。 */
+#detail .view-head {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+#detail .view-head h2 {
+  grid-column: 2;
+  margin: 0;
+  font-size: 1.15rem;
+  overflow-wrap: anywhere;
+}
+#detail .view-back,
+#detail .view-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* 44px 是觸控目標的下限；比字級大一圈是刻意的，不是留白沒調好 */
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 1.1rem;
+  line-height: 1;
   cursor: pointer;
 }
-#detail.kw-clickable .kw:hover {
-  text-decoration: underline;
+#detail .view-back {
+  grid-column: 1;
+  margin-right: 0.25rem;
+}
+#detail .view-close {
+  grid-column: 3;
+  margin-left: 0.25rem;
+}
+#detail .view-back:hover,
+#detail .view-close:hover,
+#detail .view-back:focus-visible,
+#detail .view-close:focus-visible {
+  background: rgb(255 255 255 / 10%);
+  color: var(--fg);
+}
+
+/* 關鍵字：描述裡一律用遊戲的標記色標出來，而且**永遠可以點**（點了推出解釋那一頁）。
+   它是 <button>，所以要先把瀏覽器預設的按鈕外觀整個抹掉，才能長得像句子裡的一個詞。 */
+#detail .kw {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  /* 預設色只在 meta.glossary 查不到那個詞時才用得到——查得到時 NodeDetail.ts 會用
+     遊戲內該標記的底色蓋掉（inline style），同色代表同一類機制。 */
+  color: var(--support);
+  cursor: pointer;
+  text-decoration: underline dotted currentcolor;
+  text-underline-offset: 0.2em;
+}
+#detail .kw:hover,
+#detail .kw:focus-visible {
+  text-decoration: underline solid currentcolor;
+}
+
+/* 詞彙頁底部的「搜尋 #X」：這是這一頁唯一的動作，給它按鈕的樣子（不是連結） */
+#detail .kw-search {
+  margin-top: 0.75rem;
+  padding: 0.4rem 0.8rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--fg);
+  font: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+#detail .kw-search:hover,
+#detail .kw-search:focus-visible {
+  background: rgb(255 255 255 / 10%);
+}
+
+/* 練滿累計花費：跟「等級上限」同一組資訊，但它是錢，用成本色跟 meta 區分開。 */
+#detail .upgrade {
+  margin: 0.2rem 0 0;
+  color: var(--gold);
+  font-size: 0.85rem;
+}
+#detail .upgrade .cond {
+  display: inline-block;      /* 連同 nowrap：不要讓「含解鎖那一次」斷在中間 */
+  margin-left: 0.4rem;
+  color: var(--muted);
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+
+/* 骰子覺醒：節點頁上只留一列入口，內容在自己那一頁。整列可點，不是只有文字可點——
+   小螢幕上「要剛好戳到那三個字」是最容易失手的互動。 */
+#detail .awakening-link {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  margin: 0.6rem 0 0;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--support);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--fg);
+  font: inherit;
+  font-size: 0.85rem;
+  text-align: left;
+  cursor: pointer;
+}
+#detail .awakening-link:hover,
+#detail .awakening-link:focus-visible {
+  background: rgb(255 255 255 / 6%);
+}
+#detail .awakening-link .cond {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+#detail .awakening-link .chev {
+  margin-left: auto;
+  color: var(--muted);
 }
 
 /*

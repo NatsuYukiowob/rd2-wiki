@@ -45,7 +45,11 @@ export function matchesFilter(node: TreeNode, state: FilterState): boolean {
   if (state.types.size > 0 && !state.types.has(node.type)) return false;
   const q = normalizeQuery(state.query);
   if (q === '') return true;
-  return node.name.includes(q) || node.description.includes(q) || node.keywords.some(k => k.includes(q));
+  // 覺醒文字也算——它跟描述一樣顯示在面板上，「搜尋看得到的字卻搜不到」是使用者最難自己
+  // 想通的那種失敗（例如搜「冰柱」只有冰骰子的覺醒提到）。
+  return node.name.includes(q) || node.description.includes(q)
+    || (node.awakening ?? '').includes(q)
+    || node.keywords.some(k => k.includes(q));
 }
 
 /**

@@ -1,4 +1,4 @@
-import type { ParsedCost } from './types.js';
+import type { Cost, NodeType, ParsedCost, UnlockVia, UpgradeCostTable } from './types.js';
 
 const LEVEL = /^最高 (\d+) 級$/;
 
@@ -81,4 +81,34 @@ export function parseCost(raw: string): ParsedCost {
     if (maxLevel < 1 || maxLevel > 100) throw new Error(`等級上限須在 1..100: ${maxLevel}`);
   }
   return { cost: { core, gold }, maxLevel };
+}
+
+/**
+ * 把一張升級花費表從 1 級累加到 `toLevel` 級。
+ *
+ * 回傳 null 而不是丟錯或回 0：呼叫端拿到的節點不一定適用這張表（玩家被動就不適用），
+ * 而「0 金幣」跟「這個節點不適用」在畫面上長得一模一樣，只是後者是說謊。
+ */
+export function cumulativeUpgradeCost(table: UpgradeCostTable, toLevel: number): Cost | null {
+  if (!Number.isInteger(toLevel) || toLevel < 1) return null;
+  const rows = table.levels.filter(r => r.level <= toLevel);
+  // 表格必須真的涵蓋到 toLevel（規則 15 保證 1..N 連續，所以只要數量對就代表涵蓋到）
+  if (rows.length !== toLevel) return null;
+  return rows.reduce((acc, r) => ({ core: acc.core + r.core, gold: acc.gold + r.gold }), { core: 0, gold: 0 });
+}
+
+/**
+ * 這張表適用於這個節點嗎？型別與等級上限都要對得上（見 UpgradeCostTable 的說明）。
+ *
+ * 還多要求 `unlockVia === 'cost'`：表格的第 1 級**就是解鎖那一次**，而任務解鎖／預設解鎖的
+ * 節點玩家根本不付那筆錢（`sumUnlockCost()` 也是這樣排除它們的）。目前這兩種只有 4008 與
+ * 2001 兩顆骰子、都套不到這張表，所以這條現在不改變任何顯示——它擋的是「哪天有一顆
+ * 任務解鎖的 50 級符文」時，面板多算一筆玩家沒花過的錢，而所有測試照樣全綠。
+ */
+export function upgradeTableApplies(
+  table: UpgradeCostTable | null,
+  node: { type: NodeType; maxLevel: number; unlockVia?: UnlockVia },
+): table is UpgradeCostTable {
+  if (node.unlockVia !== undefined && node.unlockVia !== 'cost') return false;
+  return table !== null && table.appliesTo.type === node.type && table.appliesTo.maxLevel === node.maxLevel;
 }

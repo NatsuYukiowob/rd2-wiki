@@ -5,11 +5,12 @@ import { parseTree, splitTitleLevel, COORD_TOLERANCE } from './lib/svg-parse.js'
 import { parseCost } from '../src/lib/cost.js';
 import { parseGrowth } from '../src/lib/growth.js';
 import { extractKeywords } from '../src/lib/keywords.js';
-import { branchOfId, elementOfStroke, typeOfZh } from '../src/lib/taxonomy.js';
+import { branchOfId, categoryOfZh, elementOfStroke, typeOfZh } from '../src/lib/taxonomy.js';
 import { buildAdjacency, detectCycle, findRoots, unreachableFrom } from '../src/lib/graph.js';
 import { loadSvg } from './lib/dom.js';
 import { readPngSize } from './lib/png.js';
-import type { Edge } from '../src/lib/types.js';
+import { isGlossaryAlias } from '../src/lib/types.js';
+import type { Edge, GlossaryRecord, UpgradeCostTable } from '../src/lib/types.js';
 
 /**
  * 資料樹的預期根節點（各分支的第一個骰子）。
@@ -36,8 +37,33 @@ const MIN_NODE_DISTANCE = 5;
 /** 文字欄位長度上限。正本實測最長 46 字；這個上限擋的是「把整篇文章塞進 data-description」。 */
 const MAX_TEXT_LENGTH = 500;
 
+/**
+ * 遊戲資料表的管理 ID，**格式綁死節點型別**：骰子 `D000`、骰子技能 `D0000`、共通節點 `S0200`。
+ *
+ * 不寫成一個寬鬆的 `/^[DS]\d{3,4}$/`：那樣把符文的 `D0000` 改成 `D123`、或把玩家被動的
+ * `S0201` 改成 `D0201`，只要不撞號就照樣過關——而 `data-game-id` 刻意不進 tree.json，
+ * 這條規則是它唯一的防線，寬鬆等於沒有。（實測 239 個節點完全符合這組對應。）
+ */
+const GAME_ID_BY_TYPE: Record<string, RegExp> = {
+  '骰子': /^D\d{3}$/,
+  '骰子符文': /^D\d{4}$/,
+  '玩家被動': /^S\d{4}$/,
+  '支援': /^S\d{4}$/,
+};
+
 export interface ValidateOpts {
-  keywords: string[];
+  /**
+   * `data/keywords.json` 的內容。key ＝不含 `#` 的詞（規則 8 的白名單），值是玩家看得到的解釋。
+   * 兩個角色刻意共用一份檔案：分開放的話，白名單加了詞卻忘了寫解釋，兩邊都不會有人報錯。
+   */
+  keywords: Record<string, GlossaryRecord>;
+  /**
+   * `data/upgrade-cost.json`；沒有這份資料時傳 `null`。
+   *
+   * 刻意做成必填而不是可選：可選的話，哪天有人重構掉這個參數，規則 15 會安靜地不再執行，
+   * 而所有測試照樣全綠。要跳過就得自己寫一個 `null` 出來，那是看得見的決定。
+   */
+  upgradeCostTable: UpgradeCostTable | null;
   /** 圖示所在目錄；驗證器會實際讀取此目錄下的檔案內容做 sha256／PNG 結構檢查，並列出孤兒圖示。 */
   iconsDir: string;
   /**
@@ -62,6 +88,11 @@ export interface ValidateResult {
  * 都必須帶上足以定位問題的資訊（節點 id 或邊的座標／d 值），並在可行時保留既有工具
  * （svg-parse／cost／growth／keywords）拋出的引導語（例如「請先執行 npm run normalize」）。
  */
+/** `typeOfZh` 的反向查表；只有規則 15 需要（它拿到的是英文型別，正本寫的是中文）。 */
+const ZH_BY_TYPE: Record<string, string> = { dice: '骰子', rune: '骰子符文', passive: '玩家被動', support: '支援' };
+const zhOfType = (t: string | undefined) => (t ? ZH_BY_TYPE[t] : undefined);
+const typeOfZhSafe = (t: string | undefined) => (t ? ZH_BY_TYPE[t] !== undefined : false);
+
 export function validate(svgText: string, opts: ValidateOpts): ValidateResult {
   const errors: string[] = [];
   const warnings: string[] = [];
@@ -77,6 +108,8 @@ export function validate(svgText: string, opts: ValidateOpts): ValidateResult {
     return { errors: [`規則 0（SVG 子集）: ${(e as Error).message}`], warnings: [] };
   }
   const { nodes, edges } = parsed;
+  const whitelist = Object.keys(opts.keywords);
+  const gameIdSeen = new Map<string, string>();
 
   // 規則 2: id 唯一與編碼規律（首碼＝分支 1-5，次碼＝ 0-4，其後兩碼任意）
   const seen = new Set<string>();
@@ -138,13 +171,103 @@ export function validate(svgText: string, opts: ValidateOpts): ValidateResult {
     } catch (e) { push(`規則 4: 節點 ${n.id} 成本 ${(e as Error).message}`); }
 
     // 規則 8: 關鍵字白名單（# 標記必須能比對到白名單詞）
-    try { extractKeywords(n.description, opts.keywords); } catch (e) { push(`規則 8: 節點 ${n.id} ${(e as Error).message}`); }
+    try { extractKeywords(n.description, whitelist); } catch (e) { push(`規則 8: 節點 ${n.id} ${(e as Error).message}`); }
+
+    // 規則 14: 骰子覺醒（data-awakening）。只有骰子有、而且每顆骰子都要有——「可有可無」的
+    // 欄位在這裡是最糟的設計：漏填 40 顆只會讓面板少一段字，validate 全綠、節點數也沒變。
+    if (n.typeZh === '骰子') {
+      if (!n.awakening) push(`規則 14: 骰子 ${n.id} 缺少 data-awakening（每顆骰子都有 7 骰點覺醒效果）`);
+      else if (n.awakening.length > MAX_TEXT_LENGTH) push(`規則 14: 節點 ${n.id} 的 data-awakening 超過 ${MAX_TEXT_LENGTH} 字`);
+      // 覺醒文字跟描述一樣會顯示給玩家、也帶 `#` 標記，同一套白名單規則
+      try { extractKeywords(n.awakening, whitelist); } catch (e) { push(`規則 14: 節點 ${n.id} 的覺醒 ${(e as Error).message}`); }
+    } else if (n.awakening) {
+      push(`規則 14: 節點 ${n.id}（${n.typeZh}）不該有 data-awakening——覺醒是骰子專屬的`);
+    }
+
+    // 規則 16: 管理 ID 與細分類。管理 ID 是這份正本與遊戲資料表唯一對得起來的鍵，
+    // 重複或漏填會讓「拿新版資源包來對」這件事失去依據，而站台完全不受影響——正因為
+    // 站台不顯示它（不進 tree.json），這條規則是它唯一的防線。
+    const gameIdPattern = GAME_ID_BY_TYPE[n.typeZh];
+    // 型別本身不合法是規則 3 的事；這裡沒有對應樣式就跳過，不重複報一個看起來像別的問題的錯
+    if (gameIdPattern && !gameIdPattern.test(n.gameId)) push(`規則 16: 節點 ${n.id}（${n.typeZh}）的 data-game-id ${JSON.stringify(n.gameId)} 不符合 ${gameIdPattern.source}`);
+    else if (gameIdSeen.has(n.gameId)) push(`規則 16: data-game-id ${n.gameId} 重複（節點 ${gameIdSeen.get(n.gameId)} 與 ${n.id}）`);
+    else gameIdSeen.set(n.gameId, n.id);
+    if (n.typeZh === '玩家被動') {
+      if (!n.categoryZh) push(`規則 16: 玩家被動 ${n.id} 缺少 data-category`);
+      else { try { categoryOfZh(n.categoryZh); } catch (e) { push(`規則 16: 節點 ${n.id} ${(e as Error).message}`); } }
+    } else if (n.categoryZh) {
+      push(`規則 16: 節點 ${n.id}（${n.typeZh}）不該有 data-category——細分類只用在玩家被動上`);
+    }
 
     // 規則 9: 成長值單位一致性；`{n}` 佔位符是上游資料問題，只警告不擋 PR
     try {
       const g = parseGrowth(n.description);
       if (g.dataIssue === 'placeholder') warn(`規則 9: 節點 ${n.id} 的成長值含 {n} 佔位符（上游資料尚未填值），不擋 PR`);
     } catch (e) { push(`規則 9: 節點 ${n.id} ${(e as Error).message}`); }
+  }
+
+  // 規則 8(b): 詞彙表自身。每個詞條的三個欄位都要有值，解釋文字裡的 `#` 標記也要查得到——
+  // 那些解釋會跟著節點一起顯示給玩家（見 build-data 的傳遞閉包），解釋裡指到一個不存在的詞，
+  // 面板上就是一個查不到東西的 `#`，而逐節點的規則 8 永遠掃不到它。
+  for (const [term, record] of Object.entries(opts.keywords)) {
+    if (term.length === 0 || term.length > MAX_TEXT_LENGTH) push(`規則 8(b): 詞彙 ${JSON.stringify(term)} 的長度不合法`);
+    if (term.startsWith('#')) push(`規則 8(b): 詞彙 ${JSON.stringify(term)} 不應包含開頭的 #`);
+    if (record && isGlossaryAlias(record)) {
+      // 別名只准指向有解釋的本尊，而且只准跳一層——允許鏈狀別名的話，展開時要防環，
+      // 而防環的程式碼會比「不准鏈」本身複雜得多，換來的只是一個沒有人需要的自由度。
+      const target = opts.keywords[record.aliasOf];
+      if (!target) push(`規則 8(b): 詞彙 ${term} 的 aliasOf 指向不存在的詞 ${JSON.stringify(record.aliasOf)}`);
+      else if (isGlossaryAlias(target)) push(`規則 8(b): 詞彙 ${term} 的 aliasOf 指向另一個別名 ${record.aliasOf}，不允許鏈狀別名`);
+      continue;
+    }
+    const entry = record;
+    if (!entry?.code) push(`規則 8(b): 詞彙 ${term} 缺少 code`);
+    if (!/^#[0-9A-Fa-f]{6}$/.test(entry?.color ?? '')) push(`規則 8(b): 詞彙 ${term} 的 color 不是 #RRGGBB：${JSON.stringify(entry?.color)}`);
+    if (!entry?.desc) push(`規則 8(b): 詞彙 ${term} 缺少 desc`);
+    else if (entry.desc.length > MAX_TEXT_LENGTH) push(`規則 8(b): 詞彙 ${term} 的 desc 超過 ${MAX_TEXT_LENGTH} 字`);
+    try { if (entry?.desc) extractKeywords(entry.desc, whitelist); }
+    catch (e) { push(`規則 8(b): 詞彙 ${term} 的解釋 ${(e as Error).message}`); }
+  }
+
+  // 規則 15: 技能升級花費表。等級必須是 1..N 連續整數、金額非負，而且——最要緊的——
+  // 第 1 級的金幣必須等於它所適用的節點在正本裡寫的解鎖金幣。那是兩份資料唯一的交點：
+  // 對不起來就代表其中一份是舊的，而兩邊各自看都完全合法。
+  const table = opts.upgradeCostTable;
+  if (table) {
+    const levels = table.levels ?? [];
+    if (!typeOfZhSafe(table.appliesTo?.type)) push(`規則 15: appliesTo.type ${JSON.stringify(table.appliesTo?.type)} 不是合法的節點型別`);
+    if (levels.length === 0) push('規則 15: 升級花費表是空的');
+    levels.forEach((r, i) => {
+      if (r.level !== i + 1) push(`規則 15: 第 ${i + 1} 列的 level 是 ${r.level}，等級必須是 1..N 連續`);
+      if (!Number.isInteger(r.gold) || r.gold < 0) push(`規則 15: ${r.level} 級的 gold 不是非負整數：${r.gold}`);
+      if (!Number.isInteger(r.core) || r.core < 0) push(`規則 15: ${r.level} 級的 core 不是非負整數：${r.core}`);
+    });
+    if (table.appliesTo?.maxLevel !== levels.length) {
+      push(`規則 15: appliesTo.maxLevel（${table.appliesTo?.maxLevel}）與表格長度（${levels.length}）不一致`);
+    }
+    const firstGold = levels[0]?.gold;
+    const firstCore = levels[0]?.core;
+    for (const n of nodes) {
+      if (n.typeZh !== zhOfType(table.appliesTo?.type)) continue;
+      let parsedLevel: number | null = null;
+      let unlockGold: number | null = null;
+      let unlockCore: number | null = null;
+      try {
+        const pc = parseCost(n.costRaw);
+        parsedLevel = pc.maxLevel;
+        unlockGold = pc.cost.gold;
+        unlockCore = pc.cost.core;
+      } catch { continue; }   // 成本格式本身壞掉是規則 4 的事，這裡不重複報
+      if (parsedLevel !== table.appliesTo?.maxLevel) continue;
+      if (unlockGold !== firstGold) {
+        push(`規則 15: 節點 ${n.id} 的解鎖金幣 ${unlockGold} 與升級花費表 1 級的 ${firstGold} 不一致`);
+      }
+      // 核心也要對。只驗金幣的話，上游哪天讓符文解鎖也要核心，表格的 1 級仍寫 core: 0、
+      // 規則 15 照樣全綠，而面板那句「練滿 N 級累計…含解鎖那一次」會少報核心。
+      if (unlockCore !== firstCore) {
+        push(`規則 15: 節點 ${n.id} 的解鎖核心 ${unlockCore} 與升級花費表 1 級的 ${firstCore} 不一致`);
+      }
+    }
   }
 
   // 規則 7: 圖示。以 iconsDir 內實際檔案為準做一次全面掃描（而非逐節點重複讀檔／算雜湊），
@@ -325,6 +448,7 @@ export function validate(svgText: string, opts: ValidateOpts): ValidateResult {
 if (import.meta.url === `file://${process.argv[1]}`) {
   const { errors, warnings } = validate(readFileSync('data/dice-tree.svg', 'utf8'), {
     keywords: JSON.parse(readFileSync('data/keywords.json', 'utf8')),
+    upgradeCostTable: JSON.parse(readFileSync('data/upgrade-cost.json', 'utf8')),
     iconsDir: 'data/icons',
     dataDir: 'data',
   });

@@ -464,7 +464,9 @@ const TYPES: Array<[string, string]> = [
          0.75rem 只會讓本來就不夠的寬度更擠。inset 會一次覆蓋桌機設的 top/right，但圓角、
          陰影與四邊框線不會，要各自歸零，否則抽屜會變成一張貼在螢幕下緣、只有上面兩角是
          圓的怪卡片。 */
-      inset: auto 0 0 0;
+      /* 底緣停在 #branch-chips 上方，而不是壓到螢幕最底下再靠內距補救——高度由
+         tree-canvas.ts 量出來寫進 --chips-h，不是又一個寫死的偏移量。 */
+      inset: auto 0 var(--chips-h, 3.5rem) 0;
       width: 100%;
       max-width: 100%;
       max-height: 55vh;
@@ -472,17 +474,18 @@ const TYPES: Array<[string, string]> = [
       border-top: 1px solid var(--border);
       border-radius: 0;
       box-shadow: none;
-      /* #branch-chips 同樣 position:fixed、bottom:0，疊在 #detail 底部之上（DOM 順序在
-         #detail 後面，兩者都沒有互相退讓的 z-index，後面的蓋掉前面的）。#detail 內容
-         最後一段一定是 spec §2.1 強制要求的「重置需要初期化券」災情警告（見
-         NodeDetail.ts 的 renderDetail()），這段內容被蓋住等於完全看不到。#detail 本身
-         overflow:auto，補一段跟 #branch-chips 實際高度相當（略留餘裕）的 padding-bottom，
-         讓可捲動內容的「結尾」落在 chip 列上緣之上，警告文字捲到底時才不會被蓋住。
-         #branch-chips 高度＝按鈕（0.4rem 上下內距＋約 0.8rem 字高）＋列本身 0.5rem 上下
-         內距＋1px 上框線，實測約 3rem；這裡抓 4.5rem 留額外安全邊界（實測驗證見
-         tests/e2e/tree.spec.ts 測試 K：拿掉這段 padding-bottom 時，警告底緣量到 810px，
-         蓋進 chip 列 787.75px 起點約 22px；加回後通過）。 */
-      padding-bottom: 4.5rem;
+      /* ⚠️ 這裡曾經是 `bottom: 0` ＋ `padding-bottom: 4.5rem`：讓抽屜壓到螢幕最底下，
+         再靠內距把「重置需要初期化券」那段災情警告（spec §2.1 強制要求，永遠是 #detail
+         的最後一段）推到 #branch-chips 上緣之上。
+
+         那個做法只在「使用者已經捲到底」時成立。面板一變長（2026-08-19 加了關鍵字解釋、
+         骰子覺醒、練滿花費三段），內容超出 max-height 而 scrollTop 還是 0，警告就落在
+         可視區的下緣——也就是 chip 列正下方——實測 warn 798–839 對上 chips 786.75 起。
+         padding-bottom 完全沒被用到，因為它在捲動內容的「結尾」，而使用者根本還沒捲到那裡。
+
+         現在改成讓抽屜的**可視方框**就停在 chip 列上方（`bottom: var(--chips-h)`）：
+         不管捲到哪裡，面板裡的任何一個像素都不會落進 chip 列。這也是 CLAUDE.md 那條
+         「不要再引入新的固定偏移量」的同一個教訓——量出來的值，不是猜出來的值。 */
     }
     /* 手機版篩選抽屜：**留在 #toolbar 的正常流程裡**，收起就不存在、展開就接在工具列下面。
        不用 position:fixed，也不用任何位移量。
@@ -507,7 +510,7 @@ const TYPES: Array<[string, string]> = [
     /* footer 讓位給 chip 列：#branch-chips 是 fixed bottom:0，頁面改成不捲動之後它會永遠
        疊在 footer 上緣，而 footer 第二行是「著作權屬 111 Percent Inc.」這句必須看得到的
        聲明——手機上完全讀不到。--chips-h 由 tree-canvas.ts 量實際高度寫入（不寫死數字，
-       這個 repo 的固定偏移量已經咬過四次）。<main> 是 flex: 1，footer 變高只會讓畫布跟著
+       這個 repo 的固定偏移量已經咬過五次）。<main> 是 flex: 1，footer 變高只會讓畫布跟著
        縮，不會把捲軸叫回來。 */
     body:has(#canvas-host) footer {
       padding-bottom: calc(1rem + var(--chips-h, 3.5rem));

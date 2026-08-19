@@ -6,13 +6,24 @@ import { buildSprite, buildHiRes, type IconEntry } from './lib/icons.js';
 import { parseCost } from '../src/lib/cost.js';
 import { parseGrowth } from '../src/lib/growth.js';
 import { extractKeywords } from '../src/lib/keywords.js';
-import { branchOfId, elementOfStroke, typeOfZh } from '../src/lib/taxonomy.js';
+import { branchOfId, categoryOfZh, elementOfStroke, typeOfZh } from '../src/lib/taxonomy.js';
 import { buildAdjacency, findRoots } from '../src/lib/graph.js';
-import type { Branch, Edge, TreeData, TreeNode, UnlockVia } from '../src/lib/types.js';
+import { isGlossaryAlias } from '../src/lib/types.js';
+import type { Branch, Edge, GlossaryDisplay, GlossaryRecord, TreeData, TreeNode, UnlockVia, UpgradeCostTable } from '../src/lib/types.js';
 
 interface BuildOpts {
-  keywords: string[];
+  /** `data/keywords.json` 的內容：key ＝不含 `#` 的詞，同時是規則 8 的白名單與玩家看的解釋。 */
+  keywords: Record<string, GlossaryRecord>;
   unlockExceptions: Record<string, { unlockVia: UnlockVia }>;
+  /**
+   * `data/upgrade-cost.json`；沒有這份資料時傳 `null`。
+   *
+   * 跟 `ValidateOpts` 同款刻意必填：可選的話，呼叫端漏傳只會讓 `meta.upgradeCostTable`
+   * 變成 null、全站的「練滿累計」那一列安靜消失，而型別檢查與測試都不會有任何反應。
+   * 更糟的是效能預算——`tests/tools/build-data.test.ts` 的 20 KB 斷言量的是它自己組出來的
+   * 產物，漏傳等於少量 292 B，測試綠燈而 CLI 實際寫出的檔案已經超標。
+   */
+  upgradeCostTable: UpgradeCostTable | null;
   spriteIndex: Record<string, [number, number, number, number]>;
   /** sprite.webp 的實際像素尺寸 [寬, 高]，直接寫進 meta.sprite.size 供渲染時的 <image> width/height 使用。 */
   spriteSize: [number, number];
@@ -20,6 +31,7 @@ interface BuildOpts {
 
 export function buildTreeData(svgText: string, opts: BuildOpts): TreeData {
   const { meta: rawMeta, nodes: rawNodes, edges: rawEdges } = parseTree(svgText);
+  const whitelist = Object.keys(opts.keywords);
   // rawMeta.center 是「正本裡怎麼寫」的形狀（帶 PNG 檔名），meta.center 是「站台要怎麼畫」的形狀
   // （帶 WebP 網址），欄位名同、內容不同，所以先把它從展開的 rawMeta 裡拆出來，避免覆蓋。
   const { center: rawCenter, ...restMeta } = rawMeta;
@@ -39,7 +51,13 @@ export function buildTreeData(svgText: string, opts: BuildOpts): TreeData {
       maxLevel: level,
       prereqMode: null, upgradeCost: null,
       description: r.description,
-      keywords: extractKeywords(r.description, opts.keywords),
+      // 覺醒只有骰子有；其餘節點的 data-awakening 必須是空的（規則 14），空字串不進 tree.json。
+      ...(r.awakening ? { awakening: r.awakening } : {}),
+      ...(r.categoryZh ? { category: categoryOfZh(r.categoryZh) } : {}),
+      // ⚠️ data-game-id 刻意**不進 tree.json**：它是給貢獻者比對遊戲資源檔的，站台一個字都不
+      // 顯示，而 239 個節點各帶一個字串要吃掉 0.55 KB gzip——那是目前預算餘裕的一半。
+      // 需要查管理 ID 的人看的是正本，不是這份建置產物。
+      keywords: extractKeywords(r.description, whitelist),
       growth,
       dataIssue: dataIssue ?? (level > 1 && !growth ? 'no-growth' : null),
       icon: r.icon,
@@ -100,10 +118,40 @@ export function buildTreeData(svgText: string, opts: BuildOpts): TreeData {
     labelDy: rawCenter.labelDy,
   };
 
+  // meta.glossary 只裝「站台真的會顯示到」的詞條：節點描述用到的詞，再加上這些詞的解釋文字
+  // 自己又引用到的詞（例如 #破滅 的解釋裡寫著 #一般怪物、#菁英怪物）。少了這一層傳遞閉包，
+  // 面板會出現「解釋裡的 # 標記查不到東西」的破洞；多放整份 62 條則是白白吃 gzip 預算。
+  const glossary: Record<string, GlossaryDisplay> = {};
+  // 覺醒文字也顯示在面板上、也帶 `#` 標記（#播種／#傳送 就只出現在覺醒裡），所以一起當種子。
+  const pending = [
+    ...new Set(nodes.flatMap(n => [...n.keywords, ...extractKeywords(n.awakening ?? '', whitelist)])),
+  ];
+  while (pending.length > 0) {
+    const term = pending.pop()!;
+    if (glossary[term]) continue;
+    const record = opts.keywords[term];
+    // extractKeywords 只會吐出白名單裡的詞，所以這裡取不到值代表 whitelist 與 opts.keywords
+    // 已經不是同一份資料了——那是程式錯誤，不是資料錯誤，寧可當場炸掉也不要送出半份詞彙表。
+    if (!record) throw new Error(`詞彙表缺少節點用到的詞: ${term}`);
+    // 別名不自己帶解釋，展開成本尊那一份（規則 8(b) 保證指得到、而且不會再指向另一個別名）。
+    const entry = isGlossaryAlias(record) ? opts.keywords[record.aliasOf] : record;
+    if (!entry || isGlossaryAlias(entry)) throw new Error(`詞彙 ${term} 的 aliasOf 指不到本尊`);
+    glossary[term] = { color: entry.color, desc: entry.desc };
+    pending.push(...extractKeywords(entry.desc, whitelist));
+  }
+
   return {
     meta: {
       ...restMeta, roots, bounds,
       totalUnlockCost,
+      // key 排序後才寫進去：Object 的插入順序會跟著上面那個 while 迴圈的堆疊順序跑，
+      // 資料沒變、diff 卻整段翻掉，規則 11 的差異摘要會誤報。
+      glossary: Object.fromEntries(Object.keys(glossary).sort().map(k => [k, glossary[k]!])),
+      // 只帶 appliesTo 與 levels：資料檔裡的 note／source 是寫給貢獻者看的，
+      // 整段抄進 tree.json 等於每個訪客都下載一次那兩句話。
+      upgradeCostTable: opts.upgradeCostTable
+        ? { appliesTo: opts.upgradeCostTable.appliesTo, levels: opts.upgradeCostTable.levels }
+        : null,
       sprite: { url: '/assets/sprite.webp', size: opts.spriteSize, index: opts.spriteIndex },
       center: center ?? null,
     },
@@ -115,6 +163,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const svgText = readFileSync('data/dice-tree.svg', 'utf8');
   const keywords = JSON.parse(readFileSync('data/keywords.json', 'utf8'));
   const unlockExceptions = JSON.parse(readFileSync('data/unlock-exceptions.json', 'utf8'));
+  const upgradeCostTable = JSON.parse(readFileSync('data/upgrade-cost.json', 'utf8'));
 
   const { meta: rawMeta, nodes: rawNodes } = parseTree(svgText);
   // 圖示的打包格子尺寸＝引用它的節點的顯示尺寸。同一張圖被多個節點共用時，尺寸必然相同
@@ -158,7 +207,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   }
   for (const [hash, buf] of hiRes) writeFileSync(`public/assets/icons/${hash}.webp`, buf);
 
-  const data = buildTreeData(svgText, { keywords, unlockExceptions, spriteIndex: index, spriteSize: size });
+  const data = buildTreeData(svgText, { keywords, unlockExceptions, upgradeCostTable, spriteIndex: index, spriteSize: size });
   const json = JSON.stringify(data);
   writeFileSync('src/generated/tree.json', json);
 
