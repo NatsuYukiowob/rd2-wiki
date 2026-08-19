@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { parseCost } from '../../src/lib/cost';
+import { readFileSync } from 'node:fs';
+import { parseCost, cumulativeUpgradeCost, upgradeTableApplies } from '../../src/lib/cost';
+import type { UpgradeCostTable } from '../../src/lib/types';
 
 describe('parseCost', () => {
   it('核心單一貨幣', () => {
@@ -56,5 +58,33 @@ describe('parseCost 的數值上限', () => {
   it('正常範圍照常通過', () => {
     expect(parseCost('核心 66').cost).toEqual({ core: 66, gold: 0 });
     expect(parseCost('金幣 23,000／核心 5').cost).toEqual({ core: 5, gold: 23000 });
+  });
+});
+
+describe('cumulativeUpgradeCost / upgradeTableApplies', () => {
+  const table: UpgradeCostTable = JSON.parse(readFileSync('data/upgrade-cost.json', 'utf8'));
+
+  it('練滿 50 級的累計花費與資料表的累計欄一致', () => {
+    // RD2 資料表「技能升級花費」分頁第 53 列：累計金幣 465,700／累計核心 99
+    expect(cumulativeUpgradeCost(table, 50)).toEqual({ gold: 465700, core: 99 });
+  });
+  it('1 級就是解鎖那一次，金額等於符文 data-cost 的首級金幣', () => {
+    expect(cumulativeUpgradeCost(table, 1)).toEqual({ gold: 2000, core: 0 });
+  });
+  it('中途等級照樣累加（第 6 級開始才吃核心）', () => {
+    expect(cumulativeUpgradeCost(table, 5)).toEqual({ gold: 5200, core: 0 });
+    expect(cumulativeUpgradeCost(table, 6)).toEqual({ gold: 6800, core: 1 });
+  });
+  it('表格涵蓋不到的等級回 null，不是回一個看起來很合理的部分和', () => {
+    expect(cumulativeUpgradeCost(table, 51)).toBeNull();
+    expect(cumulativeUpgradeCost(table, 0)).toBeNull();
+    expect(cumulativeUpgradeCost(table, 1.5)).toBeNull();
+  });
+  it('只適用骰子符文的 50 級節點——玩家被動套不上', () => {
+    expect(upgradeTableApplies(table, { type: 'rune', maxLevel: 50 })).toBe(true);
+    // 玩家被動 1102「所有骰子傷害」也是 50 級，但單價是金幣 8,000 不是 2,000
+    expect(upgradeTableApplies(table, { type: 'passive', maxLevel: 50 })).toBe(false);
+    expect(upgradeTableApplies(table, { type: 'rune', maxLevel: 1 })).toBe(false);
+    expect(upgradeTableApplies(null, { type: 'rune', maxLevel: 50 })).toBe(false);
   });
 });

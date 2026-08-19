@@ -98,10 +98,35 @@ function makeLocationAndHistory(initialSearch: string) {
       return box.pathname;
     },
   };
+  // 視圖堆疊把深度存在 history.state 裡、並用 back()/go() 退回（見 tree-canvas.ts 的
+  // HISTORY_DEPTH_KEY），所以存根要有一疊真的 state，不能只是幾個空函式——空函式會讓
+  // 「按上一頁等於卡片返回」這件事在測試裡永遠是綠的，實際上壞掉也看不出來。
+  const entries: unknown[] = [null];
+  let index = 0;
+  const firePopState = () => {
+    (globalThis as { window?: { dispatchEvent?: (e: unknown) => void } }).window
+      ?.dispatchEvent?.(new LinkedomEvent('popstate'));
+  };
   const history = {
-    replaceState(_state: unknown, _title: string, url: string) {
+    get state() {
+      return entries[index];
+    },
+    replaceState(state: unknown, _title: string, url: string) {
+      entries[index] = state;
       const qIdx = url.indexOf('?');
       box.search = qIdx >= 0 ? url.slice(qIdx) : '';
+    },
+    pushState(state: unknown, _title: string, _url: string) {
+      entries.length = index + 1;
+      entries.push(state);
+      index += 1;
+    },
+    go(delta: number) {
+      index = Math.max(0, Math.min(entries.length - 1, index + delta));
+      firePopState();
+    },
+    back() {
+      history.go(-1);
     },
   };
   return { location, history, box };
@@ -166,6 +191,7 @@ function fireKeydown(el: Element, key: string): void {
 function fireClick(el: Element): void {
   el.dispatchEvent(new LinkedomEvent('click', { bubbles: true }) as unknown as Event);
 }
+
 
 /** 從 `translate(x,y) scale(s)` 格式的 transform 字串取出縮放分量，跟
  * tests/lib/viewport.test.ts 的 contentUnderAnchor() 用同一套正規表達式解法。 */
@@ -430,37 +456,97 @@ describe('tree-canvas 整合：分支快速跳轉（task-17，spec §6.2.6）', 
   });
 });
 
-describe('tree-canvas 整合：關鍵字 chip（spec §6.2.3；點擊搜尋目前由 FEATURES.keywordSearch 停用）', () => {
+describe('tree-canvas 整合：詳情面板的視圖堆疊', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
   });
 
-  it('關鍵字 chip 目前不觸發搜尋（FEATURES.keywordSearch 暫時關閉），也不會裝成可以點', async () => {
-    // 1002 尖刺骰子的描述含「#尖刺」，keywords=['尖刺']，NodeDetail.ts 會把它渲染成
-    // <span class="kw">#尖刺</span>（見 src/components/NodeDetail.ts 的 renderDescription）。
-    // 關鍵字本身照樣要標示出來——停用的是「點下去會搜尋」，不是「這個詞有特殊意義」的提示。
+  const topTitle = (page: { detailEl: Element }) =>
+    page.detailEl.querySelector('.view:not([hidden]) h2')?.textContent;
+
+  it('點關鍵字推出詞彙頁，再點巢狀關鍵字再推一層；點的當下不搜尋', async () => {
+    // 1002 尖刺骰子的描述含「#尖刺」，會被渲染成 <button class="kw" data-term="尖刺">
     const page = await loadTreePage('?node=1002');
-    const kw = page.detailEl.querySelector('.kw');
-    expect(kw).not.toBeNull();
-    expect(kw!.textContent).toBe('#尖刺');
+    expect(topTitle(page)).toBe('尖刺骰子');
 
-    fireClick(kw!);
+    const kw = page.detailEl.querySelector('.kw')!;
+    expect(kw.textContent).toBe('#尖刺');
+    fireClick(kw);
 
+    expect(topTitle(page)).toBe('#尖刺');
+    expect(page.detailEl.querySelector('[data-detail-back]')).not.toBeNull();
+    // 點關鍵字是「這個詞是什麼意思」，不是「幫我搜尋」——搜尋是詞彙頁上另一顆按鈕
     expect(page.searchInput.value).toBe('');
     expect(page.getSearchBox()).not.toContain('q=');
-    // 樣式與接線共用同一個開關：功能關著就不該掛上 .kw-clickable，否則游標與 hover 底線
-    // 會騙使用者去點一個沒有反應的東西（樣式見 src/styles/global.css）。
-    expect(page.detailEl.classList.contains('kw-clickable')).toBe(false);
-    // FEATURES.keywordSearch 開回來時這條會紅——那是刻意的，紅的時候把上面三條斷言換回
-    // 「搜尋框被設成該關鍵字、網址帶 q=、面板掛上 .kw-clickable」即可。
   });
 
-  it('點擊詳情面板裡非關鍵字的地方，不觸發搜尋（事件委派只認 .kw，不是整個面板都可點）', async () => {
+  it('返回鍵退一層；退到根視圖就沒有返回鍵了', async () => {
     const page = await loadTreePage('?node=1002');
-    const heading = page.detailEl.querySelector('h2')!;
-    fireClick(heading);
+    fireClick(page.detailEl.querySelector('.kw')!);
+    expect(topTitle(page)).toBe('#尖刺');
+
+    fireClick(page.detailEl.querySelector('[data-detail-back]')!);
+    expect(topTitle(page)).toBe('尖刺骰子');
+    expect(page.detailEl.querySelector('[data-detail-back]')).toBeNull();
+  });
+
+  it('瀏覽器的上一頁等同卡片的返回鍵（A1：兩者走同一條路）', async () => {
+    const page = await loadTreePage('?node=1002');
+    fireClick(page.detailEl.querySelector('.kw')!);
+    expect(topTitle(page)).toBe('#尖刺');
+
+    history.back();
+    expect(topTitle(page)).toBe('尖刺骰子');
+  });
+
+  it('覺醒入口推出覺醒頁；沒有覺醒的節點沒有那一列', async () => {
+    const page = await loadTreePage('?node=1002');
+    fireClick(page.detailEl.querySelector('[data-detail-awakening]')!);
+    expect(topTitle(page)).toBe('骰子覺醒');
+
+    const passive = await loadTreePage('?node=1101');
+    expect(passive.detailEl.querySelector('[data-detail-awakening]')).toBeNull();
+  });
+
+  it('詞彙頁的「搜尋 #X」才會真的搜尋，而且會退回根視圖', async () => {
+    const page = await loadTreePage('?node=1002');
+    fireClick(page.detailEl.querySelector('.kw')!);
+    fireClick(page.detailEl.querySelector('[data-detail-search]')!);
+
+    expect(page.searchInput.value).toBe('尖刺');
+    expect(page.getSearchBox()).toContain('q=');
+    expect(topTitle(page)).toBe('尖刺骰子');
+  });
+
+  it('✕ 關掉整個面板', async () => {
+    const page = await loadTreePage('?node=1002');
+    expect((page.detailEl as HTMLElement).hidden).toBe(false);
+    fireClick(page.detailEl.querySelector('[data-detail-close]')!);
+    expect((page.detailEl as HTMLElement).hidden).toBe(true);
+  });
+
+  it('面板重繪（例如搜尋條件改變）會把堆疊收回根視圖，不留下一張過期的詞彙頁', async () => {
+    // renderDetail() 是整段重寫 innerHTML，堆疊沒有跟著重設的話，viewStack 會記著一層
+    // 其實已經不在 DOM 裡的詞彙頁——之後按返回就會操作到不存在的元素。
+    // （「點另一顆節點」走的是 svg 的 pointer 事件，linkedom 沒有 Pointer Capture API，
+    //  那條路徑留給 E2E 驗；這裡走的是同一個 select() 重繪。）
+    const page = await loadTreePage('?node=1002');
+    fireClick(page.detailEl.querySelector('.kw')!);
+    expect(topTitle(page)).toBe('#尖刺');
+    expect(page.detailEl.querySelectorAll('.view')).toHaveLength(2);
+
+    page.searchInput.value = '骰子';
+    page.searchInput.dispatchEvent(new LinkedomEvent('input', { bubbles: true }) as unknown as Event);
+
+    expect(topTitle(page)).toBe('尖刺骰子');
+    expect(page.detailEl.querySelectorAll('.view')).toHaveLength(1);
+  });
+
+  it('點詳情面板裡不是按鈕的地方不會有任何反應（委派只認那幾個 data-*）', async () => {
+    const page = await loadTreePage('?node=1002');
+    fireClick(page.detailEl.querySelector('.desc')!);
+    expect(topTitle(page)).toBe('尖刺骰子');
     expect(page.searchInput.value).toBe('');
-    expect(page.getSearchBox()).not.toContain('q=');
   });
 });
 

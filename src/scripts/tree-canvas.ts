@@ -13,10 +13,9 @@ import {
   HIRES_DOWNGRADE_AT,
 } from '../lib/viewport.js';
 import { computeSelection } from '../lib/selection.js';
-import { renderDetail } from '../components/NodeDetail.js';
+import { renderDetail, nodeViewHtml, termViewHtml, awakeningViewHtml } from '../components/NodeDetail.js';
 import { matchesFilter, stateToQueryString, queryStringToState, isTypingTarget } from '../lib/filter.js';
 import { visibleNodeIds, upgradeIcons, downgradeIcons, buildIconIndex } from '../lib/hires.js';
-import { FEATURES } from '../lib/flags.js';
 import type { Branch, NodeType, TreeData, TreeNode } from '../lib/types.js';
 
 // tree.json 是建置期由 tools/build-data.ts 產生、結構保證符合 TreeData；
@@ -444,7 +443,45 @@ if (!detailEl) {
 // 裡，所以另外宣告一個型別明確標成 HTMLElement（非 null）的 binding 給 select() 閉包用。
 const panel: HTMLElement = detailEl;
 
+/**
+ * 詳情面板的視圖堆疊，以及進行中換頁動畫的收尾。
+ *
+ * 宣告刻意放在 `select()` 之前——`let` 有 TDZ，而模組初始化時 `applyFilter()` 就會呼叫到
+ * `select()`（它會 `abortSlide()` ＋ 重設堆疊）。宣告留在下面那一段的話會在載入當下就炸。
+ *
+ * 動畫還在跑的時候又要換頁（連按返回、系統上一頁一次退兩層），一定要先把前一段處理掉再
+ * 開始下一段——否則兩段動畫會搶同一批元素的 inline style。
+ */
+let viewStack: StackEntry[] = [];
+let slideTimer: ReturnType<typeof setTimeout> | null = null;
+let slideFinish: (() => void) | null = null;
+
+/**
+ * 把堆疊收回根視圖，並退掉對應的歷史紀錄。實際的 DOM 由呼叫端的 renderDetail() 重畫。
+ *
+ * 少了退歷史這一步，使用者在詞彙頁改一下篩選（面板會重畫回節點頁）之後按上一頁，
+ * 瀏覽器確實退了一步、但那一步對應的視圖已經不存在，畫面上什麼都不會發生。
+ * depth 退成 0 之後這裡就是 no-op，不會每打一個字就動一次歷史。
+ */
+function resetViewStack(): void {
+  // 整個 `.stack` 馬上就會被 renderDetail() 換掉，所以是「中止」不是「收尾」：
+  // 跑收尾等於對一批即將被丟棄的元素做清理，還會多觸發一次 focus 與重新定位。
+  // 但 `#detail` 本身活著，`panel-sliding` 一定要拿掉——留著的話接下來那 280ms 內，
+  // 卡片跟著畫布平移的每一幀重寫 top 都會變成有 transition 的拖尾（實測會殘留）。
+  abortSlide();
+  const depth = viewStack.length - 1;
+  viewStack = viewStack.slice(0, 1);
+  if (depth <= 0) return;
+  // ⚠️ 退歷史之後**一定要再寫一次網址**。`history.go()` 是非同步的，而每一筆紀錄都記著
+  // 它被推入時的網址；`select()` 在這之後同步跑的 `syncUrl()` 寫的是「現在這一筆」，
+  // 等傳送落地就被還原成推入前的樣子。實測：在詞彙頁點另一顆節點，面板換成新節點、
+  // 網址卻還停在舊的 `?node=`，重整就回到錯的節點。
+  // （這正是 afterHistoryUnwind() 存在的理由，只是 select() 這條路徑一開始沒走它。）
+  afterHistoryUnwind(syncUrl, depth);
+}
+
 function select(id: string | null): void {
+  resetViewStack();
   currentSelected = id;
   svg.querySelectorAll('.in-chain').forEach(el => el.classList.remove('in-chain'));
   svg.classList.toggle('has-selection', id !== null);
@@ -455,7 +492,7 @@ function select(id: string | null): void {
   const node = byId.get(id);
   if (!node) return;
 
-  const sel = computeSelection(id, data);
+  const sel = selectionFor(id);
   for (const chainId of sel.chain) {
     svg.querySelector(`g.node[data-id="${chainId}"]`)?.classList.add('in-chain');
   }
@@ -464,14 +501,25 @@ function select(id: string | null): void {
     const to = line.getAttribute('data-to');
     if (from && to && sel.chain.has(from) && sel.chain.has(to)) line.classList.add('in-chain');
   }
-  // 篩選功能（分支／類型／搜尋）是後續任務的事，這裡先掃一次 DOM：一旦那個任務把
-  // 「被篩掉」的節點標上 .filtered-out，這裡就會自動把數字算進面板，不用回頭改這段。
+
+  renderDetail(node, sel, panel, data.meta.glossary, data.meta.upgradeCostTable);
+  viewStack = [{ view: { kind: 'node', id }, scrollTop: 0 }];
+  positionPanel();
+}
+
+/**
+ * 前置鏈計算 ＋ 把「被篩選淡出的前置有幾個」算進去。
+ *
+ * 抽出來是因為現在有兩個地方要它：`select()`（選節點）與視圖堆疊回到根視圖時的重繪。
+ * `hiddenByFilter` 只能在這裡算——`computeSelection()` 是純函式、看不到 DOM 上的
+ * `.filtered-out`，那是畫面狀態不是資料。
+ */
+function selectionFor(id: string) {
+  const sel = computeSelection(id, data);
   sel.hiddenByFilter = [...sel.chain].filter(
     chainId => svg.querySelector(`g.node[data-id="${chainId}"]`)?.classList.contains('filtered-out'),
   ).length;
-
-  renderDetail(node, sel, panel);
-  positionPanel();
+  return sel;
 }
 
 /**
@@ -485,7 +533,12 @@ function select(id: string | null): void {
  * 對齊節點中心，同樣夾在工具列下緣與視窗底部之間。這幾個夾制不是防禦性程式碼——樹的四個
  * 角落本來就有節點，不夾就會有卡片一半在畫面外的情況。
  */
-function positionPanel(): void {
+/**
+ * @param opts.assumeHeight 用這個高度算位置，而不是量卡片現在的高度。
+ *   換頁時用：高度正在動畫中，要先把**終點**的位置寫進 `top`，讓 top 與 height 同時跑完，
+ *   卡片的垂直中心才會固定不動（＝「上下往中間收」而不是「往上收」）。
+ */
+function positionPanel(opts: { assumeHeight?: number } = {}): void {
   // 這裡刻意**不用**模組頂端那個 isMobile：它在載入時算一次就定案，而視窗是會被拉的。
   // 桌機視窗拉窄到斷點以下時，CSS 會把面板切成底部抽屜（inset: auto 0 0 0），但這裡留下的
   // 行內 left/top 優先級更高，抽屜會被釘在桌機算出來的位置上（code review 實測：400×800 下
@@ -529,18 +582,19 @@ function positionPanel(): void {
 
   const n = nodeEl.getBoundingClientRect();
   const rect = panel.getBoundingClientRect();
+  const height = opts.assumeHeight ?? rect.height;
   const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(v, hi));
 
   const top = clamp(
-    n.top + n.height / 2 - rect.height / 2,
+    n.top + n.height / 2 - height / 2,
     topLimit + GAP,
-    Math.max(topLimit + GAP, window.innerHeight - rect.height - GAP),
+    Math.max(topLimit + GAP, window.innerHeight - height - GAP),
   );
 
   // 只有當卡片的垂直範圍真的跟側欄重疊時才把左緣往右推——卡片落在側欄下方時沒必要浪費那段寬度。
   // 側欄在手機版是 display:none（width 0），那時也不必推。
   const overlapsSidebar = !!obstacle && obstacle.width > 0
-    && top < obstacle.bottom && top + rect.height > obstacle.top;
+    && top < obstacle.bottom && top + height > obstacle.top;
   const rightLimit = Math.max(GAP, window.innerWidth - rect.width - GAP);
   // 下限取 min(避障後的左界, 右界)：視窗窄到「避開側欄就一定超出畫面」時，寧可重疊也不要
   // 把卡片推出視窗——看不到比被壓住更糟。
@@ -574,12 +628,15 @@ function schedulePositionPanel(): void {
   positionRaf = requestAnimationFrame(() => positionPanel());
 }
 if (typeof MutationObserver === 'function') {
-  new MutationObserver(schedulePositionPanel).observe(viewport, {
+  // 包一層而不是直接把 schedulePositionPanel 當 callback：它現在收一個 options 物件，
+  // 而 MutationObserver 傳進來的第一個參數是 MutationRecord[]——會被當成 `{keepTop: undefined}`
+  // 之外的東西，型別也對不上。畫布一動就是「重新對齊」，不帶 keepTop。
+  new MutationObserver(() => schedulePositionPanel()).observe(viewport, {
     attributes: true,
     attributeFilter: ['transform'],
   });
 }
-window.addEventListener('resize', schedulePositionPanel);
+window.addEventListener('resize', () => schedulePositionPanel());
 
 // 選取判定用 pointerdown/pointerup 自己量位移，不用 click（審查回饋，2026-08-17 第 1
 // 輪修正）：
@@ -726,7 +783,10 @@ function focusMatches(): void {
  * 避免每次打字/勾選都往瀏覽器歷史多塞一筆，使用者按上一頁會被灌爆）。 */
 function syncUrl(): void {
   const qs = stateToQueryString(filterState, currentSelected);
-  history.replaceState(null, '', qs ? `?${qs}` : location.pathname);
+  // 帶著現有的 state 一起 replace：視圖堆疊的深度存在 history.state 裡（見 HISTORY_DEPTH_KEY），
+  // 這裡傳 null 的話，使用者在關鍵字頁打一個字（會觸發 syncUrl）就把深度洗掉，之後按上一頁
+  // 會一次退到根視圖而不是退一層。
+  history.replaceState(typeof history.state === 'undefined' ? null : history.state, '', qs ? `?${qs}` : location.pathname);
 }
 
 const searchEl = document.getElementById('search');
@@ -763,6 +823,11 @@ document.addEventListener('keydown', e => {
   if (e.key === 'Escape' && filtersEl.classList.contains('open')) {
     setFiltersOpen(false);
     filtersToggle?.focus();
+    // 這一下 Esc 已經用掉了。不擋的話，下面那個「詳情面板退一層」的後備監聽器也會收到
+    // 同一個事件（兩個都掛在 document 上，`open` 這時已經被移除、用 class 判斷來不及），
+    // 使用者按一次 Esc 會同時關掉抽屜**並且**退出詞彙頁（實測 500×800 下必現）。
+    // 用 stopImmediatePropagation 而不是 stopPropagation：同一個節點上後續的監聽器也要擋。
+    e.stopImmediatePropagation();
   }
 });
 document.addEventListener('pointerdown', e => {
@@ -772,29 +837,319 @@ document.addEventListener('pointerdown', e => {
   setFiltersOpen(false);
 });
 
-// --- 關鍵字 chip 可點擊搜尋（spec §6.2.3，task-17 補漏）---
-// NodeDetail.ts 的 renderDetail() 每次都用 innerHTML 整段重畫面板內容，直接在渲染出來的
-// <span class="kw"> 上掛監聽器，下一次重畫就會被沖掉；改用事件委派掛在 #detail 本身
-// （面板容器元素不會被 innerHTML 重畫掉，只有它的子節點內容會被整段換掉），點擊事件
-// 冒泡上來時用 closest('.kw') 判斷是不是點在關鍵字 chip 上，不是就直接略過。
-// `.kw-clickable` 同時是樣式開關（游標與 hover 底線，見 src/styles/global.css）與這裡的
-// 接線開關，兩者共用 FEATURES.keywordSearch 一個布林值——不會出現「看起來能點但點了沒反應」
-// 或反過來的組合。
-panel.classList.toggle('kw-clickable', FEATURES.keywordSearch);
-if (FEATURES.keywordSearch) {
-  panel.addEventListener('click', e => {
-    const kwEl = (e.target as Element).closest?.('.kw');
-    if (!kwEl) return;
-    const keyword = (kwEl.textContent ?? '').replace(/^#/, '');
-    if (!keyword) return;
-    searchEl.value = keyword;
-    filterState.query = keyword;
-    applyFilter();
-    // 點關鍵字是「給我看有這個效果的節點」，所以把鏡頭帶過去。沒有這一步的話，命中的節點
-    // 可能在畫面外，使用者看到的只是原地的一片灰（image9 回報的「沒有東西跑出來」）。
-    focusMatches();
+// --- 詳情面板的視圖堆疊（2026-08-20）---
+//
+// 面板不再是一張把所有東西攤平的卡片：點 `#關鍵字` 或「骰子覺醒」那一列，會在**同一張
+// 卡片裡**推出下一頁（左滑），左上角出現返回鍵。之所以不用浮動彈出層：彈出層要自己算
+// 位置、還要防超出畫面，而手機版的面板本來就是貼著螢幕底的抽屜，「貼著某個字彈出去」
+// 幾乎沒有可用空間。同一張卡片換頁則位置完全不變，巢狀關鍵字也順著同一個機制解決。
+//
+// 事件全部用委派掛在 #detail 上：renderDetail() 每次都整段重寫 innerHTML，掛在按鈕上的
+// 監聽器下一次重畫就沒了；#detail 這個容器元素本身不會被換掉。
+type DetailView =
+  | { kind: 'node'; id: string }
+  | { kind: 'term'; term: string }
+  | { kind: 'awakening'; id: string };
+
+interface StackEntry {
+  view: DetailView;
+  /** 離開這一層時面板捲到哪裡；返回時要捲回去，不是跳回頂端。 */
+  scrollTop: number;
+}
+
+/** 堆疊深度存在 history.state 的這個鍵下，讓系統／瀏覽器的上一頁等同卡片的返回鍵。 */
+const HISTORY_DEPTH_KEY = 'rd2DetailDepth';
+
+/**
+ * 換頁動畫長度。**從 CSS 的 `--slide-ms` 讀**，不在這裡寫死第二份：JS 只負責在動畫結束後
+ * 把 inline style 清乾淨，兩邊數字一旦漂開，收尾會在動畫還沒跑完就發生，看起來像被切斷。
+ * 取不到值（單元測試的 linkedom 沒有 getComputedStyle）時走 fallback，那條路本來就不做動畫。
+ */
+const SLIDE_MS = (() => {
+  if (typeof getComputedStyle !== 'function' || typeof document === 'undefined') return 280;
+  const raw = getComputedStyle(document.documentElement).getPropertyValue('--slide-ms').trim();
+  const ms = raw.endsWith('ms') ? parseFloat(raw) : raw.endsWith('s') ? parseFloat(raw) * 1000 : NaN;
+  return Number.isFinite(ms) && ms > 0 ? ms : 280;
+})();
+
+const canUseHistory = typeof history !== 'undefined' && typeof history.pushState === 'function';
+/**
+ * 動畫只在真的有瀏覽器、而且使用者沒有要求減少動態時才做。
+ * 單元測試跑在 linkedom 下（沒有 requestAnimationFrame），會走瞬間切換那條路——
+ * 那正好也是 `prefers-reduced-motion: reduce` 要的行為，兩邊共用同一段程式。
+ */
+function canAnimate(): boolean {
+  return typeof requestAnimationFrame === 'function'
+    && !(typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches);
+}
+
+/**
+ * 換頁之後把焦點移進新視圖。
+ *
+ * 不是可有可無的無障礙裝飾：剛按下的那顆按鈕會隨著舊視圖一起 `display: none`，焦點於是
+ * 掉回 `<body>`——Esc 收不到、Tab 從頭開始、螢幕閱讀器也不知道畫面換了一頁。
+ */
+function focusView(el: HTMLElement): void {
+  if (typeof el.focus === 'function') el.focus({ preventScroll: true });
+}
+
+function stackEl(): HTMLElement | null {
+  return panel.querySelector('.stack');
+}
+/**
+ * 目前最上層的視圖元素。
+ *
+ * 用 `viewStack` 的長度去索引，**不是**「最後一個沒有 hidden 的」：換頁動畫進行中兩張視圖
+ * 都還沒被收起來，用可見性去猜會在動畫中途拿到上一張，連續兩次返回（例如系統上一頁一次
+ * 退兩層）就會對同一對元素跑兩遍動畫，最後留下一個空面板。
+ */
+function topViewEl(): HTMLElement | null {
+  const views = panel.querySelectorAll<HTMLElement>('.view');
+  return views[viewStack.length - 1] ?? null;
+}
+
+function viewHtml(view: DetailView): string {
+  if (view.kind === 'term') return termViewHtml(view.term, data.meta.glossary);
+  const node = byId.get(view.id);
+  if (!node) return '';
+  return view.kind === 'awakening'
+    ? awakeningViewHtml(node, data.meta.glossary)
+    : nodeViewHtml(node, selectionFor(view.id), data.meta.glossary, data.meta.upgradeCostTable);
+}
+
+/**
+ * 兩張視圖之間的左右滑動。
+ *
+ * 高度也要一起動：關鍵字那一頁通常比節點頁短很多，只滑不動高度的話，卡片會在動畫結束的
+ * 那一瞬間「啪」地縮一大截。滑動期間兩張都是絕對定位（`.sliding`），`.stack` 帶著明確
+ * 高度與 `overflow: hidden` 把滑出畫面的那張裁掉；結束後高度還原成 auto、留下的那張回到
+ * 正常流程——平常沒有動畫時 `.stack` 就是一個普通的區塊，不影響 positionPanel() 量高度。
+ */
+/** 中止進行中的換頁動畫：不跑收尾（元素即將被整批替換），只把掛在 `#detail` 上的狀態清掉。 */
+function abortSlide(): void {
+  if (slideTimer !== null) {
+    clearTimeout(slideTimer);
+    slideTimer = null;
+  }
+  slideFinish = null;
+  panel.classList.remove('panel-sliding');
+}
+
+function finishSlideNow(): void {
+  if (slideTimer !== null) {
+    clearTimeout(slideTimer);
+    slideTimer = null;
+  }
+  const f = slideFinish;
+  slideFinish = null;
+  f?.();
+}
+
+function slide(fromEl: HTMLElement, toEl: HTMLElement, dir: 'forward' | 'back', done: () => void): void {
+  const stack = stackEl();
+  if (!stack || !canAnimate()) {
+    done();
+    return;
+  }
+  // ⚠️ 量起始高度之前，新視圖必須先脫離正常流程。兩張都在流程裡時 `.stack` 是兩張加起來，
+  // 動畫就會從那個高度開始收——卡片先暴衝到 565px 再一路縮回 198px（實測值）。
+  // 這裡是唯一負責掛 `.sliding` 的地方，呼叫端不必自己先掛（E2E 的 Z4 守著這條）。
+  toEl.classList.add('sliding');
+  const fromH = stack.offsetHeight;
+
+  // 終點要量兩個高度，而且**單位不同、不能混用**：
+  //   toH        ＝ `.stack` 的高度，動畫是在它身上跑的。
+  //   toPanelH   ＝ 整張卡片的高度（多了 padding 與框線，而且已經被 max-height 夾過），
+  //                positionPanel() 要的是這一個。
+  // 把 toH 直接餵給 positionPanel 會差一個 padding（實測 164 vs 197.7），
+  // top 就跟著偏一半、卡片在動畫途中往下漂 16.9px——看起來就是「縮的時候歪掉」。
+  fromEl.classList.add('sliding');
+  toEl.classList.remove('sliding');
+  const toH = stack.offsetHeight || fromH;
+  const toPanelH = panel.offsetHeight;
+  toEl.classList.add('sliding');
+
+  const enter = dir === 'forward' ? 100 : -100;
+  const exit = dir === 'forward' ? -30 : 30;
+
+  stack.classList.add('animating');
+  // top 的 transition 只在換頁期間存在（拖曳畫布時卡片是每幀重寫 top，有 transition 會拖尾）
+  panel.classList.add('panel-sliding');
+  stack.style.height = `${fromH}px`;
+  toEl.style.transform = `translateX(${enter}%)`;
+  toEl.style.opacity = '0';
+
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      stack.style.height = `${toH}px`;
+      // 用**終點高度**重算位置：top 與 height 同時跑完，卡片的垂直中心才固定不動。
+      // 少了這一行，卡片只會從下緣往上收；而在動畫結束後才重新對齊，就是原本那個「跳一下」。
+      positionPanel({ assumeHeight: toPanelH });
+      for (const el of [fromEl, toEl]) el.classList.add('slide-anim');
+      fromEl.style.transform = `translateX(${exit}%)`;
+      fromEl.style.opacity = '0';
+      toEl.style.transform = 'translateX(0)';
+      toEl.style.opacity = '1';
+    });
+  });
+
+  // 用 setTimeout 而不是 transitionend：transitionend 在元素被 display:none、動畫被中斷、
+  // 或分頁切到背景時都可能不觸發，而這個 callback 負責把 .sliding／inline style 清乾淨——
+  // 沒收尾的話卡片會永遠停在絕對定位＋固定高度的中間狀態。
+  slideFinish = () => {
+    stack.classList.remove('animating');
+    panel.classList.remove('panel-sliding');
+    stack.style.height = '';
+    for (const el of [fromEl, toEl]) {
+      el.classList.remove('sliding', 'slide-anim');
+      el.style.transform = '';
+      el.style.opacity = '';
+    }
+    done();
+  };
+  slideTimer = setTimeout(finishSlideNow, SLIDE_MS + 20);
+}
+
+function pushView(view: DetailView): void {
+  // 先把上一段動畫收乾淨——而且要在「決定哪張是 from、哪張是 to」之前。收尾動作會把上一段的
+  // fromEl 設成 hidden，晚一步跑就會把這一段剛要顯示的那張反手藏起來，畫面留下一個空面板
+  // （實測：連續兩次換頁時必現）。
+  finishSlideNow();
+  const stack = stackEl();
+  const fromEl = topViewEl();
+  if (!stack || !fromEl) return;
+  const html = viewHtml(view);
+  if (!html) return;
+
+  viewStack[viewStack.length - 1]!.scrollTop = panel.scrollTop;
+  stack.insertAdjacentHTML('beforeend', html);
+  const toEl = stack.lastElementChild as HTMLElement;
+  viewStack.push({ view, scrollTop: 0 });
+  if (canUseHistory) history.pushState({ [HISTORY_DEPTH_KEY]: viewStack.length - 1 }, '', location.href);
+
+  slide(fromEl, toEl, 'forward', () => {
+    fromEl.hidden = true;
+    panel.scrollTop = 0;
+    focusView(toEl);
+    // keepTop：換頁不是「換一張卡片」，是同一張卡片換內容——它不該因為變矮就重新對齊節點
+    // 中心而跳一下（實測推入詞彙頁時位移 6.3px，高度落差更大時更明顯）。
+    schedulePositionPanel();
   });
 }
+
+/** 真正把最上層那張拿掉。返回鍵與系統上一頁都收斂到這裡（前者透過 history.back()）。 */
+function popView(): void {
+  finishSlideNow();   // 同 pushView：收尾必須在取 fromEl／toEl 之前
+  if (viewStack.length <= 1) return;
+  const stack = stackEl();
+  const fromEl = topViewEl();
+  if (!stack || !fromEl) return;
+  const toEl = fromEl.previousElementSibling as HTMLElement | null;
+  if (!toEl) return;
+
+  viewStack.pop();
+  toEl.hidden = false;
+  slide(fromEl, toEl, 'back', () => {
+    fromEl.remove();
+    panel.scrollTop = viewStack[viewStack.length - 1]?.scrollTop ?? 0;
+    focusView(toEl);
+    schedulePositionPanel();
+  });
+}
+
+/** 把堆疊收到指定深度（0 ＝ 只剩根視圖）。深度比現在還深時什麼都不做——回不去的頁面不重建。 */
+function syncStackDepth(depth: number): void {
+  while (viewStack.length - 1 > depth) popView();
+}
+
+function goBack(): void {
+  if (viewStack.length <= 1) return;
+  // 交給 history：返回鍵與系統上一頁走同一條路，堆疊與瀏覽器歷史不會各走各的。
+  if (canUseHistory && typeof history.back === 'function') history.back();
+  else popView();
+}
+
+/**
+ * 把推進去的歷史紀錄退回來，**退完之後**才做接下來的事。
+ *
+ * ⚠️ 順序不能反過來：`history.go()` 是非同步的，而每一筆歷史紀錄都記著它被推入時的網址。
+ * 先改網址（例如按「搜尋 #破滅」會寫 `?q=破滅`）再退，退回去的那一筆會把網址還原成推入前
+ * 的樣子，搜尋條件就這樣被安靜地吃掉——實測就是這樣紅的。
+ *
+ * 沒有歷史紀錄可退（或環境沒有 history）時直接執行，行為一致。
+ */
+function afterHistoryUnwind(run: () => void, depthOverride?: number): void {
+  const depth = depthOverride ?? viewStack.length - 1;
+  if (depth <= 0 || typeof history === 'undefined' || typeof history.go !== 'function' || typeof window === 'undefined') {
+    run();
+    return;
+  }
+  let done = false;
+  const finish = () => {
+    if (done) return;
+    done = true;
+    window.removeEventListener('popstate', finish);
+    run();
+  };
+  window.addEventListener('popstate', finish);
+  // 保險絲：popstate 沒有規格保證一定會來（例如紀錄被別的東西動過）。少了這一段，
+  // 「關閉」或「搜尋」會整個不執行——比多退一步歷史還糟。
+  setTimeout(finish, 300);
+  history.go(-depth);
+}
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('popstate', () => {
+    const raw = (history.state as Record<string, unknown> | null)?.[HISTORY_DEPTH_KEY];
+    syncStackDepth(typeof raw === 'number' ? raw : 0);
+  });
+}
+
+panel.addEventListener('click', e => {
+  const target = e.target as Element;
+  const back = target.closest?.('[data-detail-back]');
+  if (back) { goBack(); return; }
+  const close = target.closest?.('[data-detail-close]');
+  if (close) { afterHistoryUnwind(() => select(null)); return; }
+  const awakening = target.closest?.('[data-detail-awakening]');
+  if (awakening && currentSelected) { pushView({ kind: 'awakening', id: currentSelected }); return; }
+  const searchBtn = target.closest?.('[data-detail-search]');
+  if (searchBtn) {
+    const term = searchBtn.getAttribute('data-detail-search') ?? '';
+    if (!term) return;
+    afterHistoryUnwind(() => {
+      searchEl.value = term;
+      filterState.query = term;
+      applyFilter();
+      // 「給我看有這個效果的節點」——不把鏡頭帶過去的話，命中的節點可能在畫面外，
+      // 使用者看到的只是原地的一片灰（image9 回報的「沒有東西跑出來」）。
+      focusMatches();
+    });
+    return;
+  }
+  const kwEl = target.closest?.('.kw');
+  if (kwEl) {
+    const term = kwEl.getAttribute('data-term') ?? '';
+    if (term) pushView({ kind: 'term', term });
+  }
+});
+
+// Esc：有堆疊時退一層，回到根視圖才關面板（跟左上角的 ← 一致）。掛在 panel 上而不是
+// window：焦點在畫布或搜尋框時的 Esc 各有各的處理（見那兩處），不該被這裡攔走。
+panel.addEventListener('keydown', e => {
+  if (e.key !== 'Escape') return;
+  e.stopPropagation();
+  if (viewStack.length > 1) goBack();
+  else select(null);
+});
+
+// 焦點不在卡片上時的後備（例如使用者用滑鼠點完就把游標移開、或焦點被別處搶走）：
+// 只在「面板開著而且有堆疊」時才攔 Esc，其餘情況留給畫布與搜尋框各自的處理。
+// 上面那個 handler 會 stopPropagation，所以焦點在卡片內時這裡不會重複收到。
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Escape' || panel.hidden || viewStack.length <= 1) return;
+  goBack();
+});
 
 // 還原網址帶入的搜尋字串／勾選狀態，讓畫面初始值跟網址一致（對應 brief Step 6 的手動
 // 驗收項目：開 /tree?node=1002&branch=nature&q=冰凍，節點被選取、篩選框已勾選、搜尋框

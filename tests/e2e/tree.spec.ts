@@ -736,6 +736,14 @@ test('K. 手機版詳情面板的重置警告不被底部分支 chip 蓋住（sp
   await page.goto('/tree?node=1001');
   // renderDetail()（NodeDetail.ts）固定把「骰子樹重置需要初期化券…」這段警告放在 #detail
   // 內容的最後一段，用文字內容鎖定它，不是靠結構順序猜。
+  // 先驗「面板方框」本身：不管內容多長、使用者捲到哪裡，#detail 的可視範圍都不該伸進
+  // chip 列。2026-08-19 面板變長（關鍵字解釋／骰子覺醒／練滿花費）時就是先在這裡破的——
+  // 舊做法靠 padding-bottom 把最後一段推上來，只有「已經捲到底」才成立，而預設 scrollTop=0。
+  const panelBox = await page.locator('#detail').boundingBox();
+  const chipsTop = (await page.locator('#branch-chips').boundingBox())!.y;
+  if (!panelBox) throw new Error('缺少 bounding box');
+  expect(panelBox.y + panelBox.height).toBeLessThanOrEqual(chipsTop + 1);
+
   const warn = page.locator('#detail .note', { hasText: '初期化券' });
   await warn.scrollIntoViewIfNeeded();
   const warnBox = await warn.boundingBox();
@@ -835,21 +843,37 @@ test('N. 詳情卡片貼在被選節點旁邊，不擋工具列，畫布平移�
   expect(Math.abs((p2.x - n2.x) - (p1.x - n1.x))).toBeLessThan(4); // 與節點的相對位置維持不變
 });
 
-test('O. 搜尋命中時鏡頭帶到結果、狀態列說明命中幾個、清除鈕能回到原狀；關鍵字目前不可點', async ({ page }) => {
+/**
+ * 目前這一層視圖的標題。
+ *
+ * 一定要 `.last()`：換頁動畫進行中兩張視圖都還在 DOM 裡、都還沒 hidden（舊的那張要等
+ * 動畫結束才收起來），不取最後一個就會撞上 strict mode violation 或讀到上一頁的標題。
+ * DOM 順序就是堆疊順序，最後一個永遠是最上層——跟 tree-canvas.ts 的 topViewEl() 同一套判定。
+ */
+function topView(page: Page) {
+  return page.locator('#detail .view:not([hidden])').last();
+}
+function topViewTitle(page: Page) {
+  return topView(page).locator('h2');
+}
+
+test('O. 搜尋命中時鏡頭帶到結果、狀態列說明命中幾個、清除鈕能回到原狀', async ({ page }) => {
   // 這條守的是 image9 回報的死路：搜尋只命中兩三個節點時，畫面上是 236 個淡掉的節點加 243
   // 條淡掉的邊，數量壓過那幾個命中的目標，看起來就像「什麼都沒發生」；而 ?q= 不會因為點
   // 空白處而清掉（那只清 ?node=），使用者會覺得畫面卡住了、也找不到回去的路。
   await page.goto('/tree?node=4008'); // 陰陽骰子，描述裡有 #陰陽 關鍵字
   await expect(page.locator('#filter-status')).toBeHidden(); // 沒有篩選時整條不出現
 
-  // 關鍵字點擊搜尋目前由 src/lib/flags.ts 的 FEATURES.keywordSearch 停用：點下去不該有反應，
-  // 也不該長得像可以點。開回來時這一段會紅，把它換成「點了就等同下面那段搜尋流程」即可。
-  const kw = page.locator('#detail .kw').first();
+  // 點關鍵字是「這個詞是什麼意思」，不是「幫我搜尋」——它推出詞彙頁，網址不該多出 ?q=。
+  // 搜尋是詞彙頁上另外一顆按鈕（測試 Z 驗那條路）。
+  const kw = topView(page).locator('.kw').first();
   await expect(kw).toBeVisible();
-  await expect(page.locator('#detail')).not.toHaveClass(/kw-clickable/);
   await kw.click();
+  await expect(topViewTitle(page)).toHaveText('#陰陽');
   await expect(page.locator('#filter-status')).toBeHidden();
   expect(new URL(page.url()).searchParams.get('q')).toBeNull();
+  await topView(page).locator('[data-detail-back]').click();
+  await expect(topViewTitle(page)).toHaveText('陰陽骰子');
 
   // 同一套「帶我去看結果」的流程，改從搜尋框走：打字＋Enter。
   const before = await page.locator('#viewport').getAttribute('transform');
@@ -978,4 +1002,240 @@ test('T. 首頁的版本資訊全部來自資料正本，不是寫死在頁面�
   expect(text).toContain(`遊戲版本v${meta.gameVersion}`);
   expect(text).toContain(`資料版本${meta.gameBundle}`);
   expect(text).toContain(meta.updated);
+});
+
+test('Z. 詳情面板的視圖堆疊：關鍵字／覺醒換頁、返回鍵、系統上一頁、Esc、✕', async ({ page }) => {
+  // 這一條守的是「同一張卡片換頁」整套互動（2026-08-20 改版）。單元測試跑在 linkedom 下，
+  // 沒有 Pointer Capture、沒有真的 history、也沒有 CSS——「換頁之後焦點在哪」「按上一頁會
+  // 不會真的退一層」這幾件事只有真瀏覽器驗得到，而它們正是這個設計最容易壞的地方
+  // （實作時第一版就是焦點掉回 <body>、Esc 完全收不到）。
+  const top = topViewTitle(page);
+  await page.goto('/tree?node=5004'); // 破滅骰子：描述有 #破滅，#破滅 的解釋裡又有兩個詞
+  await expect(top).toHaveText('破滅骰子');
+  await expect(topView(page).locator('[data-detail-back]')).toHaveCount(0); // 根視圖沒有返回鍵
+  await expect(topView(page).locator('[data-detail-close]')).toBeVisible();
+  // 根視圖沒有返回鍵時，標題不該被一條空的欄軌道往右推——固定寬度的欄會留下 36px 的縮排，
+  // 標題跟底下的內文對不齊，看起來就是憑空多一格空白（人工回報，2026-08-20）。
+  const alignedLeft = () => page.evaluate(() => {
+    const view = document.querySelector('#detail .view:not([hidden])')!;
+    const h2 = view.querySelector('h2')!.getBoundingClientRect().left;
+    const body = view.querySelector('.meta')!.getBoundingClientRect().left;
+    return +(h2 - body).toFixed(1);
+  });
+  expect(await alignedLeft()).toBe(0);
+
+  // 1) 點關鍵字 → 推出詞彙頁
+  await topView(page).locator('.kw').first().click();
+  await expect(top).toHaveText('#破滅');
+  // 焦點要落進新的一頁。剛按下的那顆按鈕會跟著舊視圖一起 display:none，焦點於是掉回
+  // <body>——Tab 從頭開始、螢幕閱讀器不知道換了一頁。實作第一版就是這樣壞的。
+  // 比對的是「焦點所在的那張視圖的標題」，不是「焦點有沒有在某張視圖裡」——後者在動畫
+  // 進行中會被剛按下的那顆按鈕（還在舊視圖裡、還沒 hidden）矇混過去，永遠是綠的。
+  await expect
+    .poll(() => page.evaluate(() =>
+      document.activeElement?.closest('#detail .view')?.querySelector('h2')?.textContent ?? null))
+    .toBe('#破滅');
+
+  // 2) 詞彙頁裡的巢狀關鍵字再推一層（取代舊的常駐解釋清單）
+  await topView(page).locator('.kw', { hasText: '#菁英怪物' }).click();
+  await expect(top).toHaveText('#菁英怪物');
+
+  // 3) 系統／瀏覽器上一頁＝卡片的返回鍵（A1）
+  await page.goBack();
+  await expect(top).toHaveText('#破滅');
+
+  // 4) 返回鍵退回根視圖
+  await topView(page).locator('[data-detail-back]').click();
+  await expect(top).toHaveText('破滅骰子');
+  await expect(topView(page).locator('[data-detail-back]')).toHaveCount(0);
+
+  // 5) 覺醒入口推出覺醒頁；Esc 退一層（C1）
+  await topView(page).locator('.awakening-link').click();
+  await expect(top).toHaveText('骰子覺醒');
+  await page.keyboard.press('Escape');
+  await expect(top).toHaveText('破滅骰子');
+
+  // 6) 換一顆節點：堆疊重設，不會留著上一顆的詞彙頁
+  await topView(page).locator('.kw').first().click();
+  await expect(top).toHaveText('#破滅');
+  // 先縮到看得見整棵樹再點——手機版一開始的鏡頭只框住 5004 附近，目標節點在畫面外，
+  // Playwright 會一直等它進視窗然後逾時（那是測試的取景問題，不是功能壞掉）。
+  await page.locator('#tree').focus();
+  for (let i = 0; i < 6; i++) await page.keyboard.press('-');
+  await page.locator('g.node[data-id="5002"]').click();
+  await expect(top).toHaveText('恐懼骰子');
+  await expect(page.locator('#detail .view')).toHaveCount(1);
+
+  // 7) ✕ 關掉整個面板；關掉之後按上一頁不該把卡片叫回來
+  await topView(page).locator('.kw').first().click();
+  await expect(top).toHaveText('#僵硬');
+  await topView(page).locator('[data-detail-close]').click();
+  await expect(page.locator('#detail')).toBeHidden();
+  await page.goBack();
+  await expect(page.locator('#detail')).toBeHidden();
+});
+
+test('Z3. 在詞彙頁改篩選會收回節點頁，而且歷史紀錄也跟著退——上一頁不會被吃掉', async ({ page }) => {
+  const depth = () => page.evaluate(() => (history.state as { rd2DetailDepth?: number } | null)?.rd2DetailDepth ?? 0);
+  await page.goto('/tree?node=5004');
+  await topView(page).locator('.kw').first().click();
+  await expect(topViewTitle(page)).toHaveText('#破滅');
+  expect(await depth()).toBe(1);
+
+  // 改搜尋條件 → 面板整段重畫回節點頁。堆疊回到根視圖，歷史紀錄也要跟著退，
+  // 否則接下來按上一頁會什麼事都沒發生（瀏覽器確實退了一步，但那一步已經沒有對應的視圖）。
+  await page.locator('#search').fill('骰子');
+  await expect(topViewTitle(page)).toHaveText('破滅骰子');
+  await expect.poll(depth).toBe(0);
+  // ⚠️ 網址也要驗，不能只驗 depth。`history.go()` 是非同步的，而每筆紀錄記著推入時的網址：
+  // 退歷史之後沒有重寫一次網址的話，剛打的 `?q=` 會被還原掉——而 depth 照樣是 0，全綠。
+  await expect.poll(() => new URL(page.url()).searchParams.get('q')).toBe('骰子');
+});
+
+test('Z5. 在詞彙頁換一顆節點：面板、網址、動畫狀態三者都要跟上', async ({ page }) => {
+  await page.goto('/tree?node=5004');
+  // 先縮小讓目標節點進到畫面內（預設取景只框住 5004 附近）
+  await page.locator('#tree').focus();
+  for (let i = 0; i < 6; i++) await page.keyboard.press('-');
+  await page.waitForTimeout(300);
+
+  await topView(page).locator('.kw').first().click();
+  await expect(topViewTitle(page)).toHaveText('#破滅');
+
+  // 刻意不等動畫跑完就換節點，同時驗兩件事
+  await page.locator('g.node[data-id="5002"]').click();
+  // (1) `panel-sliding` 只該存在於換頁動畫期間。整個 .stack 已經被 renderDetail() 換掉了，
+  //     還留著的話接下來那 280ms 內，卡片跟著畫布平移的每一幀重寫 top 都會變成拖尾。
+  //     ⚠️ 這裡要**當下讀一次**、不能用會自動重試的 `expect(locator).not.toHaveClass()`：
+  //     殘留的 class 會在動畫計時器到期（約 300ms）時自己消失，重試型斷言等一下就變綠了。
+  expect(await page.locator('#detail').getAttribute('class') ?? '').not.toContain('panel-sliding');
+  await expect(topViewTitle(page)).toHaveText('恐懼骰子');
+  await expect(page.locator('#detail .view')).toHaveCount(1);
+  // (2) 網址要跟著換。不跟的話面板顯示新節點、重整卻回到舊節點。
+  await expect.poll(() => new URL(page.url()).searchParams.get('node')).toBe('5002');
+});
+
+test('Z6. 篩選抽屜開著時，一次 Esc 只關抽屜，不會順便退出詞彙頁', async ({ page }) => {
+  // 兩個 Esc 監聽器都掛在 document 上，抽屜那個先跑並移除 .open——後面那個用 class 判斷
+  // 已經來不及，於是一次按鍵做了兩件事（實測 500×800 必現）。抽屜要 stopImmediatePropagation。
+  await page.setViewportSize({ width: 500, height: 800 });
+  await page.goto('/tree?node=5004');
+  await topView(page).locator('.kw').first().click();
+  await expect(topViewTitle(page)).toHaveText('#破滅');
+
+  await page.locator('#filters-toggle').click();
+  await expect(page.locator('#filters')).toHaveClass(/open/);
+
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#filters')).not.toHaveClass(/open/);
+  await expect(topViewTitle(page)).toHaveText('#破滅');   // 詞彙頁不該被一起關掉
+
+  // 抽屜關了之後，Esc 才輪到詳情面板
+  await page.keyboard.press('Escape');
+  await expect(topViewTitle(page)).toHaveText('破滅骰子');
+});
+
+test('Z2. 詞彙頁的「搜尋 #X」才會真的搜尋，而且會退回節點頁（D1）', async ({ page }) => {
+  await page.goto('/tree?node=5004');
+  await topView(page).locator('.kw').first().click();
+  await expect(topViewTitle(page)).toHaveText('#破滅');
+
+  await topView(page).locator('[data-detail-search]').click();
+  await expect(page.locator('#search')).toHaveValue('破滅');
+  await expect(page.locator('#filter-status')).toBeVisible();
+  await expect(topViewTitle(page)).toHaveText('破滅骰子');
+  expect(new URL(page.url()).searchParams.get('q')).toBe('破滅');
+});
+
+test('Z4. 卡片換頁的過渡：高度單調、垂直中心不漂、不反向', async ({ page }) => {
+  // 換頁時卡片會抖（2026-08-20 人工回報）。四個獨立原因，全部是量錯東西：
+  //   1. 量起始高度時新視圖還在正常流程 → `.stack` 是兩張加起來，先暴衝到 565px 再縮回。
+  //   2. `.animating` 才加 `overflow: hidden` → 建立 BFC 改變邊界外距收合，class 一掛上
+  //      高度就自己跳 12.4px，觸發一次多餘的 transition，真正的動畫開始前先抖一下。
+  //   3. 只動 height 不動 top → 卡片是「往上收」不是「上下往中間收」。
+  //   4. 把 `.stack` 的高度餵給 positionPanel（它要的是**整張卡片**的高度，多一層 padding）
+  //      → top 算偏一半，動畫途中卡片往下漂 16.9px。
+  //
+  // ⚠️ 取樣一定要在頁面內用 rAF 做，不能一次 evaluate 量一格：往返一趟就 10–20ms，
+  //    這些 10–30px 的瞬間偏移根本落不進取樣點，測試會是假綠的（實測過）。
+  async function trace(click: () => Promise<void>) {
+    await page.evaluate(() => {
+      const el = document.getElementById('detail')!;
+      const w = window as unknown as { __s: { top: number; h: number; c: number }[] };
+      w.__s = [];
+      const t0 = performance.now();
+      const tick = () => {
+        const r = el.getBoundingClientRect();
+        w.__s.push({ top: +r.top.toFixed(1), h: +r.height.toFixed(1), c: +(r.top + r.height / 2).toFixed(1) });
+        if (performance.now() - t0 < 900) requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    });
+    await click();
+    await page.waitForTimeout(1000);
+    const samples = await page.evaluate(() =>
+      (window as unknown as { __s: { top: number; h: number; c: number }[] }).__s);
+    expect(samples.length).toBeGreaterThan(20);   // rAF 取樣真的有跑
+    return samples;
+  }
+
+  /** 高度必須逐格朝同一個方向走，而且不得越過頭尾的範圍。 */
+  function assertSmoothHeight(samples: { h: number }[]) {
+    const hs = samples.map(s => s.h);
+    const first = hs[0]!;
+    const last = hs[hs.length - 1]!;
+    const growing = last > first;
+    for (let i = 0; i < hs.length; i++) {
+      const h = hs[i]!;
+      expect(h).toBeGreaterThanOrEqual(Math.min(first, last) - 1);
+      expect(h).toBeLessThanOrEqual(Math.max(first, last) + 1);
+      if (i > 0) expect(growing ? h - hs[i - 1]! : hs[i - 1]! - h).toBeGreaterThanOrEqual(-1);
+    }
+  }
+  /** 垂直中心不准來回擺（>0.3px 的反向就是抖）。 */
+  function assertNoCenterReversal(samples: { c: number }[]) {
+    const cs = samples.map(s => s.c);
+    const dir = Math.sign(cs[cs.length - 1]! - cs[0]!);
+    if (dir === 0) return;
+    for (let i = 1; i < cs.length; i++) {
+      const d = cs[i]! - cs[i - 1]!;
+      if (Math.abs(d) > 0.3) expect(Math.sign(d)).toBe(dir);
+    }
+  }
+
+  const top = () => page.locator('#detail .view:not([hidden])').last();
+
+  // (A) 預設取景：節點靠近畫面上緣，卡片被夾在工具列下方。中心一定會移動（卡片變矮之後
+  //     才容得下「對齊節點中心」），但必須是單向的平滑滑行，不能來回抖。
+  await page.goto('/tree?node=5004');
+  const push = await trace(async () => { await top().locator('.kw').first().click(); });
+  expect(push[push.length - 1]!.h).toBeLessThan(push[0]!.h);
+  assertSmoothHeight(push);
+  assertNoCenterReversal(push);
+
+  const pop = await trace(async () => { await top().locator('[data-detail-back]').click(); });
+  expect(pop[pop.length - 1]!.h).toBeGreaterThan(pop[0]!.h);
+  assertSmoothHeight(pop);
+  assertNoCenterReversal(pop);
+
+  // (B) 沒有被夾制時（節點在畫面中段、視窗夠高）：垂直中心必須**完全不動**，
+  //     也就是「上下往中間收」。這才是原因 3 與 4 真正的守門條件——(A) 那組被夾制，
+  //     中心本來就會移動，量不出那兩個 bug。
+  await page.setViewportSize({ width: 1400, height: 1000 });
+  await page.goto('/tree?node=5004');
+  await page.locator('#tree').focus();
+  for (let i = 0; i < 3; i++) await page.keyboard.press('ArrowUp');
+  await page.waitForTimeout(200);
+
+  for (const act of [
+    async () => { await top().locator('.kw').first().click(); },
+    async () => { await top().locator('[data-detail-back]').click(); },
+  ]) {
+    const s = await trace(act);
+    assertSmoothHeight(s);
+    const cs = s.map(x => x.c);
+    expect(Math.max(...cs) - Math.min(...cs)).toBeLessThanOrEqual(1);
+    // 而且 top 真的有跟著動——不然「中心不動」也可能是因為高度根本沒變
+    expect(Math.abs(s[s.length - 1]!.top - s[0]!.top)).toBeGreaterThan(50);
+  }
 });

@@ -1,4 +1,4 @@
-import type { Branch, Element, NodeType } from './types.js';
+import type { Branch, Element, NodeType, PassiveCategory } from './types.js';
 
 const BRANCH_BY_PREFIX: Record<string, Branch> = {
   '1': 'nature', '2': 'engineering', '3': 'magic', '4': 'order', '5': 'chaos',
@@ -9,6 +9,11 @@ const ELEMENT_BY_STROKE: Record<string, Element> = {
 };
 const TYPE_BY_ZH: Record<string, NodeType> = {
   '骰子': 'dice', '骰子符文': 'rune', '玩家被動': 'passive', '支援': 'support',
+};
+
+const CATEGORY_BY_ZH: Record<string, PassiveCategory> = {
+  '系別屬性': 'branch-stat', '全骰屬性': 'global-stat', '系別技能': 'branch-skill',
+  '玩家被動': 'player-passive', '支援強化': 'support-upgrade',
 };
 
 /** 分支由 id 首碼決定；支援節點的分支也跟著 id 首碼走，不是固定的 support。 */
@@ -28,4 +33,10 @@ export function typeOfZh(zh: string): NodeType {
   const t = TYPE_BY_ZH[zh];
   if (!t) throw new Error(`未知的 data-type: ${zh}`);
   return t;
+}
+/** SVG `data-category` 中文對照到站台用的 PassiveCategory。 */
+export function categoryOfZh(zh: string): PassiveCategory {
+  const c = CATEGORY_BY_ZH[zh];
+  if (!c) throw new Error(`未知的 data-category: ${zh}`);
+  return c;
 }
