@@ -1,12 +1,17 @@
-# PR Comment：把 ci.yml 產出的差異摘要貼回 PR。
+# PR Comment：把 CI 算出的資料差異貼回 PR。
 #
 # 為什麼跟 ci.yml 分成兩支、而不是在同一支 workflow 裡直接 `gh pr comment`：
 # `pull_request` 事件在 fork 送出的 PR 上，GitHub 給的 GITHUB_TOKEN 一律是唯讀的
 # （即使這裡宣告 `pull-requests: write` 也會被 GitHub 強制降權），直接呼叫留言 API 會 403。
 #
-# 因此拆成兩段：ci.yml 用 `pull_request` 觸發、唯讀權限，負責產生 diff-summary.md 並上傳成
-# artifact；這支 workflow 改用 `workflow_run` 觸發——在「目標 repo 的情境」下執行（不是 fork
-# 的情境），才拿得到真正有寫入權限的 token，下載上一支 workflow 的 artifact 後再貼留言。
+# 因此拆成兩段：ci.yml 用 `pull_request` 觸發、唯讀權限，負責算出 diff-summary.json 並上傳成
+# artifact；這支改用 `workflow_run` 觸發——在「目標 repo 的情境」下執行（不是 fork 的情境），
+# 才拿得到真正有寫入權限的 token。
+#
+# ⚠️ **信任邊界就在這一支。** 上一段的 artifact 是在 PR 的程式碼底下產生的，fork 想寫什麼都可以
+# （連 tools/diff-summary.ts 本身都是他的）。所以這裡**不接受現成的版面**：只收 JSON 資料，
+# 再用 default branch 上的 tools/render-pr-comment.ts 自己渲染、自己逃逸。那份渲染器 fork 改不到，
+# 而且進得了 tsc 與 vitest（tests/tools/render-pr-comment.test.ts）。
 #
 # ⚠️ `workflow_run` 一律執行 **default branch 上的這份檔案**，不是 PR 分支上的版本。也就是說
 # 這支 workflow 的任何修改都只有在合進 main 之後才生效，在 PR 上驗不到（改壞了也看不出來）。
@@ -16,76 +21,91 @@ on:
     workflows: [CI]
     types: [completed]
 permissions:
+  contents: read
   pull-requests: write
   actions: read
 jobs:
   comment:
-    # 兩個條件缺一不可：
-    # - 觸發來源是 pull_request（不是 push to main）。
-    # - CI 本身是成功的。CI 紅的時候 diff-summary artifact 根本不存在（產生它的步驟排在測試
-    #   後面），這支會因為抓不到 artifact 而失敗——而 workflow_run 的失敗會標在 main 的最新
-    #   commit 上（PR 頁面反而看不到），變成「main 無故長出一個紅叉」。直接不跑最乾淨。
-    if: github.event.workflow_run.event == 'pull_request' && github.event.workflow_run.conclusion == 'success'
+    # 只在觸發來源是 pull_request（不是 push to main）時才動作。
+    #
+    # 這裡刻意**不**看 workflow_run 的整體 conclusion：差異摘要是 verify job 產出的，
+    # e2e 掛掉（含偶發失敗）時 artifact 照樣存在，而「節點 id 消失、分享網址會失效」這種警告
+    # 正是紅燈的 PR 更需要看到的。改成「artifact 抓得到就貼、抓不到就安靜結束」——
+    # verify 自己失敗時本來就不會有 artifact，效果等同原本的守門，但不會誤殺。
+    if: github.event.workflow_run.event == 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+      - name: 取出 default branch 的渲染器
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          # 明講 ref：這支要用的是**受保護分支上**的程式碼，不是 PR 的。
+          ref: ${{ github.event.repository.default_branch }}
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with: { node-version: '24', cache: npm }
+      - run: npm ci --ignore-scripts
+      - name: 下載差異資料
+        id: dl
+        continue-on-error: true
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: diff-summary
+          path: incoming
           run-id: ${{ github.event.workflow_run.id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
-      - uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+      - name: 渲染留言（用 default branch 的程式碼）
+        if: steps.dl.outcome == 'success'
+        run: npx tsx tools/render-pr-comment.ts incoming/diff-summary.json comment.md
+      - name: 貼上或更新留言
+        if: steps.dl.outcome == 'success'
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
         with:
           script: |
             const fs = require('fs');
             const MARKER = '<!-- rd2-diff-summary -->';
             const NO_CHANGE = '<!-- rd2-no-change -->';
-            const MAX_BODY = 60000;
+            const { owner, repo } = context.repo;
 
-            let body = fs.readFileSync('diff-summary.md', 'utf8');
+            const rendered = fs.readFileSync('comment.md', 'utf8');
+            const noChange = rendered.includes(NO_CHANGE);
 
-            // 資料完全沒變（只改前端程式或文件的 PR）就不貼，避免機器人留言洗版。
-            if (body.includes(NO_CHANGE)) {
-              core.info('資料無變動，不貼留言');
-              return;
-            }
-
-            // 內容來自 fork 可控的 artifact，留言 API 有上限（65536 字元），過長會整個 422。
-            if (body.length > MAX_BODY) {
-              body = body.slice(0, MAX_BODY) + '\n\n…摘要過長已截斷，完整內容見 CI 的 diff-summary artifact。';
-            }
+            // 資料沒變動時貼的是這段**固定文字**，不含任何來自輸入的字元。
+            const body = noChange
+              ? `${MARKER}\n## 資料差異摘要\n\n這個 PR 沒有變更資料正本的內容。`
+              : rendered;
 
             // ⚠️ 不能用 context.payload.workflow_run.pull_requests：fork 送來的 PR 在這個欄位
             // 一律是空陣列（GitHub 只在同 repo 的 PR 才填），照抄會讓 fork PR 永遠拿不到留言，
             // 而 CONTRIBUTING §6／§7 明白承諾「fork PR 也會有」。改用 commit 反查。
+            const headSha = context.payload.workflow_run.head_sha;
             const { data: associated } = await github.rest.repos.listPullRequestsAssociatedWithCommit({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              commit_sha: context.payload.workflow_run.head_sha,
+              owner, repo, commit_sha: headSha,
             });
             const open = associated.filter(pr => pr.state === 'open');
-            if (open.length === 0) {
+            // 一個 commit 可能同時掛在多個開啟中的 PR 上（例如堆疊式 PR、或分支被重複使用）。
+            // 優先取 head 真的等於這次 CI 跑的那顆 commit 的；都不符再退回全部開啟中的。
+            const exact = open.filter(pr => pr.head?.sha === headSha);
+            const targets = exact.length > 0 ? exact : open;
+            if (targets.length === 0) {
               core.info('找不到對應的開啟中 PR，跳過');
               return;
             }
-            const issue_number = open[0].number;
 
-            // 找出自己上次貼的那則就地更新；同一個 PR 連推五次不該長出五則一樣的留言。
-            const comments = await github.paginate(github.rest.issues.listComments, {
-              owner: context.repo.owner, repo: context.repo.repo, issue_number, per_page: 100,
-            });
-            const mine = comments.find(c => c.user?.type === 'Bot' && c.body?.includes(MARKER));
+            for (const pr of targets) {
+              const issue_number = pr.number;
+              const comments = await github.paginate(github.rest.issues.listComments, {
+                owner, repo, issue_number, per_page: 100,
+              });
+              const mine = comments.find(c => c.user?.type === 'Bot' && c.body?.includes(MARKER));
 
-            if (mine) {
-              await github.rest.issues.updateComment({
-                owner: context.repo.owner, repo: context.repo.repo,
-                comment_id: mine.id, body,
-              });
-              core.info(`已更新留言 ${mine.id}`);
-            } else {
-              await github.rest.issues.createComment({
-                owner: context.repo.owner, repo: context.repo.repo,
-                issue_number, body,
-              });
-              core.info(`已在 PR #${issue_number} 貼上留言`);
+              if (mine) {
+                // 沒變動時也要更新：改了又改回去的 PR 不該留著一則「刪除 1、id 消失」的過期警告。
+                await github.rest.issues.updateComment({ owner, repo, comment_id: mine.id, body });
+                core.info(`PR #${issue_number}：已更新留言 ${mine.id}`);
+              } else if (noChange) {
+                core.info(`PR #${issue_number}：資料無變動且沒有既有留言，不新增`);
+              } else {
+                await github.rest.issues.createComment({ owner, repo, issue_number, body });
+                core.info(`PR #${issue_number}：已貼上留言`);
+              }
             }

@@ -96,7 +96,8 @@ describe('escapeMarkdown（PR 留言的注入防護）', () => {
   });
 
   it('Markdown 行內語法字元被反斜線逃逸，連結與程式碼區塊不會成形', () => {
-    expect(escapeMarkdown('[看這裡](http://evil.example)')).toBe('\\[看這裡\\](http://evil.example)');
+    // 連結語法被拆掉，網址本體的 `://` 也一併中和——否則 GFM 會把裸網址自動連成可點的連結。
+    expect(escapeMarkdown('[看這裡](http://evil.example)')).toBe('\\[看這裡\\](http:&#47;&#47;evil.example)');
     expect(escapeMarkdown('`rm -rf /`')).toBe('\\`rm -rf /\\`');
     expect(escapeMarkdown('a|b')).toBe('a\\|b');
     expect(escapeMarkdown('*粗*_斜_~刪~')).toBe('\\*粗\\*\\_斜\\_\\~刪\\~');
