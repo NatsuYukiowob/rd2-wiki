@@ -1,13 +1,21 @@
-# CI：資料驗證、單元測試、建置、效能預算、PR 差異摘要，外加獨立的 E2E job。
+# CI：資料驗證、單元測試、建置、效能預算、PR 差異摘要，外加獨立的 E2E job 與部署 job。
 #
 # 這支 workflow 在 `pull_request` 事件上，即使是「別人 fork 出去的 repo 送進來的 PR」也會跑
-# （GitHub 對 fork PR 一律只給唯讀的 GITHUB_TOKEN）。因此這裡只宣告 `contents: read`，
+# （GitHub 對 fork PR 一律只給唯讀的 GITHUB_TOKEN）。因此 verify／e2e 只宣告 `contents: read`，
 # 不做任何需要寫入權限的事（例如貼 PR 留言）——那件事交給另一支由 `workflow_run` 觸發、
 # 在「目標 repo 情境」下執行、擁有寫入權限的 pr-comment.yml，見該檔開頭註解。
 #
-# 兩個 job（verify／e2e）預設平行跑、彼此不 `needs`：資料驗證與單元測試通常幾秒到幾十秒就有
-# 結果，不應該被「安裝瀏覽器＋起站台」拖慢到好幾分鐘後才回報——想快速看到「資料本身有沒有問題」
-# 的人不需要等 E2E 裝完瀏覽器。
+# verify／e2e 預設平行跑、彼此不 `needs`：資料驗證與單元測試通常幾秒到幾十秒就有結果，不應該被
+# 「安裝瀏覽器＋起站台」拖慢到好幾分鐘後才回報——想快速看到「資料本身有沒有問題」的人不需要等
+# E2E 裝完瀏覽器。deploy 則相反，必須等兩者都綠（`needs`），因為它的存在意義就是「CI 綠才上線」。
+#
+# ⚠️ job 的 `name` 一律用 ASCII：main 的 ruleset 把 `verify`／`e2e` 設成 required status checks，
+# 而 required check 是用**名字**綁定的——改名會讓那條規則永遠停在 pending、PR 再也 merge 不了。
+# 要改名就得同時改 ruleset（`gh api repos/NatsuYukiowob/rd2-wiki/rulesets`）。
+#
+# ⚠️ 所有 action 都 pin 到完整 commit SHA（後面註解保留原本的 tag）：repo 的 Actions 設定開了
+# 「Require actions to be pinned to a full-length commit SHA」，寫成 `@v4` 會被 GitHub 直接拒跑。
+# 升級時把 SHA 與註解一起換掉（`gh api repos/<owner>/<repo>/git/ref/tags/<tag>`）。
 name: CI
 on:
   pull_request:
@@ -15,20 +23,35 @@ on:
     branches: [main]
 permissions:
   contents: read
+# 同一個 PR 連續推 commit 時取消舊的跑；main 上不取消，避免把跑到一半的部署砍掉。
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 jobs:
   verify:
-    name: 資料驗證與建置
+    name: verify
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         # fetch-depth 0：下面「產生差異摘要」步驟要用 git worktree 簽出 PR 的 base commit
         # 來跑一次 base 版本的 build:data，沒有完整歷史會找不到那個 commit。
         with: { fetch-depth: 0 }
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with: { node-version: '24', cache: npm }
-      - run: npm ci
+      # --ignore-scripts：fork PR 改得動 package.json 的 lifecycle script，而 `npm ci` 會在
+      # runner 上執行它。這個 repo 的相依套件不需要安裝腳本也能用（sharp 的原生二進位走
+      # optionalDependencies 的預建檔），拿掉它等於關掉「送 PR 就能在 CI 執行任意程式」這條路。
+      - run: npm ci --ignore-scripts
       - name: 資料驗證（規則 0–10，見 CONTRIBUTING.md）
         run: npm run validate
+      - name: 正規化定點檢查
+        # 正本必須是 `npm run normalize` 的定點（跑過等於沒跑）。貢獻者忘了跑 normalize 時，
+        # 這一步會紅並印出差異——不然含 Inkscape 圖層／matrix 的檔案會混進正本，之後每次
+        # 有人跑 normalize 都會冒出一堆與自己無關的雜訊 diff。
+        run: |
+          npm run normalize
+          git diff --exit-code data/dice-tree.svg
       - name: 建置資料與站台
         # npm run build = build:data + astro build；build:data 的 CLI 區塊本身就會檢查
         # tree.json gzip 與 sprite.webp 是否超過效能預算（規則 12），超過會讓這一步直接失敗、
@@ -41,6 +64,8 @@ jobs:
         # ENOENT。package.json 的 `pretest` 已經會在 `npm test` 前自動跑一次
         # `build:data`，這裡的步驟順序是第二層保險（互為保險，其中一層失效另一層還在）。
         run: npm run build
+      - name: 型別檢查
+        run: npm run typecheck
       - name: 單元測試
         run: npm test
       - name: 效能預算（規則 12：對建置產物做獨立覆核，並印出用量／剩餘餘裕）
@@ -60,27 +85,96 @@ jobs:
         run: |
           cp src/generated/tree.json /tmp/head.json
           git worktree add /tmp/base ${{ github.event.pull_request.base.sha }}
-          (cd /tmp/base && npm ci && npm run build:data && cp src/generated/tree.json /tmp/base.json)
+          (cd /tmp/base && npm ci --ignore-scripts && npm run build:data && cp src/generated/tree.json /tmp/base.json)
           npx tsx tools/diff-summary.ts /tmp/base.json /tmp/head.json
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: github.event_name == 'pull_request'
         with:
           name: diff-summary
           path: diff-summary.md
 
   e2e:
-    name: 端對端測試
+    name: e2e
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with: { node-version: '24', cache: npm }
-      - run: npm ci
+      - run: npm ci --ignore-scripts
       # E2E 驗證的是「建置後、真實瀏覽器裡」的行為（見 playwright.config.ts 開頭註解），
-      # 所以要先裝瀏覽器本體＋作業系統相依套件。
+      # 所以要先裝瀏覽器本體＋作業系統相依套件。瀏覽器本體約 170MB、每次下載要 20–60 秒，
+      # 用快取省掉；快取的 key 綁 Playwright 的實際版本，升版自然 miss、不會用到舊瀏覽器。
+      - name: 讀取 Playwright 版本
+        id: pw
+        run: echo "version=$(node -p "require('./node_modules/@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+      - name: 快取 Playwright 瀏覽器
+        id: pw-cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ steps.pw.outputs.version }}
       - name: 安裝 Playwright 瀏覽器
+        if: steps.pw-cache.outputs.cache-hit != 'true'
         run: npx playwright install --with-deps chromium
-      - name: 建置站台
-        run: npm run build
-      - name: 端對端測試
+      - name: 安裝瀏覽器系統相依套件
+        # 快取只存得下 ~/.cache/ms-playwright 裡的瀏覽器本體；apt 裝到系統目錄的那些
+        # 共用函式庫不在裡面，快取命中時仍要補這一步，否則瀏覽器起不來。
+        if: steps.pw-cache.outputs.cache-hit == 'true'
+        run: npx playwright install-deps chromium
+      - name: 端對端測試（含建置）
+        # 這裡刻意沒有獨立的「建置站台」步驟：package.json 的 `pree2e` 已經會跑一次
+        # `npm run build`，多加一步等於整包資料與站台建兩次（多花 5–7 秒且兩份產物可能不同步）。
+        # 看到這裡覺得「怎麼沒建置」而想補回來的人，先看這行註解。
         run: npm run e2e
+      - name: 上傳失敗報告
+        # E2E 在 CI 上紅掉時，光看記錄檔很難知道是哪個斷言、畫面長怎樣；Playwright 的
+        # HTML 報告與 trace／截圖都在這兩個目錄裡。
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
+
+  deploy:
+    name: deploy
+    # 只有 main 上的 push 才部署；PR（含 fork PR）不部署，也拿不到下面的 secret。
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [verify, e2e]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with: { node-version: '24', cache: npm }
+      - name: 檢查部署憑證
+        id: creds
+        # secrets 不能用在 job 層的 `if`（GitHub 的 context 限制），所以在這裡判斷：
+        # 憑證還沒設好時整個部署安靜跳過、CI 仍算綠，站台繼續由 Cloudflare 的 Git 整合更新。
+        # 設好之後這裡自動轉成 true，才真正變成「CI 綠才上線」。
+        env:
+          TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          if [ -z "$TOKEN" ] || [ -z "$ACCOUNT" ]; then
+            echo "::warning::CLOUDFLARE_API_TOKEN／CLOUDFLARE_ACCOUNT_ID 未設定，跳過部署"
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+      - run: npm ci --ignore-scripts
+        if: steps.creds.outputs.ready == 'true'
+      - run: npm run build
+        if: steps.creds.outputs.ready == 'true'
+      - name: 部署到 Cloudflare Pages
+        if: steps.creds.outputs.ready == 'true'
+        uses: cloudflare/wrangler-action@9acf94ace14e7dc412b076f2c5c20b8ce93c79cd # v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy dist --project-name=rd2-wiki --branch=main
