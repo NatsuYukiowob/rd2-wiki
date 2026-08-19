@@ -20,10 +20,15 @@ export function splitSvg(svgText: string): SplitResult {
 }
 
 // CLI: npm run split -- <來源檔路徑>
-const SRC = process.argv[2]
-  ?? '/mnt/data/share/Yuki/random dice 2 dice tree/RD2骰子樹_v1.0.1.svg';
-
+//
+// 來源檔是遊戲原圖，**不在版控內**（各自放在自己機器上）。以前這裡有一個指向維護者本機的
+// 預設路徑：對別人來說那只會變成一個看不懂的 ENOENT，而且那條路徑不該出現在公開 repo 裡。
 if (import.meta.url === `file://${process.argv[1]}`) {
+  const SRC = process.argv[2];
+  if (!SRC) {
+    console.error('用法：npm run split -- <遊戲原圖 SVG 的路徑>');
+    process.exit(1);
+  }
   const r = splitSvg(readFileSync(SRC, 'utf8'));
   mkdirSync('data/icons', { recursive: true });
   writeFileSync('data/dice-tree.svg', r.svg);

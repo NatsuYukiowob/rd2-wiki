@@ -10,8 +10,8 @@
 （中央樞紐的合成圖，見下）。由社群發 PR 維護，CI 是唯一防線（維護者不可能逐行 review
 SVG 的 diff）。
 
-**外觀整個來自遊戲內的原圖**：2026-08-18 依 `RD2骰子樹 v1.0.1`（`/mnt/data/share/Yuki/
-random dice 2 dice tree/RD2骰子樹v1.0.1/dice_tree_v1.0.1_fixed.svg`）重做，座標取原圖 ×0.5
+**外觀整個來自遊戲內的原圖**：2026-08-18 依遊戲內的骰子樹畫面 `RD2骰子樹 v1.0.1`
+（`dice_tree_v1.0.1_fixed.svg`，素材不在版控內）重做，座標取原圖 ×0.5
 （原圖節點座標全是 20 的倍數，減半後仍是 10 的倍數），圖示、配色、邊的粗細與顏色也都對過去。
 那份原圖**只有畫面、沒有任何文字資料**（0 個 `<text>` / `<title>` / `data-name`），名稱／
 花費／描述一律留在本正本裡。
@@ -31,7 +31,8 @@ npm run validate    # 資料驗證（規則 0–10 ＋ 13，CI 守門員）
 npm run typecheck   # tsc --noEmit（含 noUnusedLocals，會抓沒用到的 import）
 npm run normalize   # 攤平 Inkscape 的圖層/matrix/相對路徑（貢獻者送 PR 前必跑）
 npm run add-icon    # 新增圖示，自動用內容雜湊命名
-npm run render-nodes # 用 Chromium 從遊戲原圖重新渲染全部節點圖示（遊戲改版才跑，見下）
+npm run render-nodes -- <遊戲原圖路徑>  # 用 Chromium 重畫全部節點圖示（遊戲改版才跑，見下）
+npm run split -- <遊戲原圖路徑>         # 從原圖切出正本與圖示（重建整份資料時才用）
 npm run build:data  # 產出 src/generated/tree.json + public/assets/
 npm run build       # build:data + astro build
 npm test            # 有 pretest 自動跑 build:data
@@ -335,9 +336,14 @@ README 是產品頁形式（banner ＋ 徽章 ＋ `> [!WARNING]` 免責 ＋ 分�
 
 ## 不進版控
 
-`docs/`（規格書、實作計畫、部署步驟、已知問題）**刻意移出版控**，只留本機，
-備份在 `/mnt/data/share/Yuki/rd2-wiki-docs/`。v1 開發歷程（39 commit）在本機
-`feat/v1-dice-tree` 分支，未推遠端。
+`docs/`（規格書、實作計畫、部署步驟、已知問題）**刻意移出版控**，只留維護者本機並另外備份。
+v1 開發歷程（39 commit）在本機 `feat/v1-dice-tree` 分支，未推遠端。
+
+⚠️ **這份 CLAUDE.md 是公開的**（repo 是 public）。寫進來的東西不要帶機器上的絕對路徑、
+主機名稱、內網 IP 或任何憑證——那些屬於維護者自己的筆記，不屬於 repo。
+同理，`tools/split-svg.ts` 與 `tools/render-nodes.ts` 的來源檔**一律由參數傳入、沒有預設值**：
+以前預設指向維護者本機的遊戲原圖，別人跑到只會得到一個看不懂的 ENOENT，而那條路徑也不該
+留在公開 repo 裡。掃描指令：`git ls-files -z | xargs -0 grep -lnE '/mnt/|/home/|內網IP'`。
 
 ## 詳情面板＝視圖堆疊（2026-08-20）
 
@@ -426,7 +432,8 @@ README 是產品頁形式（banner ＋ 徽章 ＋ `> [!WARNING]` 免責 ＋ 分�
 
 ## 已知待辦
 
-見本機 `docs/v1-known-issues.md`（30 個延後的 Minor ＋ 開發期 35 項裁決）。最需要注意的：
+完整清單（30 個延後的 Minor ＋ 開發期 35 項裁決）在未進版控的 `docs/` 裡，見上一節。
+其中最需要注意的三項：
 
 1. ~~節點標籤重疊~~ **已解（2026-08-18）**：畫面上恆常只留骰子（41）與支援（5）的標籤，
    符文（123）與被動（70）改成滑過／鍵盤聚焦／被選進前置鏈時才單獨顯示（純 CSS，見
