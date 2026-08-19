@@ -8,38 +8,97 @@ import type { TreeData } from '../src/lib/types.js';
 export const SUMMARY_MARKER = '<!-- rd2-diff-summary -->';
 
 /**
- * 「資料完全沒變」的識別標記。pr-comment.yml 看到它就不貼留言——只改前端程式或文件的 PR
- * 不該被一則「新增 0｜刪除 0｜修改 0」的機器人留言洗版。
+ * 「資料完全沒變」的識別標記。pr-comment.yml 看到它就把留言收成一句話，
+ * 只改前端程式或文件的 PR 不該被一則「新增 0｜刪除 0｜修改 0」的機器人留言洗版。
  */
 export const NO_CHANGE_MARKER = '<!-- rd2-no-change -->';
+
+/** 清單最多列幾條、單一名稱最多留幾個字。留言長度由**渲染端**決定，不由輸入決定。 */
+const MAX_LIST = 30;
+const MAX_NAME = 100;
+const MAX_ESCAPED = 400;
+
+/**
+ * 送進 PR 留言的結構化資料。這份東西由 `ci.yml` 在 **PR 的程式碼**（fork 改得動）底下算出來，
+ * 所以下游一律當成不可信輸入處理——見 `renderDiffComment`。
+ */
+export interface DiffSummaryData {
+  /** 兩份 tree.json 逐字元相同。 */
+  identical: boolean;
+  /** base 那份的格式跟現在的程式對不起來（欄位被改名／改結構），逐項比較不算數。 */
+  schemaChanged: boolean;
+  nodes: [number, number];
+  edges: [number, number];
+  counts: { added: number; removed: number; changed: number };
+  removedIds: string[];
+  changed: { id: string; name: string }[];
+  cost: {
+    base: { core: number; gold: number };
+    head: { core: number; gold: number };
+  };
+}
 
 /**
  * 逃逸要放進 PR 留言的資料字串（節點名稱、id）。
  *
- * 這些字串的來源是 `data/dice-tree.svg`，而**送 PR 的人改得動它**——留言又是由擁有
- * `pull-requests: write` 的 workflow 貼出去的，等於「fork 可控的內容」直接進到有寫入權限的
- * 情境裡。不逃逸的話，一個叫 `<img src=x onerror=...>` 或 `[看這裡](http://釣魚)` 的節點名稱
- * 就會在 PR 頁面上渲染成 HTML／連結，也可能用 `@someone` 去 ping 無關的人。
+ * 留言是由擁有 `pull-requests: write` 的 workflow 用 repo 自己的 bot 身分貼出去的，而這些字串
+ * 來自 `data/dice-tree.svg`——**送 PR 的人改得動**。不逃逸的話，一個叫
+ * `<img src=x onerror=...>`、`[看這裡](http://釣魚)` 或 `@maintainer` 的節點名稱，就會在 PR 頁面上
+ * 以維護者的機器人名義渲染成 HTML、連結或提及。
  *
- * 作法：`& < >` 轉成 HTML 實體（GitHub 的留言渲染器認得，顯示回原字元但不當標籤）；
- * `@` 轉成 `&#64;`（顯示是 @，但不會觸發提及）；Markdown 的行內語法字元前面加反斜線。
- * 順序不能換：`&` 必須第一個處理，否則會把後面自己插入的 `&lt;` 再逃逸一次。
+ * 處理順序有意義，不要換：
+ * 1. **先收掉換行**。正本的屬性值裡目前有 152 處字面換行（見 CLAUDE.md），linkedom 不會把它們
+ *    正規化成空白 → 名稱能跳出 `- {id} {name}` 那一行，在行首放 `#`、`-`、`>` 注入區塊語法。
+ *    收成空白之後，這些字元只可能出現在行中間、沒有語法意義，也就不必逃逸（名稱才看得懂）。
+ * 2. `& < >` 轉 HTML 實體（`&` 必須第一個，否則會把後面自己插入的實體再逃逸一次）。
+ * 3. `@` → `&#64;`：顯示仍是 @，但不會提及到無關的人。
+ * 4. `://` 與 `www.` 拆掉：GFM 的自動連結比對的是**原始文字**，拆掉就不會生成可點的釣魚連結。
+ * 5. Markdown 行內語法字元加反斜線。
+ * 6. 截長。
  */
 export function escapeMarkdown(s: string): string {
   return s
+    .slice(0, MAX_NAME)
+    .replace(/[\r\n]/g, ' ')
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/@/g, '&#64;')
-    .replace(/([\\`*_[\]|~])/g, '\\$1');
+    .replace(/:\/\//g, ':&#47;&#47;')
+    .replace(/www\./gi, m => `${m.slice(0, 3)}&#46;`)
+    .replace(/([\\`*_[\]|~])/g, '\\$1')
+    .slice(0, MAX_ESCAPED);
+}
+
+/** 這份 tree.json 的形狀還是這支程式認得的樣子嗎。 */
+function looksLikeTree(t: unknown): t is TreeData {
+  const o = t as TreeData | undefined;
+  return !!o && typeof o === 'object'
+    && Array.isArray(o.nodes) && Array.isArray(o.edges)
+    && !!o.meta && typeof o.meta === 'object'
+    && !!o.meta.totalUnlockCost && typeof o.meta.totalUnlockCost === 'object';
 }
 
 /**
- * 比較 base／head 兩份 `tree.json`，產生 PR 摘要用的 Markdown（規則 11：id 變動警告）。
+ * 比較 base／head 兩份 `tree.json`，算出摘要用的結構化資料（規則 11：id 變動警告）。
  *
- * 純函式、不做檔案 I/O，方便單元測試；CLI 區塊負責讀寫檔案與印出結果。
+ * 純函式、不做檔案 I/O。base 那份是用 **base commit 的 `build-data.ts`** 產生的，欄位可能跟現在
+ * 的程式對不起來——所以先驗形狀，對不上就標 `schemaChanged`，而不是讓 `verify` 噴一個看不懂的
+ * TypeError（那會讓 PR 卡在必要檢查上，而記錄檔指向這裡、不是指向真正改了結構的那個 commit）。
  */
-export function buildDiffSummary(base: TreeData, head: TreeData): string {
+export function computeDiff(base: unknown, head: unknown): DiffSummaryData {
+  const empty: DiffSummaryData = {
+    identical: false,
+    schemaChanged: true,
+    nodes: [0, 0],
+    edges: [0, 0],
+    counts: { added: 0, removed: 0, changed: 0 },
+    removedIds: [],
+    changed: [],
+    cost: { base: { core: 0, gold: 0 }, head: { core: 0, gold: 0 } },
+  };
+  if (!looksLikeTree(base) || !looksLikeTree(head)) return empty;
+
   const bIds = new Set(base.nodes.map(n => n.id));
   const hIds = new Set(head.nodes.map(n => n.id));
   const added = [...hIds].filter(i => !bIds.has(i));
@@ -50,24 +109,112 @@ export function buildDiffSummary(base: TreeData, head: TreeData): string {
     return o && JSON.stringify(o) !== JSON.stringify(n);
   });
 
-  // 刻意用「整份 tree.json 逐字元相同」當作沒變動的判準，而不是「上面幾個計數都是 0」：
-  // 這裡只比節點集合與逐節點內容，比不到邊的接法（改接一條前置的摘要與完全沒改一字不差，
-  // 見 review 報告 P3）。用最保守的判準，才不會把「其實有改」誤判成「沒變動」而整則留言消失。
-  const identical = JSON.stringify(base) === JSON.stringify(head);
+  return {
+    // 刻意用「整份 tree.json 逐字元相同」當作沒變動的判準，而不是「上面幾個計數都是 0」：
+    // 這裡只比節點集合與逐節點內容，比不到邊的接法（改接一條前置的摘要與完全沒改一字不差，
+    // 見 review 報告 P3）。用最保守的判準，才不會把「其實有改」誤判成「沒變動」。
+    identical: JSON.stringify(base) === JSON.stringify(head),
+    schemaChanged: false,
+    nodes: [base.nodes.length, head.nodes.length],
+    edges: [base.edges.length, head.edges.length],
+    counts: { added: added.length, removed: removed.length, changed: changed.length },
+    removedIds: removed,
+    changed: changed.map(n => ({ id: n.id, name: n.name })),
+    cost: { base: base.meta.totalUnlockCost, head: head.meta.totalUnlockCost },
+  };
+}
 
-  const lines = [
+/** 只收「真的是非負整數」的值，其餘一律當 0——這些數字是輸入端填的。 */
+function safeInt(v: unknown): number {
+  return typeof v === 'number' && Number.isInteger(v) && v >= 0 && v <= 1e12 ? v : 0;
+}
+
+function safeText(v: unknown): string {
+  return escapeMarkdown(typeof v === 'string' ? v : '');
+}
+
+/** 截成最多 MAX_LIST 條，並回報被截掉幾條。 */
+function clampList<T>(v: unknown): { items: T[]; rest: number } {
+  const arr = Array.isArray(v) ? v : [];
+  return { items: arr.slice(0, MAX_LIST) as T[], rest: Math.max(0, arr.length - MAX_LIST) };
+}
+
+/**
+ * 把差異資料渲染成要貼到 PR 上的 Markdown。
+ *
+ * ⚠️ **這是信任邊界。** 參數型別刻意是 `unknown`：這份 JSON 由 fork PR 的 CI 產生，內容、欄位、
+ * 型別全部是送 PR 的人說了算，連「上游有沒有逃逸過」都不能假設——`computeDiff` 就在他改得動的
+ * 檔案裡，整支刪掉換成 `writeFileSync(...)` 寫任意內容也沒人擋得住。
+ *
+ * 所以留言的安全性完全由這個函式負責：欄位形狀自己驗、數字自己收斂、字串自己逃逸、長度自己夾。
+ * 對應的 workflow（`pr-comment.yml`）會先 checkout **default branch** 再呼叫這裡，fork 改不到這份程式。
+ */
+export function renderDiffComment(raw: unknown): string {
+  const d = raw as Partial<DiffSummaryData> | null | undefined;
+  const shapeOk = !!d && typeof d === 'object' && !Array.isArray(d)
+    && !!d.counts && typeof d.counts === 'object'
+    && Array.isArray(d.nodes) && Array.isArray(d.edges)
+    && !!d.cost && typeof d.cost === 'object'
+    && !!d.cost.base && !!d.cost.head;
+
+  if (!shapeOk) {
+    return [
+      SUMMARY_MARKER,
+      '## 資料差異摘要',
+      '',
+      '⚠️ 這次的差異資料無法解讀（格式不符預期），請直接看 CI 記錄檔。',
+    ].join('\n');
+  }
+
+  const counts = {
+    added: safeInt(d.counts!.added),
+    removed: safeInt(d.counts!.removed),
+    changed: safeInt(d.counts!.changed),
+  };
+  const cost = {
+    base: { core: safeInt(d.cost!.base.core), gold: safeInt(d.cost!.base.gold) },
+    head: { core: safeInt(d.cost!.head.core), gold: safeInt(d.cost!.head.gold) },
+  };
+  const nodes = [safeInt(d.nodes![0]), safeInt(d.nodes![1])];
+  const edges = [safeInt(d.edges![0]), safeInt(d.edges![1])];
+
+  const removed = clampList<string>(d.removedIds);
+  const changed = clampList<{ id: unknown; name: unknown }>(d.changed);
+
+  const removedLine = counts.removed > 0 && removed.items.length > 0
+    ? `\n⚠️ **有節點 id 消失**：${removed.items.map(safeText).join(', ')}`
+      + `${removed.rest > 0 ? ` …還有 ${removed.rest} 個` : ''}（分享網址會失效）`
+    : '';
+
+  const changedBlock = changed.items.length > 0
+    ? '\n<details><summary>修改的節點</summary>\n\n'
+      + changed.items.map(n => `- ${safeText(n.id)} ${safeText(n.name)}`).join('\n')
+      + `${changed.rest > 0 ? `\n- …還有 ${changed.rest} 條` : ''}`
+      + '\n</details>'
+    : '';
+
+  return [
     SUMMARY_MARKER,
-    identical ? NO_CHANGE_MARKER : '',
+    d.identical === true && d.schemaChanged !== true ? NO_CHANGE_MARKER : '',
     '## 資料差異摘要',
-    `- 節點：${base.nodes.length} → ${head.nodes.length}`,
-    `- 邊：${base.edges.length} → ${head.edges.length}`,
-    `- 新增 ${added.length}｜刪除 ${removed.length}｜修改 ${changed.length}`,
-    `- 全樹解鎖成本：核心 ${base.meta.totalUnlockCost.core} → ${head.meta.totalUnlockCost.core}，金幣 ${base.meta.totalUnlockCost.gold.toLocaleString('en-US')} → ${head.meta.totalUnlockCost.gold.toLocaleString('en-US')}`,
-    removed.length > 0 ? `\n⚠️ **有節點 id 消失**：${removed.map(escapeMarkdown).join(', ')}（分享網址會失效）` : '',
-    changed.length > 0 ? `\n<details><summary>修改的節點</summary>\n\n${changed.map(n => `- ${escapeMarkdown(n.id)} ${escapeMarkdown(n.name)}`).join('\n')}\n</details>` : '',
-  ].filter(Boolean);
+    d.schemaChanged === true
+      ? '\n⚠️ **基準資料格式已變更**，這次略過逐項比較——請人工確認這個 PR 對資料的影響。\n'
+      : '',
+    `- 節點：${nodes[0]} → ${nodes[1]}`,
+    `- 邊：${edges[0]} → ${edges[1]}`,
+    `- 新增 ${counts.added}｜刪除 ${counts.removed}｜修改 ${counts.changed}`,
+    `- 全樹解鎖成本：核心 ${cost.base.core} → ${cost.head.core}，金幣 ${cost.base.gold.toLocaleString('en-US')} → ${cost.head.gold.toLocaleString('en-US')}`,
+    removedLine,
+    changedBlock,
+  ].filter(Boolean).join('\n');
+}
 
-  return lines.join('\n');
+/**
+ * 本機／記錄檔用的一站式版本。CI 上不是走這條——CI 走
+ * 「PR 端算出 JSON → default branch 的 render-pr-comment.ts 渲染」，見 `renderDiffComment` 的說明。
+ */
+export function buildDiffSummary(base: TreeData, head: TreeData): string {
+  return renderDiffComment(computeDiff(base, head));
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
@@ -76,9 +223,10 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     console.error('用法: npx tsx tools/diff-summary.ts <base.json> <head.json>');
     process.exit(1);
   }
-  const base: TreeData = JSON.parse(readFileSync(basePath, 'utf8'));
-  const head: TreeData = JSON.parse(readFileSync(headPath, 'utf8'));
-  const summary = buildDiffSummary(base, head);
-  writeFileSync('diff-summary.md', summary);
-  console.log(summary);
+  const base = JSON.parse(readFileSync(basePath, 'utf8'));
+  const head = JSON.parse(readFileSync(headPath, 'utf8'));
+  const data = computeDiff(base, head);
+  // 給 CI 上傳的是**資料**不是版面：留言長什麼樣由 default branch 的渲染器決定。
+  writeFileSync('diff-summary.json', JSON.stringify(data));
+  console.log(renderDiffComment(data));
 }
