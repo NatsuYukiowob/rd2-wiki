@@ -258,7 +258,7 @@ text{font-family:'Noto Sans TC','Microsoft JhengHei',sans-serif;fill:#f7f3ff;tex
 <path class="tree-center-link" d="M 1000.00 850.50 L 1080.00 970.00" />
 <path class="tree-center-link" d="M 1000.00 850.50 L 860.00 810.00" />
 <path class="tree-center-link" d="M 1000.00 850.50 L 1140.00 810.00" />
-<image href="tree-center.png" x="897" y="760.5" width="206" height="180" preserveAspectRatio="xMidYMid meet" />
+<image href="tree-center.png" x="897.00" y="760.50" width="206" height="180" preserveAspectRatio="xMidYMid meet" />
 <text class="tree-center-label" y="870.00" x="1000.00">骰子樹</text>
 </g>
 <g class="node" transform="translate(1000.00,730.00)" data-id="1001" data-type="骰子" data-name="火骰子" data-cost="核心 5" data-description="基本攻擊擊中時，對目標周遭怪物額外造成傷害"><title>骰子｜火骰子｜基本攻擊擊中時，對目標周遭怪物額外造成傷害</title><rect x="-25" y="-26.5" width="50" height="53" rx="8" fill="#322b4b" stroke="#ef625e" stroke-width="2" /><image href="icons/000976512b99.png" x="-25" y="-26.5" width="50" height="53" preserveAspectRatio="xMidYMid meet" /><text class="dice-label" y="42">火骰子</text></g>
