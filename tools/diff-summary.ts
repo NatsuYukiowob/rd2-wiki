@@ -1,4 +1,5 @@
 import { readFileSync, writeFileSync } from 'node:fs';
+import { pathToFileURL } from 'node:url';
 import type { TreeData } from '../src/lib/types.js';
 
 /**
@@ -283,7 +284,7 @@ export function buildDiffSummary(base: TreeData, head: TreeData): string {
   return renderDiffComment(computeDiff(base, head));
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
   const [basePath, headPath] = [process.argv[2], process.argv[3]];
   if (!basePath || !headPath) {
     console.error('用法: npx tsx tools/diff-summary.ts <base.json> <head.json>');

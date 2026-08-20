@@ -1,4 +1,5 @@
 import { readFileSync, writeFileSync } from 'node:fs';
+import { pathToFileURL } from 'node:url';
 import { loadSvg } from './lib/dom.js';
 
 const f = (n: number) => n.toFixed(2);
@@ -122,7 +123,7 @@ export function normalizeSvg(svgText: string): string {
   return doc.toString();
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
   const file = process.argv[2] ?? 'data/dice-tree.svg';
   writeFileSync(file, normalizeSvg(readFileSync(file, 'utf8')));
   console.log(`normalized ${file}`);
