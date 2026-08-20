@@ -1,4 +1,5 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { pathToFileURL } from 'node:url';
 import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 import { readPngSize } from './lib/png.js';
@@ -39,7 +40,7 @@ export function addIcon(srcPath: string, iconsDir: string): AddIconResult {
   return { hash, fileName, destPath, alreadyExists };
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
   const src = process.argv[2];
   if (!src) {
     console.error('用法: npm run add-icon -- <圖片路徑>');

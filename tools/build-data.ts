@@ -1,4 +1,5 @@
 import { readFileSync, writeFileSync, mkdirSync, readdirSync } from 'node:fs';
+import { pathToFileURL } from 'node:url';
 import { gzipSync } from 'node:zlib';
 import sharp from 'sharp';
 import { parseTree, COORD_TOLERANCE } from './lib/svg-parse.js';
@@ -159,7 +160,7 @@ export function buildTreeData(svgText: string, opts: BuildOpts): TreeData {
   };
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
   const svgText = readFileSync('data/dice-tree.svg', 'utf8');
   const keywords = JSON.parse(readFileSync('data/keywords.json', 'utf8'));
   const unlockExceptions = JSON.parse(readFileSync('data/unlock-exceptions.json', 'utf8'));

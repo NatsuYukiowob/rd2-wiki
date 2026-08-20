@@ -1,4 +1,5 @@
 import { readFileSync, readdirSync } from 'node:fs';
+import { pathToFileURL } from 'node:url';
 import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 import { parseTree, splitTitleLevel, COORD_TOLERANCE } from './lib/svg-parse.js';
@@ -445,7 +446,7 @@ export function validate(svgText: string, opts: ValidateOpts): ValidateResult {
   return { errors, warnings };
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
   const { errors, warnings } = validate(readFileSync('data/dice-tree.svg', 'utf8'), {
     keywords: JSON.parse(readFileSync('data/keywords.json', 'utf8')),
     upgradeCostTable: JSON.parse(readFileSync('data/upgrade-cost.json', 'utf8')),
