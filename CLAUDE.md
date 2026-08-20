@@ -289,6 +289,29 @@ Playwright 直接重用了它 → 測到的是**別份產物**。症狀是「ele
 失敗長相：正本留著指向已被 `rmSync` 刪掉的舊圖示雜湊，`npm run validate` 爆出 239 個
 規則 7(a) 錯誤，而完全看不出是哪一步說了謊。
 
+### ⚠️ CLI entry guard：`file://${process.argv[1]}` 是壞的，一律用 `pathToFileURL`
+
+`tools/` 的六支腳本都靠一行 guard 判斷「我是被直接執行、還是被 import」。舊寫法
+`import.meta.url === \`file://${process.argv[1]}\`` 在 Windows 上恆為 false（`argv[1]` 是
+反斜線路徑，`import.meta.url` 是 `file:///C:/...`），腳本會印完 banner 就 exit 0 什麼都沒做。
+最貴的是 `npm run validate`：**它是閘門，卻在 Windows 上一直「通過」而沒有驗任何東西**。
+
+POSIX 也不是安全的：`import.meta.url` 會 percent-encode，template literal 不會，所以
+checkout 路徑只要含空白或非 ASCII（`~/我的專案/`）就踩到同一個空跑。CI 沒抓到純粹是因為
+runner 的路徑剛好是純 ASCII。
+
+正確寫法只有一種，`tests/tools/entry-guard.test.ts` 會掃過 `tools/*.ts` 釘住它：
+
+```ts
+import { pathToFileURL } from 'node:url';
+if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
+```
+
+`?? ''` 是因為 `noUncheckedIndexedAccess` 把 `argv[1]` 型別成 `string | undefined`；
+`pathToFileURL('')` 會解析成 cwd 的 URL 而不是丟例外，guard 單純不成立，是安全的預設。
+
+外部貢獻者 dchaudhari7177 在 PR #34 找到並修掉（2026-08-20，`9aa098d`）。
+
 ### Playwright 的 `omitBackground` 只拿掉「頁面」的背景
 
 用 Chromium 截 SVG 元素時，`omitBackground: true` 對**內容自己畫的背景**無效——原圖有一張
