@@ -12,16 +12,20 @@
 
 你能改、也只需要改這三個地方：
 
-- `data/nodes.json`——**所有文字**：名稱、類型、解鎖花費、等級上限、效果說明、骰子覺醒、
-  管理 ID。以節點 id 為鍵，一個節點一個區塊、一個欄位一行。**改錯字、修數值、補說明都在這裡**，
-  改一句就是一行 diff。
+- `data/nodes.json`——**所有文字**：名稱、節點下方顯示的標籤、類型、解鎖花費、等級上限、
+  效果說明、骰子覺醒、管理 ID。以節點 id 為鍵，一個節點一個區塊、一個欄位一行。
+  **改錯字、修數值、補說明都在這裡**，改一句就是一行 diff。
 - `data/dice-tree.svg`——整棵骰子樹的**幾何**，共 239 個節點。每個節點是一個
-  `<g class="node">`，只帶 `data-id`、位置、形狀與外框色、圖示、以及畫在節點下方的
-  `<text>` 標籤。**要移動節點、加減連線、換圖示才需要動它。**
+  `<g class="node">`，只帶 `data-id`、位置、形狀與外框色、圖示引用。
+  **一個字都沒有**——要移動節點、加減連線、換圖示才需要動它。
 - `data/icons/`——238 張骰子／符文／被動／支援的圖示 PNG，檔名是內容的 sha256 前 12 碼。
 
 ⚠️ **兩份正本的節點 id 必須完全對得起來**：SVG 裡的每個 `data-id` 在 `nodes.json` 都要有
 一筆，反之亦然，多一筆少一筆都會被 CI 擋下（規則 19）。新增節點＝兩邊都要加。
+
+💡 **想知道哪個 id 是哪顆節點，跑 `npm run preview`**：它會用 `data/nodes.json` 的標籤產出
+一份 `data/dice-tree.preview.svg`，每個節點都標上名字與 id，用瀏覽器打開就看得懂整張圖。
+那個檔是產生物、不進版控，改它不會有任何效果。
 
 （2026-08-22 之前文字是寫在 SVG 的 `data-*` 屬性與 `<title>` 裡的。那份 `<title>` 是名稱與
 說明的第二份副本，改一個字要同時改兩處，而且整個節點擠在一行 500 字元的標籤裡沒辦法 review。）
@@ -33,8 +37,23 @@
 ## 2. 可以用 Inkscape 等 GUI 工具編輯，但送 PR 前一定要先跑一次正規化
 
 `data/dice-tree.svg` 用 Inkscape、Illustrator 之類的 GUI 向量編輯器直接開來改是可以的，改節點位置、
-連線都沒問題。（節點下方那行 `<text>` 標籤也在 SVG 裡，可以直接改；其餘文字在
-`data/nodes.json`，用文字編輯器改。）
+連線都沒問題。**但它只有幾何、沒有任何文字**，直接打開就是 239 個無名圖示。
+
+建議的動線是**改預覽檔、存回正本**：
+
+```bash
+npm run preview                 # 產出 data/dice-tree.preview.svg（有名字、有 id）
+# 用 Inkscape 打開預覽檔，移動節點／加減連線
+cp data/dice-tree.preview.svg data/dice-tree.svg   # 存回正本
+npm run normalize               # 把標籤與 GUI 留下的東西清掉，還原成乾淨的正本
+```
+
+`npm run normalize` 會把注回去的標籤刪掉——那些字的正本是 `data/nodes.json`，SVG 裡留一份
+就會變成兩份會漂掉的文案。
+
+⚠️ **如果你在 GUI 裡動到了某個標籤的文字**（或不小心解散了某個節點的群組、把標籤拖了出來），
+normalize 會逐筆列出對不上的地方、**一個位元組都不寫**、然後失敗。你的檔案原封不動，
+照它的指示改完 `data/nodes.json` 的 `label` 再跑一次就好。
 
 **但這類工具在存檔時，習慣會把檔案「重寫」成它們自己偏好的形式**，包括：
 
@@ -75,6 +94,7 @@ PNG，且最長邊至少 96px（太小會被 CI 擋下，見規則 7）。
 
 ```bash
 npm run normalize    # 把 GUI 工具的重寫攤平回正規形式（跑完 git diff 要是乾淨的，見下一節）
+npm run preview      # 產出帶名字與 id 的 data/dice-tree.preview.svg，用來肉眼確認版面
 npm run validate     # 檢查資料本身正確不正確（規則 0–10、13–19，見下一節）
 npm run build        # 或 npm run build:data；順便檢查組裝後的體積有沒有超出效能預算（規則 12）
 npm run typecheck    # 型別檢查（tsc --noEmit）；動到 src/ 或 tools/ 一定要跑
@@ -99,10 +119,11 @@ PR 送出後，CI 會用 `npm run validate` 檢查兩份正本本身的正確性
 
 0. **SVG 檔案結構必須是我們認得的乾淨形式**：連線只能是「一條直線、絕對座標、附箭頭」；節點只能
    是「單純位移、沒有多餘圖層」。—— 這條幾乎都是忘記跑 `npm run normalize` 才會中，錯誤訊息會提醒你。
-   另外每個節點都**必須有一個非空的 `<text>` 標籤**（畫在節點下方的名字），而且**不可以有 `<title>`**
-   ——名稱與說明寫在 `data/nodes.json`，`<title>` 會變成第二份會漂掉的副本。
-1. **`data/nodes.json` 的每一筆都要結構完整**：`name`／`type`／`gameId`／`cost`／`maxLevel`／
-   `description` 都要填、都不能是空的，長度不超過 500 字，也不能多出我們不認得的欄位。
+   另外節點裡**不可以有 `<text>` 或 `<title>`**——名稱、標籤與說明一律寫在 `data/nodes.json`，
+   留在 SVG 就會變成第二份會漂掉的副本。`npm run normalize` 會自動清掉它們。
+1. **`data/nodes.json` 的每一筆都要結構完整**：`name`／`label`／`type`／`gameId`／`cost`／
+   `maxLevel`／`description` 都要填、都不能是空的，長度不超過 500 字（`label` 是 20 字），
+   也不能多出我們不認得的欄位。
    選用的 `category` 與 `awakening` 不用時要**整個省略那個鍵**，不要留 `""`。
 2. **每個節點的編號（id）不能重複**，而且要符合命名規則（開頭數字代表屬性分支、第二碼代表類型）。
 3. **節點外框顏色要跟它的屬性分支對得上**：例如粉紫色外框只能用在支援類節點，不能拿去畫骰子。

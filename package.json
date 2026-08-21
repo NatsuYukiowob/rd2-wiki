@@ -11,6 +11,7 @@
     "test:watch": "vitest",
     "split": "tsx tools/split-svg.ts",
     "normalize": "tsx tools/normalize-svg.ts data/dice-tree.svg",
+    "preview": "tsx tools/build-preview-svg.ts",
     "validate": "tsx tools/validate.ts",
     "typecheck": "tsc --noEmit",
     "add-icon": "tsx tools/add-icon.ts",

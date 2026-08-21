@@ -7,6 +7,15 @@ import type { RawGeomNode } from './svg-parse.js';
 export const MAX_TEXT_LENGTH = 500;
 
 /**
+ * `label` 專屬的長度上限，比 `MAX_TEXT_LENGTH` 緊得多。
+ *
+ * 標籤是畫在節點下方的一行字，41 顆骰子的那一行在站台上真的會顯示（符文與被動的是
+ * `display:none`）。現況最長 10 個字，留兩倍空間。這條擋的是「把 description 貼進 label」
+ * 這種手滑——搬家之後正本上已經沒有 `<text>`，review 時看不到爆版，得靠規則說話。
+ */
+export const MAX_LABEL_LENGTH = 20;
+
+/**
  * `data/nodes.json` 的單筆內容：一個節點的全部文案。
  *
  * 2026-08-22（#21）之前這些欄位是正本 SVG 上的 `data-*`，而且 `<title>` 還存了 `name` ＋
@@ -15,6 +24,14 @@ export const MAX_TEXT_LENGTH = 500;
  */
 export interface NodeText {
   name: string;
+  /**
+   * 畫在節點下方的顯示標籤，長度上限 `MAX_LABEL_LENGTH`。
+   *
+   * 它**不是** `name` 的副本——239 個裡有 60 個是為了塞進小圖示而寫的縮寫
+   * （`所有骰子傷害` → `全骰傷害`），是真資料，所以它跟其他文案一起住在這裡。
+   * （#21 PR2 之前它是正本 SVG 的 `<text>`；現在正本只有幾何，要看版面跑 `npm run preview`。）
+   */
+  label: string;
   /** 中文原字（骰子／骰子符文／玩家被動／支援）；英文代碼由 `typeOfZh` 轉。 */
   type: string;
   /** 玩家被動的細分類，中文原字。只有玩家被動有——其餘節點必須整個省略這個鍵（規則 16）。 */
@@ -42,6 +59,7 @@ export type NodeTextMap = Record<string, NodeText>;
 export interface RawNode extends RawGeomNode {
   typeZh: string;
   name: string;
+  label: string;
   description: string;
   /** 非骰子節點是空字串（JSON 端省略該鍵）。 */
   awakening: string;
@@ -52,7 +70,7 @@ export interface RawNode extends RawGeomNode {
   maxLevel: number;
 }
 
-const REQUIRED = ['name', 'type', 'gameId', 'cost', 'maxLevel', 'description'] as const;
+const REQUIRED = ['name', 'label', 'type', 'gameId', 'cost', 'maxLevel', 'description'] as const;
 const OPTIONAL = ['category', 'awakening'] as const;
 const KNOWN = new Set<string>([...REQUIRED, ...OPTIONAL]);
 
@@ -80,6 +98,13 @@ export function checkNodeTextRecord(id: string, rec: unknown, maxTextLength: num
       continue;
     }
     if (typeof r[k] !== 'string' || r[k] === '') errors.push(`節點 ${id} 的 ${k} 不是非空字串`);
+    else if (k === 'label') {
+      // label 走自己的（緊得多的）上限，而且用碼點計字——上限只有 20，UTF-16 的代理對
+      // 會讓「20 個字」變成 20 個 code unit，把合法的標籤誤判成超長。其餘欄位上限 500，
+      // 差幾個 code unit 沒有意義，維持原本的 .length。
+      const len = [...(r[k] as string)].length;
+      if (len > MAX_LABEL_LENGTH) errors.push(`節點 ${id} 的 label 長度 ${len} 超過上限 ${MAX_LABEL_LENGTH}`);
+    }
     else if ((r[k] as string).length > maxTextLength) errors.push(`節點 ${id} 的 ${k} 長度 ${(r[k] as string).length} 超過上限 ${maxTextLength}`);
   }
   for (const k of OPTIONAL) {
@@ -107,6 +132,7 @@ export function mergeNodes(geom: RawGeomNode[], text: NodeTextMap): RawNode[] {
       ...g,
       typeZh: t.type,
       name: t.name,
+      label: t.label,
       description: t.description,
       awakening: t.awakening ?? '',
       gameId: t.gameId,
