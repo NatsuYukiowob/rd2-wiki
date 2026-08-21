@@ -62,7 +62,9 @@ function rawFitTranslate(branch: Branch): [number, number] {
 }
 
 function parseTranslate(transform: string): [number, number] {
-  const m = /translate\(([-\d.e]+)px?,\s*([-\d.e]+)px?\)/.exec(transform);
+  // `(?:px)?` 不是 `px?`：後者是「必需的 p ＋ 可選的 x」，會讓單位變成強制、把 attribute
+  // 形式（`translate(15,15)`，`transform` getter 仍會產生）擋在門外——跟「兩種都吃」的意圖相反。
+  const m = /translate\(([-\d.e]+)(?:px)?,\s*([-\d.e]+)(?:px)?\)/.exec(transform);
   if (!m) throw new Error(`transform 格式不符預期，取不出 translate：${transform}`);
   return [Number(m[1]), Number(m[2])];
 }
