@@ -31,7 +31,10 @@ function rawFitScale(branch: Branch): number {
   const svgStub = {
     getAttribute: (n: string) => (n === 'viewBox' ? `0 0 ${vbw} ${vbh}` : null),
   } as unknown as SVGSVGElement;
-  const vp = new Viewport(svgStub, { setAttribute: () => {} } as unknown as SVGGElement);
+  // layer 只要吞得下 `style.transform = ...` 就好——這兩個工廠只讀 `vp.transform`（getter，
+  // 純狀態），不斷言 DOM。Viewport 現在套的是 CSS transform 不是 attribute，見 viewport.ts
+  // 的 apply()。
+  const vp = new Viewport(svgStub, { style: {} } as unknown as SVGGElement);
   vp.fitTo(treeData.meta.bounds[branch]);
   return vp.scale;
 }
@@ -49,14 +52,17 @@ function rawFitTranslate(branch: Branch): [number, number] {
   const svgStub = {
     getAttribute: (n: string) => (n === 'viewBox' ? `0 0 ${vbw} ${vbh}` : null),
   } as unknown as SVGSVGElement;
-  const vp = new Viewport(svgStub, { setAttribute: () => {} } as unknown as SVGGElement);
+  // layer 只要吞得下 `style.transform = ...` 就好——這兩個工廠只讀 `vp.transform`（getter，
+  // 純狀態），不斷言 DOM。Viewport 現在套的是 CSS transform 不是 attribute，見 viewport.ts
+  // 的 apply()。
+  const vp = new Viewport(svgStub, { style: {} } as unknown as SVGGElement);
   vp.fitTo(treeData.meta.bounds[branch]);
   const m = /translate\(([-\d.e]+),([-\d.e]+)\)/.exec(vp.transform)!;
   return [Number(m[1]), Number(m[2])];
 }
 
 function parseTranslate(transform: string): [number, number] {
-  const m = /translate\(([-\d.e]+),([-\d.e]+)\)/.exec(transform);
+  const m = /translate\(([-\d.e]+)px?,\s*([-\d.e]+)px?\)/.exec(transform);
   if (!m) throw new Error(`transform 格式不符預期，取不出 translate：${transform}`);
   return [Number(m[1]), Number(m[2])];
 }
@@ -192,6 +198,18 @@ function fireClick(el: Element): void {
   el.dispatchEvent(new LinkedomEvent('click', { bubbles: true }) as unknown as Event);
 }
 
+
+/**
+ * 讀 #viewport 目前的 transform。
+ *
+ * ⚠️ 讀的是 **CSS** `style.transform`，不是 `transform` attribute——Viewport 改用 CSS
+ * transform 讓瀏覽器把畫布升成合成層（見 src/lib/viewport.ts 的 apply()），attribute
+ * 現在永遠是空的。用 `getAttribute('transform')` 會拿到空字串，然後 parseScale 丟出
+ * 「格式不符預期」，看起來像 fitTo 算錯，其實只是讀錯地方。
+ */
+function viewportTransform(page: { viewportEl: Element }): string {
+  return (page.viewportEl as unknown as { style: { transform?: string } }).style.transform ?? '';
+}
 
 /** 從 `translate(x,y) scale(s)` 格式的 transform 字串取出縮放分量，跟
  * tests/lib/viewport.test.ts 的 contentUnderAnchor() 用同一套正規表達式解法。 */
@@ -339,7 +357,7 @@ describe('tree-canvas 整合：分支快速跳轉（task-17，spec §6.2.6）', 
     // stub 驗到的數字），只是確認桌機初始視角也真的會跑進 applyReadabilityFloor() 這條路徑
     // 且不拋例外——task-18 修正前，桌機的 `else` 分支完全不呼叫這個函式，這裡至少能抓到
     // 「忘記接線、桌機初始視角完全沒套下限」這種回歸。
-    expect(parseScale(page.viewportEl.getAttribute('transform') ?? '')).toBe(8);
+    expect(parseScale(viewportTransform(page))).toBe(8);
   });
 
   it('桌機：點擊 #branch-nav 的分支按鈕，raw fitTo(bounds) 已經超過可讀性下限時維持原值', async () => {
@@ -351,7 +369,7 @@ describe('tree-canvas 整合：分支快速跳轉（task-17，spec §6.2.6）', 
     // 最終縮放應該就是 raw 本身。先斷言前提成立，否則這條測試會退化成驗另一件事還照樣綠。
     const raw = rawFitScale('engineering');
     expect(raw).toBeGreaterThan(readabilityFloor(1280, 610, DESKTOP_ICON_TARGET_PX));
-    expect(parseScale(page.viewportEl.getAttribute('transform') ?? '')).toBeCloseTo(raw, 9);
+    expect(parseScale(viewportTransform(page))).toBeCloseTo(raw, 9);
   });
 
   it('手機底部 chip 與桌機側欄共用同一個 handler：點 #branch-chips 的按鈕效果跟點 #branch-nav 一樣', async () => {
@@ -359,7 +377,7 @@ describe('tree-canvas 整合：分支快速跳轉（task-17，spec §6.2.6）', 
     stubDesktopRect(page);
     const chip = page.document.querySelector<HTMLButtonElement>('#branch-chips button[data-branch="magic"]')!;
     fireClick(chip);
-    expect(parseScale(page.viewportEl.getAttribute('transform') ?? '')).toBeCloseTo(rawFitScale('magic'), 9);
+    expect(parseScale(viewportTransform(page))).toBeCloseTo(rawFitScale('magic'), 9);
   });
 
   it('桌機：raw fitTo(bounds) 低於可讀性下限時，也會被拉高到下限（task-18 修正的核心案例——桌機不再是永遠不套下限）', async () => {
@@ -381,7 +399,7 @@ describe('tree-canvas 整合：分支快速跳轉（task-17，spec §6.2.6）', 
     expect(raw).toBeLessThan(floor);
     const btn = page.document.querySelector<HTMLButtonElement>('#branch-nav button[data-branch="nature"]')!;
     fireClick(btn);
-    const after = page.viewportEl.getAttribute('transform') ?? '';
+    const after = viewportTransform(page);
     expect(parseScale(after)).toBeCloseTo(floor, 9);
 
     // 縮放對了還不夠——boost 是用 `zoomAt(k, 容器中心)` 疊上去的，錨點挑錯（例如拿 viewBox
@@ -413,7 +431,7 @@ describe('tree-canvas 整合：分支快速跳轉（task-17，spec §6.2.6）', 
     // 測試更大一點的浮點誤差。
     const floor = readabilityFloor(390, 800, MOBILE_ICON_TARGET_PX);
     expect(rawFitScale('engineering')).toBeLessThan(floor);
-    expect(parseScale(page.viewportEl.getAttribute('transform') ?? '')).toBeCloseTo(floor, 6);
+    expect(parseScale(viewportTransform(page))).toBeCloseTo(floor, 6);
   });
 
   it('手機：fitTo 給的倍率已經超過下限時，不會被下限往下拉，維持原本的 fitTo 結果', async () => {
@@ -427,7 +445,7 @@ describe('tree-canvas 整合：分支快速跳轉（task-17，spec §6.2.6）', 
     expect(raw).toBeGreaterThan(readabilityFloor(4000, 2000, MOBILE_ICON_TARGET_PX));
     const btn = page.document.querySelector<HTMLButtonElement>('#branch-chips button[data-branch="engineering"]')!;
     fireClick(btn);
-    expect(parseScale(page.viewportEl.getAttribute('transform') ?? '')).toBeCloseTo(raw, 9);
+    expect(parseScale(viewportTransform(page))).toBeCloseTo(raw, 9);
   });
 
   it('手機初始視角：沒有選取節點時預設對準 nature 分支（環境限制記錄，見下方說明）', async () => {
@@ -438,7 +456,7 @@ describe('tree-canvas 整合：分支快速跳轉（task-17，spec §6.2.6）', 
     // 於是被 Viewport 的硬上限夾到 8。這不是在斷言「正式瀏覽器環境下的實際縮放值會是
     // 8」（真實環境容器寬度不會是 0），只是確認「手機初始視角有選對分支、且 boost 路徑
     // 真的被觸發、不會拋例外」，跟 task-17 報告裡標注的「本環境驗不到真實數值」一致。
-    expect(parseScale(page.viewportEl.getAttribute('transform') ?? '')).toBe(8);
+    expect(parseScale(viewportTransform(page))).toBe(8);
   });
 
   it('手機初始視角：網址帶 ?node= 時對準該節點所屬的分支，不是永遠預設 nature', async () => {
@@ -448,11 +466,11 @@ describe('tree-canvas 整合：分支快速跳轉（task-17，spec §6.2.6）', 
     // （engineering）呼叫 jumpToBranch，不是仍然對準預設的 nature」，不是驗最終縮放值，
     // 所以改成跟 nature 分支的初始視角（下面另一條測試）比對是否走了不同的分支。
     const page = await loadTreePage('?node=2001', { mobile: true });
-    expect(parseScale(page.viewportEl.getAttribute('transform') ?? '')).toBe(8); // 兩分支都會被夾到 8，無法用 scale 區分
+    expect(parseScale(viewportTransform(page))).toBe(8); // 兩分支都會被夾到 8，無法用 scale 區分
     // 改用 translate 分量區分（fitTo 的置中位移隨分支不同而不同，即使最後都被 zoomAt 夾到
     // scale=8，"中心點"對到哪個分支的 bounds 還是能從 translate 反推出差異）：
     const natureCasePage = await loadTreePage('', { mobile: true });
-    expect(page.viewportEl.getAttribute('transform')).not.toBe(natureCasePage.viewportEl.getAttribute('transform'));
+    expect(viewportTransform(page)).not.toBe(viewportTransform(natureCasePage));
   });
 });
 

@@ -139,12 +139,49 @@ export class Viewport {
     return this.s;
   }
 
+  /**
+   * 狀態的字串表示，SVG `transform` attribute 的語法（無單位）。
+   *
+   * ⚠️ 這個值**不再被寫進 DOM**（見 `apply()`），它留下來是因為它是描述「畫布現在在哪」
+   * 最好讀的一種形式，測試與除錯都靠它。真正套進 DOM 的是 `cssTransform`。
+   */
   get transform(): string {
     return `translate(${this.x},${this.y}) scale(${this.s})`;
   }
 
+  /**
+   * 同一個狀態的 CSS `transform` 語法。差別只有 translate 分量要帶單位——CSS 的
+   * `translate()` 不接受裸數字。
+   *
+   * `px` 在 SVG 內容裡就是 user unit，不是 CSS 像素：2026-08-21 實測
+   * `translate(100px,50px) scale(2)` 與 attribute 的 `translate(100,50) scale(2)`
+   * 產生**完全相同**的 `getScreenCTM()`（`[0.79, 0.79, 282.40, 70.46]`）與節點螢幕位置。
+   * 所以 `pan()`／`zoomAt()`／`fitTo()` 的座標換算一行都不用改。
+   */
+  get cssTransform(): string {
+    return `translate(${this.x}px,${this.y}px) scale(${this.s})`;
+  }
+
+  /**
+   * 套進 DOM。**用 CSS transform，不用 SVG attribute**——這是效能修正，不是風格選擇。
+   *
+   * SVG 的 `transform` attribute 不會讓瀏覽器把子樹升成合成層，於是拖曳畫布時每一幀都要
+   * 重新光柵化整棵樹（239 個 pattern 填充的節點＋248 條邊＋239 個 drop-shadow）。搭配
+   * `#viewport { will-change: transform }`（見 src/pages/tree.astro）改用 CSS transform
+   * 之後，平移退化成 GPU 對既有圖層做位移、零重繪。
+   *
+   * 2026-08-21 在真實 Windows 機器上用 A/B 測試頁實測（150 幀自動軌跡）：
+   * 平移 0.75× 從 33 FPS／掉 63 幀 → 99 FPS／掉 1 幀；1.00× 從 50 → 100 FPS。
+   * 縮放也有改善但沒有完全解決（33→50 FPS、掉幀 53→5、最長幀 90ms→40ms）——scale 一變
+   * 圖層內容本來就必須重畫，`will-change` 只能讓瀏覽器先 GPU 拉伸再補畫，不能免除。
+   * 要把縮放也推到 100 FPS 得做「停止縮放後才重新光柵化」，代價是縮放過程中畫面會糊，
+   * 那是獨立的一件事，不在這裡處理。
+   *
+   * ⚠️ **兩者不能並存**：實測 CSS transform 存在時 attribute 會被完全忽略（不是疊加），
+   * 所以這裡刻意不留 attribute——留著只會讓後人以為它還有作用。
+   */
   private apply(): void {
-    this.layer.setAttribute('transform', this.transform);
+    this.layer.style.transform = this.cssTransform;
   }
 
   /**
