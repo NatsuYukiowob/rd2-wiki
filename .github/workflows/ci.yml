@@ -54,6 +54,10 @@ jobs:
         # 正本必須是 `npm run normalize` 的定點（跑過等於沒跑）。貢獻者忘了跑 normalize 時，
         # 這一步會紅並印出差異——不然含 Inkscape 圖層／matrix 的檔案會混進正本，之後每次
         # 有人跑 normalize 都會冒出一堆與自己無關的雜訊 diff。
+        #
+        # 它同時是「有人在 SVG 裡改文字」的守門員：normalize 會刪掉 g.node 底下的 <text>，
+        # 內容與 data/nodes.json 的 label 不一致時逐筆列出並以非零 exit code 結束（見
+        # tools/normalize-svg.ts 的 CLI 區塊）。正本正常情況下零個 <text>，不會誤報。
         run: |
           npm run normalize
           git diff --exit-code data/dice-tree.svg

@@ -8,9 +8,9 @@
 資料正本是**兩個檔**（2026-08-22 起，#21 PR1）：
 
 - **`data/dice-tree.svg`**——只有**幾何**（239 個 `<g class="node">`／248 條邊）：`data-id`、
-  `transform`、形狀與 `stroke`、`<image>`、`<text>` 標籤、`data-wip`
-- **`data/nodes.json`**——全部**文案**，以節點 id 為鍵：`name` `type` `category?` `gameId`
-  `cost` `maxLevel` `description` `awakening?`
+  `transform`、形狀與 `stroke`、`<image>`、`data-wip`。**一個字都沒有**
+- **`data/nodes.json`**——全部**文案**，以節點 id 為鍵：`name` `label` `type` `category?`
+  `gameId` `cost` `maxLevel` `description` `awakening?`
 
 外加 `data/icons/`（238 張 PNG，檔名 = 內容 sha256 前 12 碼）與 `data/tree-center.png`
 （中央樞紐的合成圖，見下）。由社群發 PR 維護，CI 是唯一防線（維護者不可能逐行 review
@@ -20,11 +20,16 @@ SVG 的 diff）。
 join key 一律用 `data-id`，**不要拿座標配對**：浮點與 `transform` 一改就對不上。
 
 為什麼要拆：`<title>` 是 `name` ＋ `description` 的完整副本（23.5 KB），規則 1 的存在理由
-就是守那份副本；文案總計佔正本 48.6%。拆完之後改一句描述＝ JSON 一行 diff，而不是一行
-500 字元、rect/image/text 混在一起的 `<g>`。`<text>` 標籤**刻意留在 SVG**——它不是 `name`
-的副本（239 個裡 60 個是縮寫，`所有骰子傷害` → `全骰傷害`），而且沒有它，正本用 Inkscape
-打開就是 239 個無名圖示，幾何 PR 無從 review。（PR2 才會把它也搬走並改用建置期的
-preview SVG，見 #21。）
+就是守那份副本；文案總計佔正本 48.6%（173,782 → 89,325 bytes）。拆完之後改一句描述＝
+JSON 一行 diff，而不是一行 500 字元、rect/image/text 混在一起的 `<g>`。
+
+⚠️ **`<text>` 標籤在 PR2（2026-08-22）也搬走了**，改成 `label` 欄位。它不是 `name` 的副本
+（239 個裡 60 個是縮寫，`所有骰子傷害` → `全骰傷害`），是真資料——但留在 SVG 的話，線上
+編輯器（#32）改一個縮寫仍然得對 SVG 動「行區塊外科手術」，而那是 #32 最脆弱的一段。
+全搬之後編輯器任何文字操作都只碰 JSON。代價是正本用 Inkscape 打開是 239 個無名圖示，
+補償是 **`npm run preview`**：把標籤與 id 注回幾何，產出 `data/dice-tree.preview.svg`
+（gitignored）。那條動線是可逆的——**正本 → preview → normalize 逐位元組回到正本**，
+`tests/tools/build-preview-svg.test.ts` 有一條測試守著它。
 
 **外觀整個來自遊戲內的原圖**：2026-08-18 依遊戲內的骰子樹畫面 `RD2骰子樹 v1.0.1`
 （`dice_tree_v1.0.1_fixed.svg`，素材不在版控內）重做，座標取原圖 ×0.5
@@ -45,7 +50,8 @@ Chromium 把每個節點各自渲染成一張扁平 PNG（濾鏡與漸層由瀏�
 ```bash
 npm run validate    # 資料驗證（規則 0–10、13–19，CI 守門員）
 npm run typecheck   # tsc --noEmit（含 noUnusedLocals，會抓沒用到的 import）
-npm run normalize   # 攤平 Inkscape 的圖層/matrix/相對路徑（貢獻者送 PR 前必跑）
+npm run normalize   # 攤平 Inkscape 的圖層/matrix/相對路徑、清掉 <text> 與註解（送 PR 前必跑）
+npm run preview     # 把標籤注回幾何，產出 data/dice-tree.preview.svg（不進版控，肉眼看版面用）
 npm run add-icon    # 新增圖示，自動用內容雜湊命名
 npm run render-nodes -- <遊戲原圖路徑>  # 用 Chromium 重畫全部節點圖示（遊戲改版才跑，見下）
 npm run split -- <遊戲原圖路徑>         # 從原圖切出正本與圖示（重建整份資料時才用）
@@ -181,9 +187,29 @@ CI 規則 10 守它（`<svg>` 直屬、不帶 transform、圖檔存在且解析�
   文案規則＝1／3／4／8／9／14／15／16／17，其餘全部走 `nodes`。
 - **`parseCost` 只吃單行**：規則 4 拒絕的輸入 `build:data` 必須也拒絕，判斷寫在 `parseCost`
   裡而不是 validate，兩邊才不會對同一份輸入給不同答案。`ParsedCost.maxLevel` 已移除。
-- **每個 `g.node` 都要有非空的 `<text>`**（在 `parseTree` 擋）。它是文案搬走後正本上唯一的
-  人眼識別、也是 `nodeRef()` 的退路，而且會原封不動進 tree.json 給 `render.ts` 畫。
-  沒有這道，把 239 個標籤全部清空仍然是 validate 全綠。
+- **正本上唯一合法的 `<text>` 是樞紐的標籤**（在 `parseTree` 擋，跟 `<title>` 同一條防線，
+  2026-08-22 PR2 起）。節點標籤的正本是 `nodes.json` 的 `label`；SVG 裡的 `<text>` 只可能來自
+  「把預覽檔存回正本」或有人手動加，兩種都是第二份會漂移的文案，而畫面上看不出差別
+  （站台讀 tree.json，不解析正本）。`nodeRef()` 的退路因此改用 `transform` 座標
+  （「它在哪」而不是「它叫什麼」）。
+  ⚠️ **這條掃全檔，不是只掃 `g.node` 底下**：在 Inkscape 裡把節點解散群組、或把標籤拖出它的
+  `<g>`，`<text>` 會落到圖層根，normalize 攤平圖層時再把它搬到 `<svg>` 底下。只看 `g.node`
+  的話它會永遠留著，而且是 normalize 的定點（CI 的 `git diff --exit-code` 全綠）、validate
+  也沒有規則看得到（code review 實測：0 errors 0 warnings）。
+- **`label` 有自己的長度上限 20**（`MAX_LABEL_LENGTH`，其餘文字欄位仍是 500），且用碼點計字。
+  搬走之後 review 幾何 PR 看不到標籤，「把 description 貼進 label」只剩規則 1 會說話。
+- **`npm run normalize` 刪掉樞紐以外的所有 `<text>`，並比對 `nodes.json`**：跟 `label`
+  （或 `class="id"` 的 id）相同＝預覽檔殘留，只報個數；不同＝有人在 GUI 裡改了字，
+  逐筆列出並 **exit 1**。CI 的「正規化定點檢查」跑的就是這支，所以它同時擋住了「在 SVG 裡
+  改文字」這條路。
+  ⚠️ **比對與中止排在 `writeFileSync` 之前，漂移時一個位元組都不寫。** 反過來寫（先寫檔再
+  報錯）看起來也有報錯，但那個錯誤是**一次性**的：訊息捲過去沒看到，再跑一次就全綠——
+  `<text>` 已經被刪掉寫回去了，貢獻者改的字無聲消失（code review 實測第二次 exit=0、
+  正本與 HEAD 逐位元組相同）。`tests/tools/normalize-cli.test.ts` 守這條。
+  ⚠️ **`nodes.json` 找的是 SVG 同目錄那份**（不是寫死 `data/nodes.json`），找不到就只報個數、
+  照常正規化——這支也拿來正規化測試夾具與暫存檔，寫死路徑會在**破壞性寫檔之後**噴 ENOENT。
+  normalize 也會清掉**註解**（含它後面那個只有換行的文字節點）——不清的話，「預覽檔 → 正本」
+  會在正本頂端留下一行「這是產生檔」，內容正好是相反的。
 
 ### 2026-08-19 補上的守門（review 報告 P2）
 

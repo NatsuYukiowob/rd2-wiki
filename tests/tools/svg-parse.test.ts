@@ -24,7 +24,7 @@ describe('parseEdgePath', () => {
 
 describe('parseTree（真實資料）', () => {
   const svg = readFileSync('data/dice-tree.svg', 'utf8');
-  const nodeText: Record<string, { name: string }> = JSON.parse(readFileSync('data/nodes.json', 'utf8'));
+  const nodeText: Record<string, { name: string; label: string }> = JSON.parse(readFileSync('data/nodes.json', 'utf8'));
   const r = parseTree(svg);
 
   it('節點與邊的數量正確', () => {
@@ -96,14 +96,18 @@ describe('parseTree（真實資料）', () => {
   // 而所有其他測試都是綠的。
   it('parseTree 只回幾何，回傳物件上不存在任何文案欄位', () => {
     const keys = new Set(Object.keys(r.nodes[0]!));
-    for (const k of ['typeZh', 'name', 'description', 'awakening', 'gameId', 'categoryZh', 'costRaw', 'titleMaxLevel']) {
+    for (const k of ['typeZh', 'name', 'label', 'description', 'awakening', 'gameId', 'categoryZh', 'costRaw', 'titleMaxLevel']) {
       expect(keys.has(k)).toBe(false);
     }
-    expect([...keys].sort()).toEqual(['icon', 'id', 'label', 'shape', 'size', 'stroke', 'wip', 'x', 'y']);
+    expect([...keys].sort()).toEqual(['icon', 'id', 'shape', 'size', 'stroke', 'wip', 'x', 'y']);
   });
 
-  it('label 是獨立資料，不是 name 的副本（實測 60 個不同）——所以它留在 SVG 不算重複', () => {
-    expect(r.nodes.filter(n => n.label !== nodeText[n.id]!.name)).toHaveLength(60);
+  it('label 是獨立資料，不是 name 的副本（實測 60 個不同）——所以它是欄位不是衍生值', () => {
+    // 若兩者永遠相同，label 就該從 nodes.json 拿掉、由 name 推導。60/239 是縮寫
+    // （`所有骰子傷害` → `全骰傷害`），所以它得自己一欄。這條測的是那個前提還成立。
+    const ids = Object.keys(nodeText);
+    expect(ids).toHaveLength(239);
+    expect(ids.filter(id => nodeText[id]!.label !== nodeText[id]!.name)).toHaveLength(60);
   });
 
   it('正本裡不准有 <title>——那是規則 1 舊版要守的那份副本', () => {
@@ -111,13 +115,26 @@ describe('parseTree（真實資料）', () => {
     expect(withTitle).not.toBe(svg);
     expect(() => parseTree(withTitle)).toThrow(/1001.*不可含 <title>/);
   });
-  // review 回饋（2026-08-22）：`<text>` 是文案搬走之後正本上唯一的人眼識別，卻沒有任何
-  // 東西守它。實測拿掉一個節點的 `<text>`，`npm run validate` 回 0 個錯誤——一個 PR 可以
-  // 把 239 個標籤全部清空、CI 全綠，而畫面上整棵樹沒有名字。
-  it('節點缺少 <text> 標籤會被擋——它是正本唯一的人眼線索，也會原封不動進 tree.json', () => {
-    const noText = svg.replace(/(<g class="node"[^>]*data-id="1001"[^>]*>.*?)<text[^>]*>[^<]*<\/text>/s, '$1');
-    expect(noText).not.toBe(svg);
-    expect(() => parseTree(noText)).toThrow(/1001.*缺少 <text>/);
+  // #21 PR2：標籤搬進 nodes.json 之後，正本上的 `<text>` 只可能有兩個來源——把
+  // `npm run preview` 產的預覽檔存回正本，或有人手動加回去。兩種都是第二份會漂移的文案，
+  // 而且畫面上看不出任何差別（站台讀的是 tree.json，不解析正本）。少了這道，
+  // 標籤改在 SVG、名稱改在 JSON 兩邊各說各話，CI 全綠。
+  it('正本裡不准有 <text>——標籤的正本是 nodes.json 的 label', () => {
+    const withText = svg.replace('data-id="1001">', 'data-id="1001"><text class="dice-label" y="42">偷渡回來的標籤</text>');
+    expect(withText).not.toBe(svg);
+    expect(() => parseTree(withText)).toThrow(/1001.*不可含 <text>/);
+    expect(() => parseTree(withText)).toThrow(/normalize/);
+  });
+
+  it('<svg> 根底下的 <text> 一樣被擋——解散群組會把標籤丟到那裡', () => {
+    const stray = svg.replace('</svg>', '<text class="dice-label" x="1000" y="900">漂掉的標籤</text>\n</svg>');
+    expect(stray).not.toBe(svg);
+    expect(() => parseTree(stray)).toThrow(/不屬於任何節點的 <text>（內容「漂掉的標籤」）/);
+  });
+
+  it('樞紐的 <text> 是唯一合法的那一個（它不是節點，沒有 id 可以當 JSON 的鍵）', () => {
+    expect(svg).toContain('tree-center-label');
+    expect(() => parseTree(svg)).not.toThrow();
   });
 
   it('每個節點都有圖示雜湊', () => {
@@ -176,7 +193,6 @@ describe('parseTree（畸形資料的錯誤訊息要能定位是哪個節點／�
       <g class="node" transform="translate(1,2)" data-id="9004">
         <rect x="-1" y="-1" width="2" height="2" fill="#000" stroke="#fff" />
         <image href="icons/000000000000.png" x="0" y="0" width="1" height="1" />
-        <text>測試邊</text>
       </g>
       <path class="edge" d="M 1 2 L 3 4" />
     `);

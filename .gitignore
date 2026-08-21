@@ -7,6 +7,9 @@ test-results/
 playwright-report/
 # wrangler pages dev 的本機狀態（含本機 D1），只在本機 smoke 時產生
 .wrangler/
+# npm run preview 產的預覽檔：把 data/nodes.json 的標籤注回幾何，只給人眼看版面用
+data/dice-tree.preview.svg
+
 diff-summary.md
 diff-summary.json
 comment.md

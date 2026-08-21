@@ -26,15 +26,6 @@ const NUM = String.raw`-?\d+(?:\.\d+)?`;
  */
 export interface RawGeomNode {
   id: string;
-  /**
-   * `<text>` 的內容：畫在節點下方的顯示標籤。
-   *
-   * 它**不是** `name` 的副本——239 個裡有 60 個是為了塞進小圖示而寫的縮寫
-   * （`所有骰子傷害` → `全骰傷害`），是真資料。留在 SVG 是刻意的：沒有它，正本用
-   * Inkscape 打開就是 239 個無名圖示，幾何 PR 無從 review。（#21 PR2 會把它也搬走，
-   * 屆時改由建置期的 preview SVG 把名字注回去。）
-   */
-  label: string;
   x: number;
   y: number;
   stroke: string;
@@ -162,15 +153,18 @@ export function parseEdgePath(d: string): { from: [number, number]; to: [number,
 }
 
 /**
- * 組出可定位節點的描述字串，供錯誤訊息使用：優先用 `data-id`，取不到時退而求其次用 `<text>` 標籤，
- * 兩者都沒有才說明「某個缺少 data-id 的節點」。239 個節點、貢獻者改壞一個時，錯誤訊息必須指出是哪一個。
+ * 組出可定位節點的描述字串，供錯誤訊息使用：優先用 `data-id`，取不到時退而求其次用座標。
+ * 239 個節點、貢獻者改壞一個時，錯誤訊息必須指出是哪一個。
+ *
+ * 座標是 #21 PR2 之後正本上剩下的唯一線索——名稱與標籤都在 `data/nodes.json`，`<g>` 上
+ * 只有 `data-id` 與幾何。缺 `data-id` 的節點在畫面上仍找得到（跑 `npm run preview` 開來看），
+ * 所以退路給的是「它在哪」而不是「它叫什麼」。
  */
 function nodeRef(g: Element): string {
   const id = g.getAttribute('data-id');
   if (id) return `節點 data-id="${id}"`;
-  // `data-name` 已隨文案搬進 data/nodes.json，正本上只剩 <text> 的標籤可以當人眼線索。
-  const label = g.querySelector('text')?.textContent;
-  if (label) return `標籤為「${label}」的節點（缺少 data-id）`;
+  const t = g.getAttribute('transform');
+  if (t) return `位置 ${t} 的節點（缺少 data-id）`;
   return `某個缺少 data-id 的節點`;
 }
 
@@ -288,6 +282,30 @@ export function parseTree(svgText: string): { meta: RawMeta; nodes: RawGeomNode[
     center: parseCenter(doc, svg),
   };
 
+  // `<text>`（#21 PR2）：標籤搬進 data/nodes.json 的 `label` 之後，正本上唯一合法的 `<text>`
+  // 是樞紐的標籤——樞紐不是節點、沒有 id 可以當 JSON 的鍵，所以它留在 SVG 裡。其餘一律擋。
+  //
+  // ⚠️ 這一段**掃全檔**，不是只掃 `g.node` 底下。在 Inkscape 裡把節點解散群組、或把標籤拖出
+  // 它的 `<g>`，`<text>` 就會落到圖層根，normalize 攤平圖層時再把它搬到 `<svg>` 底下——
+  // 只看 `g.node` 的話它會永遠留著，而且是 normalize 的定點（CI 的 `git diff --exit-code`
+  // 全綠）、validate 也沒有規則看得到，成為一份與 nodes.json 無聲漂移的第二副本。
+  for (const t of [...doc.querySelectorAll('text')]) {
+    let owner: Element | null = null;
+    let inCenter = false;
+    for (let p = t.parentNode as Element | null; p && p.nodeType === 1; p = p.parentNode as Element | null) {
+      const cls = (p.getAttribute?.('class') ?? '').split(/\s+/);
+      if (cls.includes('tree-center')) { inCenter = true; break; }
+      if (!owner && cls.includes('node')) owner = p;
+    }
+    if (inCenter) continue;
+    const where = owner ? nodeRef(owner) : '正本裡有一個不屬於任何節點的 <text>';
+    throw new Error(
+      owner
+        ? `${where} 不可含 <text>——標籤寫在 data/nodes.json 的 label；請執行 npm run normalize`
+        : `${where}（內容「${t.textContent ?? ''}」）——標籤寫在 data/nodes.json 的 label，請把它刪掉`,
+    );
+  }
+
   const nodes: RawGeomNode[] = [...doc.querySelectorAll('g.node')].map(g => {
     if (g.parentNode !== svg) throw new Error(`${nodeRef(g)} 必須是 <svg> 直屬子元素，請先執行 npm run normalize`);
     assertNotHidden(g, nodeRef(g));
@@ -306,15 +324,8 @@ export function parseTree(svgText: string): { meta: RawMeta; nodes: RawGeomNode[
     if (!Number.isFinite(iw) || !Number.isFinite(ih) || iw <= 0 || ih <= 0) {
       throw new Error(`${nodeRef(g)} 的 <image> 缺少有效的 width/height（顯示尺寸靠它決定）`);
     }
-    // `<text>` 是文案搬進 data/nodes.json 之後，正本上**唯一**剩下的人眼識別（`nodeRef()` 的
-    // 退路也是它）。它同時會原封不動進 tree.json 交給 render.ts 畫在節點下方。
-    // 沒有這道檢查時，把 239 個 <text> 全部清空仍然是 validate 全綠——畫面上整棵樹沒有名字，
-    // 而正本用 Inkscape 打開是 239 個無名圖示，也就是「留著 <text>」這個決定的理由整個消失。
-    const label = g.querySelector('text')?.textContent ?? '';
-    if (!label) throw new Error(`${nodeRef(g)} 缺少 <text> 標籤（節點在畫面上的名字，也是正本唯一的人眼線索）`);
     return {
       id: attr(g, 'data-id'),
-      label,
       wip: g.getAttribute('data-wip') === '1',
       // 順序很重要：shapeOf 先判斷「有沒有形狀元素」，strokeOf 才去讀該元素的 stroke。
       // 兩者的「找不到元素」條件完全重疊（都是 querySelector('rect, circle, polygon') 落空），

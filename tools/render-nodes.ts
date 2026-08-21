@@ -197,8 +197,8 @@ let patched = 0;
  * 做一次替換，並確認它真的發生了。
  *
  * `String.replace` 比對不到時會**原樣回傳**，不會報錯——所以「跑完沒爆」跟「改好了」是兩件事。
- * 這裡的三個正則都依賴屬性順序與 class 名稱（例如 `href x y width height`、
- * `<text class="dice-label" y="…">`），日後任何一次 normalize 調整屬性順序都會讓它們默默失效：
+ * 這裡的正則都依賴屬性順序與元素形狀（例如 `href x y width height`），
+ * 日後任何一次 normalize 調整屬性順序都會讓它們默默失效：
  * 圖示雜湊留在正本裡指向 `rmSync(OUT_DIR)` 已經刪掉的檔案，validate 才會爆出 239 個規則
  * 7(a) 錯誤，而且完全看不出是哪一步說了謊。下面的樞紐改寫已經用旗標確認過，節點這邊當時
  * 只數了區塊數（每個區塊必定 +1，等於什麼都沒驗），code review 抓到後改成一致的做法。
@@ -227,10 +227,8 @@ canonical = canonical.replace(/<g class="node"[\s\S]*?<\/g>/g, block => {
     '圖示引用',
     id,
   );
-  // 標籤位置跟 src/lib/render.ts 的 h/2 + 15 對齊，讓正本與站台畫出來的位置一致。
-  // 那個 15（不是更貼的 12）是留給鍵盤 focus 外框的：外框掛在圖示的 rect 上、往外擴
-  // 2px 間距 ＋ 2px 線寬，貼太近會壓到標籤上緣（E2E 測試 H 會擋）。
-  b = mustReplace(b, /(<text class="[a-z-]+" )y="[-\d.]+"/, `$1y="${Math.round(h / 2 + 15)}"`, '標籤位置', id);
+  // 標籤的 y 以前也在這裡改寫，現在正本沒有 `<text>` 了（#21 PR2）——那段公式搬去
+  // tools/build-preview-svg.ts，跟 src/lib/render.ts 一樣是 `h/2 + 15`。
   patched++;
   return b;
 });

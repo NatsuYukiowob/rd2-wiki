@@ -196,10 +196,10 @@ describe('validate', () => {
     const wip = svg.replace('</svg>',
       '<g class="node" data-wip="1" transform="translate(300.00,300.00)" data-id="1099">' +
       '<rect x="-36" y="-28" width="72" height="56" stroke="#ef625e"/>' +
-      '<image href="icons/000000000000.png" width="56" height="56"/><text>測試骰子</text></g></svg>');
+      '<image href="icons/000000000000.png" width="56" height="56"/></g></svg>');
     const wipText = {
       ...nodeText,
-      '1099': { name: '測試骰子', type: '骰子', gameId: 'D999', cost: '核心 5', maxLevel: 1, description: '測試', awakening: '測試覺醒' },
+      '1099': { name: '測試骰子', label: '測試骰子', type: '骰子', gameId: 'D999', cost: '核心 5', maxLevel: 1, description: '測試', awakening: '測試覺醒' },
     };
     // 圖示內容檢查（規則 7b/7c）與這條測試的重點無關，所以用一個獨立的暫存目錄放假圖示，
     // 不動到真正的 data/icons；假圖示的雜湊／格式不會通過規則 7，但那是預期中的另一個
@@ -422,6 +422,22 @@ describe('validate', () => {
     // 通過「非骰子不該有覺醒」那條——因為空字串是 falsy。
     expect(errs({ '1201': { ...nodeText['1201'], awakening: '' } })
       .some(e => /規則 1.*awakening 若要有值必須是非空字串/.test(e))).toBe(true);
+  });
+
+  // #21 PR2：標籤從正本 SVG 的 `<text>` 搬進 `label` 欄位之後，正本上再也看不到它——
+  // review 一份幾何 PR 時，標籤被清空／被貼上整段描述都是看不出來的，只剩規則 1 會說話。
+  it('規則 1：label 缺少、為空、超過 20 字都會被擋', () => {
+    const errs = (over: Record<string, unknown>) => validate(svg, patch(over)).errors;
+    const { label: _dropped, ...noLabel } = nodeText['1001']!;
+
+    expect(errs({ '1001': noLabel }).some(e => /規則 1.*節點 1001 缺少 label/.test(e))).toBe(true);
+    expect(errs({ '1001': { ...nodeText['1001'], label: '' } }).some(e => /規則 1.*label 不是非空字串/.test(e))).toBe(true);
+    // 上限是 label 自己的（20），不是其他文字欄位共用的 500——把 description 貼進 label
+    // 是最可能的手滑，而 21 個字在 500 的上限下完全合法。
+    expect(errs({ '1001': { ...nodeText['1001'], label: '火'.repeat(21) } })
+      .some(e => /規則 1.*label 長度 21 超過上限 20/.test(e))).toBe(true);
+    expect(errs({ '1001': { ...nodeText['1001'], label: '火'.repeat(20) } })
+      .some(e => /規則 1.*label/.test(e))).toBe(false);
   });
 
   // 規則 19 是文案與幾何拆成兩個檔之後，唯一會說「它們已經不同步」的地方。
