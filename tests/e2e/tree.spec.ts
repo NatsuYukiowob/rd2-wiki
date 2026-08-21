@@ -69,8 +69,9 @@ async function zoomInAt(page: Page, point: { x: number; y: number }, notches: nu
 }
 
 /**
- * 讀出 #viewport 目前的 scale。用 `getCTM()` 而不是正規表達式解析字串（數值小到變成
- * 指數記法時解析會失敗）。
+ * 讀出 #viewport 目前的 scale。用 `getComputedStyle().transform` 解出的矩陣，不用正規
+ * 表達式解析字串（數值小到變成指數記法時解析會失敗）。下面兩條 ⚠️ 是**已經試過且不能用**
+ * 的兩種寫法，不要照著「還原」回去。
  *
  * ⚠️ 不能用 `vp.transform.baseVal.consolidate()`：Viewport 改用 CSS transform 之後
  * （見 src/lib/viewport.ts 的 apply()），`transform` **attribute** 永遠是空的，
@@ -1263,4 +1264,37 @@ test('Z4. 卡片換頁的過渡：高度單調、垂直中心不漂、不反向'
     // 而且 top 真的有跟著動——不然「中心不動」也可能是因為高度根本沒變
     expect(Math.abs(s[s.length - 1]!.top - s[0]!.top)).toBeGreaterThan(50);
   }
+});
+
+/**
+ * Z7. 效能修正的形狀：畫布靠 CSS transform ＋ will-change 升成合成層。
+ *
+ * 這條測試的存在理由是「刪掉了也不會有人發現」。修正由兩半組成——`Viewport.apply()` 寫
+ * CSS transform（src/lib/viewport.ts）＋ `#viewport { will-change: transform }`
+ * （src/pages/tree.astro）——**只做一半等於沒做**，而少掉 will-change 那半的話，
+ * 全部單元測試與其餘 E2E 都還是綠的，只有實測 FPS 會從 99 掉回 33。
+ * 那正是這個 repo 反覆遇到的「看不出來的回歸」。
+ *
+ * 三條斷言各守一件事，缺一不可：
+ * 1. `will-change: transform` 在 → 瀏覽器才會把這層升成自己的合成層。
+ * 2. `transform` attribute **不在** → 實測 CSS transform 存在時 attribute 會被完全忽略
+ *    （不是疊加），留著只會誤導後人以為它還有作用。
+ * 3. CSS transform 有值 → 證明 apply() 真的走了 CSS 那條路，不是兩者都沒設。
+ */
+test('Z7. 畫布用 CSS transform ＋ will-change 升成合成層（效能修正的兩半都要在）', async ({ page }) => {
+  await page.goto('/tree');
+  await page.waitForFunction(() => document.querySelectorAll('.node').length >= 239);
+
+  const state = await page.evaluate(() => {
+    const vp = document.getElementById('viewport')!;
+    return {
+      willChange: getComputedStyle(vp).willChange,
+      hasTransformAttr: vp.hasAttribute('transform'),
+      cssTransform: (vp as unknown as SVGElement).style.transform,
+    };
+  });
+
+  expect(state.willChange).toBe('transform');
+  expect(state.hasTransformAttr).toBe(false);
+  expect(state.cssTransform).toMatch(/^translate\(-?[\d.]+px, ?-?[\d.]+px\) scale\([\d.]+\)$/);
 });
