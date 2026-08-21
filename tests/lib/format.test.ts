@@ -40,4 +40,27 @@ describe('formatUnlockVia', () => {
   it("unlockVia 為 'default' 時顯示「預設解鎖」，不顯示 unlockCost 裡的數字", () => {
     expect(formatUnlockVia({ unlockVia: 'default', unlockCost: { core: 5, gold: 0 } })).toBe('預設解鎖');
   });
+  it("unlockVia 為 'achievement' 時顯示「成就解鎖」，不顯示 unlockCost 裡的數字", () => {
+    expect(formatUnlockVia({ unlockVia: 'achievement', unlockCost: { core: 8, gold: 0 } })).toBe('成就解鎖');
+  });
+
+  // 分類詞只說得出「不是用買的」，玩家真正要問的是「那要怎麼拿」。有官方取得條件原文時
+  // 一律優先顯示它——這三顆骰子的差別（新手任務／合作擊殺數／競技場積分）全在這段文字裡，
+  // 退回分類詞就等於把三條完全不同的取得路徑壓成同一句話。
+  it('有 unlockNote 時顯示官方取得條件原文，而不是分類詞', () => {
+    expect(formatUnlockVia({
+      unlockVia: 'achievement', unlockCost: { core: 8, gold: 0 }, unlockNote: '競技場 300 分獎勵',
+    })).toBe('競技場 300 分獎勵');
+    expect(formatUnlockVia({
+      unlockVia: 'quest', unlockCost: { core: 8, gold: 0 }, unlockNote: '新手任務 700 點獎勵',
+    })).toBe('新手任務 700 點獎勵');
+  });
+
+  // unlockNote 只影響非成本節點。若哪天有人把它也套到 'cost' 上，面板會用一段說明文字
+  // 蓋掉真正要顯示的價格，而所有既有斷言都還是綠的。
+  it("unlockVia 為 'cost' 時忽略 unlockNote，仍顯示成本金額", () => {
+    expect(formatUnlockVia({
+      unlockVia: 'cost', unlockCost: { core: 8, gold: 0 }, unlockNote: '不該出現',
+    })).toBe('核心 8');
+  });
 });

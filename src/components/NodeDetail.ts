@@ -112,7 +112,7 @@ function nodeBody(
     : null;
 
   return `
-    <p class="meta">${BRANCH_ZH[node.branch]} · ${node.category ? CATEGORY_ZH[node.category] : TYPE_ZH[node.type]} · ${formatUnlockVia(node)}</p>
+    <p class="meta">${BRANCH_ZH[node.branch]} · ${node.category ? CATEGORY_ZH[node.category] : TYPE_ZH[node.type]} · ${escapeHtml(formatUnlockVia(node))}</p>
     ${node.maxLevel > 1 ? `<p class="meta">等級上限 ${node.maxLevel}</p>` : ''}
     ${maxUpgrade ? `<p class="upgrade">練滿 ${node.maxLevel} 級累計 ${escapeHtml(formatCost(maxUpgrade))}<span class="cond">含解鎖那一次</span></p>` : ''}
     ${growth ? `<p class="growth">${escapeHtml(growth)}</p>` : ''}
@@ -123,7 +123,7 @@ function nodeBody(
     <h3>前置鏈（${sel.chain.size} 個節點）</h3>
     <p class="cost">${formatCost(sel.cost)}</p>
     <p class="note">此為 AND 假設下的上限值，不含強化費用。</p>
-    ${sel.skipped.length > 0 ? `<p class="note">已排除 ${sel.skipped.length} 個任務／預設解鎖節點</p>` : ''}
+    ${sel.skipped.length > 0 ? `<p class="note">已排除 ${sel.skipped.length} 個非成本解鎖節點</p>` : ''}
     ${sel.hiddenByFilter > 0 ? `<p class="note">含 ${sel.hiddenByFilter} 個被篩選隱藏的前置</p>` : ''}
     <p class="note">⚠️ 骰子樹重置需要初期化券，且有已解鎖骰子消失的災情回報，重置前請先確認。</p>
   `;

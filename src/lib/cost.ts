@@ -100,10 +100,11 @@ export function cumulativeUpgradeCost(table: UpgradeCostTable, toLevel: number):
 /**
  * 這張表適用於這個節點嗎？型別與等級上限都要對得上（見 UpgradeCostTable 的說明）。
  *
- * 還多要求 `unlockVia === 'cost'`：表格的第 1 級**就是解鎖那一次**，而任務解鎖／預設解鎖的
- * 節點玩家根本不付那筆錢（`sumUnlockCost()` 也是這樣排除它們的）。目前這兩種只有 4008 與
- * 2001 兩顆骰子、都套不到這張表，所以這條現在不改變任何顯示——它擋的是「哪天有一顆
- * 任務解鎖的 50 級符文」時，面板多算一筆玩家沒花過的錢，而所有測試照樣全綠。
+ * 還多要求 `unlockVia === 'cost'`：表格的第 1 級**就是解鎖那一次**，而任務／預設／成就解鎖的
+ * 節點玩家根本不付那筆錢（`sumUnlockCost()` 也是這樣排除它們的）。這三種目前是 9 顆骰子
+ * （`1001 1005 1007 2001 3001` 預設、`4008` 任務、`5002 5006 5008` 成就），全是 maxLevel 1
+ * 的骰子、都套不到這張只適用 50 級符文的表，所以這條現在不改變任何顯示——它擋的是「哪天有
+ * 一顆非成本解鎖的 50 級符文」時，面板多算一筆玩家沒花過的錢，而所有測試照樣全綠。
  */
 export function upgradeTableApplies(
   table: UpgradeCostTable | null,

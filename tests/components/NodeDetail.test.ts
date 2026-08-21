@@ -111,10 +111,10 @@ describe('renderDetail', () => {
     expect(text).toContain('⚠️ 骰子樹重置需要初期化券，且有已解鎖骰子消失的災情回報，重置前請先確認。');
   });
 
-  it('任務／預設解鎖節點被排除時，面板標示排除數量', () => {
+  it('非成本解鎖節點被排除時，面板標示排除數量', () => {
     const { host, sel } = renderNode('4008');
     expect(sel.skipped).toContain('4008');
-    expect(host.textContent ?? '').toContain(`已排除 ${sel.skipped.length} 個任務／預設解鎖節點`);
+    expect(host.textContent ?? '').toContain(`已排除 ${sel.skipped.length} 個非成本解鎖節點`);
   });
 
   it('滿級成長換算會顯示在 .growth', () => {
@@ -140,20 +140,44 @@ describe('renderDetail', () => {
   // 審查回饋（2026-08-17 第 1 輪修正）：unlockVia 為 quest／default 的節點不能在 meta 列
   // 顯示 unlockCost 的金額，否則會暗示玩家能直接花錢買到（實際上只能靠任務／預設取得），
   // 且與下方成本區塊「已排除」的標示自相矛盾。
-  it('任務解鎖節點（4008 陰陽骰子）的 meta 列顯示「任務解鎖」，不顯示成本數字', () => {
+  it('任務解鎖節點（4008 陰陽骰子）的 meta 列顯示官方取得條件，不顯示成本數字', () => {
     const { host } = renderNode('4008');
     const meta = host.querySelectorAll('.meta')[0]?.textContent ?? '';
-    expect(meta).toBe('秩序 · 骰子 · 任務解鎖');
+    expect(meta).toBe('秩序 · 骰子 · 新手任務 700 點獎勵');
     expect(meta).not.toContain('核心');
     expect(meta).not.toContain('金幣');
   });
 
-  it('預設解鎖節點（2001 鐵甲骰子）的 meta 列顯示「預設解鎖」，不顯示成本數字', () => {
+  it('預設解鎖節點（2001 鐵甲骰子）的 meta 列顯示官方取得條件，不顯示成本數字', () => {
     const { host } = renderNode('2001');
     const meta = host.querySelectorAll('.meta')[0]?.textContent ?? '';
-    expect(meta).toBe('工學 · 骰子 · 預設解鎖');
+    expect(meta).toBe('工學 · 骰子 · 初始解鎖');
     expect(meta).not.toContain('核心');
     expect(meta).not.toContain('金幣');
+  });
+
+  // 2026-08-21 新增的第三種取得方式。這三顆骰子（合作擊殺數／合作波數／競技場積分）
+  // 如果只顯示分類詞「成就解鎖」，玩家看到的三張卡片會一模一樣——差別全在原文裡。
+  it('成就解鎖節點（5008 空虛骰子）的 meta 列顯示官方取得條件，不顯示成本數字', () => {
+    const { host } = renderNode('5008');
+    const meta = host.querySelectorAll('.meta')[0]?.textContent ?? '';
+    expect(meta).toBe('渾沌 · 骰子 · 競技場 300 分獎勵');
+    expect(meta).not.toContain('核心');
+    expect(meta).not.toContain('金幣');
+  });
+
+  // unlockNote 是資料檔裡的自由文字，而 renderDetail 是用 innerHTML 塞的。這個 repo 的
+  // 威脅模型就是「由社群發 PR 維護」——一個 PR 只要在 unlock-exceptions.json 裡寫一段標記，
+  // 就會變成面板上活的 DOM。formatUnlockVia 以前只回得出兩個字面值或數字，所以不必跳脫；
+  // 現在不是了。（規則 18 擋長度與型別，擋不住內容。）
+  it('unlockNote 帶標記時會被跳脫，不會變成活的 DOM', () => {
+    const { document } = parseHTML('<html><body><div id="detail"></div></body></html>');
+    const host = document.getElementById('detail') as unknown as HTMLElement;
+    const node = { ...byId.get('5008')!, unlockNote: '<img src=x onerror=alert(1)>' };
+    renderDetail(node, computeSelection('5008', data), host, data.meta.glossary, data.meta.upgradeCostTable);
+    expect(host.querySelector('img')).toBeNull();
+    expect(host.querySelectorAll('.meta')[0]?.textContent).toContain('<img src=x onerror=alert(1)>');
+    expect(host.innerHTML).toContain('&lt;img src=x onerror=alert(1)&gt;');
   });
 
   it('#關鍵字 只框住白名單詞本身，不會把後面整句吃進去（見 spec 異常 8）', () => {

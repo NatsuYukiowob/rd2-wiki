@@ -14,7 +14,15 @@ export type Element = Branch | 'support';
 export type PassiveCategory =
   | 'branch-stat' | 'global-stat' | 'branch-skill' | 'player-passive' | 'support-upgrade';
 export type Shape = 'rect' | 'diamond' | 'circle' | 'hex';
-export type UnlockVia = 'cost' | 'quest' | 'default';
+/**
+ * 節點的取得方式。`cost` 以外的三種都代表「玩家不能花這筆錢買到它」，
+ * `sumUnlockCost()` 與 `upgradeTableApplies()` 都是照這個欄位排除的。
+ *
+ * `quest` 與 `achievement` 分開：前者是遊戲裡的任務系統（新手任務點數），後者是累計進度
+ * 獎勵（合作擊殺數、競技場分數）。玩家拿到它們的路徑完全不同，混成一種的話面板只能寫
+ * 「任務解鎖」，而那對一顆要靠競技場積分才拿得到的骰子是錯的。
+ */
+export type UnlockVia = 'cost' | 'quest' | 'default' | 'achievement';
 export type GrowthUnit = '%' | 's' | 'count' | 'x' | '';
 
 export interface Cost { core: number; gold: number }
@@ -34,6 +42,14 @@ export interface TreeNode {
   y: number;
   unlockCost: Cost;
   unlockVia: UnlockVia;
+  /**
+   * 官方資料表寫的取得條件原文（「合作第 40 波獎勵（累計擊殺 2,100 隻怪物）」）。
+   *
+   * 只有 `unlockVia !== 'cost'` 的節點才有，來源是 `data/unlock-exceptions.json` 的 `note`。
+   * 面板優先顯示它而不是「任務解鎖」這種分類詞——分類詞只說得出「不是用買的」，玩家真正
+   * 需要知道的是「那要怎麼拿」。沒有原文時才退回分類詞，所以這個欄位是可選的。
+   */
+  unlockNote?: string;
   maxLevel: number;
   prereqMode: null;
   upgradeCost: null;
@@ -110,6 +126,21 @@ export function isGlossaryAlias(r: GlossaryRecord): r is GlossaryAlias {
 export interface UpgradeCostTable {
   appliesTo: { type: NodeType; maxLevel: number };
   levels: { level: number; gold: number; core: number }[];
+}
+
+/**
+ * 官方資料表在「技能效果」欄標註的滿級數值（`Lv.50：216%`），鍵是 `data-game-id`。
+ *
+ * 它不進 tree.json，也不給站台顯示——站台的滿級值是 `maxLevelValue()` 從 `growth` 現推的。
+ * 這份資料存在的唯一目的是**反向驗算那個推導**（規則 17）：`growth` 是用正則從一段中文描述
+ * 裡挖出來的，描述少一個 `(+4%)`、多一個負號、或括號寫成全形，解析結果都會安靜地變成
+ * 「沒有成長值」或「每級 −0.2 秒」，而所有既有規則都照樣放行。拿官方自己算好的滿級值來對，
+ * 是唯一能從外部指出「這段描述被解析成別的意思」的東西。
+ */
+export interface MaxLevelOfficial {
+  note: string;
+  source: string;
+  values: Record<string, { level: number; value: number; unit: GrowthUnit }>;
 }
 
 export interface TreeMeta {

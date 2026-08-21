@@ -4,14 +4,14 @@ import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 import { parseTree, splitTitleLevel, COORD_TOLERANCE } from './lib/svg-parse.js';
 import { parseCost } from '../src/lib/cost.js';
-import { parseGrowth } from '../src/lib/growth.js';
+import { maxLevelValue, parseGrowth } from '../src/lib/growth.js';
 import { extractKeywords } from '../src/lib/keywords.js';
 import { branchOfId, categoryOfZh, elementOfStroke, typeOfZh } from '../src/lib/taxonomy.js';
 import { buildAdjacency, detectCycle, findRoots, unreachableFrom } from '../src/lib/graph.js';
 import { loadSvg } from './lib/dom.js';
 import { readPngSize } from './lib/png.js';
 import { isGlossaryAlias } from '../src/lib/types.js';
-import type { Edge, GlossaryRecord, UpgradeCostTable } from '../src/lib/types.js';
+import type { Edge, GlossaryRecord, MaxLevelOfficial, UpgradeCostTable } from '../src/lib/types.js';
 
 /**
  * 資料樹的預期根節點（各分支的第一個骰子）。
@@ -65,6 +65,20 @@ export interface ValidateOpts {
    * 而所有測試照樣全綠。要跳過就得自己寫一個 `null` 出來，那是看得見的決定。
    */
   upgradeCostTable: UpgradeCostTable | null;
+  /**
+   * `data/maxlevel-official.json`；沒有這份資料時傳 `null`。
+   *
+   * 跟 `upgradeCostTable` 一樣刻意必填：規則 17 是描述文字被解析錯時唯一會說話的東西，
+   * 讓它變成可選就等於讓它可以被安靜地關掉。
+   */
+  maxLevelOfficial: MaxLevelOfficial | null;
+  /**
+   * `data/unlock-exceptions.json`；沒有這份資料時傳 `null`。
+   *
+   * 一樣刻意必填。這個檔案在 2026-08-21 之前只有 2 筆、沒有任何顯示用途，所以沒人守它；
+   * 現在它有 9 筆而且 `note` 會直接印在面板上，規則 18 就是它唯一的防線（見那條的說明）。
+   */
+  unlockExceptions: Record<string, { unlockVia: string; note?: string }> | null;
   /** 圖示所在目錄；驗證器會實際讀取此目錄下的檔案內容做 sha256／PNG 結構檢查，並列出孤兒圖示。 */
   iconsDir: string;
   /**
@@ -271,6 +285,96 @@ export function validate(svgText: string, opts: ValidateOpts): ValidateResult {
     }
   }
 
+  // 規則 17: 官方滿級數值反向驗算。
+  //
+  // `growth` 是用正則從一段中文描述裡挖出來的，而挖錯不會有任何一條既有規則說話：
+  // 少寫一個 `(+4%)` 只會讓 growth 變成 null（面板那行「1 級 X → 50 級 Y」整條不見）、
+  // 多一個負號會算出「50 級 −10.3 秒」、括號寫成全形則整段配不到。三種都是合法的 SVG、
+  // 合法的成本、合法的關鍵字，規則 1–16 全部放行。
+  //
+  // 這條規則拿官方資料表自己算好的滿級值來對推導結果，是唯一從外部指得出「這段描述被解析
+  // 成別的意思」的東西。⚠️ 因此它必須**用 data-game-id 當鍵**，不能用節點 id：管理 ID 是
+  // 正本與官方資料表唯一對得起來的鍵（規則 16），拿座標或名稱配對會在同名節點上配錯
+  // （光是「所有骰子傷害」就有 15 個）。
+  const official = opts.maxLevelOfficial;
+  if (official) {
+    const byGameId = new Map(nodes.map(n => [n.gameId, n]));
+
+    // ⚠️ 覆蓋率下限。這個迴圈只走 `official.values` 裡有的項目，所以「把某個節點從夾具裡
+    // 刪掉」就等於單獨關掉它的檢查，而且一聲不吭——一個 PR 只要同時改壞 1203 的成長值並
+    // 刪掉 `D0060` 這個鍵，CI 全綠。夾具跟資料是分開的兩個檔，這種漏法不需要惡意也會發生。
+    // 判準用「maxLevel > 1 的骰子符文」：官方資料表就是對這一類標滿級值的，實測 44/44 全中。
+    // （玩家被動沒有官方滿級值可對，不列入——那 40 個要靠規則 9 與人工。）
+    const needsOfficial = nodes.filter(n => {
+      if (n.typeZh !== '骰子符文') return false;
+      try { return (parseCost(n.costRaw).maxLevel ?? n.titleMaxLevel ?? 1) > 1; } catch { return false; }
+    });
+    for (const n of needsOfficial) {
+      if (!(n.gameId in (official.values ?? {}))) {
+        push(`規則 17: 骰子符文 ${n.id}（${n.gameId}）等級上限大於 1，但 maxlevel-official.json 沒有它的官方滿級值——夾具漏了一項就等於單獨關掉這顆節點的檢查`);
+      }
+    }
+
+    for (const [gameId, expect] of Object.entries(official.values ?? {})) {
+      const n = byGameId.get(gameId);
+      if (!n) { push(`規則 17: 官方滿級值指向不存在的 data-game-id ${gameId}`); continue; }
+      let level: number;
+      try { level = parseCost(n.costRaw).maxLevel ?? n.titleMaxLevel ?? 1; }
+      catch { continue; }   // 成本格式本身壞掉是規則 4 的事，這裡不重複報
+      if (level !== expect.level) {
+        push(`規則 17: 節點 ${n.id}（${gameId}）的等級上限 ${level} 與官方資料表的 ${expect.level} 不一致`);
+        continue;
+      }
+      let parsedGrowth;
+      try { parsedGrowth = parseGrowth(n.description); }
+      catch { continue; }   // 成長值格式壞掉是規則 9 的事
+      // ⚠️ 上游資源包重新冒出 `{n}` 佔位符時，這裡**不能報錯**：規則 9 對佔位符的政策是
+      // 「只警告、不擋 PR」（CLAUDE.md 也記著那個機制要留著），而 parseGrowth 對佔位符
+      // 回的正是 growth: null。少了這一段，下一次上游同步只要在這 44 顆裡放回一個佔位符，
+      // CI 就會用「描述八成漏了 (+每級增量)」這句錯誤的診斷把 PR 擋死，而規則 9 在同一份
+      // 輸出裡說「不擋 PR」——兩條規則自相矛盾。
+      if (parsedGrowth.dataIssue === 'placeholder') continue;
+      const growth = parsedGrowth.growth;
+      if (!growth) {
+        push(`規則 17: 節點 ${n.id}（${gameId}）解析不出成長值，但官方資料表寫得出 Lv.${expect.level} 的滿級值 ${expect.value}${expect.unit}——描述八成漏了「(+每級增量)」那一段`);
+        continue;
+      }
+      const actual = maxLevelValue(growth, level);
+      if (actual !== expect.value) {
+        push(`規則 17: 節點 ${n.id}（${gameId}）推算的 Lv.${level} 滿級值 ${actual} 與官方資料表的 ${expect.value} 不一致（growth: 基礎 ${growth.base}／每級 ${growth.perLevel}）`);
+      } else if (growth.unit !== expect.unit) {
+        push(`規則 17: 節點 ${n.id}（${gameId}）的成長值單位 ${JSON.stringify(growth.unit)} 與官方資料表的 ${JSON.stringify(expect.unit)} 不一致`);
+      }
+    }
+  }
+
+  // 規則 18: 解鎖例外表（`data/unlock-exceptions.json`）。
+  //
+  // 這個檔案不是 SVG 的一部分，`build-data` 讀它時只有一個 `as` 型別斷言——也就是**執行期
+  // 零檢查**。它決定哪些節點不列入成本計算，而且 `note` 會直接印在面板與 aria-label 上。
+  // 三種寫壞的方式，在這條規則之前全部都是 CI 全綠：
+  //
+  // 1. **key 打錯**（`"5O08"`）→ 查不到任何節點，那顆骰子安靜地變回「要花核心買」，
+  //    整條前置鏈的成本跟著變，而 diff 摘要看不出有動到資料檔。
+  // 2. **`unlockVia` 打錯**（`"quests"`）→ 它仍然 `!== 'cost'`，所以成本照樣被排除，
+  //    但 `formatUnlockVia` 查不到對應中文，面板會印出字面的 `undefined`。
+  // 3. **`note` 空字串或超長** → 面板顯示一段空白或被撐爆的 meta 列。
+  const exceptions = opts.unlockExceptions;
+  if (exceptions) {
+    const nodeIds = new Set(nodes.map(n => n.id));
+    const VALID_VIA = ['quest', 'default', 'achievement'];
+    for (const [id, entry] of Object.entries(exceptions)) {
+      if (!nodeIds.has(id)) push(`規則 18: 解鎖例外表指向不存在的節點 ${JSON.stringify(id)}`);
+      // 'cost' 是預設值，寫進例外表沒有意義，而且會讓人以為它有作用
+      if (!VALID_VIA.includes(entry?.unlockVia ?? '')) {
+        push(`規則 18: 節點 ${id} 的 unlockVia ${JSON.stringify(entry?.unlockVia)} 不合法，必須是 ${VALID_VIA.join('／')}`);
+      }
+      if (entry?.note !== undefined && (entry.note.length === 0 || entry.note.length > MAX_TEXT_LENGTH)) {
+        push(`規則 18: 節點 ${id} 的 note 長度 ${entry.note.length} 不合法（1..${MAX_TEXT_LENGTH}）`);
+      }
+    }
+  }
+
   // 規則 7: 圖示。以 iconsDir 內實際檔案為準做一次全面掃描（而非逐節點重複讀檔／算雜湊），
   // 因為同一張圖示常被多個節點共用（實測有一張被 15 個節點共用），檔案層級的問題只需驗一次。
   const iconFileNames = readdirSync(opts.iconsDir).filter(f => f.endsWith('.png'));
@@ -394,7 +498,8 @@ export function validate(svgText: string, opts: ValidateOpts): ValidateResult {
   // 豁免了「非預期的根」與「從根不可達」兩項檢查——那正是圖結構唯一的守門員。少了這條，
   // 一個 PR 可以：把某顆現有節點標成 wip（於是它斷開上游也不會被抓），再拉一條邊從它接到
   // 別的分支去。結果是 validate 全綠、節點數與邊數都不變、四個不變量都對，而某條前置鏈的
-  // 成本被改掉了（review 報告實測：5201 鏈從 66 核心變成 86）。
+  // 成本被改掉了（review 報告實測：5201 鏈從 66 核心變成 86；那份報告的 66 是 2026-08-21
+  // 解鎖例外表擴充前的基準，現在的基準是 42，但這條規則要擋的事情沒變）。
   // 既然 wip 的意思是「沒接線」，那就真的不准它接線——豁免與能力二選一。
   for (const [from, to] of idEdges) {
     if (wip.has(from)) push(`規則 6(d): 節點 ${from} 標了 data-wip="1"（待接線）卻有一條出邊接到 ${to}；wip 節點必須完全不接線`);
@@ -450,6 +555,8 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
   const { errors, warnings } = validate(readFileSync('data/dice-tree.svg', 'utf8'), {
     keywords: JSON.parse(readFileSync('data/keywords.json', 'utf8')),
     upgradeCostTable: JSON.parse(readFileSync('data/upgrade-cost.json', 'utf8')),
+    maxLevelOfficial: JSON.parse(readFileSync('data/maxlevel-official.json', 'utf8')),
+    unlockExceptions: JSON.parse(readFileSync('data/unlock-exceptions.json', 'utf8')),
     iconsDir: 'data/icons',
     dataDir: 'data',
   });

@@ -38,18 +38,29 @@ export function formatGrowth(node: TreeNode): string | null {
   return `1 級 ${node.growth.base}${unit} → ${node.maxLevel} 級 ${top}${unit}`;
 }
 
+const UNLOCK_VIA_ZH: Record<Exclude<TreeNode['unlockVia'], 'cost'>, string> = {
+  quest: '任務解鎖',
+  default: '預設解鎖',
+  achievement: '成就解鎖',
+};
+
 /**
  * 節點解鎖方式的顯示文字。
  *
- * `unlockVia !== 'cost'` 的節點（任務解鎖／預設解鎖，全樹目前只有 `4008` 陰陽骰子與
- * `2001` 鐵甲骰子兩個）雖然 `unlockCost` 欄位仍有數字，但那不是玩家能實際花這筆錢買到
- * 的價格——`sumUnlockCost()` 本來就會把它們從成本合計排除（見 graph.ts）。詳情面板若
- * 無條件對這兩個節點也顯示 `formatCost(unlockCost)`，會在同一個面板裡自相矛盾：上面
- * meta 列寫著「核心 8」，下面成本區塊卻寫「免費」還註明「已排除」，並暗示玩家可以花
- * 核心買到只能靠任務取得的節點（審查回饋，2026-08-17 第 1 輪修正）。
+ * `unlockVia !== 'cost'` 的節點（目前是 9 顆骰子）雖然 `unlockCost` 欄位仍有數字，但那不是
+ * 玩家能實際花這筆錢買到的價格——`sumUnlockCost()` 本來就會把它們從成本合計排除（見
+ * graph.ts）。詳情面板若無條件對這些節點也顯示 `formatCost(unlockCost)`，會在同一個面板裡
+ * 自相矛盾：上面 meta 列寫著「核心 8」，下面成本區塊卻寫「免費」還註明「已排除」，並暗示
+ * 玩家可以花核心買到只能靠競技場積分拿到的節點（審查回饋，2026-08-17 第 1 輪修正）。
+ *
+ * 有 `unlockNote`（官方資料表的取得條件原文）時優先顯示它：分類詞只說得出「不是用買的」，
+ * 「合作累計擊殺 900 隻怪物」才回答得了玩家真正要問的「那要怎麼拿」。
+ *
+ * ⚠️ **這個函式的回傳值是資料檔裡的自由文字，呼叫端負責跳脫。** 它以前只可能回傳兩個字面值
+ * 或 `formatCost()` 的數字，所以不跳脫也安全；`unlockNote` 進來之後就不是了——正本是社群發
+ * PR 維護的，而 `renderDetail()` 是用 `innerHTML` 塞的（見 NodeDetail.ts）。
  */
-export function formatUnlockVia(node: Pick<TreeNode, 'unlockVia' | 'unlockCost'>): string {
-  if (node.unlockVia === 'quest') return '任務解鎖';
-  if (node.unlockVia === 'default') return '預設解鎖';
-  return formatCost(node.unlockCost);
+export function formatUnlockVia(node: Pick<TreeNode, 'unlockVia' | 'unlockCost' | 'unlockNote'>): string {
+  if (node.unlockVia === 'cost') return formatCost(node.unlockCost);
+  return node.unlockNote ?? UNLOCK_VIA_ZH[node.unlockVia];
 }
