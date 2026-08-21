@@ -2,12 +2,22 @@ import { describe, it, expect } from 'vitest';
 import { parseHTML } from 'linkedom';
 import { Viewport, minReadableScale, effectiveDevicePx, HIRES_UPGRADE_AT, HIRES_DOWNGRADE_AT } from '../../src/lib/viewport';
 
+/** Viewport 沒有公開 layer，測試要斷言 DOM 就靠這張表反查建立時傳進去的那個 <g>。 */
+const layers = new WeakMap<Viewport, SVGGElement>();
+function layerOf(v: Viewport): SVGGElement {
+  const g = layers.get(v);
+  if (!g) throw new Error('這個 Viewport 不是用本檔的工廠函式建的，查不到 layer');
+  return g;
+}
+
 function make() {
   const { document } = parseHTML('<html><body></body></html>');
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg') as unknown as SVGSVGElement;
   const g = document.createElementNS('http://www.w3.org/2000/svg', 'g') as unknown as SVGGElement;
   svg.appendChild(g);
-  return new Viewport(svg, g);
+  const v = new Viewport(svg, g);
+  layers.set(v, g);
+  return v;
 }
 
 /**
@@ -49,6 +59,57 @@ function makeWithCtm(ctm: { a: number; d: number; e: number; f: number }) {
   Object.assign(svg, { getScreenCTM: () => fakeCtm });
   return new Viewport(svg, g);
 }
+
+describe('Viewport 的 transform 套在 CSS 而不是 attribute', () => {
+  /**
+   * 這一組釘住的是效能修正的形狀，不是風格偏好。
+   *
+   * SVG 的 `transform` **attribute** 不會讓瀏覽器把該子樹升成合成層，所以拖曳畫布時
+   * 每一幀都要重新光柵化整棵樹（239 個 pattern 填充的節點＋248 條邊＋239 個
+   * drop-shadow）。2026-08-21 在一台 100Hz 的 Windows 機器上用 A/B 對照頁實測：
+   *
+   * | 操作 | attribute（舊） | CSS + will-change（新） |
+   * |------|----------------|------------------------|
+   * | 平移 0.75× | 33 FPS，150 幀掉 63 | 99 FPS，掉 1 |
+   * | 平移 1.00× | 50 FPS | 100 FPS |
+   * | 縮放 1.00× | 33 FPS，掉 53，最長 90ms | 50 FPS，掉 5，最長 40ms |
+   *
+   * 那條「0.75× 最慢、0.15× 與 1.50× 都快」的非單調曲線是決定性證據：光柵化成本正比於
+   * 螢幕上實際要畫的像素面積，0.75× 剛好是整棵樹填滿視窗、239 個節點全可見的縮放。
+   *
+   * ⚠️ 兩者**不能並存**：實測 CSS transform 存在時 attribute 會被完全忽略（不是疊加），
+   * 所以 attribute 必須是空的，留著只會讓後人以為它還有作用。
+   */
+  it('apply() 寫進 style.transform，且帶 px 單位', () => {
+    const v = make();
+    v.pan(10, 20);
+    expect(layerOf(v).style.transform).toBe('translate(10px,20px) scale(1)');
+  });
+
+  it('完全不寫 transform attribute——留著會被 CSS 蓋掉，是誤導', () => {
+    const v = make();
+    v.pan(10, 20);
+    v.zoomAt(2, 0, 0);
+    expect(layerOf(v).getAttribute('transform')).toBeNull();
+  });
+
+  it('cssTransform 與 transform 描述同一個狀態，只差單位', () => {
+    const v = make();
+    v.pan(-100, -100);
+    v.zoomAt(2, 0, 0);
+    expect(v.transform).toBe('translate(-200,-200) scale(2)');
+    expect(v.cssTransform).toBe('translate(-200px,-200px) scale(2)');
+  });
+
+  it('px 在 SVG 內就是 user unit：兩種寫法的數值必須逐一對應', () => {
+    const v = makeForFitTo();
+    v.fitTo([100, 100, 800, 700]);
+    const attr = /^translate\((-?[\d.e]+),(-?[\d.e]+)\) scale\(([\d.e]+)\)$/.exec(v.transform);
+    const css = /^translate\((-?[\d.e]+)px,(-?[\d.e]+)px\) scale\(([\d.e]+)\)$/.exec(v.cssTransform);
+    if (!attr || !css) throw new Error(`格式不符：${v.transform} / ${v.cssTransform}`);
+    expect([css[1], css[2], css[3]]).toEqual([attr[1], attr[2], attr[3]]);
+  });
+});
 
 describe('Viewport', () => {
   it('平移累加位移', () => {

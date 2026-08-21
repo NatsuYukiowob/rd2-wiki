@@ -68,13 +68,38 @@ async function zoomInAt(page: Page, point: { x: number; y: number }, notches: nu
   }
 }
 
-/** 讀出 #viewport 目前的 scale。用瀏覽器原生 `SVGTransformList.consolidate().matrix`，
- *  不用正規表達式解析 transform 屬性字串（數值小到變成指數記法時解析會失敗）。 */
+/**
+ * 讀出 #viewport 目前的 scale。用 `getCTM()` 而不是正規表達式解析字串（數值小到變成
+ * 指數記法時解析會失敗）。
+ *
+ * ⚠️ 不能用 `vp.transform.baseVal.consolidate()`：Viewport 改用 CSS transform 之後
+ * （見 src/lib/viewport.ts 的 apply()），`transform` **attribute** 永遠是空的，
+ * baseVal 會是空清單、consolidate() 回 null，這裡會直接丟 TypeError。
+ *
+ * ⚠️ 也不能用 `getCTM()`：它回的是「到最近祖先 viewport 元素」的完整變換，**含根 svg
+ * 把 viewBox 映射到容器尺寸的那一層縮放**。實測手機版拿到 0.6999…（＝真正的 5.5 乘上
+ * 412/3400 的 viewBox 比例），而這個函式的所有呼叫端要的都是 `#viewport` 自己的縮放。
+ *
+ * `getComputedStyle().transform` 回的是這個元素自己的 CSS transform，而且瀏覽器已經
+ * 正規化成 `matrix(...)`——順帶解決了原註解擔心的「數值小到變成指數記法時字串解析會失敗」。
+ */
 async function getViewportScale(page: Page): Promise<number> {
   return page.evaluate(() => {
-    const vp = document.getElementById('viewport') as unknown as SVGGraphicsElement;
-    return vp.transform.baseVal.consolidate()!.matrix.a;
+    const vp = document.getElementById('viewport')!;
+    const t = getComputedStyle(vp).transform;
+    return t === 'none' ? 1 : new DOMMatrixReadOnly(t).a;
   });
+}
+
+/**
+ * 讀 #viewport 目前的 CSS transform 字串。多數測試只拿它比較「畫布動了沒」。
+ *
+ * ⚠️ 讀的是 CSS 不是 `transform` attribute（同上）。改錯地方的症狀是每次都拿到同一個
+ * 空字串，於是「拖曳後 transform 應該不同」這種前提斷言會**永遠失敗**——或更糟，
+ * 「應該相同」那種會永遠通過，變成假綠。
+ */
+async function viewportTransform(page: Page): Promise<string> {
+  return page.locator('#viewport').evaluate(el => (el as unknown as SVGElement).style.transform);
 }
 
 /**
@@ -181,7 +206,7 @@ async function devicePxPerUnit(page: Page): Promise<number> {
     const vp = document.querySelector('#viewport');
     const box = svg.getBoundingClientRect();
     const vb = svg.getAttribute('viewBox')!.split(/\s+/).map(Number);
-    const scale = Number(/scale\(([-\d.]+)\)/.exec(vp?.getAttribute('transform') ?? '')?.[1] ?? 1);
+    const scale = Number(/scale\(([-\d.]+)\)/.exec((vp as unknown as SVGElement | null)?.style.transform ?? '')?.[1] ?? 1);
     return Math.min(box.width / vb[2]!, box.height / vb[3]!) * scale * window.devicePixelRatio;
   });
 }
@@ -368,7 +393,7 @@ test('D. 拖曳畫布放開在空白處，選取不會被誤觸清除', async ({
 
   // 前提斷言：拖曳必須真的讓畫布動了。少了這條，只要起訖點落在任何攔截事件的元素上，
   // 下面「選取沒被清掉」就會在「根本沒發生拖曳」的情況下自動成立（假綠）。
-  const transformBefore = await page.locator('#viewport').getAttribute('transform');
+  const transformBefore = await viewportTransform(page);
 
   await page.mouse.move(startX, startY);
   await page.mouse.down();
@@ -379,7 +404,7 @@ test('D. 拖曳畫布放開在空白處，選取不會被誤觸清除', async ({
   await page.mouse.up();
 
   await expect
-    .poll(async () => page.locator('#viewport').getAttribute('transform'))
+    .poll(async () => viewportTransform(page))
     .not.toBe(transformBefore);
 
   // 拖曳放開後，選取（面板 + in-chain 高亮）應該原封不動地留著，不會被這次「其實是拖曳、
@@ -391,7 +416,7 @@ test('D. 拖曳畫布放開在空白處，選取不會被誤觸清除', async ({
 
 test('E. 搜尋框 focus 時，方向鍵不會誤觸畫布平移', async ({ page }) => {
   await page.goto('/tree');
-  const before = await page.locator('#viewport').getAttribute('transform');
+  const before = await viewportTransform(page);
 
   await page.click('#search');
   await page.keyboard.press('ArrowLeft');
@@ -399,7 +424,7 @@ test('E. 搜尋框 focus 時，方向鍵不會誤觸畫布平移', async ({ page
   await page.keyboard.press('ArrowUp');
   await page.keyboard.press('ArrowDown');
 
-  const afterSearchFocused = await page.locator('#viewport').getAttribute('transform');
+  const afterSearchFocused = await viewportTransform(page);
   expect(afterSearchFocused).toBe(before);
 
   // 正對照組（code review 建議補上）：只斷言「搜尋框 focus 時方向鍵不平移」沒辦法分辨
@@ -409,7 +434,7 @@ test('E. 搜尋框 focus 時，方向鍵不會誤觸畫布平移', async ({ page
   // 本身已經失效的假陽性。
   await page.locator('g.node').first().focus();
   await page.keyboard.press('ArrowLeft');
-  const afterCanvasFocused = await page.locator('#viewport').getAttribute('transform');
+  const afterCanvasFocused = await viewportTransform(page);
   expect(afterCanvasFocused).not.toBe(afterSearchFocused);
 });
 
@@ -876,7 +901,7 @@ test('O. 搜尋命中時鏡頭帶到結果、狀態列說明命中幾個、清�
   await expect(topViewTitle(page)).toHaveText('陰陽骰子');
 
   // 同一套「帶我去看結果」的流程，改從搜尋框走：打字＋Enter。
-  const before = await page.locator('#viewport').getAttribute('transform');
+  const before = await viewportTransform(page);
   await page.locator('#search').fill('陰陽');
   await page.locator('#search').press('Enter');
 
@@ -886,7 +911,7 @@ test('O. 搜尋命中時鏡頭帶到結果、狀態列說明命中幾個、清�
 
   // 2) 鏡頭真的動了（沒動的話就是「原地一片灰」那個症狀）
   await expect
-    .poll(async () => page.locator('#viewport').getAttribute('transform'))
+    .poll(async () => viewportTransform(page))
     .not.toBe(before);
 
   // 3) 命中的節點在畫面內、而且沒有被篩掉

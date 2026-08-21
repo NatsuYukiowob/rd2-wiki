@@ -611,7 +611,13 @@ function positionPanel(opts: { assumeHeight?: number } = {}): void {
 
 // 畫布一動（拖曳、滾輪縮放、雙指縮放、分支跳轉、初始視角……）卡片就要跟著節點跑。與其在
 // 每個事件處理器後面各補一次呼叫（漏掉任何一個就會留下一張黏在原地的卡片），這裡監看
-// #viewport 的 transform——Viewport 的每一次變動最後都落在這個屬性上，一個掛勾全包。
+// #viewport 的 style 屬性——Viewport 的每一次變動最後都落在那裡，一個掛勾全包。
+// ⚠️ 監看的是 `style` 不是 `transform`：Viewport 改用 CSS transform 之後（見
+// src/lib/viewport.ts 的 apply()，那是為了讓畫布升成合成層的效能修正），`transform`
+// attribute 永遠不會再變動，掛在它上面的 observer 一次都不會觸發——症狀是卡片黏在原地，
+// 而且沒有任何錯誤訊息。`style.transform = ...` 會改寫 style attribute，所以改看它。
+// #viewport 身上不會有別的 inline 樣式（will-change 寫在 tree.astro 的 CSS 裡），
+// 這個 filter 不會因此變得比原本寬鬆。
 // `typeof` 存在性檢查跟本檔上面 matchMedia 那裡同一個理由：單元測試環境（linkedom）沒有
 // MutationObserver，直接 new 會是 ReferenceError、整個模組掛掉。卡片跟隨畫布這件事需要真的
 // 版面資訊，本來就只能靠 E2E 驗（tests/e2e/tree.spec.ts 的 N）。
@@ -633,7 +639,7 @@ if (typeof MutationObserver === 'function') {
   // 之外的東西，型別也對不上。畫布一動就是「重新對齊」，不帶 keepTop。
   new MutationObserver(() => schedulePositionPanel()).observe(viewport, {
     attributes: true,
-    attributeFilter: ['transform'],
+    attributeFilter: ['style'],
   });
 }
 window.addEventListener('resize', () => schedulePositionPanel());
