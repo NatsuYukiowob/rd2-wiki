@@ -81,8 +81,12 @@ npm run e2e         # 有 pree2e 自動跑 build
   （骰子 50×53 ×41、符文 26×26 ×123、被動小 34×34 ×45、被動大 44×44 ×25、支援 51×47 ×5）。
   **不要再加「類型 → 尺寸」對照表**：同一種類型底下也會有不同尺寸（被動有大小兩種），
   舊的 `sizeOfType()` 就是為此拿掉的。這幾個數字改動後一定要回頭看
-  `src/scripts/tree-canvas.ts` 的兩個 `*_ICON_TARGET_PX`——它們是照骰子寬度換算的，
-  曾經因為骰子從 56 縮到 50 卻沒跟著改，讓每個視角都多放大 12%
+  `src/lib/viewport.ts` 的兩個 `*_ICON_TARGET_PX`——它們是照骰子寬度換算的，
+  曾經因為骰子從 56 縮到 50 卻沒跟著改，讓每個視角都多放大 12%。
+  **同一批還有 `SHADOW_ON_AT_ICON_PX` / `SHADOW_OFF_AT_ICON_PX`**（節點投影的開關門檻，
+  也是量骰子圖示的 CSS 顯示寬度）：`SHADOW_OFF` 必須高於那兩個 `*_ICON_TARGET_PX`，否則
+  「整棵樹都看得到」的預設視角會重新畫滿 239 個 drop-shadow，手機平移直接從 40 掉回 20 FPS。
+  這條不變式在 `tests/lib/viewport.test.ts` 有斷言，改壞了會紅
 - 效能預算硬斷言：`tree.json` gzip ≤ 20KB（**目前 18.9KB，只剩 1.1KB**）、sprite ≤ 400KB（目前 130KB）。
   ⚠️ `tests/tools/build-data.test.ts` 有**兩條**預算斷言：一條量測試自己組的產物（`spriteIndex`
   是 238 筆全同值的替身，全同值壓得比真實座標好，**會低估約 0.5KB**），另一條量 `pretest`

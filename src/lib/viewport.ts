@@ -69,6 +69,28 @@ export const HIRES_UPGRADE_AT = 1.2;
 export const HIRES_DOWNGRADE_AT = 0.9;
 
 /**
+ * 畫節點投影的門檻（單位：**CSS 像素**，量的是骰子圖示的顯示寬度），配一組遲滯。
+ *
+ * ⚠️ 刻意**不**沿用上面高解析圖示那組門檻，兩者問的不是同一個問題：
+ *
+ * - 高解析圖示問「來源解析度夠不夠」→ 判準是**裝置**像素（`effectiveDevicePx`，含 dpr）。
+ * - 投影問「使用者看不看得見」→ 判準是 **CSS** 像素。dpr 只影響銳利度，不影響一個東西
+ *   在眼睛裡多大；`0 1px 1.5px` 是使用者座標單位，換算成 CSS px 才是實際看到的尺寸。
+ *
+ * 共用同一組門檻會在高 dpr 手機上判斷錯：dpr 3.25 的手機在 1.87 倍就越過 devicePx 1.2、
+ * 開始畫投影，但那時畫面上還有約 120 個節點——比同倍率的 dpr1 桌機更糟，而手機正是最慢的
+ * 那台。改用 CSS 像素之後這個不對稱就消失了。
+ *
+ * 數值取自 `applyReadabilityFloor()` 保證的下限：預設視角一定落在
+ * `DESKTOP_ICON_TARGET_PX`（26）／`MOBILE_ICON_TARGET_PX`（35）上。關閉門檻必須**高於
+ * 兩者**，才能保證「整棵樹都看得到」的預設視角一律不畫投影——那正是節點最多、最慢的狀態。
+ * 開啟門檻 50 CSS px 大約是投影（1 單位位移、1.5 單位模糊）開始真的看得出來的尺寸，
+ * 那時畫面上通常只剩幾十個節點。這組不變式有單元測試釘住。
+ */
+export const SHADOW_ON_AT_ICON_PX = 50;
+export const SHADOW_OFF_AT_ICON_PX = 40;
+
+/**
  * 算出「一個使用者座標單位目前攤到幾個裝置像素」。
  *
  * ⚠️ 這是 2026-08-19 review 報告 C05 的核心：舊版的判斷是 `if (vp.scale <= 1) return;`，
@@ -129,6 +151,19 @@ export class Viewport {
   private x = 0;
   private y = 0;
   private s = 1;
+
+  /**
+   * 快取起來的「螢幕座標 → 使用者座標」換算分量，`invalidateCtm()` 會清掉。
+   *
+   * ⚠️ `svg.getScreenCTM()` 是**強制同步版面計算**。2026-08-21 在真實 Chromium 上實測：
+   * 連續 300 次「寫 style.transform 再讀 getScreenCTM」要 40ms，先讀一次存起來只要 0.8ms
+   * （50 倍）。而拖曳時每一個 pointermove 都會走 `pan()`——等於每個輸入事件都白白 flush
+   * 一次版面，那是「拖起來不跟手」的直接來源。
+   *
+   * 快取是安全的，因為這裡讀的是**根 svg** 的 CTM：它只描述畫布元素本身在頁面上的位置與
+   * 大小，跟 `#viewport` 這層 transform 完全無關，拖曳／縮放全程都不會變。
+   */
+  private ctm: { kx: number; ky: number; ex: number; ey: number } | null = null;
 
   constructor(
     private svg: SVGSVGElement,
@@ -202,12 +237,31 @@ export class Viewport {
    * 位移退化為 0，讓既有以「使用者座標＝螢幕座標」為前提寫的測試不必更動。
    */
   private screenToUserCtm(): { kx: number; ky: number; ex: number; ey: number } {
+    if (this.ctm) return this.ctm;
     const ctm = this.svg.getScreenCTM?.();
     const kx = ctm && ctm.a !== 0 ? ctm.a : 1;
     const ky = ctm && ctm.d !== 0 ? ctm.d : 1;
     const ex = ctm?.e ?? 0;
     const ey = ctm?.f ?? 0;
-    return { kx, ky, ex, ey };
+    // 量不到（沒有版面引擎的測試環境、或畫布還沒排版）時退化的 1:1／位移 0 **不進快取**：
+    // 那是暫時狀態，存起來會讓之後真的量得到時仍沿用錯的比例，而且沒有任何事件會通知我們
+    // 「現在量得到了」。每次重問的成本只發生在這個本來就不正常的狀態下。
+    if (!ctm) return { kx, ky, ex, ey };
+    this.ctm = { kx, ky, ex, ey };
+    return this.ctm;
+  }
+
+  /**
+   * 丟掉 CTM 快取，下一次 `pan()`／`zoomAt()` 會重新問一次 `getScreenCTM()`。
+   *
+   * 呼叫端（src/scripts/tree-canvas.ts）負責在「畫布元素在頁面上的位置或大小真的可能變了」
+   * 的時候呼叫：ResizeObserver（涵蓋任何原因造成的尺寸變化，不只視窗縮放）、`resize`、
+   * 捕獲階段的 `scroll`（位移變了但尺寸沒變，ResizeObserver 收不到），以及每一次
+   * `pointerdown`——後者是廉價的保險，讓每個手勢至少重新量一次，代價是整個手勢一次強制
+   * 版面計算，而不是每個 pointermove 一次。
+   */
+  invalidateCtm(): void {
+    this.ctm = null;
   }
 
   /** 依螢幕座標位移（CSS px）平移畫布，內部換算成使用者座標後累加。 */

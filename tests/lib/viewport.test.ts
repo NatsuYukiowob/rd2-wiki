@@ -1,6 +1,16 @@
 import { describe, it, expect } from 'vitest';
 import { parseHTML } from 'linkedom';
-import { Viewport, minReadableScale, effectiveDevicePx, HIRES_UPGRADE_AT, HIRES_DOWNGRADE_AT } from '../../src/lib/viewport';
+import {
+  Viewport,
+  minReadableScale,
+  effectiveDevicePx,
+  HIRES_UPGRADE_AT,
+  HIRES_DOWNGRADE_AT,
+  SHADOW_ON_AT_ICON_PX,
+  SHADOW_OFF_AT_ICON_PX,
+  DESKTOP_ICON_TARGET_PX,
+  MOBILE_ICON_TARGET_PX,
+} from '../../src/lib/viewport';
 
 /** Viewport 沒有公開 layer，測試要斷言 DOM 就靠這張表反查建立時傳進去的那個 <g>。 */
 const layers = new WeakMap<Viewport, SVGGElement>();
@@ -47,6 +57,25 @@ function makeForFitTo() {
  * 曾經只回傳 a/d、`zoomAt` 沒有先減掉 e/f，而測試當時的假 CTM 剛好都是 e=f=0，
  * 沒能抓到。往後這個檔案裡的假 CTM 一律帶非零 e/f，避免同一類 bug 再犯而測試繞過去。
  */
+/**
+ * 跟 `makeWithCtm()` 一樣掛一個假 CTM，但額外記錄 `getScreenCTM()` 被呼叫了幾次，並允許
+ * 中途換掉回傳值——用來驗「拖曳期間只算一次 CTM」這件事真的成立，而不是靠讀不到值矇混過去。
+ */
+function makeCountingCtm(ctm: { a: number; d: number; e: number; f: number }) {
+  const { document } = parseHTML('<html><body></body></html>');
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg') as unknown as SVGSVGElement;
+  const g = document.createElementNS('http://www.w3.org/2000/svg', 'g') as unknown as SVGGElement;
+  svg.appendChild(g);
+  const state = { calls: 0, ctm };
+  Object.assign(svg, {
+    getScreenCTM: () => {
+      state.calls++;
+      return { ...state.ctm, b: 0, c: 0 } as unknown as DOMMatrix;
+    },
+  });
+  return { v: new Viewport(svg, g), state };
+}
+
 function makeWithCtm(ctm: { a: number; d: number; e: number; f: number }) {
   const { document } = parseHTML('<html><body></body></html>');
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg') as unknown as SVGSVGElement;
@@ -316,5 +345,85 @@ describe('effectiveDevicePx（高解析升級的真正判準）', () => {
 
   it('viewBox 壞掉時回 0，不會變成 NaN 一路傳下去', () => {
     expect(effectiveDevicePx(1280, 595, 0, 1700, 2, 1)).toBe(0);
+  });
+});
+
+/**
+ * `svg.getScreenCTM()` 是**強制同步版面計算**：2026-08-21 在真實 Chromium 上實測，連續
+ * 300 次「寫 style.transform 再讀 getScreenCTM」要 40ms，把 CTM 讀一次快取起來只要 0.8ms
+ * （50 倍）。而它讀的是**根 svg** 的 CTM——只跟畫布元素在頁面上的位置與大小有關，跟
+ * `#viewport` 這層 transform 完全無關，拖曳全程不會變。等於每個 pointermove 都白白 flush
+ * 一次版面。這裡把它快取起來，由呼叫端（tree-canvas.ts）在畫布的盒子真的可能變了的時候
+ * （ResizeObserver／resize／scroll／每次 pointerdown）呼叫 `invalidateCtm()`。
+ */
+describe('Viewport：CTM 快取（拖曳時不要每個事件都強制版面計算）', () => {
+  it('連續 pan 只讀一次 getScreenCTM', () => {
+    const { v, state } = makeCountingCtm({ a: 2, d: 2, e: 30, f: 40 });
+    v.pan(10, 10);
+    v.pan(10, 10);
+    v.pan(10, 10);
+    v.pan(10, 10);
+    expect(state.calls).toBe(1);
+  });
+
+  it('pan 與 zoomAt 共用同一份快取', () => {
+    const { v, state } = makeCountingCtm({ a: 2, d: 2, e: 30, f: 40 });
+    v.pan(10, 10);
+    v.zoomAt(2, 100, 100);
+    v.pan(10, 10);
+    expect(state.calls).toBe(1);
+  });
+
+  it('invalidateCtm() 之後會重新讀，而且用的是新的值', () => {
+    const { v, state } = makeCountingCtm({ a: 2, d: 2, e: 0, f: 0 });
+    v.pan(10, 10); // a=2 → 使用者座標 +5
+    expect(v.transform).toBe('translate(5,5) scale(1)');
+    expect(state.calls).toBe(1);
+
+    // 視窗被拉過：畫布的螢幕縮放變了。沒有失效機制的話，下面這次 pan 會沿用舊的 a=2。
+    state.ctm = { a: 4, d: 4, e: 0, f: 0 };
+    v.invalidateCtm();
+    v.pan(10, 10); // a=4 → 使用者座標 +2.5
+    expect(state.calls).toBe(2);
+    expect(v.transform).toBe('translate(7.5,7.5) scale(1)');
+  });
+
+  it('快取不會讓 zoomAt 的錨點換算失準：失效後錨點吃新的 e/f', () => {
+    const { v, state } = makeCountingCtm({ a: 1, d: 1, e: 100, f: 100 });
+    v.zoomAt(2, 300, 300); // 使用者座標錨點 (200,200)
+    expect(v.transform).toBe('translate(-200,-200) scale(2)');
+
+    // 側欄收合，畫布左上角往左移了 100px。
+    state.ctm = { a: 1, d: 1, e: 0, f: 0 };
+    v.invalidateCtm();
+    // factor 必須 ≠ 1。用 1 的話 `x = ux - (ux - x) * 1 === x`，ux 整個抵消掉，斷言會
+    // 恆真、守不住任何東西（2026-08-21 code review 抓到本測試的第一版正是這樣）。
+    // 這裡用 2：新的 e/f 算出 ux=300 → translate(-700,-700)，沿用舊的 e/f=100 會算出
+    // ux=200 → translate(-600,-600)，兩者分得開。
+    v.zoomAt(2, 300, 300);
+    expect(state.calls).toBe(2);
+    expect(v.transform).toBe('translate(-700,-700) scale(4)');
+  });
+});
+
+describe('投影門檻（SHADOW_*_AT_ICON_PX）的不變式', () => {
+  it('有遲滯：開啟門檻嚴格高於關閉門檻', () => {
+    expect(SHADOW_ON_AT_ICON_PX).toBeGreaterThan(SHADOW_OFF_AT_ICON_PX);
+  });
+
+  /**
+   * 這條是整個效能修正的地基，不是湊數的斷言。
+   *
+   * `applyReadabilityFloor()` 保證預設視角的圖示顯示寬度**至少**是這兩個目標值——也就是
+   * 「整棵樹／整個分支都看得到」那個節點最多、最慢的狀態，一定落在門檻上。關閉門檻只要
+   * 掉到任何一個目標值以下，那個狀態就會重新畫滿 239（或數十）個 drop-shadow，
+   * 2026-08-21 真機實測的手機平移 20→40 FPS 直接還回去。
+   *
+   * 日後有人調 DESKTOP_ICON_TARGET_PX／MOBILE_ICON_TARGET_PX（例如骰子顯示尺寸改了要
+   * 照比例重算）時，這條測試會紅，提醒他一起看投影門檻。
+   */
+  it('關閉門檻高於預設視角保證的圖示尺寸：預設視角一律不畫投影', () => {
+    expect(SHADOW_OFF_AT_ICON_PX).toBeGreaterThan(DESKTOP_ICON_TARGET_PX);
+    expect(SHADOW_OFF_AT_ICON_PX).toBeGreaterThan(MOBILE_ICON_TARGET_PX);
   });
 });

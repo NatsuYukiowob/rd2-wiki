@@ -1298,3 +1298,101 @@ test('Z7. 畫布用 CSS transform ＋ will-change 升成合成層（效能修正
   expect(state.hasTransformAttr).toBe(false);
   expect(state.cssTransform).toMatch(/^translate\(-?[\d.]+px, ?-?[\d.]+px\) scale\([\d.]+\)$/);
 });
+
+test('Z8. 縮小時不畫節點投影（239 個 drop-shadow 是光柵化主成本），放大才畫；focus 外框不受影響', async ({ page }) => {
+  await page.goto('/tree');
+  await page.waitForFunction(() => document.querySelectorAll('.node').length >= 239);
+
+  // 滾輪縮放：站台的 wheel handler 一次 1.1 倍，Viewport 把縮放夾在 0.2～8。要跨過
+  // 0.2 → 8 需要 log(40)/log(1.1) ≈ 39 次，這裡給 50 次確保兩個方向都頂到夾制上限，
+  // 也就一定越過高解析門檻（HIRES_UPGRADE_AT / HIRES_DOWNGRADE_AT）。
+  //
+  // 回傳實際到達的縮放倍率讓呼叫端斷言：`page.mouse.wheel()` 有可能被合併或吃掉，
+  // 若不檢查，「滾不夠所以沒切換」會被誤讀成「功能沒生效」——這正是本測試第一版踩到的坑。
+  async function wheelTo(direction: 'in' | 'out'): Promise<number> {
+    const box = (await page.locator('#tree').boundingBox())!;
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    for (let i = 0; i < 50; i++) await page.mouse.wheel(0, direction === 'in' ? -120 : 120);
+    // maybeUpgradeIcons()／detail class 都排在 rAF／MutationObserver 上，等一幀落地。
+    await page.evaluate(() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(() => r(null)))));
+    return page.evaluate(() =>
+      new DOMMatrixReadOnly(getComputedStyle(document.getElementById('viewport')!).transform).a);
+  }
+
+  const read = () => page.evaluate(() => {
+    const svg = document.getElementById('tree')!;
+    const icon = document.querySelector('g.node .icon')!;
+    return { shadows: svg.classList.contains('shadows'), filter: getComputedStyle(icon).filter };
+  });
+
+  expect(await wheelTo('out')).toBeCloseTo(0.2, 3); // 頂到縮放下限
+  const zoomedOut = await read();
+  expect(zoomedOut.shadows).toBe(false);
+  expect(zoomedOut.filter).toBe('none');
+
+  expect(await wheelTo('in')).toBeCloseTo(8, 3); // 頂到縮放上限
+  const zoomedIn = await read();
+  expect(zoomedIn.shadows).toBe(true);
+  expect(zoomedIn.filter).toContain('drop-shadow');
+
+  // focus 外框是無障礙功能，任何縮放下都必須在——這正是最容易被上面那組
+  // `#tree.shadows ...` 選擇器用權重蓋掉的東西（`#tree.shadows .node .icon` 的權重
+  // 高於 `.node:focus .icon`），所以兩種模式各驗一次。
+  const focusFilter = () => page.evaluate(() => {
+    const g = document.querySelector<SVGGElement>('g.node')!;
+    g.focus();
+    return getComputedStyle(g.querySelector('.icon')!).filter;
+  });
+
+  expect(await focusFilter()).toContain('focus-ring');   // 放大狀態
+  await wheelTo('out');
+  expect(await focusFilter()).toContain('focus-ring');   // 縮小狀態
+
+  // 視窗變小也要重算：iconCssPx 的輸入之一是畫布盒子的尺寸，視窗一縮，同一個 vp.scale 下
+  // 圖示的 CSS 顯示寬度就掉一個級距。`resize` 不會寫 #viewport 的 style，所以掛在
+  // MutationObserver 上的那條路接不到——少了 resize 這個呼叫點，畫面會停在「已經小到看不見
+  // 投影、卻還在畫 239 個 drop-shadow」的狀態，正是這個修正要消除的那一個，而且要等使用者
+  // 下次滾輪或拖曳才自癒。瀏覽器縮放（dpr 變動）、手機轉向、進入全螢幕走的都是這條。
+  expect(await wheelTo('in')).toBeCloseTo(8, 3);
+  expect((await read()).shadows).toBe(true);
+  await page.setViewportSize({ width: 400, height: 300 });
+  await page.evaluate(() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(() => r(null)))));
+  expect((await read()).shadows).toBe(false);
+});
+
+test('Z9. 標籤只在有滑鼠的裝置升成合成層（手機會閃爍），兩邊標籤都始終看得見', async ({ page, isMobile }) => {
+  await page.goto('/tree');
+  await page.waitForFunction(() => document.querySelectorAll('.node').length >= 239);
+
+  // 要挑真的畫出來的那個標籤：符文／被動的 .label 是 display:none（見 tree.astro 的
+  // 「標籤擁擠」那段），只有骰子 41＋支援 5＋樹心 1 共 47 個會渲染。
+  const read = () => page.evaluate(() => {
+    const label = [...document.querySelectorAll('#viewport text')]
+      .find(t => getComputedStyle(t).display !== 'none')!;
+    const cs = getComputedStyle(label);
+    return {
+      willChange: cs.willChange,
+      visibility: cs.visibility,
+      hasMouse: matchMedia('(hover: hover) and (pointer: fine)').matches,
+    };
+  });
+
+  const before = await read();
+  // 前提斷言：兩個 project 真的被媒體查詢分得開。少了這條，下面那條會在兩邊都變成
+  // 同義反覆（永遠成立），這個測試就再也抓不到「規則寫錯、兩邊都套用」這種回歸。
+  expect(before.hasMouse).toBe(!isMobile);
+  expect(before.willChange).toBe(isMobile ? 'auto' : 'transform');
+
+  // 標籤在任何時候都要看得見：手勢期間隱藏標籤那版被否決了（縮放時字消失太突兀），
+  // 這條擋住它被重新引進。
+  expect(before.visibility).toBe('visible');
+  const box = (await page.locator('#tree').boundingBox())!;
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width / 2 + 60, box.y + box.height / 2 + 40, { steps: 5 });
+  expect((await read()).visibility).toBe('visible');
+  await page.mouse.up();
+
+  await page.mouse.wheel(0, -120);
+  expect((await read()).visibility).toBe('visible');
+});

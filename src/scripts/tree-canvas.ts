@@ -11,6 +11,8 @@ import {
   effectiveDevicePx,
   HIRES_UPGRADE_AT,
   HIRES_DOWNGRADE_AT,
+  SHADOW_ON_AT_ICON_PX,
+  SHADOW_OFF_AT_ICON_PX,
 } from '../lib/viewport.js';
 import { computeSelection } from '../lib/selection.js';
 import { renderDetail, nodeViewHtml, termViewHtml, awakeningViewHtml } from '../components/NodeDetail.js';
@@ -83,7 +85,18 @@ window.addEventListener('resize', () => {
   // （dpr 1→2）、手機轉向、進入全螢幕、把視窗拖到高 DPI 螢幕，全都只發 resize。不在這裡
   // 重算的話，使用者會一直停在糊掉的 sprite（或反過來，停在已經沒必要的高解析圖），
   // 直到剛好在畫布上滾一次滾輪為止。
+  // ⚠️ 順序不能換：這兩個判斷的輸入都是畫布盒子，必須先讓快取失效才問得到新尺寸。
+  // 這個 handler 在本檔最前面就註冊了，比下面 invalidateCanvasMetrics() 自己那道
+  // resize 失效更早執行，所以不能指望它——要在這裡自己先叫一次（函式宣告會提升，
+  // 而這個 handler 只在模組執行完之後才會被呼叫，不會有 TDZ 問題）。
+  invalidateCanvasMetrics();
   maybeUpgradeIcons();
+  // 投影門檻同理，而且它連 rAF 都沒有：`updateShadows()` 平常掛在監看 #viewport style 的
+  // MutationObserver 上，但 resize **不會**寫那個 style（Viewport.apply() 只從 pan／
+  // zoomAt／fitTo 進來），那條路接不到。少了這一行，視窗縮小後會停在「圖示已經小到看不見
+  // 投影、卻還在畫 239 個 drop-shadow」的狀態，要等使用者下次滾輪或拖曳才自癒。E2E 的 Z8
+  // 有一段專門釘住這件事。
+  updateShadows();
 });
 
 const host = document.getElementById('canvas-host');
@@ -154,6 +167,76 @@ const DICE_ICON_WIDTH_UNITS = data.nodes.find(n => n.type === 'dice')?.size[0] ?
 // 目標圖示尺寸（兩個常數與它們的由來見 src/lib/viewport.ts）。
 
 /**
+ * 畫布元素盒子的快取，連同 `Viewport` 內部的 CTM 快取一起失效。
+ *
+ * `getBoundingClientRect()` 與 `getScreenCTM()` 都是**強制同步版面計算**，而兩者量的都是
+ * 「畫布元素本身在頁面上的位置與大小」——跟 `#viewport` 那層 transform 無關，拖曳與縮放
+ * 全程都不會變。不快取的話，每一個 pointermove（`pan()` → `screenToUserCtm()`）與每一幀的
+ * `updateShadows()` 都各 flush 一次版面。
+ *
+ * 失效時機刻意用四道，各補一個對方收不到的洞：
+ * - `ResizeObserver`：涵蓋**任何原因**造成的尺寸變化，不只視窗縮放（例如手機網址列收合、
+ *   容器版面改變）。存在性檢查照本檔慣例——測試環境（linkedom）沒有這個 API。
+ * - `resize`：ResizeObserver 不存在時的退路。註冊在本檔最前面那個 resize handler 裡
+ *   （而不是這裡），因為它必須排在同一個 handler 的 maybeUpgradeIcons()／updateShadows()
+ *   之前執行。
+ * - 捕獲階段的 `scroll`：位置變了但尺寸沒變，ResizeObserver 收不到。用捕獲階段才接得到
+ *   內層容器的捲動（scroll 不冒泡）。
+ * - 每次 `pointerdown`：廉價的保險。代價是**整個手勢**一次強制版面計算，而不是每個
+ *   pointermove 一次——那正是這個快取要省掉的東西。
+ */
+let canvasBox: DOMRect | null = null;
+/** 見下方 `updateShadows()`。宣告放在這裡是因為 `invalidateCanvasMetrics()` 要清掉它。 */
+let lastShadowScale = NaN;
+function canvasRect(): DOMRect {
+  if (!canvasBox) canvasBox = svg.getBoundingClientRect();
+  return canvasBox;
+}
+function invalidateCanvasMetrics(): void {
+  canvasBox = null;
+  lastShadowScale = NaN;
+  vp.invalidateCtm();
+}
+if (typeof ResizeObserver === 'function') new ResizeObserver(invalidateCanvasMetrics).observe(svg);
+if (typeof addEventListener === 'function') {
+  // `resize` 不在這裡註冊：本檔最前面那個 resize handler 已經自己叫了
+  // invalidateCanvasMetrics()，而且必須排在它的 maybeUpgradeIcons()／updateShadows()
+  // 之前——在這裡再註冊一次只會是第二個、更晚執行的監聽器，解決不了順序問題，還讓
+  // 「誰負責 resize」有兩個答案。
+  addEventListener('scroll', invalidateCanvasMetrics, { capture: true, passive: true });
+}
+svg.addEventListener('pointerdown', invalidateCanvasMetrics);
+
+/**
+ * 切換 `#tree.shadows`：圖示在畫面上夠大時才畫節點投影（見 src/pages/tree.astro 那條規則的
+ * 說明——239 個 drop-shadow 是縮小視角下光柵化成本的主要來源，實測手機平移 20→40 FPS）。
+ *
+ * 判準是**骰子圖示目前的 CSS 顯示寬度**，門檻與遲滯見 `SHADOW_ON_AT_ICON_PX` /
+ * `SHADOW_OFF_AT_ICON_PX`（src/lib/viewport.ts，那裡也寫了為什麼不沿用高解析圖示那組
+ * 裝置像素門檻）。算式跟 `currentDevicePx()` 同一條，只是 dpr 固定給 1——「攤到幾個 CSS
+ * 像素」就是「攤到幾個裝置像素」把 dpr 拿掉。
+ *
+ * ⚠️ 這個函式**不能**只掛在 `wheel`／`pointerup` 上（`maybeUpgradeIcons()` 就是那樣掛的）。
+ * 雙指縮放要放開手指才會觸發 pointerup，那正好是最慢的一段手勢：整個縮放過程會拖著全部
+ * 投影跑完，放開才切換。所以改掛在監看 `#viewport` style 的 MutationObserver 上（見下方
+ * 詳情卡片那段的說明，`Viewport.apply()` 是所有變動的唯一出口），每一次 transform 變動都
+ * 跟著更新。成本是安全的：盒子已經快取，這裡只剩幾個乘法，而且 scale 沒變時直接短路。
+ */
+function updateShadows(): void {
+  if (vp.scale === lastShadowScale) return;
+  const box = canvasRect();
+  const iconCssPx =
+    effectiveDevicePx(box.width, box.height, data.meta.viewBox[2], data.meta.viewBox[3], vp.scale, 1) *
+    DICE_ICON_WIDTH_UNITS;
+  // 0 代表**量不到**（畫布還沒排版、容器尺寸為 0），不是「小到不必畫投影」。這種狀態下不記
+  // lastShadowScale，才能在盒子量得到之後用同一個 scale 再算一次。
+  if (iconCssPx <= 0) return;
+  lastShadowScale = vp.scale;
+  if (iconCssPx < SHADOW_OFF_AT_ICON_PX) svg.classList.remove('shadows');
+  else if (iconCssPx > SHADOW_ON_AT_ICON_PX) svg.classList.add('shadows');
+}
+
+/**
  * `fitTo(bounds)` 之後，如果算出來的縮放比 `minReadableScale()`（見 src/lib/viewport.ts）
  * 算出的可讀性下限還小，就再疊一次縮放拉到下限；若 `fitTo` 本身給的倍率已經 ≥ 下限，就不去
  * 動它，不會把已經夠清楚的畫面反而縮小。
@@ -175,7 +258,12 @@ const DICE_ICON_WIDTH_UNITS = data.nodes.find(n => n.type === 'dice')?.size[0] ?
  */
 function applyReadabilityFloor(): void {
   const targetPx = isMobile ? MOBILE_ICON_TARGET_PX : DESKTOP_ICON_TARGET_PX;
-  const rect = svg.getBoundingClientRect();
+  // 這裡刻意**先失效再讀**，不吃既有快取。這個函式只在初始視角與分支跳轉時跑（一次工作
+  // 階段幾次，不是每一幀），重新量一次的成本可以忽略；而它正好是「版面剛剛可能變了」的
+  // 時機（首屏排版完成、使用者切換分支）。順手讓這次的新鮮結果進快取，之後的每幀路徑
+  // （updateShadows／maybeUpgradeIcons／pan）就都用得到同一份正確值。
+  invalidateCanvasMetrics();
+  const rect = canvasRect();
   const floor = minReadableScale(
     rect.width,
     rect.height,
@@ -318,7 +406,7 @@ const iconIndex = buildIconIndex(svg);
  * 都會跑的縮放路徑上讀兩次沒有意義。
  */
 function currentDevicePx(): { devicePx: number; box: DOMRect } {
-  const box = svg.getBoundingClientRect();
+  const box = canvasRect();
   const dpr = typeof devicePixelRatio === 'number' && devicePixelRatio > 0 ? devicePixelRatio : 1;
   return {
     devicePx: effectiveDevicePx(box.width, box.height, data.meta.viewBox[2], data.meta.viewBox[3], vp.scale, dpr),
@@ -402,6 +490,12 @@ svg.addEventListener('pointerup', maybeUpgradeIcons);
 // ⚠️ 門檻修正之後，1280×720 dpr1 的桌機首屏**不會**再升級（實測每單位只有 0.52 裝置像素，
 // sprite 綽綽有餘）——這正是修正的重點，不是退步。高 DPI 螢幕與手機才會在這裡真的升級。
 whenIdle(maybeUpgradeIcons);
+
+// 首屏的投影狀態要另外補一次：上面的 MutationObserver 是在本檔更後面才註冊的，而
+// 初始視角（fitTo + applyReadabilityFloor）早在那之前就把 transform 寫進去了——那一次寫入
+// 沒有任何觀察者接得到。少了這一行，桌機首屏會停在「該有投影卻沒有」的狀態，要等使用者
+// 第一次滾輪或拖曳才補上。跟高解析圖示不同，這個不必等 idle：它只是幾個乘法加一個 class。
+updateShadows();
 
 // --- 鍵盤：方向鍵平移、+/- 縮放 ---
 // 這個 handler 掛在 window 上、原本不判斷 focus（「不管焦點在哪都該生效」）；但下面
@@ -637,7 +731,12 @@ if (typeof MutationObserver === 'function') {
   // 包一層而不是直接把 schedulePositionPanel 當 callback：它現在收一個 options 物件，
   // 而 MutationObserver 傳進來的第一個參數是 MutationRecord[]——會被當成 `{keepTop: undefined}`
   // 之外的東西，型別也對不上。畫布一動就是「重新對齊」，不帶 keepTop。
-  new MutationObserver(() => schedulePositionPanel()).observe(viewport, {
+  new MutationObserver(() => {
+    // updateShadows() 也掛在這裡，理由跟卡片一樣：Viewport 的每一次變動最後都落在這個
+    // style 屬性上，一個掛勾全包，不必在每個 zoomAt()／fitTo() 呼叫點後面各補一次。
+    updateShadows();
+    schedulePositionPanel();
+  }).observe(viewport, {
     attributes: true,
     attributeFilter: ['style'],
   });
