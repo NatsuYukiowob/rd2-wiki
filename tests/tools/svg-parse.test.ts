@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { parseTree, parseTranslate, parseEdgePath, splitTitleLevel } from '../../tools/lib/svg-parse';
+import { parseTree, parseTranslate, parseEdgePath } from '../../tools/lib/svg-parse';
 import { loadSvg, attr } from '../../tools/lib/dom';
 
 describe('parseTranslate', () => {
@@ -24,6 +24,7 @@ describe('parseEdgePath', () => {
 
 describe('parseTree（真實資料）', () => {
   const svg = readFileSync('data/dice-tree.svg', 'utf8');
+  const nodeText: Record<string, { name: string }> = JSON.parse(readFileSync('data/nodes.json', 'utf8'));
   const r = parseTree(svg);
 
   it('節點與邊的數量正確', () => {
@@ -90,54 +91,37 @@ describe('parseTree（真實資料）', () => {
     expect(count('circle')).toBe(70);
     expect(count('hex')).toBe(5);
   });
-  it('玩家被動的等級上限來自 title 最後一行（真實資料目前 40 個都剛好落在 index 1，跟「最後一行」等價，不代表兩種判定方式在其他情況下也等價，見下面「等級行判定」測試）', () => {
-    const withTitleLevel = r.nodes.filter(n => n.titleMaxLevel !== null);
-    expect(withTitleLevel).toHaveLength(40);
-    expect(withTitleLevel.every(n => n.typeZh === '玩家被動')).toBe(true);
+  // #21（2026-08-22）之後 parseTree 只認幾何。這條守的是「文案沒有從後門溜回 SVG」——
+  // 少了它，有人在正本上補回 `data-name` 而解析器照讀，就會出現兩份會漂移的文案，
+  // 而所有其他測試都是綠的。
+  it('parseTree 只回幾何，回傳物件上不存在任何文案欄位', () => {
+    const keys = new Set(Object.keys(r.nodes[0]!));
+    for (const k of ['typeZh', 'name', 'description', 'awakening', 'gameId', 'categoryZh', 'costRaw', 'titleMaxLevel']) {
+      expect(keys.has(k)).toBe(false);
+    }
+    expect([...keys].sort()).toEqual(['icon', 'id', 'label', 'shape', 'size', 'stroke', 'wip', 'x', 'y']);
   });
-  it('label 可能與 name 不同（實測 60 個）', () => {
-    expect(r.nodes.filter(n => n.label !== n.name)).toHaveLength(60);
+
+  it('label 是獨立資料，不是 name 的副本（實測 60 個不同）——所以它留在 SVG 不算重複', () => {
+    expect(r.nodes.filter(n => n.label !== nodeText[n.id]!.name)).toHaveLength(60);
   });
+
+  it('正本裡不准有 <title>——那是規則 1 舊版要守的那份副本', () => {
+    const withTitle = svg.replace('data-id="1001">', 'data-id="1001"><title>骰子｜火骰子｜偷渡回來的副本</title>');
+    expect(withTitle).not.toBe(svg);
+    expect(() => parseTree(withTitle)).toThrow(/1001.*不可含 <title>/);
+  });
+  // review 回饋（2026-08-22）：`<text>` 是文案搬走之後正本上唯一的人眼識別，卻沒有任何
+  // 東西守它。實測拿掉一個節點的 `<text>`，`npm run validate` 回 0 個錯誤——一個 PR 可以
+  // 把 239 個標籤全部清空、CI 全綠，而畫面上整棵樹沒有名字。
+  it('節點缺少 <text> 標籤會被擋——它是正本唯一的人眼線索，也會原封不動進 tree.json', () => {
+    const noText = svg.replace(/(<g class="node"[^>]*data-id="1001"[^>]*>.*?)<text[^>]*>[^<]*<\/text>/s, '$1');
+    expect(noText).not.toBe(svg);
+    expect(() => parseTree(noText)).toThrow(/1001.*缺少 <text>/);
+  });
+
   it('每個節點都有圖示雜湊', () => {
     expect(r.nodes.every(n => /^[0-9a-f]{12}$/.test(n.icon))).toBe(true);
-  });
-});
-
-describe('parseTree（等級行判定：取「最後一行」，不是固定「第二行」）', () => {
-  const wrap = (inner: string) =>
-    `<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 10 10" data-version="0.0.0" data-updated="2026-01-01">${inner}</svg>`;
-
-  // 過去 tools/lib/svg-parse.ts 固定取 title.split('\n')[1]（第二行），跟
-  // tools/validate.ts 的「最後一行」判定不一致；真實資料目前 40 個等級行剛好都落在
-  // index 1，這條規則沒被真正測到。這裡用「描述本身含 2 個換行（共 3 行）＋ 最後再附加一行
-  // 等級行」的合成資料重現：若還是取第二行，會抓到描述的第二行、maxLevel 靜默變成 1。
-  it('描述本身有 3 行（含 2 個換行）時，等級行仍要正確抓到最後一行，不是描述的第二行', () => {
-    const svg = wrap(`
-      <g class="node" transform="translate(1,2)" data-id="9006" data-type="玩家被動" data-name="測試多行等級">
-        <circle r="12" fill="#000" stroke="#ef625e" stroke-width="2" />
-        <image href="icons/000000000000.png" x="0" y="0" width="1" height="1" />
-        <title>玩家被動｜測試多行等級｜第一行
-第二行
-第三行
-最高等級：15</title>
-      </g>
-    `);
-    const r = parseTree(svg);
-    const n = r.nodes.find(x => x.id === '9006')!;
-    expect(n.titleMaxLevel).toBe(15);
-  });
-
-  it('單行 title（沒有等級行）時 titleMaxLevel 為 null，不會誤把整段 title 當等級行比對', () => {
-    const svg = wrap(`
-      <g class="node" transform="translate(1,2)" data-id="9007" data-type="骰子" data-name="測試無等級行">
-        <rect x="-1" y="-1" width="2" height="2" fill="#000" stroke="#fff" />
-        <image href="icons/000000000000.png" x="0" y="0" width="1" height="1" />
-        <title>骰子｜測試無等級行｜效果說明</title>
-      </g>
-    `);
-    const r = parseTree(svg);
-    const n = r.nodes.find(x => x.id === '9007')!;
-    expect(n.titleMaxLevel).toBeNull();
   });
 });
 
@@ -147,7 +131,7 @@ describe('parseTree（畸形資料的錯誤訊息要能定位是哪個節點／�
 
   it('polygon 頂點數異常時報出該節點的 data-id', () => {
     const svg = wrap(`
-      <g class="node" transform="translate(1,2)" data-id="9001" data-type="支援" data-name="測試三角形">
+      <g class="node" transform="translate(1,2)" data-id="9001">
         <polygon points="0,-1 1,0 -1,0" fill="#000" stroke="#fff" />
         <image href="icons/000000000000.png" x="0" y="0" width="1" height="1" />
       </g>
@@ -157,7 +141,7 @@ describe('parseTree（畸形資料的錯誤訊息要能定位是哪個節點／�
 
   it('節點缺少形狀元素時報出該節點的 data-id', () => {
     const svg = wrap(`
-      <g class="node" transform="translate(1,2)" data-id="9002" data-type="骰子" data-name="測試無形狀">
+      <g class="node" transform="translate(1,2)" data-id="9002">
         <image href="icons/000000000000.png" x="0" y="0" width="1" height="1" />
       </g>
     `);
@@ -166,7 +150,7 @@ describe('parseTree（畸形資料的錯誤訊息要能定位是哪個節點／�
 
   it('節點缺少 stroke 時報出該節點的 data-id', () => {
     const svg = wrap(`
-      <g class="node" transform="translate(1,2)" data-id="9003" data-type="骰子" data-name="測試缺stroke">
+      <g class="node" transform="translate(1,2)" data-id="9003">
         <rect x="-1" y="-1" width="2" height="2" fill="#000" />
         <image href="icons/000000000000.png" x="0" y="0" width="1" height="1" />
       </g>
@@ -177,7 +161,7 @@ describe('parseTree（畸形資料的錯誤訊息要能定位是哪個節點／�
   it('節點非 <svg> 直屬子元素時報出該節點的 data-id，且保留 normalize 引導語', () => {
     const svg = wrap(`
       <g>
-        <g class="node" transform="translate(1,2)" data-id="9005" data-type="骰子" data-name="測試巢狀">
+        <g class="node" transform="translate(1,2)" data-id="9005">
           <rect x="-1" y="-1" width="2" height="2" fill="#000" stroke="#fff" />
           <image href="icons/000000000000.png" x="0" y="0" width="1" height="1" />
         </g>
@@ -189,9 +173,10 @@ describe('parseTree（畸形資料的錯誤訊息要能定位是哪個節點／�
 
   it('邊缺少 marker-end 時報出該邊的 d 屬性值', () => {
     const svg = wrap(`
-      <g class="node" transform="translate(1,2)" data-id="9004" data-type="骰子" data-name="測試邊">
+      <g class="node" transform="translate(1,2)" data-id="9004">
         <rect x="-1" y="-1" width="2" height="2" fill="#000" stroke="#fff" />
         <image href="icons/000000000000.png" x="0" y="0" width="1" height="1" />
+        <text>測試邊</text>
       </g>
       <path class="edge" d="M 1 2 L 3 4" />
     `);
@@ -199,28 +184,6 @@ describe('parseTree（畸形資料的錯誤訊息要能定位是哪個節點／�
   });
 });
 
-describe('splitTitleLevel（svg-parse 與 validate 共用的等級行判斷）', () => {
-  it('最後一行是「最高等級：N」時剝掉，並回傳等級', () => {
-    expect(splitTitleLevel('骰子｜火骰子｜說明\n最高等級：15'))
-      .toEqual({ content: '骰子｜火骰子｜說明', maxLevel: 15 });
-  });
-
-  it('等級行帶多餘空白也算——兩邊共用同一個判斷，才不會一邊 trim 一邊沒 trim', () => {
-    // 以前 svg-parse 有 .trim()、validate 沒有：最後一行寫成「最高等級：5 」時，
-    // 一邊把它當等級行剝掉、一邊沒剝，規則 1 就拿兩個看起來一模一樣的字串報不一致。
-    expect(splitTitleLevel('a｜b｜c\n最高等級：5 ').maxLevel).toBe(5);
-    expect(splitTitleLevel('a｜b｜c\n  最高等級：5').content).toBe('a｜b｜c');
-  });
-
-  it('多行描述本身的換行不會被誤剝', () => {
-    expect(splitTitleLevel('a｜b｜第一行\n第二行'))
-      .toEqual({ content: 'a｜b｜第一行\n第二行', maxLevel: null });
-  });
-
-  it('只有一行時原樣回傳', () => {
-    expect(splitTitleLevel('最高等級：3')).toEqual({ content: '最高等級：3', maxLevel: null });
-  });
-});
 
 describe('attr（linkedom 的屬性實體沒解掉）', () => {
   const doc = loadSvg('<svg xmlns="http://www.w3.org/2000/svg"><g data-a="A&amp;B" data-b="&amp;lt;" data-c="&lt;i&gt;" /></svg>');

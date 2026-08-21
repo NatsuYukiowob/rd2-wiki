@@ -2,13 +2,13 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { createHash } from 'node:crypto';
 import { join } from 'node:path';
-import { parseTree, splitTitleLevel, COORD_TOLERANCE } from './lib/svg-parse.js';
+import { parseTree, COORD_TOLERANCE } from './lib/svg-parse.js';
+import { MAX_TEXT_LENGTH, checkNodeTextRecord, mergeNodes, type NodeTextMap, type RawNode } from './lib/node-text.js';
 import { parseCost } from '../src/lib/cost.js';
 import { maxLevelValue, parseGrowth } from '../src/lib/growth.js';
 import { extractKeywords } from '../src/lib/keywords.js';
 import { branchOfId, categoryOfZh, elementOfStroke, typeOfZh } from '../src/lib/taxonomy.js';
 import { buildAdjacency, detectCycle, findRoots, unreachableFrom } from '../src/lib/graph.js';
-import { loadSvg } from './lib/dom.js';
 import { readPngSize } from './lib/png.js';
 import { isGlossaryAlias } from '../src/lib/types.js';
 import type { Edge, GlossaryRecord, MaxLevelOfficial, UpgradeCostTable } from '../src/lib/types.js';
@@ -35,14 +35,11 @@ const EXPECTED_VIEWBOX: [number, number, number, number] = [0, 0, 2000, 1700];
  */
 const MIN_NODE_DISTANCE = 5;
 
-/** 文字欄位長度上限。正本實測最長 46 字；這個上限擋的是「把整篇文章塞進 data-description」。 */
-const MAX_TEXT_LENGTH = 500;
-
 /**
  * 遊戲資料表的管理 ID，**格式綁死節點型別**：骰子 `D000`、骰子技能 `D0000`、共通節點 `S0200`。
  *
  * 不寫成一個寬鬆的 `/^[DS]\d{3,4}$/`：那樣把符文的 `D0000` 改成 `D123`、或把玩家被動的
- * `S0201` 改成 `D0201`，只要不撞號就照樣過關——而 `data-game-id` 刻意不進 tree.json，
+ * `S0201` 改成 `D0201`，只要不撞號就照樣過關——而 `gameId` 刻意不進 tree.json，
  * 這條規則是它唯一的防線，寬鬆等於沒有。（實測 239 個節點完全符合這組對應。）
  */
 const GAME_ID_BY_TYPE: Record<string, RegExp> = {
@@ -58,6 +55,14 @@ export interface ValidateOpts {
    * 兩個角色刻意共用一份檔案：分開放的話，白名單加了詞卻忘了寫解釋，兩邊都不會有人報錯。
    */
   keywords: Record<string, GlossaryRecord>;
+  /**
+   * `data/nodes.json` 的內容：以節點 id 為鍵的全部文案（2026-08-22 起正本 SVG 只剩幾何）。
+   *
+   * 型別刻意用 `unknown` 而不是 `NodeTextMap`：這份檔案是社群 PR 直接改的，validate 的職責
+   * 之一就是驗它的結構（規則 1）。宣告成已驗過的型別，等於在型別層面假設「它一定合法」，
+   * 而規則 1 要擋的正是不合法的那些。
+   */
+  nodeText: unknown;
   /**
    * `data/upgrade-cost.json`；沒有這份資料時傳 `null`。
    *
@@ -124,6 +129,54 @@ export function validate(svgText: string, opts: ValidateOpts): ValidateResult {
   }
   const { nodes, edges } = parsed;
   const whitelist = Object.keys(opts.keywords);
+
+  // 規則 1（先驗最外層）：整份檔案被寫成陣列或字串時，底下每一條規則都會拿到空集合而
+  // 「安靜地全過」。這裡先給它一個有規則編號、看得懂該改哪個檔的錯誤，再往下走。
+  let nodeText: Record<string, unknown> = {};
+  if (typeof opts.nodeText === 'object' && opts.nodeText !== null && !Array.isArray(opts.nodeText)) {
+    nodeText = opts.nodeText as Record<string, unknown>;
+  } else {
+    push('規則 1: data/nodes.json 的最外層必須是以 id 為鍵的物件');
+  }
+
+  // 規則 19: 正本 SVG 的 id 集合 ≡ data/nodes.json 的鍵集合（雙射，兩邊零殘餘）。
+  //
+  // 文案與幾何拆成兩個檔之後，這是唯一會說「它們已經不同步」的地方。少了這條，SVG 少一個
+  // 節點只會讓 JSON 多一筆沒人引用的孤兒（畫面上安靜地少一顆），JSON 少一筆則會讓合併時
+  // 丟出一個沒有規則編號、看不出該改哪個檔的例外。兩種殘餘都要**逐一列出 id**——239 個節點，
+  // 只說「數量對不上」等於沒說。
+  const textIds = new Set(Object.keys(nodeText));
+  const geomIds = new Set(nodes.map(n => n.id));
+  const missingText = [...geomIds].filter(id => !textIds.has(id));
+  const orphanText = [...textIds].filter(id => !geomIds.has(id));
+  if (missingText.length > 0) push(`規則 19: 這些節點在正本 SVG 有幾何、但 data/nodes.json 沒有文案：${missingText.join('、')}`);
+  if (orphanText.length > 0) push(`規則 19: data/nodes.json 這些鍵在正本 SVG 找不到對應節點：${orphanText.join('、')}`);
+
+  // 規則 1: data/nodes.json 的結構（欄位齊全、型別、長度、選用欄位不得寫成空字串）。
+  //
+  // 這條規則以前是「`<title>` 必須與 `data-*` 全等」——`<title>` 是 name ＋ description 的
+  // 完整副本（23.5 KB），規則 1 的存在理由就是守那份副本。副本沒了，規則 1 就不再是「比對兩份
+  // 文案」，而是「這份唯一的文案結構完不完整」。
+  const structurallyBad = new Set<string>();
+  for (const [id, rec] of Object.entries(nodeText)) {
+    const msgs = checkNodeTextRecord(id, rec, MAX_TEXT_LENGTH);
+    if (msgs.length > 0) structurallyBad.add(id);
+    for (const m of msgs) push(`規則 1: ${m}`);
+  }
+
+  // 只有「兩邊都在、而且結構合法」的節點進得了 `withText`。硬合併壞掉的那幾筆只會再噴一輪
+  // 「缺少 name」這種看起來無關、實際上是同一個問題的錯誤，把真正的原因埋掉。
+  //
+  // ⚠️ **這個過濾集合只給需要文案的規則用**（1／3／4／8／9／14／15／16／17）。幾何規則
+  // （2／5／6／7／10／13／18／19）一律走完整的 `nodes`——它們跟文案無關，餵過濾後的集合
+  // 等於「`nodes.json` 漏一筆」會被翻譯成幾十條指向 SVG 的假錯誤。實測刪掉 `1001` 一筆
+  // 文案（幾何完好無缺）會產生 55 條錯誤，其中 54 條是規則 5／6／10／18 在說「從根不可達」
+  // 「邊端點未對齊」——全都指錯檔案，而唯一說對的規則 19 被埋在裡面。而「忘了改另一個檔」
+  // 正是兩檔正本之下最容易犯的錯。
+  const withText: RawNode[] = mergeNodes(
+    nodes.filter(n => textIds.has(n.id) && !structurallyBad.has(n.id)),
+    Object.fromEntries(Object.entries(nodeText).filter(([id]) => geomIds.has(id) && !structurallyBad.has(id))) as NodeTextMap,
+  );
   const gameIdSeen = new Map<string, string>();
 
   // 規則 2: id 唯一與編碼規律（首碼＝分支 1-5，次碼＝ 0-4，其後兩碼任意）
@@ -134,38 +187,7 @@ export function validate(svgText: string, opts: ValidateOpts): ValidateResult {
     if (!/^[1-5][0-4]\d\d$/.test(n.id)) push(`規則 2: id 不符編碼規律 ${n.id}`);
   }
 
-  const doc = loadSvg(svgText);
-  const nodeElById = new Map<string, Element>();
-  for (const g of doc.querySelectorAll('g.node')) {
-    const id = g.getAttribute('data-id');
-    if (id) nodeElById.set(id, g);
-  }
-
-  for (const n of nodes) {
-    // 規則 1: 欄位齊全與 title 一致性
-    for (const [k, v] of Object.entries({ id: n.id, type: n.typeZh, name: n.name, cost: n.costRaw, description: n.description })) {
-      if (!v) push(`規則 1: 節點 ${n.id} 缺少 data-${k}`);
-    }
-    // 長度上限：這些欄位會被原封不動放進 tree.json（吃 20KB 的 gzip 預算）、放進 PR 留言、
-    // 放進畫布的 <title>。沒有上限的話，一個節點就能把整份預算吃光。
-    for (const [k, v] of Object.entries({ name: n.name, description: n.description })) {
-      if (v.length > MAX_TEXT_LENGTH) push(`規則 1: 節點 ${n.id} 的 data-${k} 長度 ${v.length} 超過上限 ${MAX_TEXT_LENGTH}`);
-    }
-
-    // title 與 data-* 必須「全等」一致，不能只是字串包含關係——包含關係無法抓出
-    // 例如 title 被改成別的節點內容、卻剛好是另一段文字子字串的情況。
-    // 注意：data-description 本身可能內嵌換行（多行技能敘述），title 會原封不動帶著這些
-    // 換行，所以不能無條件砍掉 title 的第二行——只有「最後一行剛好是『最高等級：N』」
-    // 這種玩家被動專屬的附加行才要剝掉（交給 splitTitleLevel），其餘情況一律整段全等比對。
-    const titleEl = nodeElById.get(n.id)?.querySelector('title');
-    const titleText = titleEl?.textContent ?? '';
-    if (titleText.length > MAX_TEXT_LENGTH * 3) push(`規則 1: 節點 ${n.id} 的 <title> 長度 ${titleText.length} 過長`);
-    // 「最後一行是不是等級行」的判斷跟 svg-parse 共用同一個函式：兩邊各寫一份時，
-    // 一邊 trim、一邊沒 trim，會讓規則 1 拿兩個看起來一模一樣的字串報不一致。
-    const contentTitle = splitTitleLevel(titleText).content;
-    const expectTitle = `${n.typeZh}｜${n.name}｜${n.description}`;
-    if (contentTitle !== expectTitle) push(`規則 1: 節點 ${n.id} 的 title 與 data-* 不一致（title: ${JSON.stringify(contentTitle)}，預期: ${JSON.stringify(expectTitle)}）`);
-
+  for (const n of withText) {
     // 規則 3: type 與 stroke（元素）對應——支援節點的 stroke 必須是 support 色，反之亦然
     try {
       const t = typeOfZh(n.typeZh);
@@ -174,29 +196,27 @@ export function validate(svgText: string, opts: ValidateOpts): ValidateResult {
       if ((el === 'support') !== (t === 'support')) push(`規則 3: 節點 ${n.id} 的 stroke 與 type 不對應`);
     } catch (e) { push(`規則 3: 節點 ${n.id} ${(e as Error).message}`); }
 
-    // 規則 4: 成本文法
-    try {
-      const { maxLevel } = parseCost(n.costRaw);
-      // 等級上限在正本裡有兩個來源：data-cost 的第二行「最高 N 級」與 <title> 最後一行
-      // 「最高等級：N」。build-data 取的是前者優先（maxLevel ?? titleMaxLevel），兩者不一致時
-      // 沒有任何一邊會抱怨——站台顯示一個數字、正本上寫著另一個。
-      if (maxLevel !== null && n.titleMaxLevel !== null && maxLevel !== n.titleMaxLevel) {
-        push(`規則 4: 節點 ${n.id} 的等級上限不一致（data-cost 寫「最高 ${maxLevel} 級」，title 寫「最高等級：${n.titleMaxLevel}」）`);
-      }
-    } catch (e) { push(`規則 4: 節點 ${n.id} 成本 ${(e as Error).message}`); }
+    // 規則 4: 成本文法。`cost` 只寫錢，等級上限一律走 `maxLevel` 欄位。
+    //
+    // 搬家前等級上限有兩個寫法：123 個骰子符文寫在 `data-cost` 的第二行「最高 N 級」，
+    // 40 個玩家被動寫在 `<title>` 最後一行「最高等級：N」。同一件事兩個位置，而且兩邊
+    // **從不重疊**——所以舊版那條「兩者不一致就報錯」的交叉檢查其實一次都沒觸發過。
+    // 現在只有一個位置，`parseCost` 直接拒絕第二行，不讓那個位置長回來。判斷寫在
+    // `parseCost` 裡而不是這裡，是為了讓 build-data 與 validate 對同一份輸入給同一個答案。
+    try { parseCost(n.costRaw); } catch (e) { push(`規則 4: 節點 ${n.id} 成本 ${(e as Error).message}`); }
 
     // 規則 8: 關鍵字白名單（# 標記必須能比對到白名單詞）
     try { extractKeywords(n.description, whitelist); } catch (e) { push(`規則 8: 節點 ${n.id} ${(e as Error).message}`); }
 
-    // 規則 14: 骰子覺醒（data-awakening）。只有骰子有、而且每顆骰子都要有——「可有可無」的
-    // 欄位在這裡是最糟的設計：漏填 40 顆只會讓面板少一段字，validate 全綠、節點數也沒變。
+    // 規則 14: 骰子覺醒（nodes.json 的 `awakening`）。只有骰子有、而且每顆骰子都要有——
+    // 「可有可無」的欄位在這裡是最糟的設計：漏填 40 顆只會讓面板少一段字，validate 全綠、
+    // 節點數也沒變。長度上限由規則 1 一併把關（選用欄位也算在 MAX_TEXT_LENGTH 內）。
     if (n.typeZh === '骰子') {
-      if (!n.awakening) push(`規則 14: 骰子 ${n.id} 缺少 data-awakening（每顆骰子都有 7 骰點覺醒效果）`);
-      else if (n.awakening.length > MAX_TEXT_LENGTH) push(`規則 14: 節點 ${n.id} 的 data-awakening 超過 ${MAX_TEXT_LENGTH} 字`);
+      if (!n.awakening) push(`規則 14: 骰子 ${n.id} 缺少 awakening（每顆骰子都有 7 骰點覺醒效果）`);
       // 覺醒文字跟描述一樣會顯示給玩家、也帶 `#` 標記，同一套白名單規則
       try { extractKeywords(n.awakening, whitelist); } catch (e) { push(`規則 14: 節點 ${n.id} 的覺醒 ${(e as Error).message}`); }
     } else if (n.awakening) {
-      push(`規則 14: 節點 ${n.id}（${n.typeZh}）不該有 data-awakening——覺醒是骰子專屬的`);
+      push(`規則 14: 節點 ${n.id}（${n.typeZh}）不該有 awakening——覺醒是骰子專屬的`);
     }
 
     // 規則 16: 管理 ID 與細分類。管理 ID 是這份正本與遊戲資料表唯一對得起來的鍵，
@@ -204,14 +224,14 @@ export function validate(svgText: string, opts: ValidateOpts): ValidateResult {
     // 站台不顯示它（不進 tree.json），這條規則是它唯一的防線。
     const gameIdPattern = GAME_ID_BY_TYPE[n.typeZh];
     // 型別本身不合法是規則 3 的事；這裡沒有對應樣式就跳過，不重複報一個看起來像別的問題的錯
-    if (gameIdPattern && !gameIdPattern.test(n.gameId)) push(`規則 16: 節點 ${n.id}（${n.typeZh}）的 data-game-id ${JSON.stringify(n.gameId)} 不符合 ${gameIdPattern.source}`);
-    else if (gameIdSeen.has(n.gameId)) push(`規則 16: data-game-id ${n.gameId} 重複（節點 ${gameIdSeen.get(n.gameId)} 與 ${n.id}）`);
+    if (gameIdPattern && !gameIdPattern.test(n.gameId)) push(`規則 16: 節點 ${n.id}（${n.typeZh}）的 gameId ${JSON.stringify(n.gameId)} 不符合 ${gameIdPattern.source}`);
+    else if (gameIdSeen.has(n.gameId)) push(`規則 16: gameId ${n.gameId} 重複（節點 ${gameIdSeen.get(n.gameId)} 與 ${n.id}）`);
     else gameIdSeen.set(n.gameId, n.id);
     if (n.typeZh === '玩家被動') {
-      if (!n.categoryZh) push(`規則 16: 玩家被動 ${n.id} 缺少 data-category`);
+      if (!n.categoryZh) push(`規則 16: 玩家被動 ${n.id} 缺少 category`);
       else { try { categoryOfZh(n.categoryZh); } catch (e) { push(`規則 16: 節點 ${n.id} ${(e as Error).message}`); } }
     } else if (n.categoryZh) {
-      push(`規則 16: 節點 ${n.id}（${n.typeZh}）不該有 data-category——細分類只用在玩家被動上`);
+      push(`規則 16: 節點 ${n.id}（${n.typeZh}）不該有 category——細分類只用在玩家被動上`);
     }
 
     // 規則 9: 成長值單位一致性；`{n}` 佔位符是上游資料問題，只警告不擋 PR
@@ -262,18 +282,18 @@ export function validate(svgText: string, opts: ValidateOpts): ValidateResult {
     }
     const firstGold = levels[0]?.gold;
     const firstCore = levels[0]?.core;
-    for (const n of nodes) {
+    for (const n of withText) {
       if (n.typeZh !== zhOfType(table.appliesTo?.type)) continue;
-      let parsedLevel: number | null = null;
       let unlockGold: number | null = null;
       let unlockCore: number | null = null;
       try {
         const pc = parseCost(n.costRaw);
-        parsedLevel = pc.maxLevel;
         unlockGold = pc.cost.gold;
         unlockCore = pc.cost.core;
       } catch { continue; }   // 成本格式本身壞掉是規則 4 的事，這裡不重複報
-      if (parsedLevel !== table.appliesTo?.maxLevel) continue;
+      // 等級上限以前是從 `data-cost` 第二行剖出來的；2026-08-22 起改讀 data/nodes.json 的
+      // `maxLevel` 欄位。這一行漏改的話條件永遠不成立、整條規則 15 對所有節點靜默跳過。
+      if (n.maxLevel !== table.appliesTo?.maxLevel) continue;
       if (unlockGold !== firstGold) {
         push(`規則 15: 節點 ${n.id} 的解鎖金幣 ${unlockGold} 與升級花費表 1 級的 ${firstGold} 不一致`);
       }
@@ -298,16 +318,16 @@ export function validate(svgText: string, opts: ValidateOpts): ValidateResult {
   // （光是「所有骰子傷害」就有 15 個）。
   const official = opts.maxLevelOfficial;
   if (official) {
-    const byGameId = new Map(nodes.map(n => [n.gameId, n]));
+    const byGameId = new Map(withText.map(n => [n.gameId, n]));
 
     // ⚠️ 覆蓋率下限。這個迴圈只走 `official.values` 裡有的項目，所以「把某個節點從夾具裡
     // 刪掉」就等於單獨關掉它的檢查，而且一聲不吭——一個 PR 只要同時改壞 1203 的成長值並
     // 刪掉 `D0060` 這個鍵，CI 全綠。夾具跟資料是分開的兩個檔，這種漏法不需要惡意也會發生。
     // 判準用「maxLevel > 1 的骰子符文」：官方資料表就是對這一類標滿級值的，實測 44/44 全中。
     // （玩家被動沒有官方滿級值可對，不列入——那 40 個要靠規則 9 與人工。）
-    const needsOfficial = nodes.filter(n => {
+    const needsOfficial = withText.filter(n => {
       if (n.typeZh !== '骰子符文') return false;
-      try { return (parseCost(n.costRaw).maxLevel ?? n.titleMaxLevel ?? 1) > 1; } catch { return false; }
+      return n.maxLevel > 1;
     });
     for (const n of needsOfficial) {
       if (!(n.gameId in (official.values ?? {}))) {
@@ -317,10 +337,8 @@ export function validate(svgText: string, opts: ValidateOpts): ValidateResult {
 
     for (const [gameId, expect] of Object.entries(official.values ?? {})) {
       const n = byGameId.get(gameId);
-      if (!n) { push(`規則 17: 官方滿級值指向不存在的 data-game-id ${gameId}`); continue; }
-      let level: number;
-      try { level = parseCost(n.costRaw).maxLevel ?? n.titleMaxLevel ?? 1; }
-      catch { continue; }   // 成本格式本身壞掉是規則 4 的事，這裡不重複報
+      if (!n) { push(`規則 17: 官方滿級值指向不存在的 gameId ${gameId}`); continue; }
+      const level = n.maxLevel;
       if (level !== expect.level) {
         push(`規則 17: 節點 ${n.id}（${gameId}）的等級上限 ${level} 與官方資料表的 ${expect.level} 不一致`);
         continue;
@@ -555,6 +573,7 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
   const { errors, warnings } = validate(readFileSync('data/dice-tree.svg', 'utf8'), {
     keywords: JSON.parse(readFileSync('data/keywords.json', 'utf8')),
     upgradeCostTable: JSON.parse(readFileSync('data/upgrade-cost.json', 'utf8')),
+    nodeText: JSON.parse(readFileSync('data/nodes.json', 'utf8')),
     maxLevelOfficial: JSON.parse(readFileSync('data/maxlevel-official.json', 'utf8')),
     unlockExceptions: JSON.parse(readFileSync('data/unlock-exceptions.json', 'utf8')),
     iconsDir: 'data/icons',

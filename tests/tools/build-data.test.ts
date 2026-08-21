@@ -4,11 +4,14 @@ import { gzipSync } from 'node:zlib';
 import { buildTreeData } from '../../tools/build-data';
 import { buildSprite, type IconEntry } from '../../tools/lib/icons';
 import { parseTree } from '../../tools/lib/svg-parse';
+import type { NodeTextMap } from '../../tools/lib/node-text';
 import type { GlossaryEntry, UpgradeCostTable } from '../../src/lib/types';
 
 const svg = readFileSync('data/dice-tree.svg', 'utf8');
 const opts = {
   keywords: JSON.parse(readFileSync('data/keywords.json', 'utf8')) as Record<string, GlossaryEntry>,
+  // 正本 SVG 自 2026-08-22（#21）起只剩幾何，文案在這一份；兩邊在 buildTreeData 內依 id 合併。
+  nodeText: JSON.parse(readFileSync('data/nodes.json', 'utf8')) as NodeTextMap,
   unlockExceptions: JSON.parse(readFileSync('data/unlock-exceptions.json', 'utf8')) as Record<string, { unlockVia: 'quest' | 'default' | 'achievement'; note?: string }>,
   // ⚠️ 這一項漏了的話，下面那條 20 KB 效能預算斷言量的就不是真正上線的產物：
   // meta.upgradeCostTable 會是 null，少量 292 B gzip，測試綠燈而 CLI 寫出的檔案已經超標。
@@ -51,10 +54,10 @@ describe('buildTreeData', () => {
 
     // ⚠️ 但偵測機制必須留著——上游隨時可能再冒出新的 `{n}`，這是唯一會提醒我們的東西。
     // 沒有這一段的話，上面那條「等於 0」會變成一個「拿掉整個偵測邏輯也照樣綠」的斷言。
-    // 描述與 <title> 兩處一起改，夾具才是一份合法的正本（規則 1 要求兩者逐字相同）
-    const injected = svg.replaceAll('連接齒輪骰子時，攻擊速度增加5%', '連接齒輪骰子時，攻擊速度增加5%(+{1}%)');
-    expect(injected).not.toBe(svg);
-    const rebuilt = buildTreeData(injected, opts);
+    // #21 之前這裡要同時改 data-description 與 <title>（舊的規則 1 要求兩者逐字相同）；
+    // 文案搬進 nodes.json 之後只有一個位置可以改。
+    const nodeText = { ...opts.nodeText, '2403': { ...opts.nodeText['2403']!, description: '連接齒輪骰子時，攻擊速度增加5%(+{1}%)' } };
+    const rebuilt = buildTreeData(svg, { ...opts, nodeText });
     expect(rebuilt.nodes.filter(n => n.dataIssue === 'placeholder').map(n => n.id)).toEqual(['2403']);
   });
   it('meta.glossary 涵蓋所有節點用到的關鍵字，且不含站台用不到的 code', () => {

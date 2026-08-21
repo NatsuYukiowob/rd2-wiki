@@ -31,12 +31,12 @@ export function elementOfStroke(stroke: string): Element {
 /** SVG `data-type` 中文對照到站台用的 NodeType。 */
 export function typeOfZh(zh: string): NodeType {
   const t = TYPE_BY_ZH[zh];
-  if (!t) throw new Error(`未知的 data-type: ${zh}`);
+  if (!t) throw new Error(`未知的 type: ${zh}`);
   return t;
 }
 /** SVG `data-category` 中文對照到站台用的 PassiveCategory。 */
 export function categoryOfZh(zh: string): PassiveCategory {
   const c = CATEGORY_BY_ZH[zh];
-  if (!c) throw new Error(`未知的 data-category: ${zh}`);
+  if (!c) throw new Error(`未知的 category: ${zh}`);
   return c;
 }

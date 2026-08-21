@@ -3,6 +3,7 @@ import { pathToFileURL } from 'node:url';
 import { gzipSync } from 'node:zlib';
 import sharp from 'sharp';
 import { parseTree, COORD_TOLERANCE } from './lib/svg-parse.js';
+import { MAX_TEXT_LENGTH, loadNodeText, mergeNodes, type NodeTextMap } from './lib/node-text.js';
 import { buildSprite, buildHiRes, type IconEntry } from './lib/icons.js';
 import { parseCost } from '../src/lib/cost.js';
 import { parseGrowth } from '../src/lib/growth.js';
@@ -15,6 +16,11 @@ import type { Branch, Edge, GlossaryDisplay, GlossaryRecord, TreeData, TreeNode,
 interface BuildOpts {
   /** `data/keywords.json` 的內容：key ＝不含 `#` 的詞，同時是規則 8 的白名單與玩家看的解釋。 */
   keywords: Record<string, GlossaryRecord>;
+  /**
+   * `data/nodes.json` 的內容：以節點 id 為鍵的全部文案。正本 SVG 只剩幾何，兩邊在
+   * `mergeNodes()` 依 id 合併——id 對不起來就丟錯，不會靜默少一個節點。
+   */
+  nodeText: NodeTextMap;
   unlockExceptions: Record<string, { unlockVia: UnlockVia; note?: string }>;
   /**
    * `data/upgrade-cost.json`；沒有這份資料時傳 `null`。
@@ -31,7 +37,8 @@ interface BuildOpts {
 }
 
 export function buildTreeData(svgText: string, opts: BuildOpts): TreeData {
-  const { meta: rawMeta, nodes: rawNodes, edges: rawEdges } = parseTree(svgText);
+  const { meta: rawMeta, nodes: rawGeom, edges: rawEdges } = parseTree(svgText);
+  const rawNodes = mergeNodes(rawGeom, opts.nodeText);
   const whitelist = Object.keys(opts.keywords);
   // rawMeta.center 是「正本裡怎麼寫」的形狀（帶 PNG 檔名），meta.center 是「站台要怎麼畫」的形狀
   // （帶 WebP 網址），欄位名同、內容不同，所以先把它從展開的 rawMeta 裡拆出來，避免覆蓋。
@@ -40,9 +47,9 @@ export function buildTreeData(svgText: string, opts: BuildOpts): TreeData {
   const nodes: TreeNode[] = rawNodes.map(r => {
     const type = typeOfZh(r.typeZh);
     const branch = branchOfId(r.id);
-    const { cost, maxLevel } = parseCost(r.costRaw);
+    const { cost } = parseCost(r.costRaw);
     const { growth, dataIssue } = parseGrowth(r.description);
-    const level = maxLevel ?? r.titleMaxLevel ?? 1;
+    const level = r.maxLevel;
     return {
       id: r.id, branch, element: elementOfStroke(r.stroke), type,
       name: r.name, label: r.label,
@@ -166,10 +173,12 @@ export function buildTreeData(svgText: string, opts: BuildOpts): TreeData {
 if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
   const svgText = readFileSync('data/dice-tree.svg', 'utf8');
   const keywords = JSON.parse(readFileSync('data/keywords.json', 'utf8'));
+  const nodeText = loadNodeText(JSON.parse(readFileSync('data/nodes.json', 'utf8')), MAX_TEXT_LENGTH);
   const unlockExceptions = JSON.parse(readFileSync('data/unlock-exceptions.json', 'utf8'));
   const upgradeCostTable = JSON.parse(readFileSync('data/upgrade-cost.json', 'utf8'));
 
-  const { meta: rawMeta, nodes: rawNodes } = parseTree(svgText);
+  const { meta: rawMeta, nodes: rawGeom } = parseTree(svgText);
+  const rawNodes = mergeNodes(rawGeom, nodeText);
   // 圖示的打包格子尺寸＝引用它的節點的顯示尺寸。同一張圖被多個節點共用時，尺寸必然相同
   // （圖是逐節點渲染出來的，位元組一樣就代表像素尺寸一樣），所以取第一個引用者即可；
   // src/lib/render.ts 另有一道主動檢查，真的出現一圖多尺寸會當場丟錯而不是悄悄裁錯。
@@ -211,7 +220,7 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
   }
   for (const [hash, buf] of hiRes) writeFileSync(`public/assets/icons/${hash}.webp`, buf);
 
-  const data = buildTreeData(svgText, { keywords, unlockExceptions, upgradeCostTable, spriteIndex: index, spriteSize: size });
+  const data = buildTreeData(svgText, { keywords, nodeText, unlockExceptions, upgradeCostTable, spriteIndex: index, spriteSize: size });
   const json = JSON.stringify(data);
   writeFileSync('src/generated/tree.json', json);
 
