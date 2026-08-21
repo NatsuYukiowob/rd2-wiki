@@ -27,7 +27,7 @@ export type GrowthUnit = '%' | 's' | 'count' | 'x' | '';
 
 export interface Cost { core: number; gold: number }
 export interface Growth { base: number; perLevel: number; unit: GrowthUnit }
-export interface ParsedCost { cost: Cost; maxLevel: number | null }
+export interface ParsedCost { cost: Cost }
 
 export interface TreeNode {
   id: string;

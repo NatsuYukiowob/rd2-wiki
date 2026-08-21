@@ -1,7 +1,5 @@
 import type { Cost, NodeType, ParsedCost, UnlockVia, UpgradeCostTable } from './types.js';
 
-const LEVEL = /^最高 (\d+) 級$/;
-
 /**
  * 成本上限。正則只管「長得像不像數字」，不管大小——`核心 999999999999999999999` 是合法字面，
  * `Number()` 給回一個超過安全整數範圍的值，加總出來的全樹成本就開始失去精度（而且是**安靜地**）。
@@ -21,9 +19,18 @@ const GOLD_PATTERN = /^金幣 (\d{1,3}(?:,\d{3})*)(?:／核心 (\d+))?$/;
 // 核心開頭：核心 <N>（不允許搭配其他）
 const CORE_PATTERN = /^核心 (\d+)$/;
 
+/**
+ * 解析解鎖成本字串。**只吃單行**——2026-08-22（#21）之前骰子符文的成本第二行寫著
+ * 「最高 N 級」，那個等級上限現在是 `data/nodes.json` 的 `maxLevel` 欄位。
+ *
+ * 這裡跟著擋掉第二行，而不是留著「還讀得懂但沒人用」的能力：validate 的規則 4 拒絕的輸入，
+ * `npm run build:data` 必須也拒絕。兩邊對同一份輸入給不同答案，就是「本機綠、CI 紅」
+ * 或反過來的裂縫——`MAX_TEXT_LENGTH` 與 `checkNodeTextRecord` 共用一份判斷正是為了堵這個。
+ */
 export function parseCost(raw: string): ParsedCost {
-  const [head, tail, ...rest] = raw.split('\n');
-  if (rest.length > 0 || head === undefined) throw new Error(`成本字串行數異常: ${JSON.stringify(raw)}`);
+  const [head, ...rest] = raw.split('\n');
+  if (head === undefined) throw new Error(`成本字串行數異常: ${JSON.stringify(raw)}`);
+  if (rest.length > 0) throw new Error(`不可換行（等級上限請寫在 maxLevel 欄位）: ${JSON.stringify(raw)}`);
   if (head.includes('/')) throw new Error(`分隔符必須是全形／: ${head}`);
 
   let core = 0;
@@ -73,14 +80,7 @@ export function parseCost(raw: string): ParsedCost {
     }
   }
 
-  let maxLevel: number | null = null;
-  if (tail !== undefined) {
-    const l = LEVEL.exec(tail);
-    if (!l) throw new Error(`無法解析等級上限: ${JSON.stringify(tail)}`);
-    maxLevel = Number(l[1]!);
-    if (maxLevel < 1 || maxLevel > 100) throw new Error(`等級上限須在 1..100: ${maxLevel}`);
-  }
-  return { cost: { core, gold }, maxLevel };
+  return { cost: { core, gold } };
 }
 
 /**

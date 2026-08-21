@@ -55,15 +55,18 @@ rd2-wiki 把整棵樹攤平在同一張畫布上：**點一個節點，它在樹
 
 ## 資料從哪裡來
 
-網站呈現的骰子樹資料，正本只有兩處，也是唯二需要手動維護的地方：
+網站呈現的骰子樹資料，正本只有三處，也是唯三需要手動維護的地方：
 
 | 正本 | 內容 |
 |---|---|
-| `data/dice-tree.svg` | 整棵骰子樹的節點與連線（239 個節點，含名稱、花費、效果敘述、座標） |
+| `data/nodes.json` | 239 個節點的**文字**：名稱、類型、解鎖花費、等級上限、效果敘述、骰子覺醒、管理 ID |
+| `data/dice-tree.svg` | 整棵骰子樹的**幾何**：239 個節點的位置、形狀、外框色、圖示引用、顯示標籤，以及 248 條連線 |
 | `data/icons/` | 對應的圖示 PNG（238 張，檔名為內容 sha256 雜湊前 12 碼） |
 
-其餘資料（`data/keywords.json` 效果關鍵字白名單、`data/unlock-exceptions.json` 解鎖規則例外）
-是輔助這兩份正本的設定檔。
+兩份正本以節點 id 對應，集合必須完全一致（CI 規則 19）。
+
+其餘資料（`data/keywords.json` 效果關鍵字白名單、`data/unlock-exceptions.json` 解鎖規則例外、
+`data/upgrade-cost.json` 升級花費表、`data/maxlevel-official.json` 官方滿級值）是輔助用的設定檔。
 
 **歡迎送 PR 修正資料。** 動手前請先讀 [`CONTRIBUTING.md`](./CONTRIBUTING.md)——它同時是貢獻指南，
 也是網站 [關於頁](https://rd2-wiki.pages.dev/about/) 的內容來源；裡面寫清楚了資料格式、
@@ -86,8 +89,8 @@ npm install
 npm run dev      # 先產生資料，再啟動本機開發伺服器
 ```
 
-`npm run dev` 與 `npm run build` 都會先執行 `npm run build:data`，把 `data/dice-tree.svg`
-與 `data/icons/` 解析、轉換成網站實際使用的產物：
+`npm run dev` 與 `npm run build` 都會先執行 `npm run build:data`，把 `data/nodes.json`、
+`data/dice-tree.svg` 與 `data/icons/` 解析、合併、轉換成網站實際使用的產物：
 
 - `src/generated/tree.json`——節點與連線的結構化資料
 - `public/assets/sprite.webp`、`public/assets/icons/*.webp`——圖示資產

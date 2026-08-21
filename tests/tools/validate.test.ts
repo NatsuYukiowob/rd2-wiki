@@ -8,6 +8,7 @@ import { validate } from '../../tools/validate';
 import type { GlossaryEntry, MaxLevelOfficial, UpgradeCostTable } from '../../src/lib/types';
 
 const svg = readFileSync('data/dice-tree.svg', 'utf8');
+const nodeText: Record<string, Record<string, unknown>> = JSON.parse(readFileSync('data/nodes.json', 'utf8'));
 const keywords: Record<string, GlossaryEntry> = JSON.parse(readFileSync('data/keywords.json', 'utf8'));
 const upgradeCostTable: UpgradeCostTable = JSON.parse(readFileSync('data/upgrade-cost.json', 'utf8'));
 const maxLevelOfficial: MaxLevelOfficial = JSON.parse(readFileSync('data/maxlevel-official.json', 'utf8'));
@@ -15,7 +16,20 @@ const unlockExceptions: Record<string, { unlockVia: string; note?: string }> =
   JSON.parse(readFileSync('data/unlock-exceptions.json', 'utf8'));
 const iconsDir = 'data/icons';
 const dataDir = 'data';
-const opts = { keywords, upgradeCostTable, maxLevelOfficial, unlockExceptions, iconsDir, dataDir };
+const opts = { keywords, nodeText, upgradeCostTable, maxLevelOfficial, unlockExceptions, iconsDir, dataDir };
+
+/**
+ * 產生一份「只改了某幾筆」的 nodes.json。文案搬進 JSON 之後，破壞文案的測試不再是對 SVG 字串
+ * 做 replace，而是改這份物件——這正是 #21 要換到的東西：一筆改動就是一行 diff。
+ *
+ * 深拷貝而不是淺層展開：`{...nodeText, '1001': {...}}` 只換掉被指名的那幾筆，但測試若寫成
+ * `patch({'1001': {...nodeText['1001'], name: 'x'}})` 之外的形式（例如直接 mutate），
+ * 就會污染其他測試共用的 `nodeText`，而症狀是「單獨跑綠、全部一起跑紅」。
+ */
+const patch = (over: Record<string, unknown>) => ({
+  ...opts,
+  nodeText: { ...structuredClone(nodeText), ...over },
+});
 
 /**
  * 從正本裡把邊的 `d` 屬性全撈出來。規則 5／6 的測試要「挑一條真實存在的邊來破壞」，
@@ -72,11 +86,11 @@ describe('validate', () => {
   it('規則 9：描述裡出現 {n} 佔位符會被列進 warnings（不擋 PR）', () => {
     // 真實資料現在一個佔位符都沒有，這條就是那個機制唯一的守門員——上游隨時可能再冒出
     // 新的 `{n}`，沒有它的話整段偵測邏輯被拿掉也不會有人發現。
-    // 描述與 <title> 兩處都要改：規則 1 要求兩者逐字相同，只改一邊會被那條先擋下來，
-    // 測到的就不是規則 9 了（第一版就是這樣紅的）。
-    const injected = svg.replaceAll('#僵硬範圍增加30%', '#僵硬範圍增加30%(+{1}%)');
-    expect(injected).not.toBe(svg);
-    const result = validate(injected, opts);
+    // （#21 之前這裡要同時改 data-description 與 <title> 兩處，因為舊的規則 1 要求兩者逐字
+    // 相同；文案搬進 nodes.json 之後副本沒了，改一個欄位就是改一個欄位。）
+    const result = validate(svg, patch({
+      '5302': { ...nodeText['5302'], description: nodeText['5302']!.description!.toString().replace('#僵硬範圍增加30%', '#僵硬範圍增加30%(+{1}%)') },
+    }));
     expect(result.errors).toEqual([]);                       // 佔位符只警告、不擋
     expect(result.warnings.some(w => /規則 9.*5302.*佔位符/.test(w))).toBe(true);
   });
@@ -87,8 +101,8 @@ describe('validate', () => {
   });
 
   it('規則 4：不合文法的成本會被擋', () => {
-    const broken = svg.replace('data-cost="核心 5"', 'data-cost="免費"');
-    expect(validate(broken, opts).errors.some(e => /成本/.test(e))).toBe(true);
+    expect(validate(svg, patch({ '1001': { ...nodeText['1001'], cost: '免費' } }))
+      .errors.some(e => /成本/.test(e))).toBe(true);
   });
 
   it('規則 5：邊的端點沒對上節點中心會被擋', () => {
@@ -142,7 +156,7 @@ describe('validate', () => {
     for (const f of readdirSync(iconsDir)) writeFileSync(join(tinyDir, f), readFileSync(join(iconsDir, f)));
     // 48x31 的縮圖：建置期會把它放大四倍，成品是一團糊，過去什麼規則都沒擋
     writeFileSync(join(tinyDir, 'tree-center.png'), TINY_PNG);
-    const result = validate(svg, { keywords, upgradeCostTable, maxLevelOfficial, unlockExceptions, iconsDir, dataDir: tinyDir });
+    const result = validate(svg, { keywords, nodeText, upgradeCostTable, maxLevelOfficial, unlockExceptions, iconsDir, dataDir: tinyDir });
     expect(result.errors.some(e => /規則 10.*小於顯示尺寸的兩倍/.test(e))).toBe(true);
   });
 
@@ -180,22 +194,26 @@ describe('validate', () => {
 
   it('規則 6：帶 data-wip 的新節點不會被誤擋（偽陽性測試），且會被列入 warnings', () => {
     const wip = svg.replace('</svg>',
-      '<g class="node" data-wip="1" transform="translate(300.00,300.00)" data-id="1099" data-type="骰子" data-name="測試骰子" data-cost="核心 5" data-description="測試">' +
-      '<title>骰子｜測試骰子｜測試</title><rect x="-36" y="-28" width="72" height="56" stroke="#ef625e"/>' +
+      '<g class="node" data-wip="1" transform="translate(300.00,300.00)" data-id="1099">' +
+      '<rect x="-36" y="-28" width="72" height="56" stroke="#ef625e"/>' +
       '<image href="icons/000000000000.png" width="56" height="56"/><text>測試骰子</text></g></svg>');
+    const wipText = {
+      ...nodeText,
+      '1099': { name: '測試骰子', type: '骰子', gameId: 'D999', cost: '核心 5', maxLevel: 1, description: '測試', awakening: '測試覺醒' },
+    };
     // 圖示內容檢查（規則 7b/7c）與這條測試的重點無關，所以用一個獨立的暫存目錄放假圖示，
     // 不動到真正的 data/icons；假圖示的雜湊／格式不會通過規則 7，但那是預期中的另一個
     // 錯誤，不影響本測試只關心的「不可達」斷言。
     const tmpIconsDir = mkdtempSync(join(tmpdir(), 'rd2-wiki-icons-'));
     writeFileSync(join(tmpIconsDir, '000000000000.png'), Buffer.from('not-a-real-png'));
-    const result = validate(wip, { keywords, upgradeCostTable, maxLevelOfficial, unlockExceptions, iconsDir: tmpIconsDir, dataDir });
+    const result = validate(wip, { keywords, nodeText: wipText, upgradeCostTable, maxLevelOfficial, unlockExceptions, iconsDir: tmpIconsDir, dataDir });
     expect(result.errors.some(e => /不可達/.test(e))).toBe(false);
     expect(result.warnings.some(w => /規則 6\(c\)/.test(w) && w.includes('1099'))).toBe(true);
   });
 
   it('規則 8：# 標記比不到白名單會被擋', () => {
-    const broken = svg.replace('#尖刺', '#不存在的關鍵字');
-    expect(validate(broken, opts).errors.some(e => /白名單/.test(e))).toBe(true);
+    expect(validate(svg, patch({ '1002': { ...nodeText['1002'], description: '於怪物移動路徑上，設置#不存在的關鍵字' } }))
+      .errors.some(e => /白名單/.test(e))).toBe(true);
   });
 
   it('規則 8(b)：詞彙表缺 desc、色碼不合法、或解釋裡的 # 查不到，都會被擋', () => {
@@ -214,20 +232,16 @@ describe('validate', () => {
   });
 
   it('規則 14：骰子漏填覺醒、或非骰子多填覺醒，都會被擋', () => {
-    const dropped = svg.replace(/ data-awakening="[^"]*"/, '');
-    expect(validate(dropped, opts).errors.some(e => /規則 14.*缺少 data-awakening/.test(e))).toBe(true);
+    const { awakening: _dropped, ...noAwakening } = nodeText['1001']!;
+    expect(validate(svg, patch({ '1001': noAwakening })).errors.some(e => /規則 14.*缺少 awakening/.test(e))).toBe(true);
 
     // 把覺醒掛到一個符文節點上
-    const misplaced = svg.replace(
-      /(<g class="node"[^>]*data-id="1201"[^>]*data-description="[^"]*")/,
-      '$1 data-awakening="不該出現在這裡"',
-    );
-    expect(validate(misplaced, opts).errors.some(e => /規則 14.*不該有 data-awakening/.test(e))).toBe(true);
+    expect(validate(svg, patch({ '1201': { ...nodeText['1201'], awakening: '不該出現在這裡' } }))
+      .errors.some(e => /規則 14.*不該有 awakening/.test(e))).toBe(true);
 
     // 覺醒文字裡的 # 一樣要在白名單裡
-    const badKw = svg.replace('data-awakening="對子彈攻擊擊中的怪物賦予#燙傷"', 'data-awakening="賦予#根本沒這個詞"');
-    expect(badKw).not.toBe(svg);
-    expect(validate(badKw, opts).errors.some(e => /規則 14.*白名單/.test(e))).toBe(true);
+    expect(validate(svg, patch({ '1001': { ...nodeText['1001'], awakening: '賦予#根本沒這個詞' } }))
+      .errors.some(e => /規則 14.*白名單/.test(e))).toBe(true);
   });
 
   it('規則 8(b)：別名只准指到有解釋的本尊，而且不准鏈', () => {
@@ -270,36 +284,42 @@ describe('validate', () => {
   it('規則 17：描述被解析成別的意思時，官方滿級值是唯一會說話的東西', () => {
     // 前提斷言：這四種破壞法全都是合法的 SVG／成本／關鍵字，規則 1–16 一條都不會報。
     // 少了這行，下面的主斷言可能只是在驗「別條規則擋下來了」，規則 17 其實從沒執行過。
-    const only17 = (s: string) => validate(s, opts).errors.filter(e => /規則 17/.test(e));
-    const others = (s: string) => validate(s, opts).errors.filter(e => !/規則 17/.test(e));
+    // 1201 與 3201 共用同一段描述，所以「改描述」一律兩顆一起改——照抄舊版對 SVG 做
+    // replaceAll 的語意。
+    const bothRunes = (desc: string) => patch({
+      '1201': { ...nodeText['1201'], description: desc },
+      '3201': { ...nodeText['3201'], description: desc },
+    });
+    const only17 = (o: ReturnType<typeof bothRunes>) => validate(svg, o).errors.filter(e => /規則 17/.test(e));
+    const others = (o: ReturnType<typeof bothRunes>) => validate(svg, o).errors.filter(e => !/規則 17/.test(e));
 
     // (a) 描述漏寫「(+每級增量)」→ growth 變成 null，面板那行「1 級 X → 50 級 Y」整條消失，
     //     而正本看起來完全正常。1201 與 3201 共用同一段描述，所以兩顆都會報。
-    const dropped = svg.replaceAll('基本攻擊傷害增加20%(+4%)', '基本攻擊傷害增加20%');
+    const dropped = bothRunes('基本攻擊傷害增加20%');
     expect(others(dropped)).toEqual([]);
     expect(only17(dropped).some(e => /節點 1201（D0000）解析不出成長值/.test(e))).toBe(true);
     expect(only17(dropped)).toHaveLength(2);
 
     // (b) 每級增量抄錯一個數字 → 站台照樣算得出一個滿級值，只是那個值是錯的
-    const wrongStep = svg.replaceAll('基本攻擊傷害增加20%(+4%)', '基本攻擊傷害增加20%(+5%)');
+    const wrongStep = bothRunes('基本攻擊傷害增加20%(+5%)');
     expect(others(wrongStep)).toEqual([]);
     expect(only17(wrongStep).some(e => /節點 1201（D0000）推算的 Lv\.50 滿級值 265 與官方資料表的 216 不一致/.test(e))).toBe(true);
 
     // (c) 這條規則的來由：正本原本寫「減少-0.5秒(+-0.2秒)」，站台算出「50 級 −10.3 秒」，
     //     一路上沒有任何檢查說話。把它改回舊寫法必須重新變紅，否則這條規則沒有守住它。
-    const doubleNegative = svg.replaceAll('技能冷卻時間減少0.5秒(+0.2秒)', '技能冷卻時間減少-0.5秒(+-0.2秒)');
+    const doubleNegative = patch({ '1204': { ...nodeText['1204'], description: '技能冷卻時間減少-0.5秒(+-0.2秒)' } });
     expect(others(doubleNegative)).toEqual([]);
     expect(only17(doubleNegative).some(e => /節點 1204（D0070）推算的 Lv\.50 滿級值 -10\.3 與官方資料表的 10\.3 不一致/.test(e))).toBe(true);
 
     // (d) 括號打成全形 → parseGrowth 的正則整段配不到，同樣安靜地退化成「沒有成長值」
-    const fullWidth = svg.replaceAll('基本攻擊傷害增加20%(+4%)', '基本攻擊傷害增加20%（+4%）');
+    const fullWidth = bothRunes('基本攻擊傷害增加20%（+4%）');
     expect(others(fullWidth)).toEqual([]);
     expect(only17(fullWidth).some(e => /節點 1201（D0000）解析不出成長值/.test(e))).toBe(true);
 
     // 夾具指到不存在的管理 ID 也要擋：官方資料表換版時節點被砍掉，這是唯一會發現的地方
     const ghost = { ...maxLevelOfficial, values: { ...maxLevelOfficial.values, D9999: { level: 50, value: 1, unit: '%' as const } } };
     expect(validate(svg, { ...opts, maxLevelOfficial: ghost }).errors
-      .some(e => /規則 17.*不存在的 data-game-id D9999/.test(e))).toBe(true);
+      .some(e => /規則 17.*不存在的 gameId D9999/.test(e))).toBe(true);
 
     expect(validate(svg, { ...opts, maxLevelOfficial: null }).errors.filter(e => /規則 17/.test(e))).toEqual([]);
     expect(validate(svg, opts).errors.filter(e => /規則 17/.test(e))).toEqual([]);
@@ -310,9 +330,9 @@ describe('validate', () => {
     // 規則 17 若照 !growth 這一路報錯，下一次上游同步就會用「描述八成漏了 (+每級增量)」
     // 這句錯誤的診斷把 PR 擋死，同一份輸出裡規則 9 卻說「不擋 PR」——兩條規則自相矛盾。
     // 1203（D0060）在規則 17 的覆蓋範圍內，所以這是真的走到那條路徑。
-    const injected = svg.replaceAll('#綻放傷害增加50%(+10%)', '#綻放傷害增加50%(+{1}%)');
-    expect(injected).not.toBe(svg);
-    const result = validate(injected, opts);
+    const result = validate(svg, patch({
+      '1203': { ...nodeText['1203'], description: '#綻放傷害增加50%(+{1}%)' },
+    }));
     expect(result.errors).toEqual([]);
     expect(result.warnings.some(w => /規則 9.*1203.*佔位符/.test(w))).toBe(true);
   });
@@ -352,47 +372,78 @@ describe('validate', () => {
   });
 
   it('規則 16：管理 ID 重複／格式錯／漏填，與細分類放錯位置，都會被擋', () => {
-    const dup = svg.replace('data-game-id="D005"', 'data-game-id="D000"');
-    expect(dup).not.toBe(svg);
-    expect(validate(dup, opts).errors.some(e => /規則 16.*重複/.test(e))).toBe(true);
+    const errs = (over: Record<string, unknown>) => validate(svg, patch(over)).errors;
+    // 1101 是玩家被動、gameId S0200 且帶 category「系別屬性」；改它就能同時測到細分類那幾條。
+    expect(nodeText['1101']!.category).toBe('系別屬性');
 
-    const badFormat = svg.replace('data-game-id="D000"', 'data-game-id="火骰子"');
-    expect(validate(badFormat, opts).errors.some(e => /規則 16.*不符合/.test(e))).toBe(true);
+    expect(errs({ '1002': { ...nodeText['1002'], gameId: 'D000' } }).some(e => /規則 16.*重複/.test(e))).toBe(true);
+    expect(errs({ '1001': { ...nodeText['1001'], gameId: '火骰子' } }).some(e => /規則 16.*不符合/.test(e))).toBe(true);
 
-    const dropped = svg.replace(' data-game-id="D000"', '');
-    expect(validate(dropped, opts).errors.some(e => /規則 16.*不符合/.test(e))).toBe(true);
+    // 漏填在 JSON 裡是「缺少必填欄位」，由規則 1 擋——而不是像以前那樣掉進規則 16 的格式檢查。
+    const { gameId: _noGameId, ...withoutGameId } = nodeText['1001']!;
+    expect(errs({ '1001': withoutGameId }).some(e => /規則 1.*缺少 gameId/.test(e))).toBe(true);
 
-    const noCat = svg.replace(' data-category="系別屬性"', '');
-    expect(validate(noCat, opts).errors.some(e => /規則 16.*缺少 data-category/.test(e))).toBe(true);
-
-    const badCat = svg.replace('data-category="系別屬性"', 'data-category="隨便寫"');
-    expect(validate(badCat, opts).errors.some(e => /規則 16.*未知的 data-category/.test(e))).toBe(true);
+    const { category: _noCat, ...withoutCat } = nodeText['1101']!;
+    expect(errs({ '1101': withoutCat }).some(e => /規則 16.*缺少 category/.test(e))).toBe(true);
+    expect(errs({ '1101': { ...nodeText['1101'], category: '隨便寫' } }).some(e => /規則 16.*未知的 category/.test(e))).toBe(true);
 
     // 細分類只用在玩家被動上：掛到骰子身上要被擋
-    const misplaced = svg.replace('data-id="1001" data-type="骰子"', 'data-id="1001" data-type="骰子" data-category="系別屬性"');
-    expect(misplaced).not.toBe(svg);
-    expect(validate(misplaced, opts).errors.some(e => /規則 16.*不該有 data-category/.test(e))).toBe(true);
+    expect(errs({ '1001': { ...nodeText['1001'], category: '系別屬性' } }).some(e => /規則 16.*不該有 category/.test(e))).toBe(true);
   });
 
   it('規則 16：管理 ID 的命名空間綁死節點型別，換成別種型別的合法編號照樣被擋', () => {
     // 這幾個都是「格式看起來很合理、也不撞號」的改法，寬鬆的 /^[DS]\d{3,4}$/ 全部放行——
     // 而 data-game-id 不進 tree.json，這條規則是它唯一的防線。
-    const runeAsDice = svg.replace('data-game-id="D0000"', 'data-game-id="D123"');
-    expect(runeAsDice).not.toBe(svg);
-    expect(validate(runeAsDice, opts).errors.some(e => /規則 16.*骰子符文.*D\\d\{4\}/.test(e))).toBe(true);
-
-    const passiveAsDice = svg.replace('data-game-id="S0200"', 'data-game-id="D0200"');
-    expect(passiveAsDice).not.toBe(svg);
-    expect(validate(passiveAsDice, opts).errors.some(e => /規則 16.*玩家被動.*S\\d\{4\}/.test(e))).toBe(true);
-
-    const diceAsRune = svg.replace('data-game-id="D000"', 'data-game-id="D0009"');
-    expect(diceAsRune).not.toBe(svg);
-    expect(validate(diceAsRune, opts).errors.some(e => /規則 16.*骰子.*D\\d\{3\}/.test(e))).toBe(true);
+    const errs = (over: Record<string, unknown>) => validate(svg, patch(over)).errors;
+    expect(errs({ '1201': { ...nodeText['1201'], gameId: 'D123' } })
+      .some(e => /規則 16.*骰子符文.*D\\d\{4\}/.test(e))).toBe(true);
+    expect(errs({ '1101': { ...nodeText['1101'], gameId: 'D0200' } })
+      .some(e => /規則 16.*玩家被動.*S\\d\{4\}/.test(e))).toBe(true);
+    expect(errs({ '1001': { ...nodeText['1001'], gameId: 'D0009' } })
+      .some(e => /規則 16.*骰子.*D\\d\{3\}/.test(e))).toBe(true);
   });
 
-  it('規則 1：title 與 data-name 不一致會被擋', () => {
-    const broken = svg.replace('<title>骰子｜火骰子｜', '<title>骰子｜水骰子｜');
-    expect(validate(broken, opts).errors.some(e => /title/.test(e))).toBe(true);
+  // 規則 1 在 #21（2026-08-22）之前是「`<title>` 必須與 `data-*` 全等」——`<title>` 存的是
+  // name ＋ description 的完整副本，規則 1 的存在理由就是守那份副本。文案搬進 nodes.json
+  // 之後副本沒了，規則 1 改成驗「這份唯一的文案結構完不完整」。
+  it('規則 1：nodes.json 缺必填欄位、型別錯、選用欄位寫成空字串、多出未知欄位，都會被擋', () => {
+    const errs = (over: Record<string, unknown>) => validate(svg, patch(over)).errors;
+    const { name: _dropped, ...noName } = nodeText['1001']!;
+
+    expect(errs({ '1001': noName }).some(e => /規則 1.*節點 1001 缺少 name/.test(e))).toBe(true);
+    expect(errs({ '1001': { ...nodeText['1001'], name: '' } }).some(e => /規則 1.*name 不是非空字串/.test(e))).toBe(true);
+    expect(errs({ '1001': { ...nodeText['1001'], maxLevel: '50' } }).some(e => /規則 1.*maxLevel 不是 ≥1 的整數/.test(e))).toBe(true);
+    expect(errs({ '1001': { ...nodeText['1001'], maxLevel: 0 } }).some(e => /規則 1.*maxLevel 不是 ≥1 的整數/.test(e))).toBe(true);
+    expect(errs({ '1001': '不是物件' }).some(e => /規則 1.*節點 1001 的內容不是物件/.test(e))).toBe(true);
+    expect(errs({ '1001': { ...nodeText['1001'], 顏色: '紅' } }).some(e => /規則 1.*未知欄位.*顏色/.test(e))).toBe(true);
+
+    // 選用欄位寫成 `""` 而不是整個省略：看起來像「有這個欄位、只是還沒填」，但規則 14／16
+    // 的語意是「這種節點根本不該有這個欄位」。兩種寫法混用的話，`"awakening": ""` 會安靜地
+    // 通過「非骰子不該有覺醒」那條——因為空字串是 falsy。
+    expect(errs({ '1201': { ...nodeText['1201'], awakening: '' } })
+      .some(e => /規則 1.*awakening 若要有值必須是非空字串/.test(e))).toBe(true);
+  });
+
+  // 規則 19 是文案與幾何拆成兩個檔之後，唯一會說「它們已經不同步」的地方。
+  it('規則 19：SVG 的 id 集合與 nodes.json 的鍵集合必須雙射，兩邊的殘餘都要逐一列出', () => {
+    // ⚠️ 這裡斷言的是「**只有**規則 19 會說話」，不是「規則 19 有說話」。
+    // review 回饋（2026-08-22）：幾何規則（5／6／6(d)／10／13／18）原本跟文案規則吃同一份
+    // 「兩邊都在才進得來」的過濾集合，於是漏一筆文案（幾何完好無缺）會產生 55 條錯誤——
+    // 54 條是規則 5／6／10／18 在說「從根不可達」「邊端點未對齊」，全部指錯檔案，
+    // 而唯一說對的規則 19 被埋在裡面。「忘了改另一個檔」正是兩檔正本下最容易犯的錯。
+    const { '1001': _dropped, ...withoutOne } = nodeText;
+    const missing = validate(svg, { ...opts, nodeText: withoutOne }).errors;
+    expect(missing.some(e => /規則 19.*正本 SVG 有幾何.*沒有文案.*1001/.test(e))).toBe(true);
+    expect(missing.filter(e => !/^規則 19/.test(e))).toEqual([]);
+
+    expect(validate(svg, patch({ '9999': { ...nodeText['1001'] } })).errors
+      .some(e => /規則 19.*找不到對應節點.*9999/.test(e))).toBe(true);
+
+    // 整份檔案型別就錯掉時要有話說，而不是丟一個沒有規則編號的例外
+    expect(validate(svg, { ...opts, nodeText: [] }).errors
+      .some(e => /規則 1.*最外層必須是以 id 為鍵的物件/.test(e))).toBe(true);
+
+    expect(validate(svg, opts).errors.filter(e => /規則 19/.test(e))).toEqual([]);
   });
 
   it('規則 7(a)：引用不存在的圖示會被擋', () => {
@@ -408,14 +459,14 @@ describe('validate', () => {
     const realBuf = readFileSync(join(iconsDir, realFile));
     const wrongHash = realFile === '000000000000.png' ? '111111111111' : '000000000000';
     writeFileSync(join(tmpIconsDir, `${wrongHash}.png`), realBuf);
-    const result = validate(svg, { keywords, upgradeCostTable, maxLevelOfficial, unlockExceptions, iconsDir: tmpIconsDir, dataDir });
+    const result = validate(svg, { keywords, nodeText, upgradeCostTable, maxLevelOfficial, unlockExceptions, iconsDir: tmpIconsDir, dataDir });
     expect(result.errors.some(e => /規則 7\(b\)/.test(e) && /sha256/.test(e))).toBe(true);
   });
 
   it('規則 7(c)：非 PNG 檔會被擋', () => {
     const tmpIconsDir = mkdtempSync(join(tmpdir(), 'rd2-wiki-icons-'));
     writeFileSync(join(tmpIconsDir, '222222222222.png'), Buffer.from('this is not a png file at all'));
-    const result = validate(svg, { keywords, upgradeCostTable, maxLevelOfficial, unlockExceptions, iconsDir: tmpIconsDir, dataDir });
+    const result = validate(svg, { keywords, nodeText, upgradeCostTable, maxLevelOfficial, unlockExceptions, iconsDir: tmpIconsDir, dataDir });
     expect(result.errors.some(e => /規則 7\(c\)/.test(e) && /不是有效的 PNG/.test(e))).toBe(true);
   });
 
@@ -425,7 +476,7 @@ describe('validate', () => {
     const tinyPng = makeMinimalPng(10, 10);
     const tinyHash = createHash('sha256').update(tinyPng).digest('hex').slice(0, 12);
     writeFileSync(join(tmpIconsDir, `${tinyHash}.png`), tinyPng);
-    const result = validate(svg, { keywords, upgradeCostTable, maxLevelOfficial, unlockExceptions, iconsDir: tmpIconsDir, dataDir });
+    const result = validate(svg, { keywords, nodeText, upgradeCostTable, maxLevelOfficial, unlockExceptions, iconsDir: tmpIconsDir, dataDir });
     expect(result.errors.some(e => /規則 7\(c\)/.test(e) && /小於最低要求 96px/.test(e))).toBe(true);
   });
 
@@ -437,7 +488,7 @@ describe('validate', () => {
     const orphanBuf = makeMinimalPng(100, 100);
     const orphanHash = createHash('sha256').update(orphanBuf).digest('hex').slice(0, 12);
     writeFileSync(join(tmpIconsDir, `${orphanHash}.png`), orphanBuf);
-    const result = validate(svg, { keywords, upgradeCostTable, maxLevelOfficial, unlockExceptions, iconsDir: tmpIconsDir, dataDir });
+    const result = validate(svg, { keywords, nodeText, upgradeCostTable, maxLevelOfficial, unlockExceptions, iconsDir: tmpIconsDir, dataDir });
     expect(result.errors).toEqual([]);
     expect(result.warnings.some(w => /規則 7\(d\)/.test(w) && w.includes(orphanHash))).toBe(true);
   });
@@ -487,15 +538,17 @@ describe('validate：邊與座標的守門（P2）', () => {
     // 這個功能本身），應該只有警告。這條是 6(d) 的正對照——沒有它，把 6(d) 寫成
     // 「只要有 wip 就報錯」也會全綠，而那等於把這個功能整個廢掉。
     const template = svg.split('\n').find(l => l.startsWith('<g class="node"'))!;
+    const copiedId = /data-id="(\d+)"/.exec(template)![1]!;
     const placeholder = template
       .replace(/data-id="\d+"/, 'data-id="1099" data-wip="1"')
-      // 管理 ID 也要換一個：規則 16 要求全檔唯一，照抄範本會撞到被複製的那顆節點
-      .replace(/data-game-id="[^"]*"/, 'data-game-id="D999"')
       .replace(/transform="translate\([-\d.]+,[-\d.]+\)"/, 'transform="translate(50.00,50.00)"');
     const withPlaceholder = svg.replace('</svg>', `${placeholder}\n</svg>`);
     expect(withPlaceholder).not.toBe(svg);
 
-    const { errors, warnings } = validate(withPlaceholder, opts);
+    // 幾何照抄範本，文案補一筆到 nodes.json——管理 ID 要換一個，規則 16 要求全檔唯一。
+    const { errors, warnings } = validate(withPlaceholder, patch({
+      '1099': { ...nodeText[copiedId], gameId: 'D999' },
+    }));
     expect(errors).toEqual([]);
     expect(warnings.some(w => /規則 6\(c\).*1099/.test(w))).toBe(true);
   });
@@ -566,19 +619,17 @@ describe('validate：邊與座標的守門（P2）', () => {
     expect(errors.some(e => /規則 5.*同時對上/.test(e))).toBe(true);
   });
 
-  it('規則 1：超長的 data-name 會被擋', () => {
-    const broken = svg.replace('data-name="火骰子"', `data-name="${'火'.repeat(600)}"`);
-    expect(broken).not.toBe(svg);
-    expect(validate(broken, opts).errors.some(e => /規則 1.*長度.*超過上限/.test(e))).toBe(true);
+  it('規則 1：超長的 name 會被擋', () => {
+    expect(validate(svg, patch({ '1001': { ...nodeText['1001'], name: '火'.repeat(600) } }))
+      .errors.some(e => /規則 1.*長度.*超過上限/.test(e))).toBe(true);
   });
 
-  it('規則 4：data-cost 與 title 的等級上限不一致會被擋', () => {
-    // 兩個來源：data-cost 第二行「最高 N 級」與 title 最後一行「最高等級：N」。
-    // build-data 取前者優先，兩者不一致時站台顯示一個數字、正本上寫著另一個。
-    const g = /<g class="node"[^>]*data-cost="([^"]*)"[^>]*>\s*<title>[^<]*最高等級：15<\/title>/.exec(svg);
-    expect(g).not.toBeNull();
-    const broken = svg.replace(`data-cost="${g![1]}"`, `data-cost="${g![1]}\n最高 3 級"`);
-    expect(broken).not.toBe(svg);
-    expect(validate(broken, opts).errors.some(e => /規則 4.*等級上限不一致/.test(e))).toBe(true);
+  // 搬家前等級上限有兩個寫法：123 個骰子符文寫在 `data-cost` 第二行「最高 N 級」、40 個
+  // 玩家被動寫在 `<title>` 最後一行「最高等級：N」。兩邊從不重疊，所以舊版那條「兩者不一致
+  // 就報錯」的交叉檢查一次都沒觸發過。現在只有 `maxLevel` 一個位置，這條擋的是「等級行
+  // 重新混進 cost」——沒有它，第二個位置會慢慢長回來，而 tree.json 一個位元組都不會變。
+  it('規則 4：等級行混回 cost 會被擋（等級上限只能寫在 maxLevel 欄位）', () => {
+    expect(validate(svg, patch({ '1201': { ...nodeText['1201'], cost: '金幣 2,000\n最高 50 級' } }))
+      .errors.some(e => /規則 4.*不可換行.*maxLevel/.test(e))).toBe(true);
   });
 });

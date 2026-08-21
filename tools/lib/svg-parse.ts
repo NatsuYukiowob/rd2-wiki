@@ -18,21 +18,23 @@ export const COORD_TOLERANCE = 0.5;
  */
 const NUM = String.raw`-?\d+(?:\.\d+)?`;
 
-/** 從 SVG `<g class="node">` 抽出的原始節點資料，尚未做語意轉換（分支/元素/花費解析等留給後續任務）。 */
-export interface RawNode {
+/**
+ * 從 SVG `<g class="node">` 抽出的**幾何**資料，尚未做語意轉換（分支／元素解析留給 build-data）。
+ *
+ * 文案（名稱、描述、花費、覺醒…）自 2026-08-22 起不在 SVG 裡，改由 `data/nodes.json` 以 `id`
+ * 為鍵持有，兩邊在 `tools/lib/node-text.ts` 的 `mergeNodes()` 合併成 `RawNode`。
+ */
+export interface RawGeomNode {
   id: string;
-  typeZh: string;
-  name: string;
+  /**
+   * `<text>` 的內容：畫在節點下方的顯示標籤。
+   *
+   * 它**不是** `name` 的副本——239 個裡有 60 個是為了塞進小圖示而寫的縮寫
+   * （`所有骰子傷害` → `全骰傷害`），是真資料。留在 SVG 是刻意的：沒有它，正本用
+   * Inkscape 打開就是 239 個無名圖示，幾何 PR 無從 review。（#21 PR2 會把它也搬走，
+   * 屆時改由建置期的 preview SVG 把名字注回去。）
+   */
   label: string;
-  description: string;
-  /** `data-awakening`：骰子覺醒效果。只有骰子節點有，其餘節點是空字串（規則 14 守這件事）。 */
-  awakening: string;
-  /** `data-game-id`：遊戲資料表的管理 ID（D000／D0000／S0200）。給貢獻者比對原始資料用。 */
-  gameId: string;
-  /** `data-category`：玩家被動的細分類（中文原字）。只有玩家被動有，其餘是空字串（規則 16）。 */
-  categoryZh: string;
-  costRaw: string;
-  titleMaxLevel: number | null;
   x: number;
   y: number;
   stroke: string;
@@ -43,7 +45,7 @@ export interface RawNode {
    * 唯一一種「不接線也合法」的節點——正因如此，規則 6(d) 反過來禁止它出現在任何邊上。
    *
    * 以前這個旗標只有 validate 自己再查一次 DOM 拿得到，build-data 完全不知道它的存在。
-   * 放進 RawNode 讓兩邊看到的是同一份事實。
+   * 放進 RawGeomNode 讓兩邊看到的是同一份事實。
    */
   wip: boolean;
   /**
@@ -118,23 +120,6 @@ function finite(raw: string, ctx: string): number {
 }
 
 /**
- * 從 `<title>` 的內容拆出「敘述本體」與「最高等級：N」那一行。
- *
- * svg-parse（取 titleMaxLevel）與 validate（規則 1 比對 title 與 data-*）以前各寫一份判斷，
- * 而且一邊有 `.trim()`、一邊沒有——最後一行寫成 `最高等級：5 `（多一個空格）時，
- * 這裡會把它當等級行剝掉、validate 不會，於是規則 1 拿兩個「看起來一模一樣」的字串報不一致。
- * 兩邊改成呼叫這一個函式。
- */
-export function splitTitleLevel(title: string): { content: string; maxLevel: number | null } {
-  const lines = title.split('\n');
-  if (lines.length > 1) {
-    const m = /^最高等級：(\d+)$/.exec(lines[lines.length - 1]!.trim());
-    if (m) return { content: lines.slice(0, -1).join('\n'), maxLevel: Number(m[1]) };
-  }
-  return { content: title, maxLevel: null };
-}
-
-/**
  * 節點與邊都不准帶這些「讓東西看不見」的屬性。
  *
  * 少了這道，一條邊可以帶著 `display="none"` 或 `opacity="0"` 躺在正本裡：validate 照樣把它
@@ -177,14 +162,15 @@ export function parseEdgePath(d: string): { from: [number, number]; to: [number,
 }
 
 /**
- * 組出可定位節點的描述字串，供錯誤訊息使用：優先用 `data-id`，取不到時退而求其次用 `data-name`，
+ * 組出可定位節點的描述字串，供錯誤訊息使用：優先用 `data-id`，取不到時退而求其次用 `<text>` 標籤，
  * 兩者都沒有才說明「某個缺少 data-id 的節點」。239 個節點、貢獻者改壞一個時，錯誤訊息必須指出是哪一個。
  */
 function nodeRef(g: Element): string {
   const id = g.getAttribute('data-id');
   if (id) return `節點 data-id="${id}"`;
-  const name = g.getAttribute('data-name');
-  if (name) return `節點 data-name="${name}"（缺少 data-id）`;
+  // `data-name` 已隨文案搬進 data/nodes.json，正本上只剩 <text> 的標籤可以當人眼線索。
+  const label = g.querySelector('text')?.textContent;
+  if (label) return `標籤為「${label}」的節點（缺少 data-id）`;
   return `某個缺少 data-id 的節點`;
 }
 
@@ -278,7 +264,7 @@ function parseCenter(doc: Document, svg: Element): RawCenter | null {
 }
 
 /** 解析資料正本 SVG，抽出節點、邊與中繼資料，供後續任務轉換為站台可用的語意資料。 */
-export function parseTree(svgText: string): { meta: RawMeta; nodes: RawNode[]; edges: RawEdge[] } {
+export function parseTree(svgText: string): { meta: RawMeta; nodes: RawGeomNode[]; edges: RawEdge[] } {
   const doc = loadSvg(svgText);
   const svg = doc.querySelector('svg')!;
   // viewBox 過去是 `.split(/\s+/).map(Number)` 直接取四格：空字串、逗號分隔、前導空白、
@@ -302,18 +288,16 @@ export function parseTree(svgText: string): { meta: RawMeta; nodes: RawNode[]; e
     center: parseCenter(doc, svg),
   };
 
-  const nodes: RawNode[] = [...doc.querySelectorAll('g.node')].map(g => {
+  const nodes: RawGeomNode[] = [...doc.querySelectorAll('g.node')].map(g => {
     if (g.parentNode !== svg) throw new Error(`${nodeRef(g)} 必須是 <svg> 直屬子元素，請先執行 npm run normalize`);
     assertNotHidden(g, nodeRef(g));
     const [x, y] = parseTranslate(g.getAttribute('transform') ?? '');
-    const title = g.querySelector('title')?.textContent ?? '';
-    // 等級行必須取「最後一行」，不是「第二行」——跟 tools/validate.ts 的判定方式一致
-    // （見那裡「規則 1」的註解）。data-description 本身可能內嵌換行（多行技能敘述），
-    // 這種情況下「最高等級：N」永遠被附加在整段描述之後、也就是最後一行；若像過去這裡
-    // 一樣固定取 index 1（第二行），遇到三行以上的多行描述時取到的只是描述本身的第二行，
-    // 等級行會被吃掉、maxLevel 靜默變成 1，而且 validate.ts 用的是「最後一行」判定，
-    // 兩邊邏輯不一致時 validate 還是會通過，這個 bug 完全沒有防線。
-    const { maxLevel: titleMaxLevel } = splitTitleLevel(title);
+    // `<title>` 曾經是 `data-name` ＋ `data-description` 的完整副本，規則 1 的存在理由就是守那份
+    // 副本。文案搬進 data/nodes.json 之後它沒有任何用途，而「沒用途但仍被接受」的欄位會慢慢
+    // 被人填回內容，變成第二份會漂移的文案。在解析階段就擋掉，讓它不可能回來。
+    if (g.querySelector('title')) {
+      throw new Error(`${nodeRef(g)} 不可含 <title>——名稱與描述寫在 data/nodes.json`);
+    }
     const img = g.querySelector('image');
     const href = img?.getAttribute('href') ?? '';
     const icon = /^icons\/([0-9a-f]{12})\.png$/.exec(href)?.[1] ?? '';
@@ -322,19 +306,15 @@ export function parseTree(svgText: string): { meta: RawMeta; nodes: RawNode[]; e
     if (!Number.isFinite(iw) || !Number.isFinite(ih) || iw <= 0 || ih <= 0) {
       throw new Error(`${nodeRef(g)} 的 <image> 缺少有效的 width/height（顯示尺寸靠它決定）`);
     }
+    // `<text>` 是文案搬進 data/nodes.json 之後，正本上**唯一**剩下的人眼識別（`nodeRef()` 的
+    // 退路也是它）。它同時會原封不動進 tree.json 交給 render.ts 畫在節點下方。
+    // 沒有這道檢查時，把 239 個 <text> 全部清空仍然是 validate 全綠——畫面上整棵樹沒有名字，
+    // 而正本用 Inkscape 打開是 239 個無名圖示，也就是「留著 <text>」這個決定的理由整個消失。
+    const label = g.querySelector('text')?.textContent ?? '';
+    if (!label) throw new Error(`${nodeRef(g)} 缺少 <text> 標籤（節點在畫面上的名字，也是正本唯一的人眼線索）`);
     return {
-      // 這幾個欄位都用 attr()（會解 XML 實體）而不是 getAttribute：名稱含 `&` 的節點在正本裡
-      // 必須寫成 `&amp;`，而 linkedom 只解 <title> 那邊、不解屬性那邊，兩邊會對不起來。見 dom.ts。
       id: attr(g, 'data-id'),
-      typeZh: attr(g, 'data-type'),
-      name: attr(g, 'data-name'),
-      label: g.querySelector('text')?.textContent ?? '',
-      description: attr(g, 'data-description'),
-      awakening: attr(g, 'data-awakening'),
-      gameId: attr(g, 'data-game-id'),
-      categoryZh: attr(g, 'data-category'),
-      costRaw: attr(g, 'data-cost'),
-      titleMaxLevel,
+      label,
       wip: g.getAttribute('data-wip') === '1',
       // 順序很重要：shapeOf 先判斷「有沒有形狀元素」，strokeOf 才去讀該元素的 stroke。
       // 兩者的「找不到元素」條件完全重疊（都是 querySelector('rect, circle, polygon') 落空），

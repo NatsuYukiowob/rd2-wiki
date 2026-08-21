@@ -5,28 +5,27 @@ import type { UpgradeCostTable } from '../../src/lib/types';
 
 describe('parseCost', () => {
   it('核心單一貨幣', () => {
-    expect(parseCost('核心 5')).toEqual({ cost: { core: 5, gold: 0 }, maxLevel: null });
+    expect(parseCost('核心 5')).toEqual({ cost: { core: 5, gold: 0 } });
   });
   it('金幣單一貨幣含千分位', () => {
-    expect(parseCost('金幣 8,000')).toEqual({ cost: { core: 0, gold: 8000 }, maxLevel: null });
+    expect(parseCost('金幣 8,000')).toEqual({ cost: { core: 0, gold: 8000 } });
   });
   it('複合成本，全形斜線', () => {
-    expect(parseCost('金幣 100,000／核心 10')).toEqual({ cost: { core: 10, gold: 100000 }, maxLevel: null });
+    expect(parseCost('金幣 100,000／核心 10')).toEqual({ cost: { core: 10, gold: 100000 } });
   });
-  it('帶等級上限', () => {
-    expect(parseCost('金幣 2,000\n最高 50 級')).toEqual({ cost: { core: 0, gold: 2000 }, maxLevel: 50 });
-  });
-  it('複合成本帶等級上限（實測存在的 最高 3 級）', () => {
-    expect(parseCost('金幣 20,000／核心 4\n最高 3 級')).toEqual({ cost: { core: 4, gold: 20000 }, maxLevel: 3 });
+  // 2026-08-22（#21）之前 `data-cost` 的第二行寫著「最高 N 級」，等級上限現在是
+  // `data/nodes.json` 的 `maxLevel` 欄位。parseCost 跟著拒絕第二行，而不是留著「還讀得懂
+  // 但沒人用」的能力——validate 的規則 4 拒絕的輸入，`npm run build:data` 必須也拒絕，
+  // 否則同一份輸入兩邊給不同答案。
+  it('第二行「最高 N 級」被拒絕（等級上限改走 nodes.json 的 maxLevel）', () => {
+    expect(() => parseCost('金幣 2,000\n最高 50 級')).toThrow(/不可換行.*maxLevel/);
+    expect(() => parseCost('金幣 20,000／核心 4\n最高 3 級')).toThrow(/不可換行.*maxLevel/);
   });
   it('半形斜線視為錯誤', () => {
     expect(() => parseCost('金幣 100,000/核心 10')).toThrow(/全形/);
   });
   it('核心不使用千分位', () => {
     expect(() => parseCost('核心 1,000')).toThrow();
-  });
-  it('等級超出 1..100 視為錯誤', () => {
-    expect(() => parseCost('金幣 2,000\n最高 101 級')).toThrow(/1..100/);
   });
   it('完全無法辨識的字串拋錯', () => {
     expect(() => parseCost('免費')).toThrow();
