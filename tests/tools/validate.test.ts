@@ -5,14 +5,17 @@ import { deflateSync } from 'node:zlib';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { validate } from '../../tools/validate';
-import type { GlossaryEntry, UpgradeCostTable } from '../../src/lib/types';
+import type { GlossaryEntry, MaxLevelOfficial, UpgradeCostTable } from '../../src/lib/types';
 
 const svg = readFileSync('data/dice-tree.svg', 'utf8');
 const keywords: Record<string, GlossaryEntry> = JSON.parse(readFileSync('data/keywords.json', 'utf8'));
 const upgradeCostTable: UpgradeCostTable = JSON.parse(readFileSync('data/upgrade-cost.json', 'utf8'));
+const maxLevelOfficial: MaxLevelOfficial = JSON.parse(readFileSync('data/maxlevel-official.json', 'utf8'));
+const unlockExceptions: Record<string, { unlockVia: string; note?: string }> =
+  JSON.parse(readFileSync('data/unlock-exceptions.json', 'utf8'));
 const iconsDir = 'data/icons';
 const dataDir = 'data';
-const opts = { keywords, upgradeCostTable, iconsDir, dataDir };
+const opts = { keywords, upgradeCostTable, maxLevelOfficial, unlockExceptions, iconsDir, dataDir };
 
 /**
  * 從正本裡把邊的 `d` 屬性全撈出來。規則 5／6 的測試要「挑一條真實存在的邊來破壞」，
@@ -139,7 +142,7 @@ describe('validate', () => {
     for (const f of readdirSync(iconsDir)) writeFileSync(join(tinyDir, f), readFileSync(join(iconsDir, f)));
     // 48x31 的縮圖：建置期會把它放大四倍，成品是一團糊，過去什麼規則都沒擋
     writeFileSync(join(tinyDir, 'tree-center.png'), TINY_PNG);
-    const result = validate(svg, { keywords, upgradeCostTable, iconsDir, dataDir: tinyDir });
+    const result = validate(svg, { keywords, upgradeCostTable, maxLevelOfficial, unlockExceptions, iconsDir, dataDir: tinyDir });
     expect(result.errors.some(e => /規則 10.*小於顯示尺寸的兩倍/.test(e))).toBe(true);
   });
 
@@ -185,7 +188,7 @@ describe('validate', () => {
     // 錯誤，不影響本測試只關心的「不可達」斷言。
     const tmpIconsDir = mkdtempSync(join(tmpdir(), 'rd2-wiki-icons-'));
     writeFileSync(join(tmpIconsDir, '000000000000.png'), Buffer.from('not-a-real-png'));
-    const result = validate(wip, { keywords, upgradeCostTable, iconsDir: tmpIconsDir, dataDir });
+    const result = validate(wip, { keywords, upgradeCostTable, maxLevelOfficial, unlockExceptions, iconsDir: tmpIconsDir, dataDir });
     expect(result.errors.some(e => /不可達/.test(e))).toBe(false);
     expect(result.warnings.some(w => /規則 6\(c\)/.test(w) && w.includes('1099'))).toBe(true);
   });
@@ -264,6 +267,90 @@ describe('validate', () => {
     expect(validate(svg, opts).errors.filter(e => /規則 15/.test(e))).toEqual([]);
   });
 
+  it('規則 17：描述被解析成別的意思時，官方滿級值是唯一會說話的東西', () => {
+    // 前提斷言：這四種破壞法全都是合法的 SVG／成本／關鍵字，規則 1–16 一條都不會報。
+    // 少了這行，下面的主斷言可能只是在驗「別條規則擋下來了」，規則 17 其實從沒執行過。
+    const only17 = (s: string) => validate(s, opts).errors.filter(e => /規則 17/.test(e));
+    const others = (s: string) => validate(s, opts).errors.filter(e => !/規則 17/.test(e));
+
+    // (a) 描述漏寫「(+每級增量)」→ growth 變成 null，面板那行「1 級 X → 50 級 Y」整條消失，
+    //     而正本看起來完全正常。1201 與 3201 共用同一段描述，所以兩顆都會報。
+    const dropped = svg.replaceAll('基本攻擊傷害增加20%(+4%)', '基本攻擊傷害增加20%');
+    expect(others(dropped)).toEqual([]);
+    expect(only17(dropped).some(e => /節點 1201（D0000）解析不出成長值/.test(e))).toBe(true);
+    expect(only17(dropped)).toHaveLength(2);
+
+    // (b) 每級增量抄錯一個數字 → 站台照樣算得出一個滿級值，只是那個值是錯的
+    const wrongStep = svg.replaceAll('基本攻擊傷害增加20%(+4%)', '基本攻擊傷害增加20%(+5%)');
+    expect(others(wrongStep)).toEqual([]);
+    expect(only17(wrongStep).some(e => /節點 1201（D0000）推算的 Lv\.50 滿級值 265 與官方資料表的 216 不一致/.test(e))).toBe(true);
+
+    // (c) 這條規則的來由：正本原本寫「減少-0.5秒(+-0.2秒)」，站台算出「50 級 −10.3 秒」，
+    //     一路上沒有任何檢查說話。把它改回舊寫法必須重新變紅，否則這條規則沒有守住它。
+    const doubleNegative = svg.replaceAll('技能冷卻時間減少0.5秒(+0.2秒)', '技能冷卻時間減少-0.5秒(+-0.2秒)');
+    expect(others(doubleNegative)).toEqual([]);
+    expect(only17(doubleNegative).some(e => /節點 1204（D0070）推算的 Lv\.50 滿級值 -10\.3 與官方資料表的 10\.3 不一致/.test(e))).toBe(true);
+
+    // (d) 括號打成全形 → parseGrowth 的正則整段配不到，同樣安靜地退化成「沒有成長值」
+    const fullWidth = svg.replaceAll('基本攻擊傷害增加20%(+4%)', '基本攻擊傷害增加20%（+4%）');
+    expect(others(fullWidth)).toEqual([]);
+    expect(only17(fullWidth).some(e => /節點 1201（D0000）解析不出成長值/.test(e))).toBe(true);
+
+    // 夾具指到不存在的管理 ID 也要擋：官方資料表換版時節點被砍掉，這是唯一會發現的地方
+    const ghost = { ...maxLevelOfficial, values: { ...maxLevelOfficial.values, D9999: { level: 50, value: 1, unit: '%' as const } } };
+    expect(validate(svg, { ...opts, maxLevelOfficial: ghost }).errors
+      .some(e => /規則 17.*不存在的 data-game-id D9999/.test(e))).toBe(true);
+
+    expect(validate(svg, { ...opts, maxLevelOfficial: null }).errors.filter(e => /規則 17/.test(e))).toEqual([]);
+    expect(validate(svg, opts).errors.filter(e => /規則 17/.test(e))).toEqual([]);
+  });
+
+  it('規則 17：上游重新冒出 {n} 佔位符時只警告、不擋 PR（跟規則 9 的政策一致）', () => {
+    // 規則 9 對佔位符的政策是「不擋 PR」，而 parseGrowth 對佔位符回的正是 growth: null。
+    // 規則 17 若照 !growth 這一路報錯，下一次上游同步就會用「描述八成漏了 (+每級增量)」
+    // 這句錯誤的診斷把 PR 擋死，同一份輸出裡規則 9 卻說「不擋 PR」——兩條規則自相矛盾。
+    // 1203（D0060）在規則 17 的覆蓋範圍內，所以這是真的走到那條路徑。
+    const injected = svg.replaceAll('#綻放傷害增加50%(+10%)', '#綻放傷害增加50%(+{1}%)');
+    expect(injected).not.toBe(svg);
+    const result = validate(injected, opts);
+    expect(result.errors).toEqual([]);
+    expect(result.warnings.some(w => /規則 9.*1203.*佔位符/.test(w))).toBe(true);
+  });
+
+  it('規則 17：夾具漏掉一顆等級上限大於 1 的符文＝單獨關掉它的檢查，要擋', () => {
+    // 沒有這條下限，一個 PR 只要同時改壞成長值並把對應的鍵從夾具刪掉，CI 就全綠。
+    const { D0060: _dropped, ...rest } = maxLevelOfficial.values;
+    const holed = { ...maxLevelOfficial, values: rest };
+    const errs = validate(svg, { ...opts, maxLevelOfficial: holed }).errors;
+    expect(errs.some(e => /規則 17.*1203（D0060）.*沒有它的官方滿級值/.test(e))).toBe(true);
+    // 前提斷言：真實夾具是滿的（44/44），否則上面那條只是在驗一個本來就缺的項目
+    expect(validate(svg, opts).errors.filter(e => /規則 17/.test(e))).toEqual([]);
+  });
+
+  it('規則 18：解鎖例外表的 key／unlockVia／note 寫壞都會被擋', () => {
+    const withExc = (e: unknown) =>
+      validate(svg, { ...opts, unlockExceptions: e as typeof unlockExceptions }).errors.filter(x => /規則 18/.test(x));
+
+    // (a) key 打錯 → 查不到節點，那顆骰子安靜地變回「要花核心買」，整條前置鏈成本跟著變
+    expect(withExc({ ...unlockExceptions, '5O08': { unlockVia: 'achievement', note: '競技場 300 分獎勵' } })
+      .some(e => /不存在的節點 "5O08"/.test(e))).toBe(true);
+
+    // (b) unlockVia 打錯 → 仍然 !== 'cost'，成本照樣被排除，但面板會印出字面的 undefined
+    expect(withExc({ ...unlockExceptions, '5008': { unlockVia: 'quests', note: 'x' } })
+      .some(e => /unlockVia "quests" 不合法/.test(e))).toBe(true);
+
+    // (c) 'cost' 是預設值，寫進例外表沒有作用，卻會讓人以為有
+    expect(withExc({ ...unlockExceptions, '5008': { unlockVia: 'cost' } })
+      .some(e => /unlockVia "cost" 不合法/.test(e))).toBe(true);
+
+    // (d) note 空字串 → 面板 meta 列尾巴變成一段空白
+    expect(withExc({ ...unlockExceptions, '5008': { unlockVia: 'achievement', note: '' } })
+      .some(e => /note 長度 0 不合法/.test(e))).toBe(true);
+
+    expect(withExc(null)).toEqual([]);
+    expect(validate(svg, opts).errors.filter(e => /規則 18/.test(e))).toEqual([]);
+  });
+
   it('規則 16：管理 ID 重複／格式錯／漏填，與細分類放錯位置，都會被擋', () => {
     const dup = svg.replace('data-game-id="D005"', 'data-game-id="D000"');
     expect(dup).not.toBe(svg);
@@ -321,14 +408,14 @@ describe('validate', () => {
     const realBuf = readFileSync(join(iconsDir, realFile));
     const wrongHash = realFile === '000000000000.png' ? '111111111111' : '000000000000';
     writeFileSync(join(tmpIconsDir, `${wrongHash}.png`), realBuf);
-    const result = validate(svg, { keywords, upgradeCostTable, iconsDir: tmpIconsDir, dataDir });
+    const result = validate(svg, { keywords, upgradeCostTable, maxLevelOfficial, unlockExceptions, iconsDir: tmpIconsDir, dataDir });
     expect(result.errors.some(e => /規則 7\(b\)/.test(e) && /sha256/.test(e))).toBe(true);
   });
 
   it('規則 7(c)：非 PNG 檔會被擋', () => {
     const tmpIconsDir = mkdtempSync(join(tmpdir(), 'rd2-wiki-icons-'));
     writeFileSync(join(tmpIconsDir, '222222222222.png'), Buffer.from('this is not a png file at all'));
-    const result = validate(svg, { keywords, upgradeCostTable, iconsDir: tmpIconsDir, dataDir });
+    const result = validate(svg, { keywords, upgradeCostTable, maxLevelOfficial, unlockExceptions, iconsDir: tmpIconsDir, dataDir });
     expect(result.errors.some(e => /規則 7\(c\)/.test(e) && /不是有效的 PNG/.test(e))).toBe(true);
   });
 
@@ -338,7 +425,7 @@ describe('validate', () => {
     const tinyPng = makeMinimalPng(10, 10);
     const tinyHash = createHash('sha256').update(tinyPng).digest('hex').slice(0, 12);
     writeFileSync(join(tmpIconsDir, `${tinyHash}.png`), tinyPng);
-    const result = validate(svg, { keywords, upgradeCostTable, iconsDir: tmpIconsDir, dataDir });
+    const result = validate(svg, { keywords, upgradeCostTable, maxLevelOfficial, unlockExceptions, iconsDir: tmpIconsDir, dataDir });
     expect(result.errors.some(e => /規則 7\(c\)/.test(e) && /小於最低要求 96px/.test(e))).toBe(true);
   });
 
@@ -350,7 +437,7 @@ describe('validate', () => {
     const orphanBuf = makeMinimalPng(100, 100);
     const orphanHash = createHash('sha256').update(orphanBuf).digest('hex').slice(0, 12);
     writeFileSync(join(tmpIconsDir, `${orphanHash}.png`), orphanBuf);
-    const result = validate(svg, { keywords, upgradeCostTable, iconsDir: tmpIconsDir, dataDir });
+    const result = validate(svg, { keywords, upgradeCostTable, maxLevelOfficial, unlockExceptions, iconsDir: tmpIconsDir, dataDir });
     expect(result.errors).toEqual([]);
     expect(result.warnings.some(w => /規則 7\(d\)/.test(w) && w.includes(orphanHash))).toBe(true);
   });

@@ -85,13 +85,19 @@ describe('renderTree', () => {
     expect(label).toContain('核心 10');
     expect(label).toContain('金幣 10,000');
   });
-  it('任務／預設解鎖節點的 aria-label 不能暗示玩家可以花核心買到（4008 任務解鎖、2001 預設解鎖）', () => {
+  it('非成本解鎖節點的 aria-label 唸出官方取得條件、不能暗示玩家可以花核心買到', () => {
+    // 2026-08-21：這三顆的 unlockNote 進了資料層之後，唸出來的是「怎麼拿」而不是分類詞。
+    // 「不含核心 N」那半仍然是這條測試的重點——讀螢幕的使用者拿不到面板下方那個「已排除」
+    // 的提示，aria-label 就是他們唯一的資訊來源。
     const quest = svg.querySelector('g.node[data-id="4008"]')!;
     const byDefault = svg.querySelector('g.node[data-id="2001"]')!;
-    expect(quest.getAttribute('aria-label')).toContain('任務解鎖');
+    const achievement = svg.querySelector('g.node[data-id="5008"]')!;
+    expect(quest.getAttribute('aria-label')).toContain('新手任務 700 點獎勵');
     expect(quest.getAttribute('aria-label')).not.toContain('核心 8');
-    expect(byDefault.getAttribute('aria-label')).toContain('預設解鎖');
+    expect(byDefault.getAttribute('aria-label')).toContain('初始解鎖');
     expect(byDefault.getAttribute('aria-label')).not.toContain('核心 5');
+    expect(achievement.getAttribute('aria-label')).toContain('競技場 300 分獎勵');
+    expect(achievement.getAttribute('aria-label')).not.toContain('核心 8');
   });
   it('每個節點都有 <title> 子元素供瀏覽器原生 hover tooltip 使用（spec §6.2 第 2 點）', () => {
     const n = svg.querySelector('g.node[data-id="1001"]')!;

@@ -9,7 +9,7 @@ import type { GlossaryEntry, UpgradeCostTable } from '../../src/lib/types';
 const svg = readFileSync('data/dice-tree.svg', 'utf8');
 const opts = {
   keywords: JSON.parse(readFileSync('data/keywords.json', 'utf8')) as Record<string, GlossaryEntry>,
-  unlockExceptions: JSON.parse(readFileSync('data/unlock-exceptions.json', 'utf8')) as Record<string, { unlockVia: 'quest' | 'default' }>,
+  unlockExceptions: JSON.parse(readFileSync('data/unlock-exceptions.json', 'utf8')) as Record<string, { unlockVia: 'quest' | 'default' | 'achievement'; note?: string }>,
   // ⚠️ 這一項漏了的話，下面那條 20 KB 效能預算斷言量的就不是真正上線的產物：
   // meta.upgradeCostTable 會是 null，少量 292 B gzip，測試綠燈而 CLI 寫出的檔案已經超標。
   upgradeCostTable: JSON.parse(readFileSync('data/upgrade-cost.json', 'utf8')) as UpgradeCostTable,

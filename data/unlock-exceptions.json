@@ -1,4 +1,11 @@
 {
-  "4008": { "unlockVia": "quest", "note": "7 日任務保證取得（陰陽骰子）" },
-  "2001": { "unlockVia": "default", "note": "工學起始骰預設已解鎖" }
+  "1001": { "unlockVia": "default", "note": "初始解鎖" },
+  "1005": { "unlockVia": "default", "note": "初始解鎖" },
+  "1007": { "unlockVia": "default", "note": "初始解鎖" },
+  "2001": { "unlockVia": "default", "note": "初始解鎖" },
+  "3001": { "unlockVia": "default", "note": "初始解鎖" },
+  "4008": { "unlockVia": "quest", "note": "新手任務 700 點獎勵" },
+  "5002": { "unlockVia": "achievement", "note": "合作累計擊殺 900 隻怪物" },
+  "5006": { "unlockVia": "achievement", "note": "合作第 40 波獎勵（累計擊殺 2,100 隻怪物）" },
+  "5008": { "unlockVia": "achievement", "note": "競技場 300 分獎勵" }
 }

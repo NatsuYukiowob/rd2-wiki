@@ -23,7 +23,7 @@ describe('computeSelection', () => {
       .reduce((acc, n) => ({ core: acc.core + n.unlockCost.core, gold: acc.gold + n.unlockCost.gold }), { core: 0, gold: 0 });
     expect(sel.cost).toEqual(manual);
   });
-  it('任務／預設解鎖的節點被排除並列入 skipped', () => {
+  it('非成本解鎖的節點被排除並列入 skipped', () => {
     const sel = computeSelection('4008', data);
     expect(sel.skipped).toContain('4008');
   });

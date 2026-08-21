@@ -15,7 +15,7 @@ import type { Branch, Edge, GlossaryDisplay, GlossaryRecord, TreeData, TreeNode,
 interface BuildOpts {
   /** `data/keywords.json` 的內容：key ＝不含 `#` 的詞，同時是規則 8 的白名單與玩家看的解釋。 */
   keywords: Record<string, GlossaryRecord>;
-  unlockExceptions: Record<string, { unlockVia: UnlockVia }>;
+  unlockExceptions: Record<string, { unlockVia: UnlockVia; note?: string }>;
   /**
    * `data/upgrade-cost.json`；沒有這份資料時傳 `null`。
    *
@@ -49,6 +49,9 @@ export function buildTreeData(svgText: string, opts: BuildOpts): TreeData {
       shape: r.shape, size: r.size, x: r.x, y: r.y,
       unlockCost: cost,
       unlockVia: opts.unlockExceptions[r.id]?.unlockVia ?? 'cost',
+      // 取得條件原文只有例外節點才有（目前 9 個），照 wip／category 的作法「為真才放欄位」，
+      // 其餘 230 個節點完全不佔 tree.json 的 gzip 預算。
+      ...(opts.unlockExceptions[r.id]?.note ? { unlockNote: opts.unlockExceptions[r.id]!.note! } : {}),
       maxLevel: level,
       prereqMode: null, upgradeCost: null,
       description: r.description,

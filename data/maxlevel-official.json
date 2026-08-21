@@ -1,0 +1,226 @@
+{
+  "note": "官方資料表「技能效果」欄標註的滿級數值，用來反向驗算站台從 data-description 推導出來的 growth。鍵是 data-game-id。",
+  "source": "RD2 資料表 v1.0.1 主檔案（遊戲資源包 0.0.5）",
+  "values": {
+    "D0000": {
+      "level": 50,
+      "value": 216.0,
+      "unit": "%"
+    },
+    "D0010": {
+      "level": 50,
+      "value": 324.0,
+      "unit": "%"
+    },
+    "D0020": {
+      "level": 50,
+      "value": 69.0,
+      "unit": "%"
+    },
+    "D0030": {
+      "level": 50,
+      "value": 51.0,
+      "unit": "count"
+    },
+    "D0040": {
+      "level": 50,
+      "value": 14.8,
+      "unit": "%"
+    },
+    "D0050": {
+      "level": 50,
+      "value": 78.8,
+      "unit": "%"
+    },
+    "D0060": {
+      "level": 50,
+      "value": 540.0,
+      "unit": "%"
+    },
+    "D0070": {
+      "level": 50,
+      "value": 10.3,
+      "unit": "s"
+    },
+    "D1000": {
+      "level": 50,
+      "value": 27.5,
+      "unit": "%"
+    },
+    "D1001": {
+      "level": 50,
+      "value": 56.0,
+      "unit": "%"
+    },
+    "D1002": {
+      "level": 50,
+      "value": 108.0,
+      "unit": "%"
+    },
+    "D1010": {
+      "level": 50,
+      "value": 4.92,
+      "unit": "s"
+    },
+    "D1020": {
+      "level": 50,
+      "value": 51.0,
+      "unit": "count"
+    },
+    "D1021": {
+      "level": 3,
+      "value": 11.0,
+      "unit": "s"
+    },
+    "D1030": {
+      "level": 50,
+      "value": 24.6,
+      "unit": "%"
+    },
+    "D1040": {
+      "level": 50,
+      "value": 540.0,
+      "unit": "%"
+    },
+    "D1051": {
+      "level": 50,
+      "value": 59.0,
+      "unit": "s"
+    },
+    "D1060": {
+      "level": 50,
+      "value": 5.9,
+      "unit": "%"
+    },
+    "D1070": {
+      "level": 50,
+      "value": 29.5,
+      "unit": "%"
+    },
+    "D2000": {
+      "level": 50,
+      "value": 108.0,
+      "unit": "%"
+    },
+    "D2010": {
+      "level": 50,
+      "value": 30.9,
+      "unit": "%"
+    },
+    "D2020": {
+      "level": 50,
+      "value": 59.0,
+      "unit": ""
+    },
+    "D2030": {
+      "level": 50,
+      "value": 544.0,
+      "unit": ""
+    },
+    "D2040": {
+      "level": 50,
+      "value": 540.0,
+      "unit": "x"
+    },
+    "D2050": {
+      "level": 50,
+      "value": 10.3,
+      "unit": "s"
+    },
+    "D2060": {
+      "level": 50,
+      "value": 29.6,
+      "unit": "%"
+    },
+    "D2070": {
+      "level": 50,
+      "value": 118.0,
+      "unit": "%"
+    },
+    "D2080": {
+      "level": 50,
+      "value": 5900.0,
+      "unit": ""
+    },
+    "D3000": {
+      "level": 50,
+      "value": 216.0,
+      "unit": "%"
+    },
+    "D3010": {
+      "level": 50,
+      "value": 127.5,
+      "unit": "%"
+    },
+    "D3020": {
+      "level": 50,
+      "value": 49.2,
+      "unit": "%"
+    },
+    "D3030": {
+      "level": 50,
+      "value": 108.0,
+      "unit": ""
+    },
+    "D3040": {
+      "level": 50,
+      "value": 127.5,
+      "unit": "%"
+    },
+    "D3050": {
+      "level": 50,
+      "value": 59.0,
+      "unit": "%"
+    },
+    "D3060": {
+      "level": 50,
+      "value": 14.8,
+      "unit": "%"
+    },
+    "D4000": {
+      "level": 50,
+      "value": 29.6,
+      "unit": "%"
+    },
+    "D4010": {
+      "level": 50,
+      "value": 250.0,
+      "unit": ""
+    },
+    "D4020": {
+      "level": 50,
+      "value": 255.0,
+      "unit": ""
+    },
+    "D4030": {
+      "level": 50,
+      "value": 29.6,
+      "unit": "%"
+    },
+    "D4040": {
+      "level": 50,
+      "value": 34.5,
+      "unit": "%"
+    },
+    "D4050": {
+      "level": 50,
+      "value": 24.6,
+      "unit": "%"
+    },
+    "D4060": {
+      "level": 50,
+      "value": 2500.0,
+      "unit": "%"
+    },
+    "D4070": {
+      "level": 50,
+      "value": 255.0,
+      "unit": "%"
+    },
+    "D4080": {
+      "level": 50,
+      "value": 52.0,
+      "unit": "%"
+    }
+  }
+}
