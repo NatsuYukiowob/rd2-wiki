@@ -41,27 +41,34 @@ const TYPES: Array<[string, string]> = [
            顯示，不需要這顆按鈕，靠 CSS 媒體查詢隱藏。 -->
       <button id="filters-toggle" type="button" aria-label="展開篩選" aria-controls="filters">篩選</button>
       <input id="search" type="search" placeholder="搜尋節點名稱、效果、關鍵字…" aria-label="搜尋節點" />
-      <!-- 篩選狀態列。沒有篩選時整個隱藏；一旦有條件就顯示「符合 N 個」與清除鈕。
-           沒有它的時候，搜尋只符合少數幾個節點會變成「整片變灰、看不出哪裡有東西、也不知道
-           怎麼回去」——點關鍵字進來的人尤其容易卡住（2026-08-18 人工檢視 image9 回報）。
-           role="status" 讓螢幕閱讀器在數字變動時唸出來。 -->
-      <p id="filter-status" role="status" hidden>
-        <span id="filter-count"></span>
-        <button id="filter-clear" type="button">清除篩選</button>
-      </p>
+      <!--
+        篩選結果的播報。看不見，但仍在無障礙樹裡（.sr-only 用 clip-path，不是 display:none）。
+        2026-08-22 把工具列上那句「符合 N 個節點」拿掉之後，篩選結果就完全沒有東西告訴螢幕
+        閱讀器使用者了——原本那個 <p role="status"> 是這一頁唯一的 live region。畫面上不顯示
+        是 Yuki 指定的，播報則不該跟著消失，所以留一個純給輔助技術的版本。
+      -->
+      <p id="filter-live" class="sr-only" role="status" aria-live="polite"></p>
       <div id="filters">
-        <fieldset>
-          <legend>分支</legend>
+        <!-- 用 <div role="group"> 而不是 <fieldset><legend>，理由見 dice.astro 的說明。 -->
+        <div class="filter-group" role="group" aria-label="分支">
+          <span class="filter-group-label" aria-hidden="true">分支</span>
           {BRANCHES.map(([value, label]) => (
-            <label><input type="checkbox" data-branch={value} /> {label}</label>
+            <label class="chip" data-branch={value}>
+              <input type="checkbox" data-branch={value} />
+              <span class={`branch-dot branch-${value}`} aria-hidden="true"></span>{label}
+            </label>
           ))}
-        </fieldset>
-        <fieldset>
-          <legend>類型</legend>
+        </div>
+        <div class="filter-group" role="group" aria-label="類型">
+          <span class="filter-group-label" aria-hidden="true">類型</span>
           {TYPES.map(([value, label]) => (
-            <label><input type="checkbox" data-type={value} /> {label}</label>
+            <label class="chip"><input type="checkbox" data-type={value} />{label}</label>
           ))}
-        </fieldset>
+        </div>
+        <!-- 「清除篩選」住在面板裡，不在工具列上：它一出現就會改變工具列寬度，而工具列是
+             浮在畫布上的，寬度一變整排東西跟著跳（2026-08-22 Yuki 回報）。面板收起時看不到
+             它也沒關係——切換鈕上的金點會說現在有篩選在生效。 -->
+        <button id="filter-clear" type="button" data-idle>清除篩選</button>
       </div>
     </div>
     <!-- 桌機側欄的分支快速跳轉（spec §6.2.6）：跟下面手機版 #branch-chips 是同一組分支、
@@ -104,10 +111,9 @@ const TYPES: Array<[string, string]> = [
        在網址列展開時會多出一截）；100vh 留一行當不支援 dvh 時的 fallback。
      - main 的 `min-height: 0` 不能省：flex 子元素的預設 min-height 是 auto，SVG 會把 main
        撐開到內容高度，剩餘空間就白算了。 */
+  /* flex column ＋ min-height 已經是 global.css 的 body 預設，這裡只補畫布頁需要的 dvh：
+     行動瀏覽器的網址列會伸縮，100vh 量的是「網址列收起時」的高度，展開時會多出一截。 */
   body:has(#canvas-host) {
-    display: flex;
-    flex-direction: column;
-    min-height: 100vh;
     min-height: 100dvh;
   }
 
@@ -256,84 +262,84 @@ const TYPES: Array<[string, string]> = [
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 0.75rem;
-    padding: 0.5rem 1rem;
-    background: var(--panel);
+    gap: var(--space-3);
+    padding: var(--space-2) var(--space-4);
+    background: var(--surface-2);
     border-bottom: 1px solid var(--border);
     border-right: 1px solid var(--border);
-    border-bottom-right-radius: 8px;
+    border-bottom-right-radius: var(--r-md);
+    /* 浮在畫布上的東西要有陰影，否則工具列跟底下的骰子樹只靠一條 1px 框線分開。 */
+    box-shadow: var(--shadow-2);
   }
 
   #search {
     background: var(--bg);
     color: var(--fg);
     border: 1px solid var(--border);
-    border-radius: 4px;
-    padding: 0.35rem 0.6rem;
+    border-radius: var(--r-xs);
+    padding: var(--space-2) var(--space-3);
     min-width: 14rem;
     font: inherit;
   }
 
+  /* 篩選面板預設收起，靠 .open 展開——桌機與手機同一套規則（2026-08-22）。
+     以前只有手機收得起來，桌機的篩選鈕永遠攤在工具列上，佔掉畫布上方一整條。 */
   #filters {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.75rem;
-  }
-
-  #filters fieldset {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    padding: 0.15rem 0.5rem;
-  }
-
-  /* legend 預設會被瀏覽器排在 fieldset 內容框的「上方那一格」，把底下的 checkbox 整列往下
-     推——結果是工具列裡的搜尋框中線與 checkbox 中線差了 9px，看起來沒對齊。float 讓 legend
-     退出那個特殊排版、變成一般的浮動盒子，標題就跟 checkbox 同一列，整條工具列共用一條中線。
-     用 float 而不是 position:absolute：後者要自己算偏移量，而這個 repo 的固定偏移量已經咬過
-     三次（見 CLAUDE.md）。 */
-  #filters legend {
-    float: left;
-    color: var(--muted);
-    font-size: 0.75rem;
-    padding: 0 0.5rem 0 0;
-  }
-
-  #filter-status {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    margin: 0;
-    font-size: 0.85rem;
-    color: var(--muted);
-    white-space: nowrap;
-  }
-  #filter-status[hidden] {
     display: none;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-3);
   }
-  #filter-count.none {
-    color: var(--gold);
+  #filters.open {
+    display: flex;
+  }
+  /* 收合的左右伸縮過場。只在動畫進行中掛，平常不留 transition／overflow：
+     - `flex-wrap: nowrap`：寬度縮到 0 的過程中若還會換行，內容會先攤成好幾列、
+       把工具列撐高一大塊再收掉，看起來像壞掉。動畫結束就解除，窄視窗照樣換行。
+     - `overflow: hidden`：被擠出去的內容要裁掉，不能戳到工具列外面。
+     寬度是 JS 量出來鎖成 px 的（見 tree-canvas.ts 的 setFiltersOpen），CSS 這裡只負責過場。 */
+  #filters.animating,
+  #filters.animating .filter-group {
+    flex-wrap: nowrap;
+  }
+  #filters.animating {
+    overflow: hidden;
+    transition: width var(--t-med) var(--slide-ease);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    #filters.animating {
+      transition: none;
+    }
+  }
+
+
+
+  /* 沒有篩選時清除鈕留在原地但看不見。
+     ⚠️ 用 visibility 而不是 display／hidden：它在面板的最後一格，用 display 收放會讓面板
+     連帶工具列的寬度跟著篩選狀態伸縮——那正是 2026-08-22 要修掉的那個症狀，只是換個地方
+     復發（實測展開 1121px、一有篩選就變 1215px）。
+     visibility: hidden 依規範就不可聚焦、也收不到指標事件，不必另外停用。 */
+  #filter-clear[data-idle] {
+    visibility: hidden;
   }
   #filter-clear {
-    background: var(--panel);
+    /* 「清除篩選」不准折行也不准被壓縮。收合的過場會把容器寬度一路壓到 0，它一被壓縮就折成
+       四行，面板高度從 35 變 90，整條工具列在動畫過程中先長高一倍再收掉（2026-08-22 逐幀
+       量到）。窄視窗下工具列換行、這一列變擠時也是同一回事。E2E 的 O4 守這條。 */
+    flex: none;
+    white-space: nowrap;
+    background: var(--surface-2);
     color: var(--fg);
     border: 1px solid var(--border);
-    border-radius: 4px;
-    padding: 0.2rem 0.5rem;
+    border-radius: var(--r-xs);
+    padding: var(--space-1) var(--space-2);
     font: inherit;
-    font-size: 0.8rem;
+    font-size: var(--fs-xs);
     cursor: pointer;
   }
 
-  #filters label {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.25rem;
-    font-size: 0.85rem;
-    white-space: nowrap;
-  }
+  /* 這裡刻意不再定義 #filters label：它現在是 .chip，樣式全部來自 global.css。
+     留一條 id 具體度的規則在這裡的話，會把共用樣式蓋掉一半，兩頁的篩選器又長得不一樣。 */
 
   /* 以下樣式作用在 tree-canvas.ts 用 DOM API 動態產生的節點／邊上，
      Astro 的 scoped CSS 只會標記本檔案模板裡「寫死」的元素，動態產生的 SVG 碰不到，
@@ -395,14 +401,14 @@ const TYPES: Array<[string, string]> = [
   }
 
   .tree-center-label {
-    font-size: 12px;
+    font-size: var(--fs-xs);
     font-weight: 700;
     fill: var(--fg);
     text-anchor: middle;
   }
 
   .node .label {
-    font-size: 11px;
+    font-size: var(--fs-xs);
     fill: var(--fg);
     text-anchor: middle;
     pointer-events: none;
@@ -483,23 +489,24 @@ const TYPES: Array<[string, string]> = [
     pointer-events: auto;
     display: flex;
     flex-direction: column;
-    gap: 0.4rem;
+    gap: var(--space-2);
     /* 左右內距要跟 #toolbar 一樣是 1rem：兩者上下相接、同屬畫布左上角那一疊，左內距不一樣
        的話按鈕會比上面的搜尋框往左凸出 8px（2026-08-18 人工檢視回報）。改動時兩邊一起改。 */
-    padding: 0.5rem 1rem;
+    padding: var(--space-2) var(--space-4);
   }
   #branch-nav button {
-    background: var(--panel);
+    background: var(--surface-2);
     color: var(--fg);
     border: 1px solid var(--border);
-    border-radius: 4px;
-    padding: 0.35rem 0.6rem;
+    border-radius: var(--r-xs);
+    padding: var(--space-2) var(--space-3);
     font: inherit;
-    font-size: 0.8rem;
+    font-size: var(--fs-xs);
     cursor: pointer;
     white-space: nowrap;
   }
   #branch-nav button:hover {
+    background: var(--surface-3);
     border-color: var(--gold);
   }
 
@@ -510,25 +517,69 @@ const TYPES: Array<[string, string]> = [
     display: none;
   }
   #branch-chips button {
-    background: var(--panel);
+    background: var(--surface-2);
     color: var(--fg);
     border: 1px solid var(--border);
-    border-radius: 4px;
-    padding: 0.4rem 0.6rem;
+    border-radius: var(--r-xs);
+    padding: var(--space-2) var(--space-3);
     font: inherit;
-    font-size: 0.8rem;
+    font-size: var(--fs-xs);
   }
 
-  /* #filters-toggle 只在手機版顯示（見下面媒體查詢）；桌機版 #filters 常駐展開，
-     不需要這顆開關。 */
+  /* 展開／收起篩選面板。2026-08-22 起桌機也有這顆（以前只在手機版顯示，桌機的篩選鈕常駐
+     攤在工具列上）。 */
   #filters-toggle {
-    display: none;
-    background: var(--panel);
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    background: var(--surface-2);
     color: var(--fg);
     border: 1px solid var(--border);
-    border-radius: 4px;
-    padding: 0.35rem 0.6rem;
+    border-radius: var(--r-xs);
+    padding: var(--space-2) var(--space-3);
     font: inherit;
+    cursor: pointer;
+  }
+  #filters-toggle:hover {
+    border-color: var(--border-strong);
+  }
+  /* 展開狀態：箭頭轉向。選擇器綁 aria-expanded，樣式與無障礙狀態不會各講各的。
+     桌機的面板是往右邊長出來的，所以箭頭是左右向（▸ 收起／◂ 展開），不是上下。
+     手機版是往下掉的抽屜，下面的媒體查詢換回 ▾。 */
+  #filters-toggle::after {
+    content: '▸';
+    color: var(--muted);
+    font-size: var(--fs-xs);
+    transition: transform var(--t-fast) ease;
+  }
+  #filters-toggle[aria-expanded='true']::after {
+    transform: rotate(180deg);
+  }
+  /* 有篩選在生效時點一顆金點。用固定尺寸的圓點而不是「篩選 (2)」這種文字：文字會改變按鈕
+     寬度，工具列又會開始跳。面板收起時這是唯一的線索，不能省。
+     ⚠️ 圓點**一直都在**，只是平常透明——只在 .active 時才長出來的話，按鈕會寬 16px
+     （圓點 8px ＋ gap 8px），工具列與整排篩選鈕又會跟著篩選狀態左右移動（實測 1199→1215）。 */
+  #filters-toggle::before {
+    content: '';
+    flex: none;
+    width: 0.5rem;
+    height: 0.5rem;
+    border-radius: var(--r-pill);
+    background: transparent;
+    transition: background-color var(--t-fast) ease;
+  }
+  #filters-toggle.active {
+    border-color: var(--gold);
+  }
+  #filters-toggle.active::before {
+    background: var(--gold);
+  }
+  /* 零命中：金點轉成警示色。畫布這時會淡成一片灰，這是唯一不動到工具列尺寸的提示方式。 */
+  #filters-toggle.active.none {
+    border-color: var(--nature);
+  }
+  #filters-toggle.active.none::before {
+    background: var(--nature);
   }
 
   /* 手機版視角（task-17）：底部分支 chip、詳情面板改由下方滑出、篩選收進頂部抽屜、
@@ -536,9 +587,6 @@ const TYPES: Array<[string, string]> = [
      src/scripts/tree-canvas.ts 判斷 isMobile 用的 matchMedia 查詢字串保持一致，
      兩邊改動時要一起改。 */
   @media (max-width: 720px) {
-    #filters-toggle {
-      display: inline-block;
-    }
     #branch-nav {
       display: none;
     }
@@ -582,6 +630,10 @@ const TYPES: Array<[string, string]> = [
 
        `display: none` 一併解掉另一個問題：收起狀態的 checkbox 以前仍然可以 Tab 聚焦、
        螢幕閱讀器也仍然唸得到一個看不見的表單。 */
+    /* 抽屜是往下掉的，箭頭跟著改成上下向。 */
+    #filters-toggle::after {
+      content: '▾';
+    }
     #filters {
       display: none;
       width: 100%;
@@ -606,9 +658,10 @@ const TYPES: Array<[string, string]> = [
       right: 0;
       display: flex;
       justify-content: space-around;
-      background: var(--panel);
-      padding: 0.5rem;
+      background: var(--surface-2);
+      padding: var(--space-2);
       border-top: 1px solid var(--border);
+      box-shadow: var(--shadow-3);
       z-index: 5;
     }
   }

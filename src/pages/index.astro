@@ -3,30 +3,18 @@
 import Base from '../layouts/Base.astro';
 import data from '../generated/tree.json';
 import changelogRaw from '../../data/changelog.json';
-import keywordsRaw from '../../data/keywords.json';
-import { displayGlossary } from '../lib/glossary-groups';
 import type { Changelog } from '../lib/changelog';
-import type { GlossaryRecord } from '../lib/types';
 
 const changelog = changelogRaw as Changelog;
 // 首頁只放最新 3 筆。更久以前的東西對「這個站最近有沒有在動」沒有幫助，卻會把首頁撐長，
 // 把底下的入口推到摺線以下。
 const recent = changelog.entries.slice(0, 3);
-const nodeCount = data.nodes.length;
 const diceCount = data.nodes.filter(n => n.type === 'dice').length;
-// ⚠️ 不能用 `data.meta.glossary`：那份是「骰子樹描述實際引用到的」子集（41 條），
-// 而同一頁的更新日誌與 /guide 都說 62 條官方標記——同一頁自相矛盾。要數的是資料檔裡
-// 有解釋的詞條（別名不算），跟 /guide 用同一個來源。
-const termCount = Object.keys(displayGlossary(keywordsRaw as Record<string, GlossaryRecord>)).length;
 ---
 
 <Base title="首頁">
   <section class="page home-hero">
     <h1>Random Dice 2 wiki</h1>
-    <p class="lede">
-      骰子樹 {nodeCount} 個節點的解鎖順序、前置關係與完整效果，資料逐條對過官方資料表。
-    </p>
-
     <div class="home-links">
       <a class="home-card" href="/tree">
         <h2>骰子樹 →</h2>
@@ -42,17 +30,19 @@ const termCount = Object.keys(displayGlossary(keywordsRaw as Record<string, Glos
       </a>
     </div>
 
-    <!-- 三個數字是三件不同的事，不要合併：遊戲版本是玩家在遊戲裡看得到的號碼；資料版本是
-         這份資料抄自哪一版遊戲資源包；更新日期是這個站最後一次跟上游對過資料的日子。
-         全部讀自資料正本（<svg> 的 data-game-version／<metadata> 的 resource bundle／
-         data-updated），不寫死在頁面上——寫死的版本號一定會忘記跟著改。
+    <!-- 遊戲版本是玩家在遊戲裡看得到的號碼，更新日期是這個站最後一次跟上游對過資料的日子。
+         兩個都讀自資料正本（<svg> 的 data-game-version／data-updated），不寫死在頁面上——
+         寫死的版本號一定會忘記跟著改。
+
+         ⚠️ 資源包版本（meta.gameBundle）**刻意不顯示**（2026-08-22 Yuki 指定）：那是「這份
+         資料抄自哪一版遊戲資源包」，只有維護資料的人在意，玩家看了只會多一個看不懂的號碼。
+         它仍然存在於資料正本與 data/changelog.json 裡，規則 20 照樣拿它擋 CI，只是不上頁面。
 
          ⚠️ id 是 tests/e2e/tree.spec.ts 的 T 抓的目標。那條測試原本抓的是 `section`，
          首頁一多一個區塊就會踩到 Playwright 的 strict mode；選擇器綁版面結構本來就撐不住
          版面改動，所以改綁這個 id。 -->
     <p id="version-info" class="muted">
-      遊戲版本v{data.meta.gameVersion} ・ 資料版本 {data.meta.gameBundle}（更新於 {data.meta.updated}）
-      ・ {termCount} 個關鍵字
+      遊戲版本v{data.meta.gameVersion}（更新於 {data.meta.updated}）
     </p>
   </section>
 
@@ -63,7 +53,8 @@ const termCount = Object.keys(displayGlossary(keywordsRaw as Record<string, Glos
         <p class="log-head">
           <time datetime={entry.date}>{entry.date}</time>
           <strong>{entry.title}</strong>
-          {entry.data && <span class="log-stamp">遊戲 v{entry.data.gameVersion} ・ 資源包 {entry.data.gameBundle}</span>}
+          {/* 只印遊戲版本。資源包版本留在 data/changelog.json 給規則 20 用，不上頁面。 */}
+          {entry.data && <span class="log-stamp">遊戲 v{entry.data.gameVersion}</span>}
         </p>
         <ul>{entry.items.map(item => <li>{item}</li>)}</ul>
       </article>

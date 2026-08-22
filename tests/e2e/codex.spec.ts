@@ -6,6 +6,7 @@
 // `request.get()` 而不是 `page.goto()`：後者拿到的是 JS 跑完之後的 DOM，驗不到這件事。
 import { test, expect } from '@playwright/test';
 import { readFileSync } from 'node:fs';
+import { resolveColor } from './probe';
 
 const tree = JSON.parse(
   readFileSync(new URL('../../src/generated/tree.json', import.meta.url), 'utf8'),
@@ -229,6 +230,52 @@ test('C5. 首頁的更新日誌顯示最新 3 筆，且資料條目的版本戳�
   // 規則 20 在 CI 擋的是同一件事，但那是對著檔案驗的；這一條驗的是「玩家真的看得到」。
   const stamp = page.locator('.home-changelog .log-stamp').first();
   await expect(stamp).toContainText(`v${tree.meta.gameVersion}`);
-  await expect(stamp).toContainText(tree.meta.gameBundle);
+  // 資源包版本 2026-08-22 起不上頁面（Yuki 指定：玩家不需要知道資料抄自哪一版資源包）。
+  // 它仍然在 data/changelog.json 裡給規則 20 用——這條反向守著「別又把它印回去」。
+  await expect(stamp).not.toContainText(tree.meta.gameBundle);
   await expect(entries.first().locator('time')).toHaveAttribute('datetime', /^\d{4}-\d{2}-\d{2}$/);
+});
+
+test('C6. 篩選切換鈕外觀是按鈕、骨子裡仍是 checkbox：鍵盤操作得動，「全部」把五系開回來', async ({ page }) => {
+  await page.goto('/dice');
+  const count = page.locator('#codex-count');
+  const all = page.locator('#codex-all');
+  await expect(all).toHaveAttribute('data-active', '');
+
+  for (const v of ['nature', 'magic', 'chaos']) {
+    await page.uncheck(`#codex-filters input[value="${v}"]`);
+  }
+  await expect(count).not.toHaveText(String(dice.length));
+  await expect(all).not.toHaveAttribute('data-active', '');
+
+  await all.click();
+  await expect(count).toHaveText(String(dice.length));
+  await expect(all).toHaveAttribute('data-active', '');
+
+  // ⚠️ 這一段守的是「切換鈕不能只有滑鼠能用」。checkbox 被 CSS 攤平成整顆鈕的大小、
+  // opacity: 0——它必須還在 Tab 順序裡、按 Space 還要切換得動。改成 display: none 或
+  // visibility: hidden 就會在這裡紅。
+  const nature = page.locator('#codex-filters input[value="nature"]');
+  await nature.focus();
+  await expect(nature).toBeFocused();
+  await page.keyboard.press(' ');
+  await expect(nature).not.toBeChecked();
+  await expect(count).toHaveText(String(dice.length - dice.filter(d => d.branch === 'nature').length));
+
+  // 焦點框要畫在整顆鈕上：checkbox 自己是透明的，框在它身上等於看不見。
+  const chip = page.locator('.chip[data-branch="nature"]');
+  const outline = await chip.evaluate(el => getComputedStyle(el).outlineStyle);
+  expect(outline, '鍵盤焦點時整顆鈕沒有外框').not.toBe('none');
+
+  // 選中與否要看得出來：開著的鈕邊框走該分支的顏色。
+  await page.keyboard.press(' ');
+  await expect(nature).toBeChecked();
+  const branch = await resolveColor(page, '--nature');
+  // ⚠️ 一定要 poll。邊框色有 120ms 的過場，按完 Space 立刻讀會讀到中途的混色
+  // （實測 rgb(151,79,97)，介於 --border 與 --nature 之間），寫成一次性斷言會偶爾紅。
+  await expect
+    .poll(() => chip.evaluate(el => getComputedStyle(el).borderTopColor), {
+      message: '開啟中的切換鈕沒有走分支色',
+    })
+    .toBe(branch);
 });
