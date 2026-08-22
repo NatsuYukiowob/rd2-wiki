@@ -1011,14 +1011,52 @@ test('O3. 篩選面板收得起來也展得開，桌機平移畫布不會把它�
   const first = (await toolbar.boundingBox())!;
   await toggle.click();
   await expect(toggle).toHaveAttribute('aria-expanded', String(isMobile));
-  const second = (await toolbar.boundingBox())!;
-  // 收合真的有改變工具列佔的空間——否則這顆按鈕等於沒作用。
-  expect(Math.abs(second.width - first.width) + Math.abs(second.height - first.height),
-    '按了切換鈕，工具列佔的空間卻沒變').toBeGreaterThan(40);
 
-  // ⚠️ 這第二次點擊是在收合過場（200ms）還沒收尾時發生的。狀態若是從 `.open` class 讀的，
-  // 這時 class 還在，算出來的下一個狀態會是「再關一次」，面板就卡住了（2026-08-22 抓到）。
+  // 收合真的有改變工具列佔的空間——否則這顆按鈕等於沒作用。
+  // ⚠️ 不可以在 aria-expanded 翻轉的當下就量幾何。`setFiltersOpen()`（tree-canvas.ts）先寫
+  // aria-expanded，接著把面板寬度**鎖成當前值**，真正的收縮要到兩層 rAF 之後才開始——那段
+  // 窗裡量到的差值正好是 0。平常 Playwright 的一次往返已經吃掉大半個過場（實測 diff 486
+  // /825）所以看不出來，但 2026-08-23 全套平行跑時那兩層 rAF 被推遲，這條就紅了
+  // （`Received: 0`，而且只紅 desktop）。用 poll 等幾何真的動起來，不要假設「aria 翻了＝
+  // 幾何已經開始變」。
+  await expect
+    .poll(
+      async () => {
+        const box = (await toolbar.boundingBox())!;
+        return Math.abs(box.width - first.width) + Math.abs(box.height - first.height);
+      },
+      { message: '按了切換鈕，工具列佔的空間卻沒變' },
+    )
+    .toBeGreaterThan(40);
+
+  // ⚠️ 這條真正要守的是「收合過場還沒收尾就再按一次」：狀態若是從 `.open` class 讀的，這時
+  // class 還在，算出來的下一個狀態會是「再關一次」，面板就卡住、aria-expanded 停在 false
+  // （2026-08-22 抓到）。
+  // 舊版是「按一下、await 一輪、再按一下」，只是**希望**第二下落在 200ms 的窗內；落在窗外
+  // 就安靜地失去這條守門，而且測試照樣綠。改成在瀏覽器的同一個 task 裡連按兩下（比真的
+  // 過場中更嚴苛：第二下發生在第一下的 rAF 都還沒跑之前），並且把「第二下當下 `.open`
+  // 還掛著」一起回報出來當斷言——守門條件本身變成可驗證的，不再是假設。
+  // poll 是「幾何一動就回來」，回來時收合過場（200ms）通常還沒收尾——先等它收乾淨，
+  // 重新展開的這一下才不會自己就落在過場裡，讓底下那組連按兩下失去唯一性。
+  await expect(filters).not.toHaveClass(/animating/);
   await toggle.click();
+  await expect(toggle).toHaveAttribute('aria-expanded', String(!isMobile));
+  await expect(filters).not.toHaveClass(/animating/);
+
+  const openStillSetBetweenClicks = await page.evaluate(() => {
+    const btn = document.querySelector<HTMLElement>('#filters-toggle')!;
+    const panel = document.querySelector<HTMLElement>('#filters')!;
+    btn.click();
+    const still = panel.classList.contains('open');
+    btn.click();
+    return still;
+  });
+  // 抽屜版面（手機）沒有橫向過場，`setFiltersOpen()` 走瞬間切換那條路、`.open` 當場就拿掉，
+  // 所以這個窗只存在於桌機。手機只驗連按兩下不會卡住。
+  if (!isMobile) {
+    expect(openStillSetBetweenClicks,
+      '第二次點擊沒有落在「.open 還掛著」的窗裡，這條守門等於沒作用').toBe(true);
+  }
   await expect(toggle).toHaveAttribute('aria-expanded', String(!isMobile));
 
   // 跨過 720px 斷點時要重設回該版面的預設值。少了這條：桌機開著面板把視窗縮到手機寬度，

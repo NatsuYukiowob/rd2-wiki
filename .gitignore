@@ -16,3 +16,6 @@ comment.md
 
 # 開發文件（規格、計畫、部署步驟、已知問題）不進版控，保留在本機與 Samba 備份
 docs/
+
+# subagent-driven-development 的工作區（ledger、brief、review package），純本機暫存
+.superpowers/

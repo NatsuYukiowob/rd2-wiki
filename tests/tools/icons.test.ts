@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import sharp from 'sharp';
-import { buildSprite, buildHiRes } from '../../tools/lib/icons';
+import { buildSprite, buildHiRes, buildBoardIcon } from '../../tools/lib/icons';
 
 const png = (w: number, h: number) =>
   sharp({ create: { width: w, height: h, channels: 4, background: { r: 255, g: 0, b: 0, alpha: 1 } } })
@@ -107,5 +107,65 @@ describe('icons', () => {
     // 1× 的整數像素本來就會有一點捨入誤差，留 1.5 個百分點；沒縮放 gutter 的舊版差 3.8。
     expect(Math.abs(hi - lo), `sprite 佔 ${lo.toFixed(2)}%、高解析佔 ${hi.toFixed(2)}%，切換時會跳大小`)
       .toBeLessThan(1.5);
+  });
+});
+
+describe('buildBoardIcon', () => {
+  // /board 骰盤編輯器的純骰子圖用普通 <img> 顯示，不是 <pattern> 填色，沒有繞回取樣的問題
+  // （見 GUTTER 的說明）。加了 gutter 只會讓圖在方框裡顯得更小，所以這裡刻意驗「沒有」。
+  it('不套用 withGutter：來源本身滿版不透明時，輸出的四個角也是不透明的', async () => {
+    const buf = await png(150, 175);
+    const out = await buildBoardIcon(buf);
+    const { data, info } = await sharp(out).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+    const { width: w, height: h, channels: c } = info;
+    const alphaAt = (x: number, y: number) => data[(y * w + x) * c + 3]!;
+    for (const [x, y] of [[0, 0], [w - 1, 0], [0, h - 1], [w - 1, h - 1]] as const) {
+      expect(alphaAt(x, y), `角落 (${x},${y}) 不該是透明的——不該套用 gutter`).toBeGreaterThan(200);
+    }
+  });
+
+  // 這批來源圖尺寸與長寬比都不統一（寬 147–174、高 171–186），跟節點圖示不一樣，不能假設
+  // 正方形；用 fit: 'inside' 保留長寬比，不能被拉伸或裁切。
+  //
+  // ⚠️ 這條擋得到的只有 fit: 'contain'（它會把小圖補成 240×240 的正方形）。來源兩邊都小於
+  // 上限、`withoutEnlargement` 之下 inside／fill／cover／outside 全都原尺寸輸出，四種給的
+  // 答案一模一樣——真正把 fill／cover 擋下來的是下面那條「會被縮小」的測試裡的長寬比斷言
+  // （2026-08-23 review F7-1：在補那條之前，把 'inside' 改成 'fill'／'cover' 這個 describe
+  // 四條全綠）。兩條要一起看才是完整的守門。
+  it('保留來源長寬比，不強制補邊成正方形', async () => {
+    const buf = await png(147, 174);
+    const out = await buildBoardIcon(buf);
+    const meta = await sharp(out).metadata();
+    expect(meta.width! / meta.height!).toBeCloseTo(147 / 174, 2);
+  });
+
+  // withoutEnlargement：這批來源圖只有 147–186px，全部小於「2 倍顯示尺寸」的上限，
+  // 不該被無意義放大出鋸齒。
+  it('withoutEnlargement：小於目標尺寸的來源維持原尺寸，不被放大', async () => {
+    const buf = await png(150, 175);
+    const out = await buildBoardIcon(buf);
+    const meta = await sharp(out).metadata();
+    expect(meta.width).toBe(150);
+    expect(meta.height).toBe(175);
+    expect(meta.format).toBe('webp');
+  });
+
+  // fit: 'inside' 保留長寬比縮小；來源明顯超過目標尺寸時應該真的被縮小，不是原樣輸出。
+  //
+  // ⚠️ 這是整個 describe 裡唯一真的走進 resize 的案例，所以「fit 模式有沒有退化」只能在這裡
+  // 驗。只斷言「≤240 且變小」是不夠的——`fill`／`cover` 給的 240×240 兩個條件都滿足，
+  // 四條測試會一起變成假綠（2026-08-23 review F7-1 實測）。長寬比那條才是真正的守門：
+  // inside → 203/240 ≈ 0.846，fill／cover → 1.0，改壞就會紅。
+  it('大於目標尺寸的來源會被等比縮小到目標尺寸內（長寬比不變）', async () => {
+    const buf = await png(1470, 1740); // 跟真實素材同比例，但放大 10 倍
+    const out = await buildBoardIcon(buf);
+    const meta = await sharp(out).metadata();
+    expect(meta.width!).toBeLessThanOrEqual(240);
+    expect(meta.height!).toBeLessThanOrEqual(240);
+    expect(meta.width! < 1470 && meta.height! < 1740).toBe(true);
+    expect(
+      meta.width! / meta.height!,
+      `輸出 ${meta.width}×${meta.height} 的長寬比與來源 1470×1740 不符——fit 模式被改成拉伸或裁切了`,
+    ).toBeCloseTo(1470 / 1740, 2);
   });
 });

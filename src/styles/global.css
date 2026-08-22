@@ -1268,6 +1268,271 @@ pre {
   border-radius: var(--r-xs);
 }
 
+/* --------------------------------------------------------------------------
+   骰盤編輯器（/board）
+   -------------------------------------------------------------------------- */
+/* 兩個小標（「我的隊伍」／「骰盤」）也要置中，跟它們各自下面那塊內容（#deck-row／
+   #board-grid）對齊在同一條中線上（標題 h1 與 .lede 維持靠左不動，見 .page h1／.page .lede）。
+   ⚠️ 用 `width: fit-content` ＋ `margin-inline: auto`，不是單純 `text-align: center`：
+   後者只會在**這個 h2 自己滿版的框**裡把文字置中，框本身仍貼齊頁面左右邊界（0 留白）——
+   E2E（B10）量的是元素自己的 boundingBox，那樣量出來會被誤判成「已經置中」，量不出後面
+   真正要驗的東西。收縮成內容寬度之後，`margin-inline: auto` 才會在**這個 section**（跟
+   #deck-row／#board-grid 同一個父層、左右內距對稱）裡置中——不管下面那塊內容是用
+   `width: fit-content`（#deck-row）還是 `max-width`（#board-grid），兩者一樣是相對同一個
+   父層置中，所以小標的中線會跟它們的中線重合，不是各自對齊到不同的基準。 */
+.board-h2 {
+  font-size: var(--fs-lg);
+  margin: var(--space-6) 0 var(--space-3);
+  width: fit-content;
+  margin-inline: auto;
+}
+/* 置中「我的隊伍」本體（標題與說明文字維持靠左，見 .page h1／.page .lede，這裡不動它們）。
+   ⚠️ 用 `width: fit-content` 而不是單純加 `justify-content: center`：後者只會讓 5 個槽在
+   #deck-row 這個滿版容器**內部**置中，量測 #deck-row 自己的 boundingBox 仍然是貼齊頁面
+   左右邊界（0 留白）；`width: fit-content` 讓容器本身收縮成內容寬度，`margin-inline: auto`
+   才有實際的等距留白可分——E2E 量的正是 #deck-row 這個元素的框，不是它裡面的槽。 */
+#deck-row {
+  display: flex;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  width: fit-content;
+  margin-inline: auto;
+}
+.deck-slot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+}
+.deck-dice {
+  width: 4rem;
+  height: 4rem;
+  display: grid;
+  place-items: center;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  cursor: pointer;
+}
+.deck-dice img { width: 100%; height: 100%; object-fit: contain; }
+.deck-dice-empty { font-size: var(--fs-xl); color: var(--muted); }
+.pips-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--fs-sm);
+}
+.pips-row button {
+  background: none;
+  border: 0;
+  color: var(--fg);
+  cursor: pointer;
+  padding: var(--space-h) var(--space-1);
+}
+.pips-row button:disabled { color: var(--muted); cursor: default; }
+.pips-value { min-width: 1.5rem; text-align: center; }
+
+/* ⚠️ 挑選網格是**浮層**，不是版面裡的一塊。
+   它原本夾在組合列與骰盤中間、用 `hidden`（＝display:none）收放，一展開就把骰盤往下推
+   400px——那正是這份計畫自己的 Global Constraint（會出現／消失的東西不准推動鄰居）禁止的
+   事，而且會讓已經量好的拖曳落點失效。改成 fixed 之後，開合對版面零影響。 */
+#dice-picker {
+  position: fixed;
+  inset: auto var(--space-4) var(--space-4) var(--space-4);
+  max-height: 60vh;
+  overflow-y: auto;
+  z-index: 40;
+  padding: var(--space-3);
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-3);
+}
+.picker-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--space-2);
+}
+#picker-close {
+  background: none;
+  border: 0;
+  color: var(--fg);
+  cursor: pointer;
+  font-size: var(--fs-lg);
+  padding: 0 var(--space-1);
+}
+.picker-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(5rem, 1fr));
+  gap: var(--space-2);
+}
+.picker-dice {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-2);
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  color: var(--fg);
+  font-size: var(--fs-xs);
+  cursor: pointer;
+}
+.picker-dice img { width: 2.5rem; height: 2.5rem; object-fit: contain; }
+
+/* 置中「骰盤」本體（同一個理由見 #deck-row 上面那段註解：max-width 讓這個 grid 本身窄於
+   頁面寬度，才有留白可以用 margin-inline: auto 分）。
+   ⚠️ gap 從 --space-2（8px）降到 --space-1（4px）＝格間距減半、密度提高，但**不能再往下
+   降到 --space-h（2px）**：鍵盤 :focus-visible 的焦點框是 `--ring`（outline 2px）＋
+   `--ring-offset`（2px）＝往外凸 4px。gap 若小於 4px，凸出的那一圈會被下一格自己的底色蓋掉
+   （後面的手足元素蓋在前面元素之上），焦點框在朝向鄰格的那一側會被切掉一截、只剩另外三邊。
+   4px 剛好讓凸出的邊緣落在鄰格的邊界上（貼齊但不重疊），四邊仍然完整可見
+   （實測見下方測試／自行截圖記錄）。 */
+#board-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: var(--space-1);
+  max-width: 32rem;
+  margin-inline: auto;
+  /* ⚠️ 拖曳靠 pointermove；沒有這一行，手機上一拖就變成捲頁。 */
+  touch-action: none;
+}
+.board-cell {
+  aspect-ratio: 1;
+  position: relative;
+  display: grid;
+  place-items: center;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  cursor: pointer;
+  padding: 0;
+}
+.board-cell img { width: 78%; height: 78%; object-fit: contain; }
+.board-cell .cell-pips {
+  position: absolute;
+  right: var(--space-1);
+  bottom: var(--space-h);
+  font-size: var(--fs-sm);
+  color: var(--gold);
+}
+/* 「隱藏星數」：用 visibility 不用 display——後者會讓 .board-cell 的 `place-items: center`
+   重新分配空間，圖示跟著輕微位移。visibility: hidden 讓 .cell-pips 原地不可見，版面零位移。 */
+#board-grid.hide-pips .cell-pips { visibility: hidden; }
+/* 工具列跟著骰盤本體置中：它是浮在骰盤正下方的一列按鈕，骰盤本身已經置中，工具列留在
+   左邊會顯得跟上面那塊對不齊。justify-content 不影響 #board-tools 自己的框大小
+   （B3d／B8d 驗的是尺寸，不是位置），所以跟「按下前後尺寸不變」不衝突。 */
+#board-tools {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--space-3);
+  margin-top: var(--space-5);
+}
+/* ⚠️ 靜止是 --surface-1，hover 才是 --surface-3。CLAUDE.md 的三階是
+   「靜態頁的面 → 1／浮在畫布上的 chrome → 2／hover 與選中的填色 → 3」；
+   把靜止的按鈕設成 3，它就跟拖曳落點高亮 .board-cell.drop-target 同色了。 */
+#board-tools button {
+  padding: var(--space-2) var(--space-4);
+  background: var(--surface-1);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-pill);
+  color: var(--fg);
+  cursor: pointer;
+  font-size: var(--fs-sm);
+}
+#board-tools button:hover { background: var(--surface-3); }
+/* 「隱藏星數」開著時的視覺：只換底色（跟選中的三階同一色），不加文字也不加會改變尺寸的
+   指示元素——按鈕文字固定不變，寬度才不會跳動（見 board.astro 與 board.ts 的同一段註解）。 */
+#board-hide-pips[aria-pressed="true"] { background: var(--surface-3); }
+#board-export-out { margin-top: var(--space-5); }
+#board-export-img { max-width: 100%; border-radius: var(--r-md); }
+.board-hint { color: var(--muted); font-size: var(--fs-sm); }
+
+/* 拖曳影像。⚠️ pointer-events: none 是必要的：落點判定用 elementFromPoint，
+   影像跟在指標下方，能接事件的話就永遠只抓得到影像自己。 */
+.drag-ghost {
+  position: fixed;
+  width: 3rem;
+  height: 3rem;
+  object-fit: contain;
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+  z-index: 50;
+  opacity: 0.85;
+}
+.board-cell.drop-target { border-color: var(--gold); background: var(--surface-3); }
+/* ⚠️ 掛在 #deck-row 上（不是 .deck-dice）：B9 量的是這個選擇器，而且拖曳從按鈕邊緣起手時
+   仍然要能攔住捲頁手勢。 */
+#deck-row { touch-action: none; }
+
+/* 手機：骰盤在上、組合列沉到底部拇指區。
+   ⚠️ 判準用 hover／pointer 而不是畫面寬度——跟 /tree 的標籤升層同一套判準，
+   窄視窗的桌機瀏覽器仍然是滑鼠操作，不該被當成手機。 */
+@media (hover: none) and (pointer: coarse) {
+  .board-page { display: flex; flex-direction: column; }
+  .board-page > h1 { order: 0; }
+  .board-page > .lede { order: 1; }
+  #board-grid { order: 2; }
+  #deck-row { order: 3; margin-top: var(--space-5); }
+  #dice-picker { order: 4; }
+  #board-tools { order: 5; }
+  #board-live { order: 6; }
+  #board-export-out { order: 7; }
+  /* 兩個 h2 在手機上是多餘的：畫面上骰盤與組合列各自只有一塊，位置就說明了它是什麼。 */
+  .board-h2 { display: none; }
+  /* ⚠️ margin-inline: auto 在這裡必須清掉，不能只改 max-width。`.board-page` 這裡是
+     flex column，水平方向的 auto 邊界會取消預設的 stretch（跟 CLAUDE.md 記過的
+     `main { margin: 0 auto }` 同一個坑，這次踩在 #board-grid 上）：#board-grid 因此不再
+     被拉滿版寬，退回用內容（沒有明確寬度可分配的 grid 欄）反推寬度，實測整個骰盤縮成 26px
+     寬的一小撮點。桌機沒有這個問題（.board-page 那裡不是 flex 容器），所以只在這個媒體
+     查詢裡覆寫回 0，不動桌機那份置中。 */
+  #board-grid { max-width: 100%; margin-inline: 0; }
+
+  /* I5：組合列在手機上排成 5 個不折行。
+     實測（改動前）：320px 排 3+2、360／390／412px 排 4+1，430px 以上才是 5 個——骰盤本身
+     是 5 欄滿版，底下的組合列卻折行，像沒做完。槽寬原本 68px 由「◀ 1 ▶」那一列決定
+     （不是 4rem 的骰子圖示，圖示只有 64px）。
+
+     ⚠️ 只在這個媒體查詢裡改，不動桌機：改成 CSS Grid（跟 #board-grid 同一招）而不是繼續用
+     flex-wrap，是因為 grid 的 `repeat(5, 1fr)` 永遠剛好 5 欄、永遠不會折行，欄寬由容器寬度
+     自動除出來，不必為每個斷點各自手算一個 px 值。桌機的 #deck-row 仍然是外層那份
+     `width: fit-content` 的 flex（內容窄於頁寬，置中即可，不需要也不應該被拉滿版）。 */
+  #deck-row {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: var(--space-2);
+    width: 100%;
+    margin-inline: 0;
+  }
+  /* 骰子圖示原本固定 4rem——320px 時 5 顆疊起來就有 320px，超過畫面本身。改成跟著欄寬走、
+     desktop 那個尺寸只當上限（欄寬夠寬時不會變得比桌機還大）。 */
+  .deck-slot .deck-dice {
+    width: 100%;
+    max-width: 4rem;
+    height: auto;
+    aspect-ratio: 1;
+  }
+  /* 「◀ 1 ▶」這一列也要跟著窄下去，否則欄寬縮小之後它會比欄位還寬、溢出到鄰欄。
+     縮法：內距與內部間距都降到 --space-h（2px，token 表最小的一階），數字的最小寬度從
+     1.5rem 降到 1rem——單一位數字仍然放得下，不會截字。
+     ⚠️ 這樣一來 ◀／▶ 的可點區塊會小於建議的 24×24 CSS px（320px 寬時整欄只剩約 51px，
+     兩顆鈕加中間的數字怎麼分都到不了 24×24×2）；已實測不會小到點不到（見 layout-batch
+     report 的量測數字與 E2E 斷言），但這是 320px 這個極窄寬度下的已知取捨，不是假裝達標。 */
+  .pips-row {
+    gap: var(--space-h);
+    justify-content: center;
+  }
+  .pips-row button {
+    padding: var(--space-h);
+  }
+  .pips-value {
+    min-width: 1rem;
+  }
+}
+
 /* ==========================================================================
    減少動態（2026-08-22 收攏）
    --------------------------------------------------------------------------

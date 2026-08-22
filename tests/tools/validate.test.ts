@@ -17,7 +17,12 @@ const unlockExceptions: Record<string, { unlockVia: string; note?: string }> =
 const changelog: unknown = JSON.parse(readFileSync('data/changelog.json', 'utf8'));
 const iconsDir = 'data/icons';
 const dataDir = 'data';
-const opts = { keywords, nodeText, upgradeCostTable, maxLevelOfficial, unlockExceptions, changelog, iconsDir, dataDir };
+const boardIcons: Record<string, string> = JSON.parse(readFileSync('data/board-icons.json', 'utf8'));
+const boardIconsDir = 'data/board-icons';
+const opts = {
+  keywords, nodeText, upgradeCostTable, maxLevelOfficial, unlockExceptions, changelog, iconsDir, dataDir,
+  boardIcons, boardIconsDir,
+};
 
 /**
  * 產生一份「只改了某幾筆」的 nodes.json。文案搬進 JSON 之後，破壞文案的測試不再是對 SVG 字串
@@ -157,7 +162,7 @@ describe('validate', () => {
     for (const f of readdirSync(iconsDir)) writeFileSync(join(tinyDir, f), readFileSync(join(iconsDir, f)));
     // 48x31 的縮圖：建置期會把它放大四倍，成品是一團糊，過去什麼規則都沒擋
     writeFileSync(join(tinyDir, 'tree-center.png'), TINY_PNG);
-    const result = validate(svg, { keywords, nodeText, upgradeCostTable, maxLevelOfficial, unlockExceptions, changelog, iconsDir, dataDir: tinyDir });
+    const result = validate(svg, { keywords, nodeText, upgradeCostTable, maxLevelOfficial, unlockExceptions, changelog, iconsDir, dataDir: tinyDir, boardIcons, boardIconsDir });
     expect(result.errors.some(e => /規則 10.*小於顯示尺寸的兩倍/.test(e))).toBe(true);
   });
 
@@ -207,7 +212,7 @@ describe('validate', () => {
     // 錯誤，不影響本測試只關心的「不可達」斷言。
     const tmpIconsDir = mkdtempSync(join(tmpdir(), 'rd2-wiki-icons-'));
     writeFileSync(join(tmpIconsDir, '000000000000.png'), Buffer.from('not-a-real-png'));
-    const result = validate(wip, { keywords, nodeText: wipText, upgradeCostTable, maxLevelOfficial, unlockExceptions, changelog, iconsDir: tmpIconsDir, dataDir });
+    const result = validate(wip, { keywords, nodeText: wipText, upgradeCostTable, maxLevelOfficial, unlockExceptions, changelog, iconsDir: tmpIconsDir, dataDir, boardIcons, boardIconsDir });
     expect(result.errors.some(e => /不可達/.test(e))).toBe(false);
     expect(result.warnings.some(w => /規則 6\(c\)/.test(w) && w.includes('1099'))).toBe(true);
   });
@@ -530,14 +535,14 @@ describe('validate', () => {
     const realBuf = readFileSync(join(iconsDir, realFile));
     const wrongHash = realFile === '000000000000.png' ? '111111111111' : '000000000000';
     writeFileSync(join(tmpIconsDir, `${wrongHash}.png`), realBuf);
-    const result = validate(svg, { keywords, nodeText, upgradeCostTable, maxLevelOfficial, unlockExceptions, changelog, iconsDir: tmpIconsDir, dataDir });
+    const result = validate(svg, { keywords, nodeText, upgradeCostTable, maxLevelOfficial, unlockExceptions, changelog, iconsDir: tmpIconsDir, dataDir, boardIcons, boardIconsDir });
     expect(result.errors.some(e => /規則 7\(b\)/.test(e) && /sha256/.test(e))).toBe(true);
   });
 
   it('規則 7(c)：非 PNG 檔會被擋', () => {
     const tmpIconsDir = mkdtempSync(join(tmpdir(), 'rd2-wiki-icons-'));
     writeFileSync(join(tmpIconsDir, '222222222222.png'), Buffer.from('this is not a png file at all'));
-    const result = validate(svg, { keywords, nodeText, upgradeCostTable, maxLevelOfficial, unlockExceptions, changelog, iconsDir: tmpIconsDir, dataDir });
+    const result = validate(svg, { keywords, nodeText, upgradeCostTable, maxLevelOfficial, unlockExceptions, changelog, iconsDir: tmpIconsDir, dataDir, boardIcons, boardIconsDir });
     expect(result.errors.some(e => /規則 7\(c\)/.test(e) && /不是有效的 PNG/.test(e))).toBe(true);
   });
 
@@ -547,7 +552,7 @@ describe('validate', () => {
     const tinyPng = makeMinimalPng(10, 10);
     const tinyHash = createHash('sha256').update(tinyPng).digest('hex').slice(0, 12);
     writeFileSync(join(tmpIconsDir, `${tinyHash}.png`), tinyPng);
-    const result = validate(svg, { keywords, nodeText, upgradeCostTable, maxLevelOfficial, unlockExceptions, changelog, iconsDir: tmpIconsDir, dataDir });
+    const result = validate(svg, { keywords, nodeText, upgradeCostTable, maxLevelOfficial, unlockExceptions, changelog, iconsDir: tmpIconsDir, dataDir, boardIcons, boardIconsDir });
     expect(result.errors.some(e => /規則 7\(c\)/.test(e) && /小於最低要求 96px/.test(e))).toBe(true);
   });
 
@@ -559,9 +564,155 @@ describe('validate', () => {
     const orphanBuf = makeMinimalPng(100, 100);
     const orphanHash = createHash('sha256').update(orphanBuf).digest('hex').slice(0, 12);
     writeFileSync(join(tmpIconsDir, `${orphanHash}.png`), orphanBuf);
-    const result = validate(svg, { keywords, nodeText, upgradeCostTable, maxLevelOfficial, unlockExceptions, changelog, iconsDir: tmpIconsDir, dataDir });
+    const result = validate(svg, { keywords, nodeText, upgradeCostTable, maxLevelOfficial, unlockExceptions, changelog, iconsDir: tmpIconsDir, dataDir, boardIcons, boardIconsDir });
     expect(result.errors).toEqual([]);
     expect(result.warnings.some(w => /規則 7\(d\)/.test(w) && w.includes(orphanHash))).toBe(true);
+  });
+
+  // 規則 21：/board 骰盤編輯器的純骰子圖。跟 data/icons/ 是平行的一條資產路徑，正本管線
+  // （規則 7）完全看不到它——底下每一條各是一種「壞掉但看不出來」的寫法，改壞前 CI 全綠。
+  describe('規則 21：/board 純骰子圖的對應表', () => {
+    /** 把正本那 41 張純骰子圖複製到一個暫存目錄，讓每條測試各自破壞自己那份。 */
+    const copyBoardIcons = () => {
+      const dir = mkdtempSync(join(tmpdir(), 'rd2-board-icons-'));
+      for (const f of readdirSync(boardIconsDir)) writeFileSync(join(dir, f), readFileSync(join(boardIconsDir, f)));
+      return dir;
+    };
+
+    it('沒有提供 data/board-icons.json 時只警告、不擋 PR', () => {
+      const result = validate(svg, { ...opts, boardIcons: null });
+      expect(result.errors).toEqual([]);
+      expect(result.warnings.some(w => /規則 21.*沒有提供 data\/board-icons\.json/.test(w))).toBe(true);
+    });
+
+    it('最外層不是物件時會被擋（否則底下每條檢查都拿到空集合、安靜地全過）', () => {
+      const result = validate(svg, { ...opts, boardIcons: [] });
+      expect(result.errors.some(e => /規則 21.*最外層必須是以節點 id 為鍵的物件/.test(e))).toBe(true);
+    });
+
+    it('骰子節點在對應表裡漏了一筆會被擋', () => {
+      const { '5006': _dropped, ...missing } = boardIcons;
+      const result = validate(svg, { ...opts, boardIcons: missing });
+      expect(result.errors.some(e => /規則 21.*骰子 5006.*沒有對應的圖/.test(e))).toBe(true);
+    });
+
+    it('對應表指向的圖檔不存在會被擋，且訊息指的是實際讀取的目錄', () => {
+      const tmpDir = mkdtempSync(join(tmpdir(), 'rd2-board-icons-'));
+      // 空目錄，對應表卻宣稱每一筆都有圖——41 個檔案全部「不存在」。
+      const result = validate(svg, { ...opts, boardIconsDir: tmpDir });
+      const hash = boardIcons['5006']!;
+      // ⚠️ 這裡刻意斷言 tmpDir 而不是 `data/board-icons/`：訊息寫死正本路徑的話，等於指著
+      // 一個檔案好端端在那裡的路徑說它不存在（2026-08-23 review F8）。
+      expect(result.errors).toContain(`規則 21(f): data/board-icons.json 的 5006 指向的圖 ${join(tmpDir, `${hash}.png`)} 不存在`);
+      expect(result.errors.every(e => !/規則 21.*不存在.*data\/board-icons\//.test(e))).toBe(true);
+    });
+
+    it('圖檔內容 sha256 與檔名不符會被擋（跟規則 7(b) 同一個判準）', () => {
+      const tmpDir = copyBoardIcons();
+      // 隨便挑一筆，把它指向的檔案內容整個換掉（但檔名不變）——內容 sha256 前 12 碼從此對不上檔名。
+      const hash = boardIcons['5006']!;
+      writeFileSync(join(tmpDir, `${hash}.png`), makeMinimalPng(120, 140));
+      const result = validate(svg, { ...opts, boardIconsDir: tmpDir });
+      expect(result.errors.some(e => new RegExp(`規則 21\\(b\\).*${join(tmpDir, `${hash}.png`)}.*sha256`).test(e))).toBe(true);
+    });
+
+    it('放進來的不是有效 PNG 會被擋（否則要等 npm run build 由 sharp 噴出不含節點 id 的錯）', () => {
+      const tmpDir = copyBoardIcons();
+      const buf = Buffer.from('totally not a png');
+      const hash = createHash('sha256').update(buf).digest('hex').slice(0, 12);
+      // 用內容自己的雜湊命名，(b) 無話可說——沒有 (c) 的話這裡是零錯誤。
+      writeFileSync(join(tmpDir, `${hash}.png`), buf);
+      const result = validate(svg, { ...opts, boardIcons: { ...boardIcons, '5006': hash }, boardIconsDir: tmpDir });
+      expect(result.errors.some(e => /規則 21\(c\).*不是有效的 PNG/.test(e))).toBe(true);
+    });
+
+    it('解析度過低的 PNG 會被擋（/board 上就是一格糊掉的骰子）', () => {
+      const tmpDir = copyBoardIcons();
+      const buf = makeMinimalPng(8, 8);
+      const hash = createHash('sha256').update(buf).digest('hex').slice(0, 12);
+      writeFileSync(join(tmpDir, `${hash}.png`), buf);
+      const result = validate(svg, { ...opts, boardIcons: { ...boardIcons, '5006': hash }, boardIconsDir: tmpDir });
+      expect(result.errors.some(e => /規則 21\(c\).*最長邊 8px，小於最低要求 96px/.test(e))).toBe(true);
+    });
+
+    it('沒有被任何節點引用的孤兒檔只會警告、不會擋 PR（跟規則 7(d) 同一個嚴重度）', () => {
+      const tmpDir = copyBoardIcons();
+      const orphanBuf = makeMinimalPng(150, 175);
+      const orphanHash = createHash('sha256').update(orphanBuf).digest('hex').slice(0, 12);
+      writeFileSync(join(tmpDir, `${orphanHash}.png`), orphanBuf);
+      const result = validate(svg, { ...opts, boardIconsDir: tmpDir });
+      // 孤兒檔只是「repo 裡多一個沒人引用的 PNG」，擋下來會連「換圖忘了刪舊檔」這種無害的
+      // PR 一起擋掉——兩條規則對同一類問題不該有兩種嚴重度。
+      expect(result.errors).toEqual([]);
+      expect(result.warnings.some(w => /規則 21\(d\)/.test(w) && w.includes(orphanHash))).toBe(true);
+    });
+
+    it('非小寫 .png 的檔案至少會被警告，不會安靜地隱形', () => {
+      const tmpDir = copyBoardIcons();
+      // `.PNG` 是最惡劣的一種：把一個雜湊對不上的檔案改成大寫副檔名，就繞過了 (b) 的比對，
+      // 而站台端只認小寫 `.png`，那個檔案是死的。
+      writeFileSync(join(tmpDir, 'FFFFFFFFFFFF.PNG'), makeMinimalPng(150, 175));
+      writeFileSync(join(tmpDir, '.DS_Store'), Buffer.from('junk'));
+      const result = validate(svg, { ...opts, boardIconsDir: tmpDir });
+      expect(result.errors).toEqual([]);
+      expect(result.warnings.some(w => /規則 21.*不是小寫 \.png 檔/.test(w) && w.includes('FFFFFFFFFFFF.PNG'))).toBe(true);
+      expect(result.warnings.some(w => /規則 21.*不是小寫 \.png 檔/.test(w) && w.includes('.DS_Store'))).toBe(true);
+    });
+
+    it('對應表的值不是 12 碼小寫 hex 會被擋（路徑穿越／寫成物件）', () => {
+      // `../../data/nodes` 在補這條之前會讓閘門真的去讀 data/board-icons/../../data/nodes.png。
+      const traversal = validate(svg, { ...opts, boardIcons: { ...boardIcons, '5006': '../../data/nodes' } });
+      expect(traversal.errors.some(e => /規則 21\(e\).*5006.*不是 12 碼小寫 hex/.test(e))).toBe(true);
+      // 寫成物件時，值會被 join() 成 `[object Object].png`。
+      const notString = validate(svg, { ...opts, boardIcons: { ...boardIcons, '5006': { hash: 'x' } } });
+      expect(notString.errors.some(e => /規則 21\(e\).*5006.*不是 12 碼小寫 hex/.test(e))).toBe(true);
+      expect(notString.errors.every(e => !e.includes('[object Object]'))).toBe(true);
+    });
+
+    it('兩筆指向同一張圖會被擋（複製上一筆、忘了換成新加的圖）', () => {
+      const result = validate(svg, { ...opts, boardIcons: { ...boardIcons, '5006': boardIcons['5005']! } });
+      // 這種寫法在補這條之前是**零錯誤**：每顆骰子都有對應、檔案存在、目錄裡也沒有多出來的
+      // 孤兒檔（新圖從頭到尾沒被加進去過），而 /board 上是兩顆長得一模一樣的骰子。
+      expect(result.errors.some(e => /規則 21\(g\).*5005、5006.*同一張純骰子圖/.test(e))).toBe(true);
+    });
+
+    it('圖示目錄整個不見時報一條錯誤，不是拋例外把其餘規則一起帶走', () => {
+      const gone = join(tmpdir(), 'rd2-board-icons-does-not-exist');
+      // 舊版是 readdirSync 直接拋 ENOENT：CLI 印的是 stack trace 而不是「❌ N 個問題」，
+      // 而且 (f) 剛產出的 41 條「指向的圖不存在」全部隨例外消失。
+      const result = validate(svg, { ...opts, boardIconsDir: gone });
+      expect(result.errors.some(e => /規則 21.*讀不到圖示目錄/.test(e) && e.includes(gone))).toBe(true);
+      expect(result.errors.filter(e => /規則 21\(f\)/.test(e)).length).toBe(Object.keys(boardIcons).length);
+    });
+
+    it('規則 7 的圖示目錄不見時同樣是錯誤而不是例外（共用同一支掃描）', () => {
+      const gone = join(tmpdir(), 'rd2-wiki-icons-does-not-exist');
+      const result = validate(svg, { ...opts, iconsDir: gone });
+      expect(result.errors.some(e => /規則 7.*讀不到圖示目錄/.test(e) && e.includes(gone))).toBe(true);
+    });
+
+    // 反方向的孤兒：(a) 從骰子問「有沒有一筆」、(d) 從目錄問「有沒有被引用」，兩條都看不到
+    // 「對應表裡留著一筆早就不該在的 entry」。只要它指向一張仍被別人引用的既有圖，(b) 與 (d)
+    // 也都不會說話——2026-08-23 review F21-1 實測這兩種寫法在補 (h) 之前都是零錯誤。
+    it('對應表裡指向不存在的節點、或指向非骰子節點的孤兒 entry 會被擋', () => {
+      // 借用 5006 的雜湊：檔案存在、檔名與內容相符、也沒有變成孤兒檔，(b)(d) 全部無話可說。
+      // （(g) 會另外報一條「兩筆指向同一張圖」，這裡只斷言 (h) 有說話。）
+      const shared = boardIcons['5006']!;
+
+      // 節點根本不存在（最可能的情境：某顆骰子從正本移除，忘了刪對應表這一筆）。
+      const ghost = validate(svg, { ...opts, boardIcons: { ...boardIcons, '9999': shared } });
+      expect(ghost.errors.some(e => /規則 21\(h\).*9999.*孤兒/.test(e))).toBe(true);
+
+      // 節點存在但不是骰子（1101 是符文）——/board 只擺骰子，這一筆同樣不該在。
+      const rune = validate(svg, { ...opts, boardIcons: { ...boardIcons, '1101': shared } });
+      expect(rune.errors.some(e => /規則 21\(h\).*1101.*孤兒/.test(e))).toBe(true);
+    });
+
+    it('現有資料本身沒有任何規則 21 的問題（錯誤與警告都是零）', () => {
+      const result = validate(svg, opts);
+      expect(result.errors.filter(e => /規則 21/.test(e))).toEqual([]);
+      expect(result.warnings.filter(w => /規則 21/.test(w))).toEqual([]);
+    });
   });
 });
 
@@ -617,9 +768,20 @@ describe('validate：邊與座標的守門（P2）', () => {
     expect(withPlaceholder).not.toBe(svg);
 
     // 幾何照抄範本，文案補一筆到 nodes.json——管理 ID 要換一個，規則 16 要求全檔唯一。
-    const { errors, warnings } = validate(withPlaceholder, patch({
-      '1099': { ...nodeText[copiedId], gameId: 'D999' },
-    }));
+    // 範本（1001）是骰子，複製出來的 1099 一樣是骰子，規則 21(a) 會要求它也有純骰子圖。
+    // ⚠️ **不能借用範本自己的那張圖**：規則 21(g) 擋「兩筆指向同一張圖」（那是「複製上一筆、
+    // 忘了換成新加的圖」唯一會說話的地方）。這裡不是在測規則 21，所以把 41 張圖複製到暫存
+    // 目錄、另外放一張只給 1099 用的，讓這條測試回到只驗 6(c) 這一件事。
+    const boardDir = mkdtempSync(join(tmpdir(), 'rd2-board-icons-'));
+    for (const f of readdirSync(boardIconsDir)) writeFileSync(join(boardDir, f), readFileSync(join(boardIconsDir, f)));
+    const extraBuf = makeMinimalPng(150, 175);
+    const extraHash = createHash('sha256').update(extraBuf).digest('hex').slice(0, 12);
+    writeFileSync(join(boardDir, `${extraHash}.png`), extraBuf);
+    const { errors, warnings } = validate(withPlaceholder, {
+      ...patch({ '1099': { ...nodeText[copiedId], gameId: 'D999' } }),
+      boardIcons: { ...boardIcons, '1099': extraHash },
+      boardIconsDir: boardDir,
+    });
     expect(errors).toEqual([]);
     expect(warnings.some(w => /規則 6\(c\).*1099/.test(w))).toBe(true);
   });

@@ -123,3 +123,42 @@ export async function buildHiRes(entries: IconEntry[]): Promise<Map<string, Buff
   }
   return out;
 }
+
+/**
+ * 每張「純骰子圖」的縮放**上限**（像素）——不是實際的縮放目標。
+ *
+ * ⚠️ **這個常數目前一次都不會觸發。** 實測 `data/board-icons/` 的 41 張來源全部是
+ * 寬 147–174、高 171–186（最長邊最大值 186），**41/41 沒有一張任何一邊 ≥ 240**；配上
+ * `withoutEnlargement`，`resize()` 對現有素材完完全全是 no-op，41 張 WebP 只是原尺寸重新
+ * 編碼。把 240 改成任何 ≥ 187 的值，輸出一個位元組都不會變（2026-08-23 review F4-1）。
+ *
+ * 所以它是「未來換上更大素材時的封頂」，不是現在畫質的決定者——**要提高 /board 的畫質請換
+ * 來源圖，調這個數字調不到**。它只會在有人放進一張長邊 ≥ 240px 的來源時才開始作用，那時它
+ * 才會把圖等比縮到最長邊 240（`fit: 'inside'`）。
+ *
+ * 240 這個值的由來：`/board` 骰盤格在桌機約 96px、手機更大，跟 `buildHiRes()` 的高 DPI
+ * 原則一樣抓 2 倍顯示尺寸左右。順帶一提，目前的解析度其實剛好夠（桌機格 ≈ 99px × 78%
+ * ≈ 77px，DPR 2 需要 154px，來源 149–174 卡在邊緣）——**那是來源圖本身的巧合，不是這個
+ * 常數在保證的**。
+ */
+const BOARD_ICON_TARGET_PX = 240;
+
+/**
+ * 把一張「純骰子圖」（`data/board-icons/` 底下的來源 PNG）轉成 `/board` 用的 WebP。
+ *
+ * 跟 `buildSprite`／`buildHiRes` 是平行的一條資產路徑：這批圖完全不經正本 SVG 引用，是
+ * `/board` 骰盤編輯器專用的一批來源。**刻意不套 `withGutter()`**——gutter 存在的理由是
+ * `<pattern>` 在 tile 邊界的繞回取樣（見上面 `GUTTER` 的說明），`/board` 用的是普通 `<img>`，
+ * 沒有這個問題，加了只會讓圖在方框裡顯得更小。
+ *
+ * 這批來源圖尺寸與長寬比都不統一（寬 147–174、高 171–186，不像節點圖示是逐節點裁到統一
+ * 尺寸），所以用 `fit: 'inside'` 保留原始長寬比而不強制拉伸，`withoutEnlargement` 讓已經
+ * 夠大的來源不會被無意義放大出鋸齒。畫面與分享圖兩端都要各自對這個不統一的長寬比做等比
+ * 縮放置中（見 `src/lib/board-image.ts` 的 `iconRect`），不能假設它是正方形。
+ */
+export async function buildBoardIcon(buf: Buffer): Promise<Buffer> {
+  return sharp(buf)
+    .resize({ width: BOARD_ICON_TARGET_PX, height: BOARD_ICON_TARGET_PX, fit: 'inside', withoutEnlargement: true })
+    .webp({ quality: 90 })
+    .toBuffer();
+}

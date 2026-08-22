@@ -48,7 +48,7 @@ jobs:
       # 所以這個 job 永遠只給 `contents: read`，也永遠不要往它加 secret 或提權——真正的隔離靠的是
       # 權限最小化與 pr-comment.yml 那條信任邊界，不是這個旗標。
       - run: npm ci --ignore-scripts
-      - name: 資料驗證（規則 0–10、13–19，見 CONTRIBUTING.md）
+      - name: 資料驗證（規則 0–10、13–21，見 CONTRIBUTING.md）
         run: npm run validate
       - name: 正規化定點檢查
         # 正本必須是 `npm run normalize` 的定點（跑過等於沒跑）。貢獻者忘了跑 normalize 時，

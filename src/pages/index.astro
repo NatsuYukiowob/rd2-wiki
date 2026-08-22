@@ -10,6 +10,17 @@ const changelog = changelogRaw as Changelog;
 // 把底下的入口推到摺線以下。
 const recent = changelog.entries.slice(0, 3);
 const diceCount = data.nodes.filter(n => n.type === 'dice').length;
+
+// 全分支 review I2：純站台功能的更新（例如這一頁本身、/board）常常排在最前面，卻沒有資料
+// 版本可言——recent 的前 3 筆完全可能一筆帶 data 的都沒有。跟規則 20（src/lib/changelog.ts
+// 的 checkChangelog）同一套語意，找的是「最新一筆帶 data 的條目」而不是 entries[0] 或
+// recent 裡有沒有：純功能更新排到最前面，不代表資料版本戳記就該從畫面上消失。
+const latestDataEntry = changelog.entries.find(e => e.data);
+const latestDataStamp = latestDataEntry?.data;
+// recent 裡如果本來就有這一筆（帶 data 的條目仍在最新 3 筆之內），下面的逐筆渲染已經會印出
+// 戳記，不需要再另外補一次；`.includes` 比對的是同一個物件參照（recent 是 entries 的
+// slice，find 也是掃同一個 entries），不是內容相等。
+const latestDataInRecent = latestDataEntry !== undefined && recent.includes(latestDataEntry);
 ---
 
 <Base title="首頁">
@@ -59,6 +70,16 @@ const diceCount = data.nodes.filter(n => n.type === 'dice').length;
         <ul>{entry.items.map(item => <li>{item}</li>)}</ul>
       </article>
     ))}
+    <!-- 全分支 review I2：資料版本戳記跟規則 20 同一套語意（最新一筆帶 data 的條目），
+         不是「entries[0] 帶不帶 data」也不是「recent 裡有沒有」。純功能更新排在最前面時
+         （目前就是這樣：/board 上線在 entries[0]），最新 3 筆逐條渲染完全不會印出戳記——
+         這裡補一行，不讓資料版本從畫面上消失，也不用為了湊「剛好落在前 3 筆」去動排序。 -->
+    {!latestDataInRecent && latestDataEntry && latestDataStamp && (
+      <p class="note">
+        資料版本 <span class="log-stamp">遊戲 v{latestDataStamp.gameVersion}</span>
+        （{latestDataEntry.date} {latestDataEntry.title} 對過資料表）
+      </p>
+    )}
     <!-- 目前全部條目就這幾筆，還不需要一頁完整記錄；筆數長起來之後再開 /changelog。 -->
     {changelog.entries.length > recent.length && (
       <p class="note">另有 {changelog.entries.length - recent.length} 筆較早的更新。</p>
