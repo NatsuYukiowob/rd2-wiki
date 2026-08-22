@@ -6,7 +6,6 @@
  */
 :root {
   --bg: #2f2942; /* 取自遊戲原圖的背景矩形，讓站台與原圖同一個底色 */
-  --panel: #322b4b;
   --fg: #f7f3ff;
   --muted: #aaa4c1;
   --gold: #ffd66f;
@@ -26,6 +25,65 @@
   --chaos: #e979a5;
   --support: #f3c5ff;
 
+  /* ==========================================================================
+     版面級距（2026-08-22）
+     --------------------------------------------------------------------------
+     這一段之前不存在，每個元件各自寫死數值：半徑出現過 2/4/6/8/10px 五種，字級有十種
+     擠在 0.78–1.05rem 之間，間距九種。單看每一條都合理，湊在一起就是每個元件對齊到不同
+     的格線——那是畫面「不夠精緻」的實際成因，不是配色。
+
+     ⚠️ 新增樣式時一律用這裡的 token，不要再寫原始數值。要一個級距上沒有的值，先想清楚
+     是不是真的需要；真的需要就在這裡補一階，不要在元件裡開特例。
+     ========================================================================== */
+
+  /* 間距：4px 網格。--space-h 是唯一的半階，只給徽章那種內距（0.125rem = 2px）。 */
+  --space-h: 0.125rem;
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 2rem;
+  --space-7: 3rem;
+
+  /* 圓角：越大的面用越大的半徑，小徽章不要跟卡片同一個值。 */
+  --r-xs: 4px;
+  --r-sm: 6px;
+  --r-md: 10px;
+  --r-lg: 14px;
+  --r-pill: 999px;
+
+  /* 字級：--fs-base 是 1rem，往下三階給輔助資訊、往上四階給標題。 */
+  --fs-xs: 0.78rem;
+  --fs-sm: 0.86rem;
+  --fs-md: 0.94rem;
+  --fs-base: 1rem;
+  --fs-lg: 1.15rem;
+  --fs-xl: 1.3rem;
+  --fs-2xl: 1.55rem;
+  --fs-3xl: 1.9rem;
+
+  /* 表面層次。原本全站只有一個 --panel，nav／卡片／下拉／篩選列同色同框，看不出誰疊在誰
+     上面。三階由低到高：卡片 → 浮起的列與選單 → hover／選中的填色。
+     舊的 --panel 已經拆掉：一個東西兩個名字，正是這一輪要收掉的漂移來源。 */
+  --surface-1: #322b4b;
+  --surface-2: #3a3358;
+  --surface-3: #453d68;
+  --border-strong: #574d7d;
+
+  /* 陰影：跟表面層次配對用。--shadow-3 是浮在畫布上的東西（下拉選單、詳情面板）。 */
+  --shadow-1: 0 1px 2px rgb(0 0 0 / 25%);
+  --shadow-2: 0 4px 14px rgb(0 0 0 / 35%);
+  --shadow-3: 0 10px 30px rgb(0 0 0 / 50%);
+
+  /* 微互動的節奏。跟 --slide-ms 是兩回事：那個是換頁，這兩個是 hover／焦點這種即時回饋。 */
+  --t-fast: 120ms;
+  --t-med: 200ms;
+
+  /* 全站唯一的鍵盤焦點框，見底下的 :focus-visible 規則。 */
+  --ring: 2px solid var(--gold);
+  --ring-offset: 2px;
+
   /* 字型只用系統堆疊，不自架字型檔（CJK 字型體積過大）。 */
   --font: 'Noto Sans TC', 'Microsoft JhengHei', sans-serif;
 }
@@ -36,9 +94,19 @@
 
 html {
   color-scheme: dark;
+  /* 導覽列 2026-08-22 改成 position: sticky 之後，錨點跳轉（#kw-xxx）會把目標捲到視窗
+     頂端、剛好躲進導覽列底下。這一行讓瀏覽器自己留出導覽列的高度。--nav-h 由
+     src/lib/nav-height.ts 實測寫入，每一頁都有；3rem 只是腳本執行前的 fallback。 */
+  scroll-padding-top: calc(var(--nav-h, 3rem) + var(--space-3));
 }
 
 body {
+  /* flex column ＋ `main { flex: 1 }`：內容不滿一屏時把 footer 推到視窗底部。
+     沒有這兩行的話，/guide 這種短頁面的 footer 會停在頁面中間，它的 border-top 變成一條
+     半路截斷的橫線，底下一大片空白（2026-08-22 人工檢視發現）。
+     /tree 的 `body:has(#canvas-host)` 設的是同一組值，兩邊不衝突。 */
+  display: flex;
+  flex-direction: column;
   margin: 0;
   min-height: 100vh;
   background: var(--bg);
@@ -56,37 +124,132 @@ a:hover {
 }
 
 /*
+ * 全站唯一的鍵盤焦點框（2026-08-22）。
+ * 之前每個可聚焦元件各自刻一份 :focus-visible，粗細、顏色、offset 都不一樣，而且新元件
+ * 很容易整個忘記寫——那是「只有滑鼠能用」的無障礙缺口。這裡給預設值，元件只在需要
+ * **額外**回饋（例如同時換底色）時才自己補，不要再各自定義 outline。
+ * 用 :focus-visible 而不是 :focus：滑鼠點下去不該畫框，鍵盤 Tab 過去才要。
+ */
+:focus-visible {
+  outline: var(--ring);
+  outline-offset: var(--ring-offset);
+}
+
+/*
  * 只針對全站導覽列，不要用裸的 `nav` 元素選擇器：骰子樹頁面還有第二個 <nav id="branch-nav">
  * （桌機側欄的分支跳轉），裸選擇器會把這裡的樣式一起套上去。#branch-nav 在 tree.astro 覆寫了
  * display／flex-direction／gap／padding，唯獨沒覆寫 border-bottom，於是它背景透明的盒子在
  * 最後一顆分支按鈕底下拖出一條無主的橫線，浮在畫布上（2026-08-18 人工檢視回報）。
  */
 #site-nav {
+  /* 沾在視窗頂端（2026-08-22）：/dice 有 41 張卡片、/guide 每頁十幾個詞條，捲到一半就
+     再也回不了導覽列。z-index 要蓋過 /tree 的 #tree-controls（5）與 /dice 的 .filters
+     （20），底下的 .nav-menu-items 才不會被那兩層穿透過來。 */
+  position: sticky;
+  top: 0;
+  z-index: 40;
   display: flex;
   align-items: center;
-  gap: 1rem;
-  padding: 0.75rem 1rem;
+  gap: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  /* 半透明＋模糊：捲動時底下的內容從導覽列後面透出來一點，看得出來它是浮在上面的一層，
+     而不是把頁面切掉一條。不透明度留 88% 以上，文字對比才夠。 */
+  /* 前一行是 fallback：不支援 color-mix 的引擎會丟掉後一行，若沒有 fallback，沾頂的導覽列
+     會變成全透明、內容直接從它後面穿過去。 */
+  background: var(--surface-2);
+  background: color-mix(in srgb, var(--surface-2) 88%, transparent);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
   border-bottom: 1px solid var(--border);
 }
 
+/* 導覽列的連結預設不是金色。全部都金色的時候「你在哪一頁」就沒有地方講了——金色留給
+   站名與目前所在的那一頁，其餘用一般文字色，hover 才轉金。 */
 #site-nav a {
+  position: relative;
+  color: var(--fg);
   text-decoration: none;
   font-weight: 600;
+  transition: color var(--t-fast) ease;
 }
 
 #site-nav a:hover {
-  text-decoration: underline;
+  color: var(--gold);
+  text-decoration: none;
+}
+
+#site-nav .brand {
+  color: var(--gold);
+}
+
+/* 導覽列的每一項都不准自己斷行。中文沒有空白，瀏覽器會在任何兩個字之間斷開——Pixel 7 寬度下
+   實測「rd2-wiki」「骰子樹」「圖鑑」各自折成兩行，沾頂的導覽列因此吃掉近兩成畫面高度
+   （2026-08-22 人工檢視發現）。
+   ⚠️ 真正讓 Pixel 7 塞得下的是底下媒體查詢裡的「手機不顯示上次更新」——E2E 的 D9 實測只有
+   那一條拿掉才會紅。這條 nowrap 是防更窄的裝置與日後變長的項目名，不要因為「拿掉也是綠的」
+   就順手刪掉。 */
+#site-nav a,
+#site-nav .nav-menu > summary {
+  white-space: nowrap;
+}
+
+#site-nav .nav-updated {
+  margin-left: auto;
+  color: var(--muted);
+}
+
+@media (max-width: 720px) {
+  #site-nav {
+    gap: var(--space-3);
+  }
+  /* 手機版塞不下「上次更新 2026-08-22」這一段（它比其他四項加起來還寬）。這個日期在首頁的
+     版本資訊列與更新日誌各有一份，導覽列只是順手顯示，不是唯一來源。斷點跟 /tree 的手機版
+     版面同一個 720px。 */
+  #site-nav .nav-updated {
+    display: none;
+  }
+}
+
+/* 目前所在的分頁：金色字＋壓在導覽列下框線上的一條金線。
+   `bottom` 要正好等於 nav 的下內距加那 1px 框線，金線才會蓋在框線上，而不是浮在半空。 */
+/* ⚠️ 選擇器要把 `.nav-menu > summary` 一起列進來。只寫 `#site-nav [aria-current='page']`
+   的具體度是 (1,1,0)，輸給 `#site-nav .nav-menu > summary` 的 (1,1,1)——下拉的「遊戲介紹」
+   會拿到金線卻拿不到金字，又是一次「兩條規則各贏一半」（2026-08-22 review 抓到，
+   實測 computed color 仍是 --fg）。 */
+#site-nav [aria-current='page'],
+#site-nav .nav-menu > summary[aria-current='page'] {
+  color: var(--gold);
+}
+
+/* ⚠️ 一定要用 ::before。`#site-nav .nav-menu > summary::after` 已經拿 ::after 畫下拉的
+   ▾ 箭頭，而那條選擇器的具體度（id＋class＋型別）比 `#site-nav [aria-current='page']`
+   （id＋屬性）高——用 ::after 的話 content 仍是 ▾，卻吃到這裡的絕對定位，箭頭會被拉成
+   一條金色橫槓掉到導覽列外面（2026-08-22 實際發生過）。 */
+#site-nav [aria-current='page']::before {
+  content: '';
+  position: absolute;
+  right: 0;
+  bottom: calc(var(--space-3) * -1 - 1px);
+  left: 0;
+  height: 2px;
+  background: var(--gold);
+  border-radius: var(--r-pill);
 }
 
 main {
+  flex: 1;
+  /* ⚠️ `width: 100%` ＋ `margin-inline: auto`，不要寫 `margin: 0 auto`：body 是 flex
+     column 之後，水平方向的 auto 邊界會取消 stretch，main 會縮到內容寬。這個坑
+     tree.astro 的 `main:has(#canvas-host)` 註解裡已經寫過一次。 */
+  width: 100%;
   max-width: 64rem;
-  margin: 0 auto;
+  margin-inline: auto;
 }
 
 footer {
-  padding: 1rem;
+  padding: var(--space-4);
   color: var(--muted);
-  font-size: 0.8rem;
+  font-size: var(--fs-xs);
   border-top: 1px solid var(--border);
   text-align: center;
 }
@@ -197,29 +360,29 @@ pre {
      （兩軸都是非 visible 才是合法組合——只設 overflow-x 的話 overflow-y 會被算成 auto。） */
   overflow-x: hidden;
   overflow-y: auto;
-  background: var(--panel);
-  padding: 1rem;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  box-shadow: 0 10px 30px rgb(0 0 0 / 50%);
+  background: var(--surface-2);
+  padding: var(--space-4);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-3);
 }
 #detail h2 {
   margin-top: 0;
 }
 #detail .meta {
   color: var(--muted);
-  margin: 0.25rem 0;
+  margin: var(--space-1) 0;
 }
 #detail .warn {
   color: var(--nature);
 }
 #detail .note {
   color: var(--muted);
-  font-size: 0.8rem;
+  font-size: var(--fs-xs);
 }
 #detail .cost {
   color: var(--gold);
-  font-size: 1.1rem;
+  font-size: var(--fs-lg);
   font-weight: 700;
 }
 /* --- 詳情面板的視圖堆疊（2026-08-20）---
@@ -269,12 +432,12 @@ pre {
   display: grid;
   grid-template-columns: auto 1fr auto;
   align-items: center;
-  margin-bottom: 0.5rem;
+  margin-bottom: var(--space-2);
 }
 #detail .view-head h2 {
   grid-column: 2;
   margin: 0;
-  font-size: 1.15rem;
+  font-size: var(--fs-lg);
   overflow-wrap: anywhere;
 }
 #detail .view-back,
@@ -287,21 +450,21 @@ pre {
   height: 2rem;
   padding: 0;
   border: 0;
-  border-radius: 6px;
+  border-radius: var(--r-sm);
   background: transparent;
   color: var(--muted);
   font: inherit;
-  font-size: 1.1rem;
+  font-size: var(--fs-lg);
   line-height: 1;
   cursor: pointer;
 }
 #detail .view-back {
   grid-column: 1;
-  margin-right: 0.25rem;
+  margin-right: var(--space-1);
 }
 #detail .view-close {
   grid-column: 3;
-  margin-left: 0.25rem;
+  margin-left: var(--space-1);
 }
 #detail .view-back:hover,
 #detail .view-close:hover,
@@ -332,14 +495,14 @@ pre {
 
 /* 詞彙頁底部的「搜尋 #X」：這是這一頁唯一的動作，給它按鈕的樣子（不是連結） */
 #detail .kw-search {
-  margin-top: 0.75rem;
-  padding: 0.4rem 0.8rem;
+  margin-top: var(--space-3);
+  padding: var(--space-2) var(--space-3);
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--r-sm);
   background: transparent;
   color: var(--fg);
   font: inherit;
-  font-size: 0.85rem;
+  font-size: var(--fs-sm);
   cursor: pointer;
 }
 #detail .kw-search:hover,
@@ -349,15 +512,15 @@ pre {
 
 /* 練滿累計花費：跟「等級上限」同一組資訊，但它是錢，用成本色跟 meta 區分開。 */
 #detail .upgrade {
-  margin: 0.2rem 0 0;
+  margin: var(--space-1) 0 0;
   color: var(--gold);
-  font-size: 0.85rem;
+  font-size: var(--fs-sm);
 }
 #detail .upgrade .cond {
   display: inline-block;      /* 連同 nowrap：不要讓「含解鎖那一次」斷在中間 */
-  margin-left: 0.4rem;
+  margin-left: var(--space-2);
   color: var(--muted);
-  font-size: 0.78rem;
+  font-size: var(--fs-xs);
   white-space: nowrap;
 }
 
@@ -366,17 +529,17 @@ pre {
 #detail .awakening-link {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: var(--space-2);
   width: 100%;
-  margin: 0.6rem 0 0;
-  padding: 0.5rem 0.6rem;
+  margin: var(--space-3) 0 0;
+  padding: var(--space-2) var(--space-3);
   border: 1px solid var(--border);
   border-left: 3px solid var(--support);
-  border-radius: 6px;
+  border-radius: var(--r-sm);
   background: transparent;
   color: var(--fg);
   font: inherit;
-  font-size: 0.85rem;
+  font-size: var(--fs-sm);
   text-align: left;
   cursor: pointer;
 }
@@ -386,7 +549,7 @@ pre {
 }
 #detail .awakening-link .cond {
   color: var(--muted);
-  font-size: 0.78rem;
+  font-size: var(--fs-xs);
 }
 #detail .awakening-link .chev {
   margin-left: auto;
@@ -405,11 +568,11 @@ pre {
  * 版面才一致。
  */
 #hit-counter {
-  margin-top: 2rem;
-  padding-top: 1.5rem;
+  margin-top: var(--space-6);
+  padding-top: var(--space-5);
   border-top: 1px solid var(--border);
   text-align: center;
-  font-size: 0.9rem;
+  font-size: var(--fs-md);
   color: var(--muted);
 }
 
@@ -421,9 +584,9 @@ pre {
 
 #hit-number {
   display: inline-block;
-  margin: 0 0.4rem;
+  margin: 0 var(--space-2);
   font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
-  font-size: 1.6rem;
+  font-size: var(--fs-2xl);
   font-weight: 600;
   letter-spacing: 0.02em;
   color: var(--gold);
@@ -443,23 +606,23 @@ pre {
    ========================================================================== */
 
 .page {
-  padding: 2rem 1rem 3rem;
+  padding: var(--space-6) var(--space-4) var(--space-7);
 }
 
 .page h1 {
-  margin: 0 0 0.5rem;
-  font-size: 1.9rem;
+  margin: 0 0 var(--space-2);
+  font-size: var(--fs-3xl);
 }
 
 .page .lede {
   max-width: 44rem;
-  margin: 0 0 1.5rem;
+  margin: 0 0 var(--space-5);
   color: var(--muted);
 }
 
 .page .note {
   color: var(--muted);
-  font-size: 0.85rem;
+  font-size: var(--fs-sm);
 }
 
 .page .muted {
@@ -489,11 +652,13 @@ pre {
 #site-nav .nav-menu > summary {
   /* list-style: none ＋ ::-webkit-details-marker：兩者都要，才能在所有瀏覽器上拿掉
      <summary> 預設的三角形。留著的話它會跟自己畫的箭頭疊成兩個記號。 */
+  position: relative;
   list-style: none;
   cursor: pointer;
   font-weight: 600;
-  color: var(--gold);
+  color: var(--fg);
   user-select: none;
+  transition: color var(--t-fast) ease;
 }
 #site-nav .nav-menu > summary::-webkit-details-marker {
   display: none;
@@ -504,145 +669,300 @@ pre {
   font-size: 0.8em;
   color: var(--muted);
 }
-#site-nav .nav-menu > summary:hover,
-#site-nav .nav-menu > summary:focus-visible {
-  text-decoration: underline;
+#site-nav .nav-menu > summary:hover {
+  color: var(--gold);
 }
 #site-nav .nav-menu-items {
   position: absolute;
   z-index: 30; /* 蓋過 /tree 的 #tree-controls（它是 position: fixed 的浮層） */
-  top: calc(100% + 0.5rem);
-  left: -0.5rem;
+  top: calc(100% + var(--space-2));
+  left: calc(var(--space-2) * -1);
   display: flex;
   flex-direction: column;
   min-width: 12rem;
-  padding: 0.35rem;
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  box-shadow: 0 10px 30px rgb(0 0 0 / 50%);
+  padding: var(--space-1);
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-3);
 }
 #site-nav .nav-menu-items a {
-  padding: 0.4rem 0.6rem;
-  border-radius: 6px;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--r-sm);
   font-weight: 500;
 }
 #site-nav .nav-menu-items a:hover,
 #site-nav .nav-menu-items a:focus-visible {
-  background: rgb(255 255 255 / 8%);
+  background: var(--surface-3);
+  color: var(--fg);
   text-decoration: none;
+}
+/* 下拉選單裡的目前分頁不畫底線槓（那條槓是給導覽列那一列用的），只留金色字。 */
+#site-nav .nav-menu-items [aria-current='page']::before {
+  content: none;
 }
 
 /* --- 首頁 --- */
 .home-links {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
-  gap: 0.75rem;
-  margin: 1.5rem 0;
+  gap: var(--space-3);
+  margin: var(--space-5) 0;
 }
-.home-card {
-  padding: 1rem;
-  background: var(--panel);
+/* 首頁入口卡與遊戲介紹索引卡是同一種東西，共用一份宣告（分開寫過，兩邊逐字相同）。 */
+:is(.home-card, .guide-card) {
+  padding: var(--space-4);
+  background: var(--surface-1);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-1);
   color: var(--fg);
   text-decoration: none;
+  transition:
+    border-color var(--t-fast) ease,
+    box-shadow var(--t-fast) ease,
+    transform var(--t-fast) ease;
 }
-.home-card:hover,
-.home-card:focus-visible {
+:is(.home-card, .guide-card):hover,
+:is(.home-card, .guide-card):focus-visible {
   border-color: var(--gold);
+  box-shadow: var(--shadow-2);
+  transform: translateY(-2px);
   text-decoration: none;
 }
 .home-card h2 {
-  margin: 0 0 0.35rem;
-  font-size: 1.05rem;
+  margin: 0 0 var(--space-2);
+  font-size: var(--fs-base);
   color: var(--gold);
 }
 .home-card p {
   margin: 0;
   color: var(--muted);
-  font-size: 0.88rem;
+  font-size: var(--fs-sm);
 }
 
 .home-changelog {
   padding-top: 0;
 }
+/* 跟 .kw-section h2 同一種樣子：內容頁的 <h2> 一律左邊一條金線。之前只有詞條區塊有，
+   首頁的「更新日誌」是裸標題，同一種東西兩種長相。 */
 .home-changelog h2 {
-  margin: 0 0 0.75rem;
-  font-size: 1.15rem;
+  margin: 0 0 var(--space-3);
+  padding-left: var(--space-3);
+  border-left: 4px solid var(--gold);
+  font-size: var(--fs-lg);
 }
 .log-entry {
-  padding: 0.75rem 0;
+  padding: var(--space-3) 0;
   border-top: 1px solid var(--border);
 }
 .log-head {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
-  gap: 0.5rem;
-  margin: 0 0 0.35rem;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-2);
 }
 .log-head time {
   color: var(--muted);
   font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
-  font-size: 0.85rem;
+  font-size: var(--fs-sm);
 }
 .log-stamp {
   color: var(--gold);
-  font-size: 0.78rem;
+  font-size: var(--fs-xs);
 }
 .log-entry ul {
   margin: 0;
-  padding-left: 1.2rem;
+  padding-left: var(--space-5);
   color: var(--muted);
-  font-size: 0.9rem;
+  font-size: var(--fs-md);
 }
 
 /* --- 圖鑑 --- */
 .filters {
+  /* 沾在導覽列底下（2026-08-22）：底下是 41 張卡片的網格，篩選列一捲就不見的話，
+     改條件得整頁捲回去。z-index 只要蓋過卡片內的 .card-term（1）即可，導覽列是 40。
+     `top` 一定要吃實測的 --nav-h，不要再寫死一個 3rem——這個 repo 的固定版面偏移量
+     已經咬過四次（見 tree.astro #tree-controls 的註解）。 */
+  position: sticky;
+  top: var(--nav-h, 3rem);
+  z-index: 20;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 0.75rem 1.5rem;
-  margin: 0 0 1.5rem;
-  padding: 0.75rem 1rem;
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 10px;
+  gap: var(--space-3) var(--space-5);
+  margin: 0 0 var(--space-5);
+  padding: var(--space-3) var(--space-4);
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-1);
 }
-.filters fieldset {
+/* 篩選分組（/dice 與 /tree 共用）。
+   ⚠️ 這裡刻意不用 `<fieldset><legend>`：`<legend>` 是特殊盒子，瀏覽器一律把它排在版面
+   **之外**的自己一列，要拉回同一列只能靠 `float`；而 float 得靠祖先的 `overflow: hidden`
+   收住，那會把切換鈕的鍵盤焦點框裁掉（outline 由祖先的 overflow 裁切，實測只剩 2.94px
+   餘裕而焦點框要 4px），換行的列距也只剩手算的 line-height 可用——正是 CLAUDE.md 說
+   咬過五次的「寫死的版面偏移量」。一般的 flex 容器 ＋ gap 一次解決這三件事。
+   無障礙由標記上的 role="group" ＋ aria-label 顧，跟 fieldset/legend 等價。 */
+.filter-group {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.25rem 0.9rem;
-  margin: 0;
-  padding: 0;
-  border: 0;
+  align-items: center;
+  gap: var(--space-2);
 }
-.filters legend {
-  padding: 0;
+.filter-group-label {
   color: var(--muted);
-  font-size: 0.8rem;
+  font-size: var(--fs-xs);
+  /* 被擠窄時「分支」會折成上下兩個字（2026-08-22 實測手機版）。 */
+  white-space: nowrap;
 }
-.filters label {
+
+/* --- 篩選切換鈕 ---
+   外觀是按鈕，骨子裡還是 <label> ＋ 真的 checkbox（見 dice.astro 的說明）。checkbox 用
+   絕對定位攤平成整顆鈕的大小、opacity: 0：它還在原地接點擊與鍵盤焦點，只是看不見。
+   ⚠️ 不要改成 `display: none` 或 `visibility: hidden`——那會讓它退出 Tab 順序，篩選器就
+   只剩滑鼠能用了。 */
+.chip {
+  position: relative;
   display: inline-flex;
   align-items: center;
-  gap: 0.3rem;
-  font-size: 0.9rem;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-3);
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--r-pill);
+  color: var(--muted);
+  font: inherit;
+  font-size: var(--fs-sm);
+  line-height: 1.8;
+  white-space: nowrap;
   cursor: pointer;
+  user-select: none;
+  /* ⚠️ 切換鈕自己不帶 margin：間距一律由 .filter-group 的 gap 給。早期版本用 margin-bottom
+     撐換行的列距，結果在 /tree 的工具列裡把鈕的中心往上推 2.0px，E2E 的 P（工具列共用同一
+     條中線）直接紅。 */
+  margin: 0;
+  transition:
+    color var(--t-fast) ease,
+    background-color var(--t-fast) ease,
+    border-color var(--t-fast) ease;
+}
+.chip input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+.chip:hover {
+  border-color: var(--border-strong);
+  color: var(--fg);
+}
+/* 選中：邊框與底色都走該分支的顏色，一眼看得出開著的是哪幾系。
+   底色只混 18%，不是整顆塗滿——五顆同時亮起來時，塗滿會比底下的卡片還搶眼。 */
+.chip:has(input:checked),
+.chip[data-active] {
+  border-color: var(--branch, var(--gold));
+  /* 前一行是 fallback，理由同 #site-nav。 */
+  background: var(--surface-3);
+  background: color-mix(in srgb, var(--branch, var(--gold)) 18%, var(--surface-1));
+  color: var(--fg);
+}
+/* 焦點框畫在整顆鈕上。checkbox 自己是透明的，:focus-visible 落在它身上時看不到任何東西。 */
+.chip:has(input:focus-visible),
+.chip:focus-visible {
+  outline: var(--ring);
+  outline-offset: var(--ring-offset);
+}
+/* 沒選中的色點壓暗，但不要拿掉——顏色本身就是「哪一系」的說明，關掉的時候也要看得到。 */
+.chip .branch-dot {
+  margin-right: 0;
+  opacity: 0.45;
+  transition: opacity var(--t-fast) ease;
+}
+.chip:has(input:checked) .branch-dot {
+  opacity: 1;
+}
+
+/*
+ * 退化路徑：讓原生 checkbox 現身。
+ *
+ * 切換鈕的「選中」狀態完全靠 `:has(input:checked)` ＋ 底色／邊框色表達，而底下那個真正的
+ * checkbox 是 `opacity: 0` 的。兩種環境下這套會整個失效：
+ *   - 不支援 `:has()` 的引擎：五顆鈕不管有沒有選中都長得一模一樣，焦點也看不見。
+ *   - `forced-colors: active`（Windows 高對比）：background-color 被系統覆寫、border-color
+ *     被強制成系統色，同樣分不出選中與否。
+ * 兩種情況都把 checkbox 放回正常流程——瀏覽器自己就會畫勾選框與焦點框，樣子樸素但**能用**。
+ * （tree.astro 的 `@supports not selector(:has(*))` 是同一種處理方式。）
+ */
+@supports not selector(:has(*)) {
+  .chip input {
+    position: static;
+    width: auto;
+    height: auto;
+    opacity: 1;
+  }
+}
+@media (forced-colors: active) {
+  .chip input {
+    position: static;
+    width: auto;
+    height: auto;
+    opacity: 1;
+  }
+}
+
+/* 只給螢幕閱讀器的文字：看不見，但仍在無障礙樹裡、仍會被 aria-live 播報。
+   ⚠️ 不能用 display: none／visibility: hidden／hidden 屬性——那三種都會讓內容一併從
+   無障礙樹消失，live region 就不會播報了。 */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
 }
 .filter-count {
   margin: 0 0 0 auto;
   color: var(--muted);
-  font-size: 0.85rem;
+  font-size: var(--fs-sm);
   /* 等寬數字：篩選時數字每幀在變，字寬不固定的話整條列會左右抽動。 */
   font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 720px) {
+  /* 窄畫面下切換鈕已經佔滿兩列，計數再被 `margin-left: auto` 推到最右邊就會自己獨佔第三列、
+     跟切換鈕之間空出一大塊。讓它接在切換鈕後面就好。 */
+  .filter-count {
+    margin-left: 0;
+  }
 }
 
 .codex-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(19rem, 1fr));
-  gap: 0.75rem;
+  gap: var(--space-3);
 }
+/* 卡片左緣的分支色條（2026-08-22）。五系色本來只活在 /tree 的畫布裡，圖鑑上 41 張卡片
+   長得一模一樣，要靠讀文字才知道是哪一系。
+   用 border-left 而不是 ::before：`.card-term` 是 `inset: 0` 的絕對定位覆蓋層，它的定位
+   基準是卡片的**內距框**，會蓋掉任何畫在內距框裡的東西——色條畫成邊框才留得住。
+   （同理，左邊框從 1px 變 3px 會讓內距框整體右移 2px，但本文與覆蓋層是一起移的，
+   兩者不會錯位，所以不需要補 padding。） */
+:is(.dice-card, .chip)[data-branch='nature'] { --branch: var(--nature); }
+:is(.dice-card, .chip)[data-branch='engineering'] { --branch: var(--engineering); }
+:is(.dice-card, .chip)[data-branch='magic'] { --branch: var(--magic); }
+:is(.dice-card, .chip)[data-branch='order'] { --branch: var(--order); }
+:is(.dice-card, .chip)[data-branch='chaos'] { --branch: var(--chaos); }
+
 .dice-card {
   /* 關鍵字的就地視圖是 position:absolute 的覆蓋層，定位基準在這裡。
      overflow: hidden 是給過場用的：換頁時卡片本文會往左退 30%，不裁掉會戳到隔壁那張。 */
@@ -650,10 +970,22 @@ pre {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  padding: 0.9rem;
-  background: var(--panel);
+  padding: var(--space-3);
+  background: var(--surface-1);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  /* fallback 走 --border：資料若冒出第六個分支，卡片會退回一般邊框，不會變成透明或黑色。 */
+  border-left: 3px solid var(--branch, var(--border));
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-1);
+  transition:
+    border-color var(--t-fast) ease,
+    box-shadow var(--t-fast) ease,
+    transform var(--t-fast) ease;
+}
+.dice-card:hover {
+  border-color: var(--branch, var(--gold));
+  box-shadow: var(--shadow-2);
+  transform: translateY(-2px);
 }
 .dice-card[hidden] {
   display: none; /* 篩選用；這裡要真的收掉版面，跟 /tree 的淡出是兩回事（那裡要保留位置） */
@@ -663,8 +995,8 @@ pre {
 .dice-card header {
   display: flex;
   align-items: center;
-  gap: 0.6rem;
-  margin-bottom: 0.5rem;
+  gap: var(--space-3);
+  margin-bottom: var(--space-2);
 }
 .dice-card header img {
   flex: none;
@@ -676,65 +1008,71 @@ pre {
 }
 .dice-card h3 {
   margin: 0;
-  font-size: 1.02rem;
+  font-size: var(--fs-base);
 }
 .dice-card .meta {
-  margin: 0.15rem 0;
+  margin: var(--space-1) 0;
   color: var(--muted);
-  font-size: 0.82rem;
+  font-size: var(--fs-xs);
 }
 .dice-card .game-id {
-  margin-left: 0.4rem;
-  padding: 0.05rem 0.3rem;
+  margin-left: var(--space-2);
+  padding: var(--space-h) var(--space-1);
   background: rgb(255 255 255 / 6%);
-  border-radius: 4px;
+  border-radius: var(--r-xs);
   font-size: 0.9em;
 }
 .dice-card .growth {
-  margin: 0.15rem 0;
-  font-size: 0.85rem;
+  margin: var(--space-1) 0;
+  font-size: var(--fs-sm);
 }
 .dice-card .upgrade {
-  margin: 0.15rem 0;
+  margin: var(--space-1) 0;
   color: var(--gold);
-  font-size: 0.85rem;
+  font-size: var(--fs-sm);
 }
 .dice-card .upgrade .cond,
 .dice-card .awakening-head .cond {
-  margin-left: 0.4rem;
+  margin-left: var(--space-2);
   color: var(--muted);
-  font-size: 0.78rem;
+  font-size: var(--fs-xs);
   white-space: nowrap;
 }
 .dice-card .warn {
-  margin: 0.15rem 0;
+  margin: var(--space-1) 0;
   color: var(--nature);
-  font-size: 0.85rem;
+  font-size: var(--fs-sm);
 }
 .dice-card .desc {
-  margin: 0.5rem 0 0;
-  font-size: 0.92rem;
+  margin: var(--space-2) 0 0;
+  font-size: var(--fs-md);
 }
+/* 覺醒區塊原本靠左邊一條 --support 色條標示自己。卡片左緣 2026-08-22 改掛分支色條之後，
+   同一張卡上會出現兩條顏色不同的直條，互相搶。改成填一階底色來分層，身分改由標題的
+   --support 字色講。 */
 .dice-card .awakening {
-  margin-top: 0.6rem;
-  padding: 0.5rem 0.6rem;
+  margin-top: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  background: var(--surface-2);
   border: 1px solid var(--border);
-  border-left: 3px solid var(--support);
-  border-radius: 6px;
+  border-radius: var(--r-sm);
 }
 .dice-card .awakening-head {
   margin: 0;
-  font-size: 0.82rem;
+  color: var(--support);
+  /* ⚠️ 不要降回 --fs-xs：12.48px 的中文再加 font-weight 600，橫筆畫會糊成一條連續的橫線，
+     「骰子覺醒」四個字看起來像被劃掉（2026-08-22 放大截圖確認）。粗體的中文標籤至少 --fs-sm。 */
+  font-size: var(--fs-sm);
   font-weight: 600;
 }
 .dice-card .awakening .desc {
-  margin-top: 0.25rem;
-  font-size: 0.88rem;
+  margin-top: var(--space-1);
+  font-size: var(--fs-sm);
 }
 .dice-card .card-link {
   margin-top: auto;
-  padding-top: 0.6rem;
-  font-size: 0.82rem;
+  padding-top: var(--space-3);
+  font-size: var(--fs-xs);
 }
 
 /* --- 圖鑑卡片裡的關鍵字就地視圖 ---
@@ -755,7 +1093,7 @@ pre {
   z-index: 1;
   /* 滑進滑出的兩層都要被裁在卡片邊界內，不然會蓋到隔壁那張。 */
   overflow: hidden;
-  border-radius: 10px;
+  border-radius: var(--r-md);
 }
 .card-term[hidden] {
   display: none;
@@ -765,10 +1103,10 @@ pre {
   inset: 0;
   display: flex;
   flex-direction: column;
-  padding: 0.9rem;
+  padding: var(--space-3);
   overflow-y: auto;
   /* 不透明底色是必要的，不是裝飾：半透明會讓底下那一層的文字透出來疊在解釋上。 */
-  background: var(--panel);
+  background: var(--surface-1);
 }
 /* 焦點是換頁後用程式移進來的，不該畫成「你選到了這個東西」——鍵盤的可見焦點由裡面的
    ← 與連結各自的 :focus-visible 給。跟 #detail .view:focus 同一個理由。 */
@@ -779,17 +1117,11 @@ pre {
 .dice-card .slide-anim {
   transition: transform var(--slide-ms) var(--slide-ease), opacity var(--slide-ms) var(--slide-ease);
 }
-@media (prefers-reduced-motion: reduce) {
-  /* 使用者要求減少動態時整段跳過。腳本那邊也會直接走瞬間切換，這條是雙保險。 */
-  .dice-card .slide-anim {
-    transition: none;
-  }
-}
 .card-term-head {
   display: flex;
   align-items: center;
-  gap: 0.4rem;
-  margin-bottom: 0.5rem;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
 }
 .card-term-back {
   display: flex;
@@ -800,7 +1132,7 @@ pre {
   height: 1.8rem;
   padding: 0;
   border: 0;
-  border-radius: 6px;
+  border-radius: var(--r-sm);
   background: transparent;
   color: var(--muted);
   font: inherit;
@@ -814,17 +1146,17 @@ pre {
 }
 .card-term-title {
   margin: 0;
-  font-size: 1rem;
+  font-size: var(--fs-base);
   font-weight: 600;
   overflow-wrap: anywhere;
 }
 .card-term-body {
-  font-size: 0.92rem;
+  font-size: var(--fs-md);
 }
 .card-term-search {
   margin-top: auto;
-  padding-top: 0.6rem;
-  font-size: 0.82rem;
+  padding-top: var(--space-3);
+  font-size: var(--fs-xs);
 }
 
 /* 靜態頁的關鍵字：/tree 那邊是 <button>（點了在卡片裡換頁），這裡是連到詞條的 <a>。
@@ -844,29 +1176,31 @@ pre {
 
 /* --- 關鍵字詞條（/dice 底部與 /guide/* 共用） --- */
 .kw-section {
-  margin-top: 2.5rem;
-  padding-top: 1.5rem;
+  margin-top: var(--space-6);
+  padding-top: var(--space-5);
   border-top: 1px solid var(--border);
 }
 .kw-section h2 {
-  margin: 0 0 0.5rem;
-  padding-left: 0.6rem;
+  margin: 0 0 var(--space-2);
+  padding-left: var(--space-3);
   border-left: 4px solid var(--gold);
-  font-size: 1.25rem;
+  font-size: var(--fs-xl);
 }
 .kw-list {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(20rem, 1fr));
-  gap: 0.75rem;
-  margin-top: 1rem;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
 }
 .kw-entry {
-  padding: 0.85rem;
-  background: var(--panel);
+  padding: var(--space-3);
+  background: var(--surface-1);
   border: 1px solid var(--border);
-  border-radius: 10px;
-  /* 從別頁的錨點跳過來時，卡片不要緊貼在導覽列下緣。 */
-  scroll-margin-top: 4.5rem;
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-1);
+  /* ⚠️ 這裡**不要**再補 scroll-margin-top。導覽列的偏移已經由 `html` 的
+     `scroll-padding-top` 給了，兩邊同時寫等於加兩次——實測目標卡片停在 nav 下方 74px
+     而不是預期的 12px（2026-08-22 review 抓到）。偏移只能有一個來源。 */
 }
 .kw-entry:target {
   border-color: var(--gold);
@@ -876,31 +1210,31 @@ pre {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
-  gap: 0.5rem;
-  margin: 0 0 0.4rem;
-  font-size: 1rem;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-2);
+  font-size: var(--fs-base);
 }
 .kw-code {
   color: var(--muted);
-  font-size: 0.78rem;
+  font-size: var(--fs-xs);
 }
 .kw-alias {
   color: var(--muted);
-  font-size: 0.78rem;
+  font-size: var(--fs-xs);
 }
 .kw-desc {
   margin: 0;
-  font-size: 0.92rem;
+  font-size: var(--fs-md);
 }
 .kw-used,
 .kw-unused {
-  margin: 0.5rem 0 0;
-  font-size: 0.8rem;
+  margin: var(--space-2) 0 0;
+  font-size: var(--fs-xs);
 }
 .kw-used {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.4rem;
+  gap: var(--space-2);
 }
 .kw-unused {
   color: var(--muted);
@@ -911,31 +1245,18 @@ pre {
 .guide-cards {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr));
-  gap: 0.75rem;
-  margin-top: 1.5rem;
-}
-.guide-card {
-  padding: 1rem;
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  color: var(--fg);
-  text-decoration: none;
-}
-.guide-card:hover,
-.guide-card:focus-visible {
-  border-color: var(--gold);
-  text-decoration: none;
+  gap: var(--space-3);
+  margin-top: var(--space-5);
 }
 .guide-card h2 {
-  margin: 0.5rem 0 0.35rem;
-  font-size: 1.05rem;
+  margin: var(--space-2) 0 var(--space-2);
+  font-size: var(--fs-base);
   color: var(--gold);
 }
 .guide-card p {
   margin: 0;
   color: var(--muted);
-  font-size: 0.88rem;
+  font-size: var(--fs-sm);
 }
 .guide-swatch {
   display: flex;
@@ -944,5 +1265,42 @@ pre {
 .guide-swatch span {
   width: 1.5rem;
   height: 0.35rem;
-  border-radius: 2px;
+  border-radius: var(--r-xs);
+}
+
+/* ==========================================================================
+   減少動態（2026-08-22 收攏）
+   --------------------------------------------------------------------------
+   原本只有 `.dice-card .slide-anim` 這一條，/tree 的詳情面板換頁完全沒守到。兩支腳本
+   （tree-canvas.ts、dice.astro）本來就會先問 matchMedia 再決定走不走動畫，這裡是雙保險：
+   涵蓋 CSS 自己起的所有過場，包含新加的 hover 抬升。
+
+   刻意不寫成 `*, *::before, *::after { transition-duration: 0.01ms !important }` 這種
+   通用寫法：那會連 opacity 一起關掉，而 /tree 的篩選淡出是靠 opacity 表達「這個節點被
+   篩掉了」，不是裝飾。逐條列出要關的東西，才不會順手關掉在傳達資訊的動畫。
+   ========================================================================== */
+@media (prefers-reduced-motion: reduce) {
+  .dice-card,
+  .home-card,
+  .guide-card,
+  .chip,
+  .chip .branch-dot,
+  #site-nav a,
+  #site-nav .nav-menu > summary,
+  #filters-toggle,
+  #filters-toggle::before,
+  #filters-toggle::after {
+    transition: none;
+  }
+  .dice-card:hover,
+  .home-card:hover,
+  .guide-card:hover {
+    transform: none;
+  }
+  .dice-card .slide-anim,
+  #detail .view.slide-anim,
+  #detail .stack.animating,
+  #detail.panel-sliding {
+    transition: none;
+  }
 }

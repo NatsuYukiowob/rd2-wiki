@@ -19,6 +19,7 @@ import { renderDetail, nodeViewHtml, termViewHtml, awakeningViewHtml } from '../
 import { matchesFilter, stateToQueryString, queryStringToState, isTypingTarget } from '../lib/filter.js';
 import { visibleNodeIds, upgradeIcons, downgradeIcons, buildIconIndex } from '../lib/hires.js';
 import type { Branch, NodeType, TreeData, TreeNode } from '../lib/types.js';
+import { updateNavHeight } from '../lib/nav-height.js';
 
 // tree.json 是建置期由 tools/build-data.ts 產生、結構保證符合 TreeData；
 // 但 TS 對 JSON 匯入的型別推論會把 tuple（如 viewBox、size）寬鬆推成 number[]，
@@ -28,36 +29,21 @@ const data = rawData as unknown as TreeData;
 // ?node=」反查該節點所屬分支，純資料處理、不依賴任何 DOM，提前宣告沒有副作用。
 const byId = new Map(data.nodes.map(n => [n.id, n]));
 
-// --- 全站導覽列的實際渲染高度，量出來寫進 CSS 自訂屬性 --nav-h ---
-// 修 bug：#tree-controls（src/pages/tree.astro）與 #detail（src/styles/global.css）
-// 舊版都寫死 top: 3rem，假設全站導覽列 <nav id="site-nav">（src/layouts/Base.astro）
-// 恆為 48px 高，但 nav 實際渲染高度（padding 0.75rem×2 ＋ 行高 ＋ 1px 下框線）
-// 實測約 50.59px，2.59px 的落差讓 #toolbar 右上角的 border-right 往上戳出 nav 下緣，
-// 形成一個小突起。這是同一種「寫死偏移量」的 bug 第三次出現（前兩次見
-// tree.astro 裡 #tree-controls 那條 CSS 規則的註解），這次不再換一個新的魔術數字
-// （字型、行高、瀏覽器預設值一變就會再錯一次），改成實測 nav 的
-// getBoundingClientRect().bottom。CSS 端讀同一個 --nav-h，3rem 只當這支腳本
-// 執行前（或量測失敗時）的 fallback，兩處 CSS 因此永遠對齊同一個高度基準。
-function updateNavHeight(): void {
-  const nav = document.getElementById('site-nav');
-  if (!nav) return;
-  // ⚠️ 這裡要的是**視窗座標**：`--nav-h` 的兩個消費者（#tree-controls、#detail）都是
-  // `position: fixed`，`top` 本來就是相對視窗算的。一度改成 `+ window.scrollY` 換算成文件
-  // 座標是錯的——捲到 y=100 時會把兩者放到 nav 下方 100px，畫布頂端多出一條 nav 高的死區。
-  //
-  // 真正要防的是「頁面可捲時 nav 的視窗下緣變成負數」——那時固定層應該貼齊視窗頂端，而不是
-  // 跟著 nav 跑出畫面，所以夾在 0 以上。版面改成 flex 之後畫布頁本來就不該捲得動，這條是給
-  // 退化情境（例如 :has() 不支援）的保險。
-  const bottom = Math.max(0, nav.getBoundingClientRect().bottom);
-  // 單元測試環境（linkedom）沒有版面引擎，getBoundingClientRect() 預設全 0，
-  // bottom <= 0 一定不是真實渲染結果，跳過寫入、讓 CSS 的 3rem fallback 留著
-  // （tests/scripts/tree-canvas.test.ts 的頁面 fixture 也沒有 #site-nav，上面
-  // 那個 `if (!nav) return` 已經先擋掉，這裡是雙重保險，避免任何環境把
-  // --nav-h 寫成無意義的 0px）。
-  if (bottom > 0) {
-    document.documentElement.style.setProperty('--nav-h', `${bottom}px`);
-  }
+/**
+ * 從 :root 讀一個時間類的 CSS 自訂屬性，換算成毫秒。
+ *
+ * 動畫長度只能有一個來源：CSS 負責過場，JS 只負責在過場結束後把 inline style 清乾淨。
+ * 兩邊各寫一份的話，改了 CSS 而忘了改 JS，收尾就會在動畫還沒跑完時發生（CLAUDE.md 有記）。
+ * 取不到值（單元測試的 linkedom 沒有 getComputedStyle）時回 fallback——那條路本來就不做動畫。
+ */
+function cssMs(name: string, fallback: number): number {
+  if (typeof getComputedStyle !== 'function' || typeof document === 'undefined') return fallback;
+  const raw = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  const ms = raw.endsWith('ms') ? parseFloat(raw) : raw.endsWith('s') ? parseFloat(raw) * 1000 : NaN;
+  return Number.isFinite(ms) && ms > 0 ? ms : fallback;
 }
+
+// 導覽列高度：實作與說明在 src/lib/nav-height.ts（全站共用，見那裡的註解）。
 updateNavHeight();
 
 /**
@@ -839,23 +825,36 @@ function hasActiveFilter(): boolean {
 }
 
 /**
- * 更新工具列的篩選狀態列。
+ * 「現在有篩選在生效」這件事要看得出來，而且要有出路。
  *
  * 這條存在的理由是可讀性，不是好看：搜尋只命中兩三個節點時，畫面上是 236 個淡掉的節點加
  * 243 條淡掉的邊，數量壓過那幾個命中的目標，看起來就像「什麼都沒發生」；而 ?q= 不會因為
  * 點空白處而清掉（那只清 ?node=），使用者會覺得畫面卡住了、也找不到回去的路。
+ *
+ * 2026-08-22 換了表達方式：原本是工具列上一句「符合 N 個節點」＋清除鈕，但它夾在搜尋框與
+ * 篩選鈕中間，工具列寬度會跟著篩選狀態伸縮（Yuki 回報）。現在改成
+ *   - 切換鈕上一顆固定尺寸的金點（`.active`）——收起面板時唯一的線索，寬度不變；
+ *   - 清除鈕搬進面板裡，只在有篩選時出現。
+ * 兩者都不影響工具列的尺寸。
  */
 function updateFilterStatus(matchCount: number): void {
-  const status = document.getElementById('filter-status');
-  const count = document.getElementById('filter-count');
-  if (!status || !count) return;
-  if (!hasActiveFilter()) {
-    status.hidden = true;
-    return;
+  const active = hasActiveFilter();
+  const toggle = document.getElementById('filters-toggle');
+  toggle?.classList.toggle('active', active);
+  // 零命中要看得出來：整張畫布會淡成一片灰，沒有任何東西說「是篩選把它們藏起來的」。
+  // 金點改成警示色是唯一不動到版面的表達方式（工具列的尺寸不准隨篩選狀態改變，見 O2）。
+  toggle?.classList.toggle('none', active && matchCount === 0);
+  document.getElementById('filter-clear')?.toggleAttribute('data-idle', !active);
+
+  // 螢幕閱讀器的播報。畫面上不顯示（Yuki 指定），但輔助技術不該跟著什麼都收不到。
+  const live = document.getElementById('filter-live');
+  if (live) {
+    live.textContent = !active
+      ? `顯示全部 ${data.nodes.length} 個節點`
+      : matchCount === 0
+        ? '沒有符合的節點'
+        : `符合 ${matchCount} 個節點`;
   }
-  status.hidden = false;
-  count.textContent = matchCount === 0 ? '沒有符合的節點' : `符合 ${matchCount} 個節點`;
-  count.classList.toggle('none', matchCount === 0);
 }
 
 /**
@@ -905,27 +904,113 @@ if (!filtersElOrNull) {
 // 收窄後的別名：TypeScript 的 narrowing 不會跟著進到下面那些回呼／函式裡。
 const filtersEl: HTMLElement = filtersElOrNull;
 
-// --- 手機版篩選抽屜（task-17）：#filters 預設收起（見 tree.astro 的手機媒體查詢），
-// 點 #filters-toggle 切換展開/收起。桌機版沒有這顆按鈕（CSS 隱藏），這裡用 optional
-// chaining 讓「找不到這個按鈕」不算錯誤——它本來就只在手機版版面才存在。
+// --- 篩選面板的收合（task-17 起，2026-08-22 擴到桌機）---
+// #filters 預設收起、靠 .open 展開，桌機與手機同一套。桌機以前沒有這顆切換鈕，篩選鈕永遠
+// 攤在工具列上；現在兩邊都收得起來。
 const filtersToggle = document.getElementById('filters-toggle');
 
+/**
+ * 現在是不是「抽屜版面」（窄螢幕）。
+ *
+ * 兩者的差別不只是寬度：窄螢幕上面板是蓋在畫布上的抽屜，Esc 與點外面都該關掉它；桌機上它
+ * 是工具列的一部分、會一直開著——那裡如果也綁「點外面就關」，使用者每次平移畫布都會把自己
+ * 的篩選面板關掉。斷點跟 tree.astro 的手機媒體查詢同一個 720px。
+ */
+const drawerQuery = typeof matchMedia === 'function' ? matchMedia('(max-width: 720px)') : null;
+function isDrawerLayout(): boolean {
+  return drawerQuery?.matches ?? false;
+}
+
 /** 開關抽屜，並把狀態同步到 aria——按鈕的 aria-label 以前永遠是「展開篩選」，也沒有 aria-expanded。 */
-function setFiltersOpen(open: boolean): void {
-  filtersEl.classList.toggle('open', open);
+/** 收合過場的長度。跟 --slide-ms 同一個原則：**從 CSS 讀**，不在 JS 寫第二份。 */
+const FILTERS_MS = cssMs('--t-med', 200);
+let filtersAnimTimer: number | undefined;
+/**
+ * 面板「應該是」開還是關。
+ *
+ * ⚠️ 不要改回讀 `filtersEl.classList.contains('open')`：收合的過場結束前 `.open` 還掛著
+ * （要等收尾的 setTimeout 才拿掉），過場中再按一次切換鈕，算出來的下一個狀態會是「再關一次」，
+ * 面板就卡在關閉、aria-expanded 也停在 false（2026-08-22 E2E 的 O3 連按兩下抓到）。
+ */
+let filtersOpen = false;
+
+/**
+ * 開關篩選面板，並把狀態同步到 aria——按鈕的 aria-label 以前永遠是「展開篩選」，也沒有
+ * aria-expanded。
+ *
+ * `animate` 只在**桌機**（面板橫向長在工具列上）才會真的動：那裡收合是左右伸縮，動畫看得懂。
+ * 抽屜版面是上下掉出來的一整塊，橫向動畫在那裡是錯的，直接瞬間切換。
+ *
+ * 為什麼要用 JS 量寬度而不是純 CSS：`display: none ↔ flex` 不能過場，而 `width: auto` 也
+ * 不是可內插的值。量出自然寬度、暫時鎖成 px 再動，動完把 inline width 拿掉讓它回到自然
+ * 排版——最後這步不能省，否則視窗一縮，面板會卡在當初量到的寬度、不會再換行。
+ */
+function setFiltersOpen(open: boolean, animate = false): void {
+  filtersOpen = open;
   filtersToggle?.setAttribute('aria-expanded', String(open));
   filtersToggle?.setAttribute('aria-label', open ? '收起篩選' : '展開篩選');
+
+  window.clearTimeout(filtersAnimTimer);
+  filtersEl.style.width = '';
+  filtersEl.classList.remove('animating');
+
+  const reduced = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (!animate || isDrawerLayout() || reduced) {
+    filtersEl.classList.toggle('open', open);
+    return;
+  }
+
+  if (open) {
+    filtersEl.classList.add('open');
+    const target = filtersEl.getBoundingClientRect().width;
+    filtersEl.classList.add('animating');
+    filtersEl.style.width = '0px';
+    // 兩層 rAF：第一層讓 width: 0 先進到算繪，第二層改成目標值才會被當成過場的起點。
+    // 少一層的話瀏覽器會把兩次寫入合併成一次，動畫整個不發生（同 dice.astro 的滑動）。
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      filtersEl.style.width = `${target}px`;
+    }));
+  } else {
+    const from = filtersEl.getBoundingClientRect().width;
+    filtersEl.classList.add('animating');
+    filtersEl.style.width = `${from}px`;
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      filtersEl.style.width = '0px';
+    }));
+  }
+
+  // 用 setTimeout 而不是 transitionend：後者在元素被 display:none、動畫被中斷、或分頁切到
+  // 背景時不一定會派發，收尾漏掉就會留下一個鎖死寬度的面板（同 tree-canvas 其他過場的做法）。
+  filtersAnimTimer = window.setTimeout(() => {
+    filtersEl.classList.remove('animating');
+    filtersEl.style.width = '';
+    if (!open) filtersEl.classList.remove('open');
+  }, FILTERS_MS + 20);
 }
-setFiltersOpen(false);
+// 桌機預設展開（維持這一頁一直以來的樣子），手機預設收起。之後由使用者自己按。
+setFiltersOpen(!isDrawerLayout());
 
 filtersToggle?.addEventListener('click', () => {
-  setFiltersOpen(!filtersEl.classList.contains('open'));
+  setFiltersOpen(!filtersOpen, true);
 });
+
+// 跨過 720px 斷點時把面板重設回該版面的預設值。
+// 少了這條：桌機開著面板把視窗縮到手機寬度，`.open` 會被手機的媒體查詢變成一個使用者從沒
+// 打開過的全寬抽屜，直接吃掉畫布上緣；反過來從手機拉寬，桌機會停在收起狀態，跟文件寫的
+// 「桌機預設展開」不符（2026-08-22 review 抓到，實測縮到 500px 後工具列高 196px）。
+// 用 matchMedia 的 change 事件而不是 resize：它只在真的跨過斷點時派發，不必自己記上一次的狀態。
+// ⚠️ 要先確認 addEventListener 真的存在：單元測試的 linkedom 環境只給了 matchMedia 一個
+// 回傳 `{ matches }` 的替身，沒有事件介面，直接掛會整支腳本在載入時就丟錯。
+if (typeof drawerQuery?.addEventListener === 'function') {
+  drawerQuery.addEventListener('change', event => {
+    setFiltersOpen(!event.matches);
+  });
+}
 
 // 抽屜要有出路。舊版展開後會蓋住自己的切換鈕，而且沒有 Esc、沒有點外面關閉——唯一的辦法是
 // 重新整理。版面修好之後切換鈕不再被蓋住，這兩條是額外的出口（也是一般抽屜該有的行為）。
 document.addEventListener('keydown', e => {
-  if (e.key === 'Escape' && filtersEl.classList.contains('open')) {
+  if (e.key === 'Escape' && isDrawerLayout() && filtersOpen) {
     setFiltersOpen(false);
     filtersToggle?.focus();
     // 這一下 Esc 已經用掉了。不擋的話，下面那個「詳情面板退一層」的後備監聽器也會收到
@@ -936,7 +1021,8 @@ document.addEventListener('keydown', e => {
   }
 });
 document.addEventListener('pointerdown', e => {
-  if (!filtersEl.classList.contains('open')) return;
+  // 只有抽屜版面才「點外面就關」。桌機的面板是工具列的一部分，平移畫布不該把它關掉。
+  if (!isDrawerLayout() || !filtersOpen) return;
   const t = e.target as Node | null;
   if (t && (filtersEl.contains(t) || filtersToggle?.contains(t))) return;
   setFiltersOpen(false);
@@ -970,12 +1056,7 @@ const HISTORY_DEPTH_KEY = 'rd2DetailDepth';
  * 把 inline style 清乾淨，兩邊數字一旦漂開，收尾會在動畫還沒跑完就發生，看起來像被切斷。
  * 取不到值（單元測試的 linkedom 沒有 getComputedStyle）時走 fallback，那條路本來就不做動畫。
  */
-const SLIDE_MS = (() => {
-  if (typeof getComputedStyle !== 'function' || typeof document === 'undefined') return 280;
-  const raw = getComputedStyle(document.documentElement).getPropertyValue('--slide-ms').trim();
-  const ms = raw.endsWith('ms') ? parseFloat(raw) : raw.endsWith('s') ? parseFloat(raw) * 1000 : NaN;
-  return Number.isFinite(ms) && ms > 0 ? ms : 280;
-})();
+const SLIDE_MS = cssMs('--slide-ms', 280);
 
 const canUseHistory = typeof history !== 'undefined' && typeof history.pushState === 'function';
 /**

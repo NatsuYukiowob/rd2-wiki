@@ -19,6 +19,18 @@ interface Props {
 const { title, noIndex = false } = Astro.props;
 
 /**
+ * 目前所在的分頁，給導覽列標 `aria-current="page"`（金色字＋底下一條金線）。
+ *
+ * 尾斜線要先剝掉：Astro 建出來的是 `/dice/index.html`，瀏覽器上的路徑是 `/dice/`，
+ * 但導覽列寫的是 `/dice`，直接比字串永遠不相等。
+ * `startsWith(href + '/')` 是給 /guide 用的——站在 /guide/mechanics 時，「遊戲介紹」
+ * 這個下拉本身也該亮起來。首頁例外處理，否則 '/' 會match到每一頁。
+ */
+const path = Astro.url.pathname.replace(/\/+$/, '') || '/';
+const isCurrent = (href: string) => path === href || (href !== '/' && path.startsWith(href + '/'));
+const guideCurrent = isCurrent('/guide');
+
+/**
  * 分頁標題的站名前綴。格式是「站名 | 分頁名」，站名在前（2026-08-22 定案）。
  * ⚠️ 不要改成破折號：2026-08-18 明確要求分頁標題不帶破折號，`tests/e2e/tree.spec.ts` 的 R 有守。
  */
@@ -83,9 +95,9 @@ const imageUrl = new URL('/favicon.png', Astro.site).href;
          不會跟同頁另一個 <nav id="branch-nav">（桌機側欄分支跳轉）搞混，用來量測
          這個 nav 的實際渲染高度（見 tree-canvas.ts 的 updateNavHeight() 說明）。 -->
     <nav id="site-nav">
-      <a href="/">rd2-wiki</a>
-      <a href="/tree">骰子樹</a>
-      <a href="/dice">圖鑑</a>
+      <a class="brand" href="/" aria-current={path === '/' ? 'page' : undefined}>rd2-wiki</a>
+      <a href="/tree" aria-current={isCurrent('/tree') ? 'page' : undefined}>骰子樹</a>
+      <a href="/dice" aria-current={isCurrent('/dice') ? 'page' : undefined}>圖鑑</a>
       <!--
         「遊戲介紹」用 <details> 而不是自己刻一個下拉：<summary> 本來就能 Tab 聚焦、能按
         Enter／Space 開合，螢幕閱讀器也會念出展開狀態。自訂元素要補齊這些至少三十行，
@@ -93,17 +105,26 @@ const imageUrl = new URL('/favicon.png', Astro.site).href;
         事：點外面關掉、按 Esc 關掉。沒有 JS 時它仍然是一個能開能關的選單。
       -->
       <details class="nav-menu">
-        <summary>遊戲介紹</summary>
+        <summary aria-current={guideCurrent ? 'page' : undefined}>遊戲介紹</summary>
         <div class="nav-menu-items">
-          <a href="/guide">總覽</a>
-          {GUIDE_PAGES.map(page => <a href={`/guide/${page.slug}`}>{page.title}</a>)}
+          <a href="/guide" aria-current={path === '/guide' ? 'page' : undefined}>總覽</a>
+          {GUIDE_PAGES.map(page => (
+            <a
+              href={`/guide/${page.slug}`}
+              aria-current={path === `/guide/${page.slug}` ? 'page' : undefined}
+            >
+              {page.title}
+            </a>
+          ))}
         </div>
       </details>
-      {FEATURES.contributeLink && <a href="/about">貢獻</a>}
+      {FEATURES.contributeLink && (
+        <a href="/about" aria-current={isCurrent('/about') ? 'page' : undefined}>貢獻</a>
+      )}
       <!-- 顯示「上次更新」而非資料版本號：日期取自資料正本 SVG 的 data-updated 屬性
            （tools/build-data.ts 解析進 meta.updated），會隨資料更新自動變動，
            不是寫死在頁面上的字串。 -->
-      <span style="margin-left:auto;color:var(--muted)">上次更新 {data.meta.updated}</span>
+      <span class="nav-updated">上次更新 {data.meta.updated}</span>
     </nav>
     <main>
       <slot />
@@ -113,6 +134,12 @@ const imageUrl = new URL('/favicon.png', Astro.site).href;
       遊戲圖示與文字著作權屬 111 Percent Inc.，程式碼採 MIT 授權。
     </footer>
     <script>
+      // 導覽列高度寫進 --nav-h。導覽列改成 position: sticky 之後，沾在它底下的東西
+      // （/dice 的篩選列）與錨點跳轉的偏移量每一頁都要用得到，所以在這裡裝，不再只有
+      // /tree 有。/tree 會由 tree-canvas.ts 再裝一次，兩者寫同一個值、互不干擾。
+      import { installNavHeight } from '../lib/nav-height.js';
+      installNavHeight();
+
       // <details> 唯一缺的兩件事：點到選單外面、以及按 Esc，都要收起來。
       // 沒有這兩條的話，選單一開就只能再點一次 summary 才關得掉——在手機上等於擋住半頁。
       const menus = [...document.querySelectorAll<HTMLDetailsElement>('#site-nav .nav-menu')];

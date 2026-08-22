@@ -313,8 +313,13 @@ CI 規則 10 守它（`<svg>` 直屬、不帶 transform、圖檔存在且解析�
 
 **現在的做法**：`body:has(#canvas-host)` 是 flex column，`<main>` `flex: 1`，
 `#canvas-host` 也 `flex: 1`，畫布自然吃掉剩餘空間，零偏移量。
-`--nav-h` 仍由 `tree-canvas.ts` 量 nav 寫進 CSS 變數（量的是文件座標 `rect.bottom + scrollY`，
-不是視窗座標——頁面可捲時 resize 會把它烤成負數）。
+`--nav-h` 由 `src/lib/nav-height.ts` 量 nav 寫進 CSS 變數，量的是**視窗座標**
+（`rect.bottom`，夾在 0 以上）——消費者都是 `position: fixed`／`sticky`，`top` 本來就相對
+視窗算。一度改成 `+ window.scrollY` 換算成文件座標是錯的：捲到 y=100 時會把它們放到 nav
+下方 100px，畫布頂端多出一條 nav 高的死區。
+2026-08-22 從 `tree-canvas.ts` 搬到 `src/lib/nav-height.ts`：導覽列改 sticky 之後每一頁都要
+這個值（/dice 的篩選列、全站的 `scroll-padding-top`），由 `Base.astro` 呼叫 `installNavHeight()`
+全站安裝，`/tree` 另外在自己的 resize handler 裡再算一次（那裡還有別的東西要一起重算）。
 
 ⚠️ **`#tree` 必須是 `position: absolute; inset: 0`**，不能用 `width/height: 100%`：SVG 有內建
 長寬比（viewBox 2000×1700），`height: 100%` 在父層高度未定案時退回 auto，用寬度反推出一個
@@ -434,6 +439,201 @@ POST 到一個存在的靜態路徑則是 **405**。三種都不是數字，所�
 
 ⚠️ **本機跑 E2E 前先確認 4321 沒有 `astro dev` 在聽**。`reuseExistingServer: true` 會直接
 拿它當受測站台，於是測到的是 dev server 而不是 `dist/`。開著預覽時用 `E2E_PORT=4399 npm run e2e`。
+
+### 版面級距與表面層次（2026-08-22 全站精緻化）
+
+**起點是「沒有級距」**：半徑寫過 2/4/6/8/10px 五種、字級十種擠在 0.78–1.05rem、間距九種。
+每一條單看都合理，湊起來就是每個元件對齊到不同的格線——那才是畫面不夠精緻的成因，不是配色。
+
+`:root` 現在有五組 token，**新增樣式一律用它們，不要再寫原始數值**：
+
+| 組 | token | 說明 |
+|---|---|---|
+| 間距 | `--space-h/1..7` | 4px 網格（`--space-h` 是唯一半階 2px，只給徽章內距） |
+| 圓角 | `--r-xs/sm/md/lg/pill` | 4/6/10/14/999px |
+| 字級 | `--fs-xs/sm/md/base/lg/xl/2xl/3xl` | `--fs-base` 是 1rem |
+| 表面 | `--surface-1/2/3`、`--border-strong` | 卡片／浮起的列與選單／hover 填色 |
+| 陰影與節奏 | `--shadow-1/2/3`、`--t-fast/med`、`--ring` | `--shadow-3` 給浮在畫布上的東西 |
+
+- **舊的 `--panel` 已經刪掉**。它是 `--surface-1` 的同義字，一個東西兩個名字正是這輪要收掉的
+  漂移來源。靜態頁的面 → `--surface-1`；浮在畫布上的 chrome（`#toolbar`、`#detail`、
+  `#branch-chips`、下拉選單、`/dice` 的篩選列）→ `--surface-2`；hover／選中的填色 → `--surface-3`。
+- **焦點框全站只有一條** `:focus-visible { outline: var(--ring) }`。元件只在需要**額外**回饋
+  （同時換底色）時才自己補，不要再各自定義 outline。
+- **導覽列是 `position: sticky` 的**，所以它一換行就等於永久佔掉畫面：`#site-nav` 的每一項
+  都要 `white-space: nowrap`（中文沒有空白，瀏覽器會在任意兩字之間斷開），而且 ≤720px 時
+  不顯示「上次更新」那一段——它比其他四項加起來還寬。E2E 的 D9 守這條（實測只有隱藏那一段
+  拿掉才會紅，`nowrap` 是防更窄的裝置，不要因為「拿掉也是綠的」就刪）。
+- **工具列的尺寸不准隨篩選狀態改變**（2026-08-22，Yuki 兩次回報）。它是浮在畫布上的盒子，
+  寬度一變整排東西跟著跳，而且是邊打字邊跳。原本的「符合 N 個節點」夾在搜尋框與篩選鈕中間，
+  一出現就把篩選鈕往右推 171px、外框從 1037 撐到 1209px（手機直接多長一列 61→103px）。
+  **那句話已經整個拿掉**，改成兩個不影響寬度的表達：
+  - `#filters-toggle` 上一顆固定尺寸的金點（`.active`）。⚠️ 圓點的 `::before` 要**一直存在**、
+    平常 `background: transparent`，只在 `.active` 才上色——只在 `.active` 時才長出 `content`
+    的話，按鈕會寬 16px（圓點 8 ＋ gap 8），問題原地復發。
+  - `清除篩選` 搬進 `#filters` 面板，用 `visibility: hidden`（`[data-idle]`）佔位而不是
+    `display`／`hidden`，否則面板連帶工具列的寬度又會伸縮（實測 1199→1215）。
+    `visibility: hidden` 依規範就不可聚焦，不必另外 `inert`。
+  E2E 的 O2 守寬度、O3 守收合。
+- **篩選面板桌機也收得起來**（2026-08-22）。`#filters` 一律 `display: none` ＋ `.open`，
+  桌機預設展開、手機預設收起（`setFiltersOpen(!isDrawerLayout())`）。桌機收合是**左右伸縮**
+  的過場，箭頭跟著是左右向（`▸`／展開轉 180° 成 `◂`）；手機是往下掉的抽屜，媒體查詢換回 `▾`
+  且不做橫向動畫。
+  ⚠️ 「Esc 關閉」與「點外面關閉」只在抽屜版面（≤720px）生效：桌機的面板是工具列的一部分，
+  綁上去的話使用者每次平移畫布都會把自己的篩選面板關掉。
+  ⚠️ 工具列最左邊那一項從搜尋框變成切換鈕，E2E 的 P（與分支側欄切齊同一條左邊界）跟著改抓
+  `#filters-toggle`。
+  E2E 的 O3 守收合與桌機平移、O4 守過場本身。
+
+#### ⚠️ 左右伸縮這個過場踩到的三件事
+
+1. **`display: none ↔ flex` 不能過場，`width: auto` 也不是可內插的值。** 只能 JS 量出自然
+   寬度、暫時鎖成 px 再動。**動完一定要把 inline width 拿掉**，否則面板卡在當初量到的寬度、
+   視窗一縮就不會再換行。收尾用 `setTimeout` 不用 `transitionend`（後者在 display:none、
+   動畫被中斷、分頁切到背景時不一定派發，跟這個 repo 其他過場同一個理由）。
+2. **面板收窄時裡面的東西不能被壓縮。** 「清除篩選」四個字一被壓縮就折成四行，面板高度
+   35 → 90，整條工具列在過場中先長高一倍再收掉。`#filter-clear` 要 `flex: none` ＋
+   `white-space: nowrap`，`#filters.animating` 與它底下的 `fieldset` 都要 `flex-wrap: nowrap`
+   （**只在動畫中**——平常仍要能換行，否則手機抽屜會比視窗還寬）。
+3. **開關狀態不能從 `.open` class 讀。** 收合過場結束前 `.open` 還掛著，過場中再按一次
+   切換鈕，算出來的下一個狀態會是「再關一次」，面板卡在關閉、`aria-expanded` 停在 false。
+   用一個模組變數 `filtersOpen` 記「應該是」什麼狀態。
+- **篩選器是共用的 `.chip` 切換鈕**（`/dice` 與 `/tree` 同一份樣式）。外觀是按鈕，骨子裡仍是
+  `<label>` 包一個真的 `checkbox`——鍵盤 Tab／Space、螢幕閱讀器的「已勾選」、沒有 JS 時仍可
+  操作，全是瀏覽器免費給的。checkbox 用 `position: absolute; inset: 0; opacity: 0` 攤平成整顆
+  鈕的大小，**不要改成 `display: none`／`visibility: hidden`**（會退出 Tab 順序，篩選器變成
+  只有滑鼠能用）。E2E 的 C6 守這條。
+- **減少動態的規則收在檔尾一個 `@media` 裡**，涵蓋兩處換頁與 hover 抬升。刻意不寫成
+  `*{transition-duration:0.01ms!important}`：那會連 opacity 一起關掉，而 `/tree` 的篩選淡出
+  是靠 opacity 在**傳達資訊**，不是裝飾。
+
+**守門**：`tests/styles/tokens.test.ts` 掃 `global.css`＋`tree.astro`／`about.astro` 的
+`<style>`，那五個屬性裡不准出現裸的 rem／px（例外只有 `.guide-swatch` 的 `gap: 3px`，
+寫在檔案裡的 `ALLOWED` 並附理由），並且每個被引用的 `var(--x)` 都要在 `:root` 定義得出來
+（打錯的名字不會報錯，只會讓宣告安靜地掉回預設值）。
+`tests/e2e/chrome.spec.ts` 的 D1–D7 守沾頂、`--nav-h`、`aria-current`、分支色條、焦點框、
+footer 沉底、過場時間，八條全部逐一驗過會紅。
+
+#### ⚠️ 這一輪踩到的四個坑
+
+1. **`[aria-current='page']` 的金線一定要畫在 `::before`。** `#site-nav .nav-menu > summary::after`
+   已經拿 `::after` 畫下拉的 ▾，而它的具體度（id＋class＋型別）比
+   `#site-nav [aria-current='page']`（id＋屬性）高——用 `::after` 的話 `content` 仍是 ▾、
+   卻吃到金線那條的絕對定位，箭頭被拉成一條金色橫槓掉到導覽列外面。**兩條規則各贏一半**，
+   這種半套生效比整條失效難認得多。D3 守這條。
+2. **`.dice-card` 的分支色條必須是 `border-left`，不能用 `::before`。** `.card-term`
+   是 `inset: 0` 的絕對定位覆蓋層，它的定位基準是卡片的**內距框**，會蓋掉任何畫在內距框裡的
+   東西。畫成邊框才在覆蓋層外面。（左邊框 1px→3px 會讓內距框右移 2px，但本文與覆蓋層是一起
+   移的，不會錯位，所以不要補 padding。）
+3. **`body` 變 flex column 之後，`main` 要寫 `width: 100%; margin-inline: auto`**，不能留
+   `margin: 0 auto`——水平方向的 auto 邊界會取消 stretch，main 縮到內容寬。這個坑
+   `main:has(#canvas-host)` 的註解裡已經寫過一次，換個地方又踩一次。
+4. **切換鈕不准用 `margin-bottom` 撐換行的列距。** `/tree` 的工具列裡它跟搜尋框排同一列，
+   下邊界會把它的中心往上推——實測差 2.0px，E2E 的 P（工具列共用同一條中線）直接紅。
+   列距改由 `.filters fieldset` 的 `line-height` 給（切換鈕是 inline-flex，列距本來就是行高的事）。
+   另外兩處 `legend` 都是浮動的，被擠窄時會自己折行（「分支」在手機上折成上下兩個字），
+   兩邊都要 `white-space: nowrap`。
+5. **Playwright 的 `test.use({ reducedMotion: 'reduce' })` 在目前這版沒有傳進 page**
+   （實測 `matchMedia(...).matches` 仍是 `false`），測試會安靜地變成「在沒有減少動態的情況下
+   驗減少動態」——永遠綠、什麼都沒守到。用 `page.emulateMedia({ reducedMotion: 'reduce' })`。
+
+**另外**：這一輪跑完 143 條既有測試**全綠**，卻同時帶著兩個只有人工看圖才發現的 bug
+（上面第 1 點的金槓、短頁面 footer 停在畫面中間）。純視覺的改動，測試綠不等於做對了——
+用 Playwright 截圖自己先看過一遍再交出去。
+
+### 2026-08-22 review 修掉的八件事
+
+`/code-review xhigh` 對這一輪改版抓到 15 條，其中 14 條重現後修掉、1 條（rAF 競態）三種時序
+都重現不出來——rAF 回呼依註冊順序執行，後按的那條鏈一定最後寫入，沒有改。以下是會再犯的：
+
+1. **篩選分組不要用 `<fieldset><legend>`。** `<legend>` 是特殊盒子，一律排在版面**之外**的
+   自己一列；要拉回同一列只能 `float`，float 又得靠祖先 `overflow: hidden` 收住，而那會
+   **裁掉切換鈕的鍵盤焦點框**（outline 由祖先的 overflow 裁切，實測只剩 2.94px 而焦點框要
+   4px），換行的列距也只剩手算的 `line-height` 可用。改用 `<div role="group" aria-label>`
+   ＋ flex ＋ `gap`，三個問題一起消失。E2E 的 D12 守。
+2. **導覽列的偏移量只能有一個來源。** `html { scroll-padding-top }` 與
+   `.kw-entry { scroll-margin-top }` 一度帶著同一個算式，瀏覽器兩個都算——錨點跳過去的卡片
+   停在導覽列下方 74px 而不是 12px。E2E 的 D10 守。
+3. **`#site-nav [aria-current='page']` 的具體度是 (1,1,0)**，輸給
+   `#site-nav .nav-menu > summary` 的 (1,1,1)：下拉的「遊戲介紹」拿得到金線卻拿不到金字。
+   選擇器要把 summary 一起列進去。這已經是同一種「兩條規則各贏一半」的第二次（第一次是
+   `::after` 撞下拉箭頭）。E2E 的 D11 守。
+4. **sprite 的透明邊要跟著輸出解析度縮放。** sprite 是 1×、高解析圖是 2×，兩者貼到畫面上
+   **同一個 `<rect>`**；兩邊都留 1px 的話，圖佔的比例差 3.8 個百分點，放大到觸發高解析切換
+   的那一刻每顆符文突然大 4.2%。`tools/lib/icons.ts` 的 `withGutter()` 收 gutter 參數，
+   1× 傳 `GUTTER`、2× 傳 `GUTTER * 2`。`tests/tools/icons.test.ts` 守。
+   （順帶：那個函式原本拆成三段 sharp 管線＋一次 `metadata()` 回讀，每張圖每種尺寸多兩次
+   編解碼；改成 `fit: 'contain'` ＋ `extend` 一條管線。）
+5. **動畫長度一律用 `cssMs()` 從 CSS 讀**，JS 不寫第二份。`FILTERS_MS` 曾經寫死 200 對著
+   `--t-med`，註解還寫「改一邊要改兩邊」——那正是 CLAUDE.md 禁止的事。
+6. **跨版面斷點要重設狀態。** 桌機開著篩選面板把視窗縮到手機寬度，`.open` 會變成一個使用者
+   從沒打開過的全寬抽屜。用 `matchMedia(...).addEventListener('change')`（只在真的跨過斷點
+   時派發，不必自己記上一次的值）。⚠️ 掛之前要確認 `addEventListener` 存在：單元測試的
+   linkedom 只給了 `matchMedia` 一個回傳 `{ matches }` 的替身，直接掛會讓整支腳本載入時丟錯。
+7. **拿掉可見文字時，不要把 live region 一起拿掉。** `#filter-status` 是 `/tree` 唯一的
+   `role="status"`；刪掉之後篩選結果對螢幕閱讀器完全無聲。現在留一個 `.sr-only` 的
+   `#filter-live`（用 `clip-path` 視覺隱藏，**不能**用 `display: none`／`visibility: hidden`
+   ／`hidden`——那三種會一併從無障礙樹消失，就不播報了）。零命中另外把切換鈕的圓點轉成警示色，
+   那是唯一不動到工具列尺寸的表達方式。
+8. **`:has()` 與 `color-mix()` 都要有退化路徑。** 切換鈕的「選中」完全靠
+   `:has(input:checked)` ＋ 底色，而真正的 checkbox 是 `opacity: 0`——不支援 `:has()` 的引擎
+   或 `forced-colors: active`（背景色被系統覆寫）下，五顆鈕長得一模一樣、焦點也看不見。
+   兩種情況都把原生 checkbox 放回正常流程。`color-mix()` 一律在前面補一行純色 fallback，
+   否則沾頂的導覽列在不支援的引擎上會完全透明。
+
+### ⚠️ 圖示的 alpha 輪廓＝高亮的形狀（角色圖示被切平，2026-08-22）
+
+`#tree .node.in-chain` 的金色光暈（`drop-shadow`）與鍵盤 focus 的 `#focus-ring`
+**描的都是圖示自己的 alpha 輪廓**，不是節點宣告的 `shape`。所以圖裁得乾不乾淨，會直接變成
+高亮的形狀。
+
+五個支援角色（青兒／里克／艾科／迪奇／伊安）的原始擷取把底板下緣的圓弧切掉了 2–3 列，留下
+一條寬 166px 的平邊（最底列寬 / 最寬列 ＝ 0.83）。平常完全看不出來，一被選進前置鏈就變成
+一條橫的淡黃色條，從底板的圓角兩側戳出去（Yuki 回報）。骰子（矩形卡）與符文（六邊形）本來
+就有寬的平底，那是它們的形狀，沒有問題。
+
+**修法**：用最底 24 列擬合圓角（`inset(u) = r - sqrt(2ru - u²)`），把缺的 2–3 列補回去，
+再從頂端切掉同樣列數的全透明列，畫布尺寸維持 204×188（長寬比一變，圖在 51×47 的 `rect`
+裡就會被拉扁）。`data/icons/` 的檔名是內容雜湊，所以五張圖換了新雜湊，
+`data/dice-tree.svg` 的 `href` 也跟著改，舊檔刪掉。
+
+**守門**：`tests/data/icon-silhouette.test.ts`。判準是圖檔本身的兩個數字——最底列寬比
+（切平 0.83 / 修好 0.72–0.74，門檻 0.78）與最後一列的落差（切平 −6px / 修好 −14px，
+門檻 −10px）。⚠️ 一開始想用截圖比對像素，行不通：光暈是 6px 模糊、跟深色底混完亮度很低，
+「金色」判定抓不到；放寬成「暖色」又會連角色自己的暖色像素與前置鏈的金色連線一起抓進來，
+修前修後的取樣圖幾乎一模一樣。
+
+**日後加圖示要注意**：`tools/add-icon.ts` 只驗「是有效 PNG 且最長邊 ≥96px」，不會看裁切品質。
+角色類的圖進來時順手跑一次上面那條測試。
+
+#### 同一天的第二個金邊：`<pattern>` 邊界的繞回取樣
+
+補完圓角之後，節點**上緣**仍有一條極淡的水平金線（Yuki 回報）。這是**另一個成因**，跟圖檔
+內容無關——換回舊圖、改用 sprite 填色，那條線都一樣在。
+
+圖示是 `<pattern>` 填進 `<rect class="icon">` 的，tile 尺寸剛好等於那個 rect：畫面上只鋪
+一格、看不出重複，但**取樣器在 tile 邊界是繞回的**。瀏覽器放大 tile 時，最底那一列會被當成
+最頂那一列的鄰居取樣進去；骰子與角色的圖底部是不透明的底板邊，於是 rect 上緣多出一列極淡的
+殘影，肉眼看不見，但金色光暈描的是 alpha 輪廓，一描就把它放大成一條淡金色橫槓。
+
+**修法**：`tools/lib/icons.ts` 的 `withGutter()`——sprite 格子與高解析圖都把圖縮 2px 置中，
+四周留一圈全透明像素，繞回取樣取到的是透明。sprite 那邊順帶解掉相鄰格子互相滲色。
+守門是 `tests/tools/icons.test.ts` 的「每張 tile 四周都留一圈透明像素」（`GUTTER = 0` 會紅）。
+
+⚠️ **走錯過的兩條路，不要再試一次**：
+
+- **「是 CSS `drop-shadow()` 的濾鏡區域（bbox ±10%）把光暈切掉了」——不是。** 換成具名
+  `<filter>` ＋ 大區域之後那條線原封不動，而且量測顯示 CSS 版的光暈**擴散得比具名版更遠**
+  （`stdDeviation` 是使用者單位、CSS 的 px 不是，換過去反而讓光暈變緊）。已經還原。
+- **用截圖比對金色像素找那條線——抓不到。** 角色自己就有大量金／橙色像素，前置鏈的連線也是
+  金色。有用的量法是「相鄰兩列的平均色差」找突變列，以及**同一個視角開關 `.in-chain` 兩次
+  相減**只留下光暈。
+
+**這個坑會影響所有 239 個節點**（不只角色），只是底部不透明、上半部細的圖最容易看見。
+
+⚠️ 順帶修掉 E2E 測試 H 的一個單位錯誤：金邊掃描範圍寫的是 `PAD + 6`，PAD 是 CSS px 而截圖是
+裝置像素（Pixel 7 dpr 2.625），舊值 12 連圖示上緣（≈16）都掃不到，一直是靠光暈外暈擦邊過的。
+圖示內縮 1px 之後就掉出視窗變成假紅。現在用 `PAD * scale` 換算。
 
 ### SEO 基礎欄位：robots.txt／sitemap／canonical／404（2026-08-22 補齊，#24–#26）
 

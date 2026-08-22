@@ -13,6 +13,45 @@ export interface IconEntry {
 
 const COLS = 16;
 const QUALITY = 80;
+/**
+ * 每張 tile 四周留的透明邊（像素）。
+ *
+ * 圖示是用 `<pattern>` 填進 `<rect class="icon">` 的（見 src/lib/render.ts）。pattern 的
+ * tile 尺寸剛好等於那個 rect，畫面上只鋪一格、看不出重複——但**取樣器在 tile 邊界是繞回的**：
+ * 瀏覽器把 tile 放大時，最底那一列會被當成最頂那一列的鄰居取樣進去。骰子與角色的圖底部
+ * 是不透明的底板邊，於是 rect 的**上緣**多出一條極淡的橫線；平常看不出來，但前置鏈的金色
+ * 光暈是描 alpha 輪廓的，一描就把那條線放大成一條淡金色的橫槓（Yuki 2026-08-22 回報）。
+ *
+ * 修法是標準的 sprite gutter：把圖縮 2px 置中，四周就一定有一圈全透明的像素，繞回取樣
+ * 取到的是透明。sprite 那邊順便也解掉相鄰格子互相滲色的問題。
+ * ⚠️ 不要改成「把最外一圈的 alpha 清成 0」——那是硬切，圖本身若有內容就會被削掉一圈。
+ */
+const GUTTER = 1;
+
+const TRANSPARENT = { r: 0, g: 0, b: 0, alpha: 0 };
+
+/**
+ * 把一張圖縮進 `w×h` 的透明畫布中央，四周留 `gutter` 像素的透明邊。
+ *
+ * ⚠️ `gutter` 必須**跟著輸出解析度縮放**：sprite 是 1× 的格子、高解析圖是 2×，兩者被貼到
+ * 畫面上同一個 `<rect>`。若兩邊都留 1px，圖在兩張素材裡佔的比例就不一樣——實測符文
+ * sprite 佔 92.31%、高解析佔 96.15%，放大到觸發高解析切換的那一刻，每顆符文會突然大 4.2%
+ * （2026-08-22 review 抓到）。所以 1× 傳 GUTTER、2× 傳 GUTTER*2。
+ *
+ * 實作只走一條 sharp 管線：`fit: 'contain'` 已經包含「保長寬比縮放 ＋ 置中補透明」，
+ * 補完再 `extend` 出四周的透明邊。舊版拆成三段（縮放→編碼 PNG→再解碼讀 metadata→合成），
+ * 每張圖每種尺寸多兩次編解碼，整個 build:data 多出約 1,400 次（同一份 review 指出）。
+ */
+function withGutter(buf: Buffer, w: number, h: number, gutter: number): sharp.Sharp {
+  return sharp(buf)
+    .resize({
+      width: w - gutter * 2,
+      height: h - gutter * 2,
+      fit: 'contain',
+      background: TRANSPARENT,
+    })
+    .extend({ top: gutter, bottom: gutter, left: gutter, right: gutter, background: TRANSPARENT });
+}
 
 /**
  * 把所有圖示依「顯示尺寸」分區打包成一張 WebP sprite。
@@ -54,7 +93,7 @@ export async function buildSprite(
       const e = group[i]!;
       const x = (i % COLS) * w;
       const y = top + Math.floor(i / COLS) * h;
-      const tile = await sharp(e.buf).resize({ width: w, height: h, fit: 'inside' }).png().toBuffer();
+      const tile = await withGutter(e.buf, w, h, GUTTER).png().toBuffer();
       composites.push({ input: tile, left: x, top: y });
       index[e.hash] = [x, y, w, h];
     }
@@ -79,13 +118,8 @@ export async function buildHiRes(entries: IconEntry[]): Promise<Map<string, Buff
   const out = new Map<string, Buffer>();
   for (const e of entries) {
     const [w, h] = e.size;
-    out.set(
-      e.hash,
-      await sharp(e.buf)
-        .resize({ width: w * 2, height: h * 2, fit: 'inside' })
-        .webp({ quality: QUALITY })
-        .toBuffer()
-    );
+    // 2× 素材的透明邊也要 2×，否則圖在 sprite 與高解析圖裡佔的比例不同，切換時會跳一下。
+    out.set(e.hash, await withGutter(e.buf, w * 2, h * 2, GUTTER * 2).webp({ quality: QUALITY }).toBuffer());
   }
   return out;
 }

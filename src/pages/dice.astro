@@ -58,12 +58,32 @@ const BRANCHES = Object.entries(BRANCH_ZH);
     <!-- 篩選只是把不符合的卡片藏起來，內容一直都在 HTML 裡。沒有 JS 時整頁照常是完整的
          41 張卡片，只是篩不動——這正是這一頁存在的理由，不能反過來讓 JS 決定有沒有內容。 -->
     <div id="codex-filters" class="filters">
-      <fieldset>
-        <legend>分支</legend>
+      <!--
+        用 <div role="group"> 而不是 <fieldset><legend>：<legend> 是特殊盒子，瀏覽器一律把它
+        排在版面之外的自己一列，要把它拉回同一列只能靠 float，而 float 又得靠祖先的
+        `overflow: hidden` 收住——那會把切換鈕的鍵盤焦點框裁掉（outline 會被祖先的 overflow
+        裁切），換行的列距也只能靠手算的 line-height 撐（正是 CLAUDE.md 說咬過五次的
+        「寫死的版面偏移量」）。改成一般的 flex 容器，列距交給 gap，三個問題一起消失。
+        role="group" ＋ aria-label 是 fieldset/legend 的無障礙等價寫法。
+      -->
+      <div class="filter-group" role="group" aria-label="分支">
+        <span class="filter-group-label" aria-hidden="true">分支</span>
+        <!--
+          切換鈕仍然是 <label> 包住一個真的 checkbox，不是自己刻的 <div role="checkbox">：
+          鍵盤操作（Tab 聚焦、Space 切換）、螢幕閱讀器唸出的「已勾選／未勾選」、以及沒有 JS
+          時仍然是一個可操作的表單控制項，全部是瀏覽器免費給的。自己刻要補齊這些至少三十行，
+          而且漏一項就是一個只有滑鼠能用的篩選器。
+          checkbox 本身用 CSS 攤平成整顆鈕的大小、透明度 0——它還在原地接點擊與焦點，
+          只是看不見（見 global.css 的 .chip input）。
+        -->
+        <button type="button" id="codex-all" class="chip">全部</button>
         {BRANCHES.map(([value, label]) => (
-          <label><input type="checkbox" name="branch" value={value} checked /> <span class={`branch-dot branch-${value}`} aria-hidden="true"></span>{label}</label>
+          <label class="chip" data-branch={value}>
+            <input type="checkbox" name="branch" value={value} checked />
+            <span class={`branch-dot branch-${value}`} aria-hidden="true"></span>{label}
+          </label>
         ))}
-      </fieldset>
+      </div>
       <p class="filter-count" aria-live="polite">顯示 <span id="codex-count">{nodes.length}</span> / {nodes.length}</p>
     </div>
 
@@ -96,6 +116,7 @@ const BRANCHES = Object.entries(BRANCH_ZH);
   const root = document.getElementById('codex-filters');
   const grid = document.getElementById('codex-grid');
   const count = document.getElementById('codex-count');
+  const all = document.getElementById('codex-all');
   if (root && grid && count) {
     const boxes = [...root.querySelectorAll<HTMLInputElement>('input[type=checkbox]')];
     const cards = [...grid.querySelectorAll<HTMLElement>('.dice-card')];
@@ -120,8 +141,16 @@ const BRANCHES = Object.entries(BRANCH_ZH);
         if (ok) shown++;
       }
       count.textContent = String(shown);
+      // 「全部」在「五個都開」與「五個都關」時都算生效中——後者是上面那條「一個維度全不勾
+      // ＝該維度不篩」的規則，畫面上確實是全部 41 張都在，切換鈕不該裝作沒事。
+      all?.toggleAttribute('data-active', boxes.every(b => b.checked) || boxes.every(b => !b.checked));
     };
     root.addEventListener('change', apply);
+    // 「全部」是動作不是狀態（按下去＝全開），所以用 <button> 而不是第六個 checkbox。
+    all?.addEventListener('click', () => {
+      for (const box of boxes) box.checked = true;
+      apply();
+    });
     apply();
   }
 

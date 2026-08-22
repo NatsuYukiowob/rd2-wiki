@@ -526,9 +526,15 @@ test('H. 鍵盤 focus 的金邊貼合圖示輪廓：圓形節點得到圓環，�
   const isGold = ([r, g, b]: readonly [number, number, number]) => r > 200 && g > 150 && b < 150;
 
   // 1) 金邊真的畫出來了：沿著圖示上緣中線往外掃，一定會碰到金色。
+  //
+  // ⚠️ 掃描範圍要用**影像像素**算，不能寫 `PAD + 6`：PAD 是 CSS px，而截圖是裝置像素
+  // （Pixel 7 的 dpr 是 2.625），兩者差 2.6 倍。舊寫法的 12 連圖示上緣（PAD×dpr ≈ 16）
+  // 都掃不到，純粹靠金邊往外暈出來的部分擦邊通過——2026-08-22 圖示加了 1px 透明邊之後
+  // 金邊跟著往內 1px，就掉出視窗變成假紅。
+  const scale = info.width / (box.width + PAD * 2);
   const midX = Math.round(info.width / 2);
   let ringFound = false;
-  for (let y = 0; y < PAD + 6; y++) if (isGold(at(midX, y))) ringFound = true;
+  for (let y = 0; y < Math.round(PAD * scale) + 12; y++) if (isGold(at(midX, y))) ringFound = true;
   expect(ringFound).toBe(true);
 
   // 2) 四個角不能是金色：矩形 outline 會把角落塗滿，貼合圓形輪廓的金邊不會碰到那裡。
@@ -888,7 +894,22 @@ test('O. 搜尋命中時鏡頭帶到結果、狀態列說明命中幾個、清�
   // 條淡掉的邊，數量壓過那幾個命中的目標，看起來就像「什麼都沒發生」；而 ?q= 不會因為點
   // 空白處而清掉（那只清 ?node=），使用者會覺得畫面卡住了、也找不到回去的路。
   await page.goto('/tree?node=4008'); // 陰陽骰子，描述裡有 #陰陽 關鍵字
-  await expect(page.locator('#filter-status')).toBeHidden(); // 沒有篩選時整條不出現
+  // 「符合 N 個節點」那句 2026-08-22 拿掉了（它夾在搜尋框與篩選鈕中間，工具列寬度會跟著
+  // 篩選狀態伸縮）。現在「有沒有篩選在生效」由切換鈕上的金點講，出路是面板裡的清除鈕。
+  const toggle = page.locator('#filters-toggle');
+  const filters = page.locator('#filters');
+  const clear = page.locator('#filter-clear');
+  // 清除鈕住在面板裡，面板收起時（手機預設）看不到它——那是刻意的取捨：工具列不因篩選狀態
+  // 伸縮，代價是收起時只剩切換鈕上的金點在提示。所以「看不看得到清除鈕」只在面板展開時驗。
+  const idle = async () => {
+    await expect(toggle).not.toHaveClass(/active/);
+    if (await filters.isVisible()) await expect(clear).toBeHidden();
+  };
+  const filtered = async () => {
+    await expect(toggle).toHaveClass(/active/);
+    if (await filters.isVisible()) await expect(clear).toBeVisible();
+  };
+  await idle();
 
   // 點關鍵字是「這個詞是什麼意思」，不是「幫我搜尋」——它推出詞彙頁，網址不該多出 ?q=。
   // 搜尋是詞彙頁上另外一顆按鈕（測試 Z 驗那條路）。
@@ -896,7 +917,7 @@ test('O. 搜尋命中時鏡頭帶到結果、狀態列說明命中幾個、清�
   await expect(kw).toBeVisible();
   await kw.click();
   await expect(topViewTitle(page)).toHaveText('#陰陽');
-  await expect(page.locator('#filter-status')).toBeHidden();
+  await idle();
   expect(new URL(page.url()).searchParams.get('q')).toBeNull();
   await topView(page).locator('[data-detail-back]').click();
   await expect(topViewTitle(page)).toHaveText('陰陽骰子');
@@ -906,9 +927,11 @@ test('O. 搜尋命中時鏡頭帶到結果、狀態列說明命中幾個、清�
   await page.locator('#search').fill('陰陽');
   await page.locator('#search').press('Enter');
 
-  // 1) 狀態列說得出命中幾個
-  await expect(page.locator('#filter-status')).toBeVisible();
-  await expect(page.locator('#filter-count')).toHaveText(/符合 \d+ 個節點/);
+  // 1) 篩選正在生效這件事看得出來，而且有清得掉的按鈕
+  await filtered();
+  // 「符合 N 個」那句畫面上拿掉了，但螢幕閱讀器不該跟著什麼都收不到——留一個 .sr-only 的
+  // live region（2026-08-22 review 指出刪掉狀態列時把唯一的 live region 一起刪了）。
+  await expect(page.locator('#filter-live')).toHaveText(/符合 \d+ 個節點/);
 
   // 2) 鏡頭真的動了（沒動的話就是「原地一片灰」那個症狀）
   await expect
@@ -922,11 +945,104 @@ test('O. 搜尋命中時鏡頭帶到結果、狀態列說明命中幾個、清�
   expect(box.x).toBeGreaterThan(0);
   expect(box.x).toBeLessThan(1280);
 
-  // 4) 清除鈕把篩選收乾淨：狀態列收起、沒有節點被篩掉、網址不再帶 q
-  await page.locator('#filter-clear').click();
-  await expect(page.locator('#filter-status')).toBeHidden();
+  // 4) 清除鈕把篩選收乾淨：金點熄掉、清除鈕收起、沒有節點被篩掉、網址不再帶 q
+  if (!(await filters.isVisible())) await toggle.click();
+  await clear.click();
+  await idle();
+  await expect(page.locator('#filter-live')).toHaveText(/^顯示全部 \d+ 個節點$/);
   await expect(page.locator('g.node.filtered-out')).toHaveCount(0);
   expect(new URL(page.url()).searchParams.get('q')).toBeNull();
+
+  // 清除鈕是 `visibility: hidden`，不是 opacity: 0——看不見就不該聚焦得到。
+  const focusable = await page.evaluate(() => {
+    const el = document.getElementById('filter-clear')!;
+    el.focus();
+    return document.activeElement === el;
+  });
+  expect(focusable, '看不見的清除鈕仍然可以被 Tab 聚焦').toBe(false);
+});
+
+test('O2. 工具列的大小與篩選鈕的位置不隨篩選狀態改變', async ({ page, isMobile }) => {
+  // Yuki 2026-08-22 回報：「符合 xx 個節點」一彈出來就把工具列撐大。實測桌機 1280 下
+  // 工具列從 1037 撐到 1209px，而且狀態列夾在搜尋框與篩選鈕之間，整排篩選鈕會往右跳 171px；
+  // 手機版直接多長一列（61 → 103px）。邊打字邊跳，最難用的正是這種。
+  await page.goto('/tree');
+  const toolbar = page.locator('#toolbar');
+  // 手機版 #filters 收在抽屜裡、預設不顯示，沒有 bounding box 可量——那邊要守的是工具列
+  // 本身不多長一列。桌機才驗「篩選鈕沒被推走」。
+  const firstChip = page.locator('#filters .chip').first();
+  const chipBox = async () => (isMobile ? null : (await firstChip.boundingBox())!);
+  const before = { tb: (await toolbar.boundingBox())!, chip: await chipBox() };
+
+  await page.locator('#search').fill('僵硬');
+  await expect(page.locator('#filters-toggle')).toHaveClass(/active/);
+  const after = { tb: (await toolbar.boundingBox())!, chip: await chipBox() };
+
+  expect(after.tb.width, '工具列寬度被撐開了').toBeCloseTo(before.tb.width, 0);
+  expect(after.tb.height, '工具列高度被撐開了').toBeCloseTo(before.tb.height, 0);
+  if (before.chip && after.chip) {
+    expect(after.chip.x, '篩選鈕被推走了').toBeCloseTo(before.chip.x, 0);
+    expect(after.chip.y, '篩選鈕被推到下一列了').toBeCloseTo(before.chip.y, 0);
+  }
+
+  // 一個都沒命中時也一樣（這是最容易被「多長一句話」撐開的狀態）。
+  await page.locator('#search').fill('這個字串不會命中任何節點');
+  await expect(page.locator('g.node:not(.filtered-out)')).toHaveCount(0);
+  const none = { tb: (await toolbar.boundingBox())!, chip: await chipBox() };
+  expect(none.tb.width, '零命中把工具列撐開了').toBeCloseTo(before.tb.width, 0);
+  expect(none.tb.height, '零命中把工具列撐高了').toBeCloseTo(before.tb.height, 0);
+  if (before.chip && none.chip) {
+    expect(none.chip.x, '零命中把篩選鈕推走了').toBeCloseTo(before.chip.x, 0);
+  }
+});
+
+test('O3. 篩選面板收得起來也展得開，桌機平移畫布不會把它關掉', async ({ page, isMobile }) => {
+  // Yuki 2026-08-22：桌機以前沒有收合，篩選鈕永遠攤在工具列上佔掉畫布上方一整條。
+  await page.goto('/tree');
+  const toggle = page.locator('#filters-toggle');
+  const filters = page.locator('#filters');
+  const toolbar = page.locator('#toolbar');
+
+  // 預設狀態：桌機展開、手機收起。
+  await expect(toggle).toHaveAttribute('aria-expanded', String(!isMobile));
+  if (isMobile) await expect(filters).toBeHidden();
+  else await expect(filters).toBeVisible();
+
+  const first = (await toolbar.boundingBox())!;
+  await toggle.click();
+  await expect(toggle).toHaveAttribute('aria-expanded', String(isMobile));
+  const second = (await toolbar.boundingBox())!;
+  // 收合真的有改變工具列佔的空間——否則這顆按鈕等於沒作用。
+  expect(Math.abs(second.width - first.width) + Math.abs(second.height - first.height),
+    '按了切換鈕，工具列佔的空間卻沒變').toBeGreaterThan(40);
+
+  // ⚠️ 這第二次點擊是在收合過場（200ms）還沒收尾時發生的。狀態若是從 `.open` class 讀的，
+  // 這時 class 還在，算出來的下一個狀態會是「再關一次」，面板就卡住了（2026-08-22 抓到）。
+  await toggle.click();
+  await expect(toggle).toHaveAttribute('aria-expanded', String(!isMobile));
+
+  // 跨過 720px 斷點時要重設回該版面的預設值。少了這條：桌機開著面板把視窗縮到手機寬度，
+  // `.open` 會被手機的媒體查詢變成一個使用者從沒打開過的全寬抽屜，直接吃掉畫布上緣
+  // （2026-08-22 review 抓到，實測工具列高 196px）。
+  const before = page.viewportSize()!;
+  await page.setViewportSize({ width: isMobile ? 1280 : 500, height: before.height });
+  await page.waitForTimeout(300);
+  await expect(toggle, '跨過斷點後面板沒有重設回該版面的預設值')
+    .toHaveAttribute('aria-expanded', String(isMobile));
+  await page.setViewportSize(before);
+  await page.waitForTimeout(300);
+  await expect(toggle).toHaveAttribute('aria-expanded', String(!isMobile));
+
+  // 桌機的面板是工具列的一部分，不是蓋在畫布上的抽屜：平移畫布不該把它關掉。
+  // 手機版是抽屜，點外面本來就該關起來（那條由 J 守），所以只在桌機驗——用 if 而不是
+  // test.skip：後者會把整條測試標成 skipped，連上面已經跑過的斷言都不算數。
+  if (!isMobile) {
+    await page.mouse.move(400, 600);
+    await page.mouse.down();
+    await page.mouse.move(300, 600, { steps: 5 });
+    await page.mouse.up();
+    await expect(filters, '平移畫布把桌機的篩選面板關掉了').toBeVisible();
+  }
 });
 
 test('Q. 導覽列的「貢獻」入口目前不曝光（FEATURES.contributeLink 暫時關閉），但頁面本身還在', async ({ page }) => {
@@ -939,9 +1055,59 @@ test('Q. 導覽列的「貢獻」入口目前不曝光（FEATURES.contributeLink
   expect(res.status()).toBe(200);
 });
 
+test('O4. 篩選面板是左右伸縮的過場：箭頭朝左右、寬度逐格變化、工具列高度不跳', async ({ page, isMobile }) => {
+  await page.goto('/tree');
+  const toggle = page.locator('#filters-toggle');
+
+  // 箭頭方向要跟面板長出來的方向一致：桌機往右長（▸／展開後轉成 ◂），手機往下掉（▾／▴）。
+  const arrow = await toggle.evaluate(el => ({
+    content: getComputedStyle(el, '::after').content,
+    transform: getComputedStyle(el, '::after').transform,
+  }));
+  expect(arrow.content).toBe(isMobile ? '"▾"' : '"▸"');
+  // 預設狀態下桌機是展開的（箭頭轉 180 度），手機是收起的（不轉）。
+  expect(arrow.transform === 'none', '箭頭沒有跟著展開狀態轉向').toBe(isMobile);
+
+  // 逐格取樣收合過程：桌機要看到中間值（不是 0 與滿寬兩格跳完），而且工具列高度全程不變。
+  const probe = await page.evaluate(() => new Promise<{ widths: number[]; heights: number[] }>(resolve => {
+    const filters = document.getElementById('filters')!;
+    const toolbar = document.getElementById('toolbar')!;
+    const widths: number[] = [];
+    const heights: number[] = [];
+    const t0 = performance.now();
+    const tick = () => {
+      widths.push(Math.round(filters.getBoundingClientRect().width));
+      heights.push(Math.round(toolbar.getBoundingClientRect().height));
+      if (performance.now() - t0 < 400) requestAnimationFrame(tick);
+      else resolve({ widths, heights });
+    };
+    document.getElementById('filters-toggle')!.click();
+    requestAnimationFrame(tick);
+  }));
+
+  // 工具列高度全程只有一個值——面板收窄時裡面的東西若被壓縮換行，它會先長高一倍再收掉
+  // （實測「清除篩選」四個字折成四行，面板 35 → 90，2026-08-22）。
+  expect(new Set(probe.heights).size, `工具列高度在過場中變動過：${[...new Set(probe.heights)].join(',')}`).toBe(1);
+
+  const distinct = [...new Set(probe.widths)];
+  if (isMobile) {
+    // 抽屜是上下掉出來的，橫向過場在那裡是錯的，直接瞬間切換。
+    expect(distinct.length, '手機版不該有橫向伸縮過場').toBeLessThanOrEqual(2);
+  } else {
+    expect(distinct.length, '寬度是一格跳完的，沒有過場').toBeGreaterThan(4);
+    expect(distinct[0]).toBeGreaterThan(0);
+    expect(distinct.at(-1)).toBe(0);
+  }
+
+  // 收尾要把 inline width 拿掉，否則面板會卡在當初量到的寬度、視窗一縮就不會再換行。
+  await expect
+    .poll(() => page.locator('#filters').evaluate(el => (el as HTMLElement).style.width))
+    .toBe('');
+});
+
 test('P. 工具列對齊：搜尋框與分支側欄切齊同一條左邊界，工具列每一項共用同一條中線', async ({ page, isMobile }) => {
   test.skip(isMobile, '僅桌機：手機版 #branch-nav 隱藏、篩選收進頂部抽屜，沒有這條左邊界');
-  await page.goto('/tree?q=' + encodeURIComponent('僵硬')); // 帶搜尋才會出現 #filter-status
+  await page.goto('/tree?q=' + encodeURIComponent('僵硬'));
 
   const box = async (sel: string) => {
     const b = await page.locator(sel).first().boundingBox();
@@ -950,17 +1116,18 @@ test('P. 工具列對齊：搜尋框與分支側欄切齊同一條左邊界，�
   };
   const search = await box('#search');
   const branchBtn = await box('#branch-nav button');
-  const label = await box('#filters label');
-  const legend = await box('#filters legend');
-  const status = await box('#filter-status');
+  const chip = await box('#filters .chip');
+  const groupLabel = await box('#filters .filter-group-label');
 
   // 左邊界：#toolbar 與 #branch-nav 上下相接、同屬畫布左上角那一疊，內距不同的話按鈕會比
-  // 搜尋框凸出去。用幾何斷言而不是比對 CSS 值——這個 repo 的固定偏移量咬過三次（見 CLAUDE.md）。
-  expect(Math.abs(search.x - branchBtn.x)).toBeLessThan(1);
+  // 工具列凸出去。用幾何斷言而不是比對 CSS 值——這個 repo 的固定偏移量咬過三次（見 CLAUDE.md）。
+  // 比的是工具列**最左邊那一項**：2026-08-22 之前那是搜尋框，現在是篩選切換鈕（桌機也能收合了）。
+  const toggle = await box('#filters-toggle');
+  expect(Math.abs(toggle.x - branchBtn.x)).toBeLessThan(1);
 
-  // 中線：搜尋框、狀態列、篩選群組的標題與 checkbox 全部落在同一條水平中線上。
+  // 中線：工具列每一項（切換鈕、搜尋框、篩選群組的標題與切換鈕）都落在同一條水平中線上。
   const midY = (b: { y: number; height: number }) => b.y + b.height / 2;
-  for (const [name, b] of [['狀態列', status], ['legend', legend], ['checkbox', label]] as const) {
+  for (const [name, b] of [['篩選鈕', toggle], ['分組標題', groupLabel], ['切換鈕', chip]] as const) {
     expect(Math.abs(midY(b) - midY(search)), `${name} 與搜尋框的中線差距`).toBeLessThan(1);
   }
 
@@ -1016,9 +1183,8 @@ test('S. 連結預覽卡片：標題全站固定，網址與圖片都是絕對�
 });
 
 test('T. 首頁的版本資訊全部來自資料正本，不是寫死在頁面上', async ({ page }) => {
-  // 三個數字是三件不同的事：遊戲版本（玩家看得到的號碼）、資料版本（抄自哪一版遊戲資源包）、
-  // 更新日期。期望值從建置產物現讀，不寫死——寫死的話下次改資料版本又要回頭改測試，
-  // 而真正該擋的（頁面沒跟著資料變）反而測不出來。
+  // 期望值從建置產物現讀，不寫死——寫死的話下次改版本又要回頭改測試，而真正該擋的
+  // （頁面沒跟著資料變）反而測不出來。
   const meta = JSON.parse(
     readFileSync(new URL('../../src/generated/tree.json', import.meta.url), 'utf8'),
   ).meta as { gameVersion: string; gameBundle: string; updated: string };
@@ -1028,8 +1194,10 @@ test('T. 首頁的版本資訊全部來自資料正本，不是寫死在頁面�
   // 命中兩個而觸發 Playwright 的 strict mode。選擇器綁版面結構撐不住任何版面改動。
   const text = (await page.locator('#version-info').innerText()).replace(/\s+/g, '');
   expect(text).toContain(`遊戲版本v${meta.gameVersion}`);
-  expect(text).toContain(`資料版本${meta.gameBundle}`);
   expect(text).toContain(meta.updated);
+  // 資源包版本 2026-08-22 起不上頁面（Yuki 指定）。它仍在資料正本與 data/changelog.json 裡
+  // 給規則 20 用——這條反向守著「別又把它印回去」。
+  expect(text, '資源包版本又出現在首頁了').not.toContain(meta.gameBundle);
 });
 
 test('Z. 詳情面板的視圖堆疊：關鍵字／覺醒換頁、返回鍵、系統上一頁、Esc、✕', async ({ page }) => {
@@ -1170,7 +1338,7 @@ test('Z2. 詞彙頁的「搜尋 #X」才會真的搜尋，而且會退回節點�
 
   await topView(page).locator('[data-detail-search]').click();
   await expect(page.locator('#search')).toHaveValue('破滅');
-  await expect(page.locator('#filter-status')).toBeVisible();
+  await expect(page.locator('#filters-toggle')).toHaveClass(/active/);
   await expect(topViewTitle(page)).toHaveText('破滅骰子');
   expect(new URL(page.url()).searchParams.get('q')).toBe('破滅');
 });
