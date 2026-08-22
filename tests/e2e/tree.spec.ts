@@ -980,7 +980,7 @@ test('P. 工具列對齊：搜尋框與分支側欄切齊同一條左邊界，�
 test('R. 分頁標題不帶破折號，分頁圖示指向實際存在的檔案', async ({ page }) => {
   await page.goto('/tree');
   const title = await page.title();
-  expect(title).toBe('骰子樹 rd2-wiki');
+  expect(title).toBe('Random Dice 2 wiki | 骰子樹');
   expect(title).not.toContain('—'); // 破折號拿掉了（2026-08-18 要求）
 
   // 圖示只寫在 <head> 是不夠的：路徑打錯時瀏覽器只會安靜地退回預設圖示，沒有任何錯誤。
@@ -993,7 +993,7 @@ test('R. 分頁標題不帶破折號，分頁圖示指向實際存在的檔案',
 });
 
 test('S. 連結預覽卡片：標題全站固定，網址與圖片都是絕對網址且圖片存在', async ({ page }) => {
-  // 貼進聊天室展開的卡片。沒有這些標籤時各平台是拿 <title> 湊，顯示成「骰子樹 rd2-wiki」。
+  // 貼進聊天室展開的卡片。沒有這些標籤時各平台是拿 <title> 湊，顯示成「Random Dice 2 wiki | 骰子樹」。
   await page.goto('/tree');
   const meta = (sel: string) => page.locator(sel).getAttribute('content');
   expect(await meta('meta[property="og:title"]')).toBe('Random Dice 2 wiki - Fan made');

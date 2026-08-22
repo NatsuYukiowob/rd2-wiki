@@ -56,6 +56,10 @@ function safeSessionStorage(): Pick<Storage, 'getItem' | 'setItem'> | null {
  * ⚠️ 成功與否**不能靠 status code 判斷**。實測線上站：dist/ 裡沒有 404.html 時，
  * Cloudflare Pages 把未知路徑當 SPA，GET 未知路徑會回 200 加一份完整的首頁 HTML；
  * 而 functions 沒被部署時 POST 回的是 405 不是 404。唯一可靠的判準是 payload 形狀。
+ *
+ * ⚠️ 2026-08-22 起 `dist/404.html` 存在了，所以上面第一種情形變成回 404——但這反而更說明
+ * 不該信 status code：同一段程式在部署狀態沒變的情況下，看到的碼從 200 變成 404。
+ * 三種可能（200／404／405）都不是數字，`!res.ok` 只是第一道濾網，真正的判準仍是形狀。
  */
 export async function fetchHitNumber(deps: HitCounterDeps = {}): Promise<number | null> {
   const doFetch = deps.fetch ?? globalThis.fetch;

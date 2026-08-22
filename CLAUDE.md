@@ -312,14 +312,34 @@ endpoint 掛掉時它會**安靜地不出現**，那是刻意的降級。
 這跟版面驗收要用幾何斷言是同一條原則。
 
 順帶：前端判斷 API 成功與否**不看 status code**，只看 payload 形狀
-（`typeof body.n === 'number'`）——因為未知路徑回 200、Functions 沒部署時回 405。
+（`typeof body.n === 'number'`）。理由是「`/api/hits` 沒部署時回什麼」完全取決於 `dist/`
+裡有什麼，而那會變：2026-08-22 補上 404 頁之前是 **200 ＋ 一份首頁 HTML**，之後是 **404**，
+POST 到一個存在的靜態路徑則是 **405**。三種都不是數字，所以判準只能是 payload 形狀
+——**不要因為現在有 404 了就改回去信 status code**。
 
-### ⚠️ 未知路徑目前回 200 加一份首頁，不是 404
+### SEO 基礎欄位：robots.txt／sitemap／canonical／404（2026-08-22 補齊，#24–#26）
 
-`dist/` 裡沒有 `404.html` 時，Cloudflare Pages 會當成 SPA 處理、拿 index.html 當 fallback。
-實測 `curl -sI https://rd2-wiki.pages.dev/this-does-not-exist-12345` → `HTTP/2 200`，
-內容是 `<title>首頁 rd2-wiki</title>`。打錯的網址與失效的分享連結都會被搜尋引擎和連結預覽
-當成有效頁面。要修就是加一個 `public/404.html`（尚未做）。
+在這之前 `dist/` 裡沒有 `404.html`，Cloudflare Pages 會當成 SPA 處理、拿 index.html 當
+fallback：`curl -sI .../this-does-not-exist-12345` 回 **200**、內容是首頁。連帶讓
+`/robots.txt` 與 `/sitemap.xml` 也回 200，**看起來像存在其實不存在**。現在四件事都補上了：
+
+- **`public/robots.txt`**——靜態檔，`Sitemap:` 那行是絕對網址，換網域要跟 `site` 一起改
+- **`@astrojs/sitemap`**——`astro.config.mjs` 的 `integrations`，產出 `sitemap-index.xml`
+  ＋ `sitemap-0.xml`。⚠️ **不要加 `filter` 排除 404**：實測（3.7.3）不帶任何選項產出的
+  `<loc>` 就只有三個現有頁面，404 是套件預設就排除的，自己寫的 filter 是死碼
+- **`src/pages/404.astro`**（⚠️ 不是 issue 原本寫的 `public/404.html`）——產物同樣是
+  `dist/404.html`、Pages 一樣認，但走 Astro 才吃得到 `Base.astro` 的導覽列與樣式；
+  寫成 public/ 底下的靜態 HTML 就得複製一份無人看守、必然漂移的樣式副本
+- **`Base.astro` 的 `<title>` 與 canonical**——標題格式是 **`Random Dice 2 wiki | 分頁名`**
+  （站名在前，2026-08-22 定案），分隔符是半形 `|`；新增 `noIndex` prop，目前只有 404 頁用，
+  開起來會**省略 canonical 並加 `<meta name="robots" content="noindex">`**
+  （404 頁的 canonical 只會固定指向 `/404/`，等於邀請搜尋引擎去索引那個網址）
+
+⚠️ **`tests/e2e/seo.spec.ts` 的 SEO-5「未知路徑回 404」在本機是假綠。**
+E2E 的 webServer 是 `serve dist`，它對找不到的檔案本來就回 404，`dist/404.html` 存不存在
+都一樣——soft 404 是 **Cloudflare Pages 那端**的行為。那條守的是「本機沒退步」，
+真正的驗收只能在部署後對正式站做：
+`curl -o /dev/null -w '%{http_code}\n' https://rd2-wiki.pages.dev/no-such-page` 要回 404。
 
 ### ⚠️ 兩個工作區同時跑 E2E 會互相偷 server
 

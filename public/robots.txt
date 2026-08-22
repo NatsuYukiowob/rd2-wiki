@@ -1,0 +1,8 @@
+# 全站開放索引。這個站沒有登入區、沒有後台，也沒有會產生無限網址的參數頁，
+# 所以不需要任何 Disallow。
+User-agent: *
+Allow: /
+
+# 絕對網址是規格要求（相對路徑多數爬蟲不吃）。檔名是 @astrojs/sitemap 產出的索引檔，
+# 它再指向 sitemap-0.xml；網域改了要跟 astro.config.mjs 的 site 一起改。
+Sitemap: https://rd2-wiki.pages.dev/sitemap-index.xml

@@ -13,6 +13,12 @@ export const FEATURES = {
    *
    * 關掉的是**入口**，不是頁面：`/about` 直接輸入網址仍然打得開，只是不再從導覽列曝光。
    * 要整頁擋掉是另一件事（得動 astro 的路由或加 404），目前沒這個需求。
+   *
+   * ⚠️ **`/about` 仍然在 sitemap 裡**（2026-08-22 起），也就是站內沒有任何連結指向它、
+   * 卻主動提交給搜尋引擎。那是刻意的：它渲染的是 CONTRIBUTING.md，是全站文字量最大的一頁。
+   * 如果哪天這個開關要改成「真的藏起來」，得**三個地方一起改**——這裡、
+   * `astro.config.mjs` 的 sitemap 設定、以及 `tests/e2e/seo.spec.ts` 的 `PAGES`
+   * （SEO-2 用完全相等比對 `<loc>` 清單，少一頁多一頁都會紅）。
    */
   contributeLink: false,
 } as const;

@@ -8,9 +8,20 @@ import { FEATURES } from '../lib/flags';
 
 interface Props {
   title: string;
+  /**
+   * 這一頁不要被搜尋引擎收錄（目前只有 404 頁用）。
+   * 開起來會同時做兩件事：省略 canonical、加上 `<meta name="robots" content="noindex">`。
+   */
+  noIndex?: boolean;
 }
 
-const { title } = Astro.props;
+const { title, noIndex = false } = Astro.props;
+
+/**
+ * 分頁標題的站名前綴。格式是「站名 | 分頁名」，站名在前（2026-08-22 定案）。
+ * ⚠️ 不要改成破折號：2026-08-18 明確要求分頁標題不帶破折號，`tests/e2e/tree.spec.ts` 的 R 有守。
+ */
+const SITE_NAME = 'Random Dice 2 wiki';
 
 /** 連結預覽卡片的標題。全站固定，不隨分頁變動——理由見 <head> 裡的說明。 */
 const OG_TITLE = 'Random Dice 2 wiki - Fan made';
@@ -24,7 +35,17 @@ const imageUrl = new URL('/favicon.png', Astro.site).href;
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>{title} rd2-wiki</title>
+    <title>{SITE_NAME} | {title}</title>
+    <!--
+      canonical：告訴搜尋引擎「這一頁的正規網址是哪一個」。同一份內容被多個網址打得到時
+      （帶追蹤參數的連結、有無尾斜線、日後的自訂網域），沒有這一行就會被分成好幾份重複內容，
+      權重也跟著散掉。網址用 astro.config.mjs 的 `site` 組出來的絕對網址，跟 og:url 同一個。
+
+      noIndex 的頁面刻意不輸出 canonical：那種頁面本來就不該被收錄，指一個正規網址給它
+      反而是在說「這個網址值得索引」。
+    -->
+    {!noIndex && <link rel="canonical" href={pageUrl} />}
+    {noIndex && <meta name="robots" content="noindex" />}
     <!-- 分頁圖示用陰陽骰子（節點 4008）的骰子本體，不含節點底板：底板在 32px 下會吃掉四周
          約四分之一的面積，把中間的陰陽符號擠到看不清。圖是方形畫布置中的透明 PNG——favicon
          的顯示位置是正方形，直接放長方形圖會被壓扁。 -->
@@ -36,7 +57,7 @@ const imageUrl = new URL('/favicon.png', Astro.site).href;
 
       標題刻意**全站固定**、不帶頁名：貼出去的是「這個站」，收到連結的人要先認出它是什麼，
       而不是「骰子樹」這種只有站內才有意義的分頁名。沒有這幾行的時候，各平台是拿 <title>
-      湊出來的，顯示成「骰子樹 rd2-wiki」。
+      湊出來的，顯示成「Random Dice 2 wiki | 骰子樹」。
 
       og:url 與 og:image 一定要是絕對網址（規格要求，相對路徑多數平台直接不顯示）——
       靠 astro.config.mjs 的 `site` 組出來，不在這裡再寫死一次網域。
@@ -45,7 +66,11 @@ const imageUrl = new URL('/favicon.png', Astro.site).href;
     <meta property="og:site_name" content={OG_TITLE} />
     <meta property="og:title" content={OG_TITLE} />
     <meta property="og:description" content={DESCRIPTION} />
-    <meta property="og:url" content={pageUrl} />
+    <!-- og:url 吃跟 canonical 同一個判斷。404 頁是 Cloudflare Pages 拿來回**任何**未知
+         路徑的那一份，`pageUrl` 卻固定是 `/404/`——貼一個失效連結到聊天室時，卡片會宣稱
+         自己代表 `/404/`，那既不是使用者貼的網址，也不是這份檔案實際被服務的路徑。
+         省略它，各平台會退回用實際請求的網址。 -->
+    {!noIndex && <meta property="og:url" content={pageUrl} />}
     <meta property="og:image" content={imageUrl} />
     <meta name="twitter:card" content="summary" />
     <meta name="twitter:title" content={OG_TITLE} />
