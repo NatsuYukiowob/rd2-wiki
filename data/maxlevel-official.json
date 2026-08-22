@@ -1,6 +1,6 @@
 {
-  "note": "官方資料表「技能效果」欄標註的滿級數值，用來反向驗算站台從 data-description 推導出來的 growth。鍵是 data-game-id。",
-  "source": "RD2 資料表 v1.0.1 主檔案（遊戲資源包 0.0.5）",
+  "note": "官方資料表「技能效果」欄標註的滿級數值，用來反向驗算站台從 data/nodes.json 的 description 推導出來的 growth。鍵是 nodes.json 的 gameId。",
+  "source": "RD2 資料表 v1.0.3 主檔案-v1（遊戲資源包 0.0.6）",
   "values": {
     "D0000": {
       "level": 50,
@@ -114,7 +114,7 @@
     },
     "D2030": {
       "level": 50,
-      "value": 544.0,
+      "value": 1020.0,
       "unit": ""
     },
     "D2040": {
@@ -159,7 +159,7 @@
     },
     "D3030": {
       "level": 50,
-      "value": 108.0,
+      "value": 314.0,
       "unit": ""
     },
     "D3040": {
