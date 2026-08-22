@@ -40,20 +40,90 @@ export function addIcon(srcPath: string, iconsDir: string): AddIconResult {
   return { hash, fileName, destPath, alreadyExists };
 }
 
+/** `addBoardIcon()` 的結果：`addIcon()` 的全部欄位，外加對應表原本那筆的雜湊。 */
+export interface AddBoardIconResult extends AddIconResult {
+  /**
+   * 這個節點原本在 `data/board-icons.json` 指向的雜湊；先前沒有這一筆時為 `null`。
+   * 換圖時舊檔通常就此沒人引用——CLI 會提醒一句，validate 的規則 21(d) 也會警告（不擋 PR）。
+   */
+  previousHash: string | null;
+}
+
+/**
+ * `/board` 骰盤編輯器的「純骰子圖」（不含底板）走的是跟節點圖示平行的一條資產路徑：
+ * 圖放 `data/board-icons/`，而且 **`data/board-icons.json` 那一筆要一起更新**——少了任一邊，
+ * CI 的規則 21 就會紅（漏對應＝21(a)，漏檔案＝21(f)）。
+ *
+ * 這支存在的理由就是那個「一起」：`npm run add-icon` 的目的地過去寫死成 `data/icons`，
+ * 沒有任何工具放得進 `data/board-icons`，貢獻者只能自己算雜湊、自己改 JSON——而規則 21
+ * 是 2026-08 才加的，指南裡一個字都沒提過這件事（2026-08-23 review F10）。
+ *
+ * 圖檔本身的檢查（有效 PNG、最長邊 ≥ 96px、依內容雜湊命名）直接重用 `addIcon()`，
+ * 兩條資產路徑的判準因此不會各自漂移；**而且它先跑**，來源圖不合格時對應表不會被動到。
+ *
+ * ⚠️ 只驗 id 的**格式**，不驗「它是不是骰子」：那要讀正本兩個檔才知道，而 validate 的
+ * 規則 21(a)／21(h) 本來就是幹這個的。這裡擋的是「手滑打錯一碼」這種當場就看得出來的錯。
+ */
+export function addBoardIcon(
+  srcPath: string,
+  nodeId: string,
+  opts: { boardIconsDir: string; mapPath: string },
+): AddBoardIconResult {
+  // 跟 validate 規則 2 同一個編碼規律：首碼＝分支 1-5、次碼＝ 0-4，其後兩碼任意。
+  if (!/^[1-5][0-4]\d\d$/.test(nodeId)) throw new Error(`節點 id 不符編碼規律: ${nodeId}`);
+
+  const result = addIcon(srcPath, opts.boardIconsDir);
+
+  const map: Record<string, string> = existsSync(opts.mapPath)
+    ? JSON.parse(readFileSync(opts.mapPath, 'utf8'))
+    : {};
+  const previousHash = map[nodeId] ?? null;
+  map[nodeId] = result.hash;
+  // 依 id 排序後寫回：對應表是人在讀的，順序一亂，下一個人的 PR 就會夾帶一份整檔重排的
+  // diff，真正改了哪一筆反而看不出來。縮排與結尾換行也照正本原樣（2 空格 + 換行）。
+  const sorted = Object.fromEntries(Object.keys(map).sort().map(id => [id, map[id]!]));
+  writeFileSync(opts.mapPath, `${JSON.stringify(sorted, null, 2)}\n`);
+
+  return { ...result, previousHash };
+}
+
 if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
-  const src = process.argv[2];
-  if (!src) {
-    console.error('用法: npm run add-icon -- <圖片路徑>');
-    process.exit(1);
-  }
+  const args = process.argv.slice(2);
+  const usage = [
+    '用法:',
+    '  npm run add-icon -- <圖片路徑>                     節點圖示 → data/icons/',
+    '  npm run add-icon -- --board <節點 id> <圖片路徑>    /board 純骰子圖 → data/board-icons/，並更新 data/board-icons.json',
+  ].join('\n');
   try {
-    const result = addIcon(src, 'data/icons');
-    if (result.alreadyExists) {
-      console.log(`圖示已存在，未重複寫入：icons/${result.fileName}`);
+    if (args[0] === '--board') {
+      const [, nodeId, src] = args;
+      if (!nodeId || !src) {
+        console.error(usage);
+        process.exit(1);
+      }
+      const result = addBoardIcon(src, nodeId, { boardIconsDir: 'data/board-icons', mapPath: 'data/board-icons.json' });
+      console.log(result.alreadyExists
+        ? `純骰子圖已存在，未重複寫入：board-icons/${result.fileName}`
+        : `已新增純骰子圖：board-icons/${result.fileName}`);
+      console.log(`已把 data/board-icons.json 的 ${nodeId} 指到 ${result.hash}`);
+      if (result.previousHash && result.previousHash !== result.hash) {
+        console.log(`⚠️  ${nodeId} 原本指向 ${result.previousHash}.png；若沒有別的節點在用，`
+          + `data/board-icons/${result.previousHash}.png 就成了孤兒檔（npm run validate 會警告），確認後可以刪掉`);
+      }
     } else {
-      console.log(`已新增圖示：icons/${result.fileName}`);
+      const src = args[0];
+      if (!src) {
+        console.error(usage);
+        process.exit(1);
+      }
+      const result = addIcon(src, 'data/icons');
+      if (result.alreadyExists) {
+        console.log(`圖示已存在，未重複寫入：icons/${result.fileName}`);
+      } else {
+        console.log(`已新增圖示：icons/${result.fileName}`);
+      }
+      console.log(`請在 SVG 中使用：href="icons/${result.fileName}"`);
     }
-    console.log(`請在 SVG 中使用：href="icons/${result.fileName}"`);
   } catch (e) {
     console.error(`❌ ${(e as Error).message}`);
     process.exit(1);

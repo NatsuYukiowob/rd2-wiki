@@ -51,6 +51,86 @@ const GAME_ID_BY_TYPE: Record<string, RegExp> = {
   '支援': /^S\d{4}$/,
 };
 
+/**
+ * 圖示來源檔的最低解析度（最長邊）。`data/icons/` 與 `data/board-icons/` 共用同一個下限，
+ * 因為兩邊的入口都是 `addIcon()`（`tools/add-icon.ts`），那支工具擋的就是這個數字——
+ * 工具擋得比閘門鬆或緊，都會變成「加得進來、CI 卻不收」或反過來。
+ */
+const MIN_ICON_LONGEST_EDGE = 96;
+
+/** `checkHashNamedIconDir()` 的結果。錯誤與警告由呼叫端自己併進 errors／warnings。 */
+interface HashNamedIconDirScan {
+  /** 目錄裡實際存在的 `.png` 檔名（去掉副檔名）＝可被引用的雜湊集合。 */
+  hashes: Set<string>;
+  /** 雜湊 → PNG 尺寸。**不是有效 PNG 的不會進來**，呼叫端用「查不到」代表「(c) 已經報過了」。 */
+  sizes: Map<string, { width: number; height: number }>;
+  errors: string[];
+  warnings: string[];
+}
+
+/**
+ * 掃一個「檔名＝內容 sha256 前 12 碼」的圖示目錄：檔名與內容相符、是有效且夠大的 PNG、
+ * 沒有孤兒檔、沒有站台根本不會用到的雜檔。
+ *
+ * 規則 7（`data/icons/`）與規則 21（`data/board-icons/`）掃的是同一種目錄，2026-08-23 以前
+ * 是兩份相隔 200 行的複製實作——而且**已經漂移**：規則 21 那份不驗 PNG 結構與解析度（放一張
+ * 用 sha256 命名的純文字檔進去，validate 一個字都不說，直到 `npm run build` 由 sharp 噴出
+ * 一句不含任何節點 id 的 `unsupported image format`）、逐 entry 讀檔算雜湊（同一張圖被 k 個
+ * id 共用就噴 k 條一模一樣的錯、同一個檔案讀 k 次）、孤兒檔的嚴重度還跟規則 7 相反。
+ * 所以這裡只留一份，兩邊的差別只剩呼叫端傳進來的規則編號與解析度下限。
+ *
+ * 子規則編號在兩條規則之間**刻意對齊**：(b) 檔名≠內容雜湊、(c) PNG 結構與解析度、
+ * (d) 孤兒檔（只警告）。同一件事在兩條規則裡是同一個字母。
+ *
+ * ⚠️ **目錄讀不到時回傳一條錯誤，不拋例外。** 驗證器是 CI 的閘門，任何一個檔案系統入口
+ * 拋出去都會把前面累積的錯誤一起丟掉，CLI 印出來的會是 stack trace 而不是「❌ N 個問題」
+ * （實測：`mv data/board-icons` 之後 `npm run validate` 噴原始 ENOENT，其餘規則一條都沒跑）。
+ *
+ * @param referenced 「有人引用到」的雜湊集合；不在裡面的檔案就是孤兒檔。
+ */
+function checkHashNamedIconDir(
+  dir: string,
+  referenced: ReadonlySet<string>,
+  opts: { rule: string; minLongestEdge: number },
+): HashNamedIconDirScan {
+  const scan: HashNamedIconDirScan = { hashes: new Set(), sizes: new Map(), errors: [], warnings: [] };
+  let fileNames: string[];
+  try {
+    fileNames = readdirSync(dir);
+  } catch (e) {
+    scan.errors.push(`${opts.rule}: 讀不到圖示目錄 ${dir}（${(e as Error).message}）`);
+    return scan;
+  }
+  for (const fileName of fileNames) {
+    const filePath = join(dir, fileName);
+    // 只掃小寫 `.png` 會讓 `abc.PNG`／`old.webp`／`.DS_Store` 在下面每一條檢查裡完全隱形：
+    // 把一個雜湊對不上的檔案改名成 `.PNG` 就直接繞過 (b) 的比對，而站台端只認小寫 `.png`
+    // ——那個檔案是死的。所以不當作不存在，至少警告一條。
+    if (!fileName.endsWith('.png')) {
+      scan.warnings.push(`${opts.rule}: ${filePath} 不是小寫 .png 檔，站台不會使用它（檔名一律是內容 sha256 前 12 碼 ＋ .png）`);
+      continue;
+    }
+    const expectedHash = fileName.slice(0, -'.png'.length);
+    scan.hashes.add(expectedHash);
+    const buf = readFileSync(filePath);
+    // (b): 檔案內容的 sha256 前 12 碼必須等於檔名，防止「改了內容卻沒改檔名」造成快取污染。
+    const actualHash = createHash('sha256').update(buf).digest('hex').slice(0, 12);
+    if (actualHash !== expectedHash) scan.errors.push(`${opts.rule}(b): 圖示 ${filePath} 的內容 sha256 前 12 碼為 ${actualHash}，與檔名不符`);
+    // (c): 必須是有效 PNG，且最長邊 ≥ 下限。
+    const size = readPngSize(buf);
+    if (!size) {
+      scan.errors.push(`${opts.rule}(c): 圖示 ${filePath} 不是有效的 PNG`);
+    } else if (Math.max(size.width, size.height) < opts.minLongestEdge) {
+      scan.errors.push(`${opts.rule}(c): 圖示 ${filePath} 最長邊 ${Math.max(size.width, size.height)}px，小於最低要求 ${opts.minLongestEdge}px`);
+    } else {
+      scan.sizes.set(expectedHash, size);
+    }
+    // (d): 沒有人引用的圖示，只警告不擋 PR——那只是 repo 裡多一個沒人用的 PNG，而擋下來
+    // 會連「換圖忘了刪舊檔」這種無害的 PR 一起擋掉。
+    if (!referenced.has(expectedHash)) scan.warnings.push(`${opts.rule}(d): 圖示 ${filePath} 未被任何節點引用`);
+  }
+  return scan;
+}
 export interface ValidateOpts {
   /**
    * `data/keywords.json` 的內容。key ＝不含 `#` 的詞（規則 8 的白名單），值是玩家看得到的解釋。
@@ -102,6 +182,25 @@ export interface ValidateOpts {
    * 那時 iconsDir 的上層根本不是資料目錄，靠推導只會去錯的地方找檔案然後報一個假的錯。
    */
   dataDir: string;
+  /**
+   * `data/board-icons.json`；沒有這份資料時傳 `null`。
+   *
+   * `/board` 骰盤編輯器用的是「純骰子圖」（不含底板），跟正本 SVG 引用的節點圖示是兩條
+   * 平行的資產路徑——正本管線只處理 SVG 引用到的圖示，這批圖完全不在正本裡，所以沒有任何
+   * 既有規則守得到它。跟其他資料檔一樣刻意必填：可選就等於可以被安靜地關掉。
+   *
+   * 型別刻意用 `unknown` 而不是 `Record<string, string>`（跟 `nodeText` 同一個理由）：
+   * 這份檔案是社群 PR 直接改的，`build-data.ts` 讀它時也只有一個 `as`＝執行期零檢查。
+   * 宣告成已驗過的型別，等於在型別層面假設「它一定合法」，而規則 21(e) 要擋的正是不合法的
+   * 那些——`{"1001": {"hash":"x"}}` 在改成 `unknown` 之前會被直接 `join()` 成
+   * `[object Object].png`，`{"1001": "../../data/nodes"}` 更是讓閘門去讀目錄外的檔案。
+   */
+  boardIcons: unknown;
+  /**
+   * `data/board-icons/` 所在目錄；規則 21 讀取此目錄下的檔案內容做 sha256 比對，並列出孤兒檔案。
+   * 跟 iconsDir 一樣刻意分開傳入（不推導自 dataDir）：測試會把圖示複製到暫存目錄再驗。
+   */
+  boardIconsDir: string;
 }
 
 export interface ValidateResult {
@@ -423,39 +522,23 @@ export function validate(svgText: string, opts: ValidateOpts): ValidateResult {
 
   // 規則 7: 圖示。以 iconsDir 內實際檔案為準做一次全面掃描（而非逐節點重複讀檔／算雜湊），
   // 因為同一張圖示常被多個節點共用（實測有一張被 15 個節點共用），檔案層級的問題只需驗一次。
-  const iconFileNames = readdirSync(opts.iconsDir).filter(f => f.endsWith('.png'));
-  const iconHashSet = new Set(iconFileNames.map(f => f.slice(0, -'.png'.length)));
+  // (b)(c)(d) 由 checkHashNamedIconDir() 與規則 21 共用，見該函式說明。
   const referencedIcons = new Set(nodes.map(n => n.icon));
-  for (const fileName of iconFileNames) {
-    const expectedHash = fileName.slice(0, -'.png'.length);
-    const buf = readFileSync(join(opts.iconsDir, fileName));
-    // 規則 7(b): 檔案內容的 sha256 前 12 碼必須等於檔名，防止「改了內容卻沒改檔名」造成快取污染。
-    const actualHash = createHash('sha256').update(buf).digest('hex').slice(0, 12);
-    if (actualHash !== expectedHash) push(`規則 7(b): 圖示 ${fileName} 的內容 sha256 前 12 碼為 ${actualHash}，與檔名不符`);
-    // 規則 7(c): 必須是有效 PNG，且最長邊 ≥ 96px。
-    const size = readPngSize(buf);
-    if (!size) push(`規則 7(c): 圖示 ${fileName} 不是有效的 PNG`);
-    else if (Math.max(size.width, size.height) < 96) push(`規則 7(c): 圖示 ${fileName} 最長邊 ${Math.max(size.width, size.height)}px，小於最低要求 96px`);
-    // 規則 7(d): 未被任何節點引用的圖示，只警告不擋 PR。
-    if (!referencedIcons.has(expectedHash)) warn(`規則 7(d): 圖示 ${fileName} 未被任何節點引用`);
-  }
+  const iconScan = checkHashNamedIconDir(opts.iconsDir, referencedIcons, { rule: '規則 7', minLongestEdge: MIN_ICON_LONGEST_EDGE });
+  iconScan.errors.forEach(push);
+  iconScan.warnings.forEach(warn);
   // 規則 7(c) 的 96px 下限是「圖檔本身別太小」，跟「它會被放多大」無關。顯示尺寸自 2026-08-18
   // 改成逐節點寫在正本的 `<image width/height>`（不再由類型推導）之後，那個數字變成**完全沒有
   // 人守**：parseTree 只擋 ≤0／NaN，規則 7 只看檔案。一個 PR 把某個節點寫成 width="500"
   // height="500"，CI 全綠，sprite 會為它開一個 500×500 的分區、拿 104px 的來源拉上去，站台上
   // 就是一塊糊掉的巨型貼圖。這裡補上「顯示尺寸不得超過來源解析度的一半」——跟規則 10 對樞紐圖
   // 的要求同一個標準（來源至少要是顯示尺寸的兩倍，高 DPI 螢幕才不會糊）。
-  const pngSizeByHash = new Map<string, { width: number; height: number }>();
-  for (const fileName of iconFileNames) {
-    const size = readPngSize(readFileSync(join(opts.iconsDir, fileName)));
-    if (size) pngSizeByHash.set(fileName.slice(0, -'.png'.length), size);
-  }
   for (const n of nodes) {
     // 規則 7(a): 節點引用的圖示必須存在於 iconsDir。
-    if (!iconHashSet.has(n.icon)) { push(`規則 7(a): 節點 ${n.id} 引用的圖示 ${n.icon} 不存在`); continue; }
+    if (!iconScan.hashes.has(n.icon)) { push(`規則 7(a): 節點 ${n.id} 引用的圖示 ${n.icon} 不存在`); continue; }
     // 規則 7(e): 顯示尺寸 × 2 不得超過圖檔解析度。
-    const px = pngSizeByHash.get(n.icon);
-    if (!px) continue; // 不是有效 PNG——規則 7(c) already 報過了，這裡不重複
+    const px = iconScan.sizes.get(n.icon);
+    if (!px) continue; // 不是有效 PNG／解析度不足——規則 7(c) 已經報過了，這裡不重複
     const [w, h] = n.size;
     if (w * 2 > px.width || h * 2 > px.height) {
       push(
@@ -605,20 +688,161 @@ export function validate(svgText: string, opts: ValidateOpts): ValidateResult {
     for (const m of checkChangelog(opts.changelog, parsed.meta)) push(`規則 20: ${m}`);
   }
 
+  // 規則 21：/board 骰盤編輯器的純骰子圖（`data/board-icons.json` ＋ `data/board-icons/`）。
+  //
+  // 這是跟 data/icons/ 平行的一條資產路徑——正本管線（規則 7）只處理 SVG 引用到的圖示，
+  // 純骰子圖完全不在正本裡，換掉節點圖示的那條規則對它視而不見。少了這條規則，「漏了一顆
+  // 骰子沒配圖」「配到的檔案不存在」「檔名被手動改過跟內容對不上」「放進去的根本不是 PNG
+  // 或小到會糊」「留著沒人引用的孤兒檔」「兩顆骰子指到同一張圖」「對應表裡留著早就不是骰子
+  // 的 id」全部會安靜地通過 CI，直到有人真的打開 /board 才看得到破圖、缺圖或兩顆一樣的骰子。
+  //
+  // 子規則：(a) 骰子漏一筆對應／(b)(c)(d) 目錄本身，與規則 7 共用 checkHashNamedIconDir()
+  // 且字母刻意對齊（檔名≠內容雜湊／PNG 結構與解析度／孤兒檔只警告）／(e) 對應表的值格式／
+  // (f) 指向的圖不存在／(g) 兩筆指向同一張圖／(h) 對應表自己的孤兒 entry。
+  const boardIcons = opts.boardIcons;
+  if (boardIcons === null) {
+    warn('規則 21: 沒有提供 data/board-icons.json，/board 純骰子圖的對應未檢查');
+  } else if (typeof boardIcons !== 'object' || Array.isArray(boardIcons)) {
+    // 跟規則 1 驗 nodes.json 的最外層同一個理由：整份被寫成陣列或字串時，底下每一條檢查都會
+    // 拿到空集合而「安靜地全過」。
+    push('規則 21: data/board-icons.json 的最外層必須是以節點 id 為鍵的物件');
+  } else {
+    const entries = Object.entries(boardIcons as Record<string, unknown>);
+    // 「哪些是骰子」只算一次，(a) 與 (h) 共用同一個定義。各算各的話，日後型別名稱一改而只
+    // 改到其中一處，就會同時冒出「(a) 要求它要有圖」與「(h) 說這筆是孤兒」兩條互相矛盾的錯誤。
+    //
+    // ⚠️ 判斷「是不是骰子」只能用 `withText`（type 在文案那一側），而 `withText` 會把
+    // 「兩邊沒對齊」與「結構壞掉」的節點濾掉——那兩件事各自有規則 19 與規則 1 在說話，
+    // 所以 (h) 要先替它們讓路（見下面）。
+    const diceIds = new Set(withText.filter(n => n.typeZh === '骰子').map(n => n.id));
+
+    // (e) 值必須是 12 碼小寫 hex，也就是「一個圖示雜湊」。這份檔案跟 unlock-exceptions.json
+    // 一樣是社群 PR 直接改的，而 `build-data.ts` 讀它時只有一個 `as`＝執行期零檢查（規則 18
+    // 就是為了同一個理由才存在）。少了這條，值會被原封不動拿去組路徑：`{"1001": {"hash":"x"}}`
+    // 變成 `[object Object].png`，`{"1001": "../../data/nodes"}` 讓閘門去讀 board-icons 目錄
+    // 外面的檔案（兩者實測都成立）。先過濾一次，後面每條檢查才拿得到乾淨的輸入。
+    const iconOf = new Map<string, string>();
+    for (const [id, hash] of entries) {
+      if (typeof hash === 'string' && /^[0-9a-f]{12}$/.test(hash)) iconOf.set(id, hash);
+      else push(`規則 21(e): data/board-icons.json 的 ${id} 對應到 ${JSON.stringify(hash)}，不是 12 碼小寫 hex 的圖示雜湊`);
+    }
+
+    // (a) 每一顆骰子節點都要在對應表裡有一筆。
+    const entryIds = new Set(entries.map(([id]) => id));
+    for (const id of diceIds) {
+      if (!entryIds.has(id)) push(`規則 21(a): 骰子 ${id} 在 data/board-icons.json 沒有對應的圖`);
+    }
+
+    // (b)(c)(d) 目錄本身：檔名＝內容雜湊、是有效且夠大的 PNG、沒有孤兒檔或非 .png 雜檔。
+    // 以目錄實際檔案為準掃一次，而不是逐 entry 讀檔算雜湊——同一張圖被 k 個 id 共用時，
+    // 後者會把同一個檔案讀 k 次、噴 k 條一模一樣的錯（規則 7 的註解早就寫了這件事）。
+    const boardScan = checkHashNamedIconDir(opts.boardIconsDir, new Set(iconOf.values()), {
+      rule: '規則 21',
+      minLongestEdge: MIN_ICON_LONGEST_EDGE,
+    });
+    boardScan.errors.forEach(push);
+    boardScan.warnings.forEach(warn);
+
+    // (f) 每一筆指向的圖都要真的在目錄裡。
+    //
+    // 訊息印的是**實際讀取的路徑**（`opts.boardIconsDir`），不是寫死的 `data/board-icons/`：
+    // 測試會把圖示複製到暫存目錄再驗，寫死等於指著一個檔案好端端在那裡的路徑說它不存在
+    // （規則 10 的對應訊息印的也是真正的 centerPath）。稱呼也不寫「骰子 ${id}」——對應表裡
+    // 的 id 不保證還是骰子，那是 (h) 的事。
+    for (const [id, hash] of iconOf) {
+      const filePath = join(opts.boardIconsDir, `${hash}.png`);
+      if (!boardScan.hashes.has(hash)) push(`規則 21(f): data/board-icons.json 的 ${id} 指向的圖 ${filePath} 不存在`);
+    }
+
+    // (g) 兩筆不准指向同一張圖。最常見的成因是「複製上一筆、忘了換成新加進來的那張」，
+    // 而那時 (a)(d)(f) 全部沉默：每顆骰子都有對應、檔案存在、目錄裡也沒有多出來的孤兒檔
+    // （新圖從頭到尾沒被加進去過），/board 上就是兩顆長得一模一樣的骰子。
+    const idsByHash = new Map<string, string[]>();
+    for (const [id, hash] of iconOf) idsByHash.set(hash, [...(idsByHash.get(hash) ?? []), id]);
+    for (const [hash, ids] of idsByHash) {
+      if (ids.length > 1) push(`規則 21(g): 節點 ${ids.join('、')} 指向同一張純骰子圖 ${hash}.png，每顆骰子要有自己的圖`);
+    }
+
+    // (h) 反方向：對應表自己不准有孤兒 entry。
+    //
+    // (a) 從骰子出發問「有沒有一筆」、(d) 從目錄出發問「有沒有被引用」，兩條都沒有人從
+    // Object.keys(boardIcons) 出發問「這個 id 還在嗎、還是骰子嗎」。少了 (h)，「某顆骰子從
+    // 正本移除，nodes.json 與 SVG 都改了、board-icons.json 忘了刪那筆」是零錯誤的——只要
+    // 那筆指向的是一張仍被別人引用的既有圖，(d) 與 (f) 都不會說話（2026-08-23 review F21-1
+    // 實測：塞一筆 "9999" 指向既有雜湊，validate 完全通過）。規則 19 抓得到 SVG↔nodes 的
+    // 殘餘，規則 21 得自己抓自己的。
+    //
+    // ⚠️ 這裡要先跳過不屬於這條規則的 id：`withText` 濾掉的那些各自有規則 19 與規則 1 在
+    // 說話，照樣報下去的話，`nodes.json` 漏一筆文案就會多出一條指向 board-icons.json 的假
+    // 錯誤（實測：刪掉 1001 的文案 → 多一條「1001 不是骰子節點」）。只留下「兩邊都在、結構
+    // 也合法，但它就不是骰子」與「兩邊都找不到」。
+    for (const id of entryIds) {
+      if (diceIds.has(id)) continue;
+      if (textIds.has(id) !== geomIds.has(id)) continue; // 規則 19 的地盤
+      if (structurallyBad.has(id)) continue; // 規則 1 的地盤
+      push(`規則 21(h): data/board-icons.json 的 ${id} 不是（或已不是）骰子節點，這筆對應是孤兒`);
+    }
+  }
+
   return { errors, warnings };
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
-  const { errors, warnings } = validate(readFileSync('data/dice-tree.svg', 'utf8'), {
-    keywords: JSON.parse(readFileSync('data/keywords.json', 'utf8')),
-    upgradeCostTable: JSON.parse(readFileSync('data/upgrade-cost.json', 'utf8')),
-    nodeText: JSON.parse(readFileSync('data/nodes.json', 'utf8')),
-    maxLevelOfficial: JSON.parse(readFileSync('data/maxlevel-official.json', 'utf8')),
-    unlockExceptions: JSON.parse(readFileSync('data/unlock-exceptions.json', 'utf8')),
-    changelog: JSON.parse(readFileSync('data/changelog.json', 'utf8')),
+  // 讀資料檔本身也是閘門的一部分：每一個 readFileSync／JSON.parse 都是一個未捕捉例外的入口，
+  // 檔案被刪或 JSON 少一個逗號時，`npm run validate` 印出來的是 stack trace 而不是
+  // 「❌ N 個問題」，一條規則都沒跑。所以讀檔一律走這支，讀不到就變成指得出檔名的錯誤。
+  //
+  // 「檔案不存在」與「檔案壞掉」刻意分開：`ValidateOpts` 有幾份資料檔本來就備好了一條
+  // 「傳 null ＝沒有這份資料，該規則只警告」的路（upgrade-cost／maxlevel-official／
+  // unlock-exceptions／changelog／board-icons），CLI 過去走不到它。解析失敗則一律是錯——
+  // 那是「有這份資料，但它壞了」，不是「沒有」。
+  const fileErrors: string[] = [];
+  const readDataFile = (path: string, optional: boolean): unknown => {
+    let text: string;
+    try {
+      text = readFileSync(path, 'utf8');
+    } catch (e) {
+      const err = e as NodeJS.ErrnoException;
+      if (optional && err.code === 'ENOENT') return null;
+      fileErrors.push(`資料檔 ${path} 讀不到：${err.message}`);
+      return null;
+    }
+    try {
+      return JSON.parse(text);
+    } catch (e) {
+      fileErrors.push(`資料檔 ${path} 不是合法的 JSON：${(e as Error).message}`);
+      return null;
+    }
+  };
+
+  let svgText = '';
+  try {
+    svgText = readFileSync('data/dice-tree.svg', 'utf8');
+  } catch (e) {
+    fileErrors.push(`資料正本 data/dice-tree.svg 讀不到：${(e as Error).message}`);
+  }
+  const opts: ValidateOpts = {
+    keywords: (readDataFile('data/keywords.json', false) ?? {}) as Record<string, GlossaryRecord>,
+    upgradeCostTable: readDataFile('data/upgrade-cost.json', true) as UpgradeCostTable | null,
+    nodeText: readDataFile('data/nodes.json', false),
+    maxLevelOfficial: readDataFile('data/maxlevel-official.json', true) as MaxLevelOfficial | null,
+    unlockExceptions: readDataFile('data/unlock-exceptions.json', true) as Record<string, { unlockVia: string; note?: string }> | null,
+    changelog: readDataFile('data/changelog.json', true),
     iconsDir: 'data/icons',
     dataDir: 'data',
-  });
+    boardIcons: readDataFile('data/board-icons.json', true),
+    boardIconsDir: 'data/board-icons',
+  };
+
+  // 有資料檔讀不到時就停在這裡：接下來每一條規則都會拿著一份空殼在猜，噴出來的幾百條錯誤
+  // 只會把真正的原因埋掉（跟「幾何規則不吃 withText」同一個判準）。
+  if (fileErrors.length > 0) {
+    fileErrors.forEach(m => console.error(`❌ ${m}`));
+    console.log(`❌ ${fileErrors.length} 個資料檔讀不到或不是合法的 JSON，其餘規則未執行`);
+    process.exit(1);
+  }
+
+  const { errors, warnings } = validate(svgText, opts);
   warnings.forEach(w => console.warn(`⚠️  ${w}`));
   errors.forEach(e => console.error(e));
   console.log(errors.length === 0 ? '✅ 驗證通過' : `❌ ${errors.length} 個問題`);

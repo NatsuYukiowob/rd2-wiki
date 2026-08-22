@@ -98,6 +98,7 @@ const imageUrl = new URL('/favicon.png', Astro.site).href;
       <a class="brand" href="/" aria-current={path === '/' ? 'page' : undefined}>rd2-wiki</a>
       <a href="/tree" aria-current={isCurrent('/tree') ? 'page' : undefined}>骰子樹</a>
       <a href="/dice" aria-current={isCurrent('/dice') ? 'page' : undefined}>圖鑑</a>
+      <a href="/board" aria-current={isCurrent('/board') ? 'page' : undefined}>骰盤</a>
       <!--
         「遊戲介紹」用 <details> 而不是自己刻一個下拉：<summary> 本來就能 Tab 聚焦、能按
         Enter／Space 開合，螢幕閱讀器也會念出展開狀態。自訂元素要補齊這些至少三十行，

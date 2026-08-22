@@ -1,0 +1,123 @@
+---
+// 骰盤擺放編輯器。
+//
+// 做什麼：選 5 顆骰子當隊伍，把它們拖進 5×3 的骰盤，產生一張分享圖。
+// **刻意不做**：戰鬥模擬、機率模擬、合成、網址編碼、localStorage（Yuki 2026-08-22 指定）。
+// 重新整理會回到空骰盤，那是已知且刻意的行為。
+// ⚠️ 註解不要指向 docs/ 底下的檔案：`.gitignore` 有 `docs/`，那是維護者本機的東西，
+// 公開 repo 的讀者永遠打不開。
+//
+// 骰子清單從既有的 tree.json 篩出來，**不新增任何欄位進那份產物**——它的 gzip 只剩
+// 約 1.3 KB 餘裕（tests/tools/build-data.test.ts 有 20 KB 硬斷言）。這一頁是靜態頁，
+// 建置期讀完就好，不佔那個預算。
+//
+// 骰盤圖示改用「純骰子圖」（不含底板），跟正本 SVG 引用的節點圖示是平行的一條資產路徑
+// ——data/board-icons.json（節點 id -> 內容雜湊）＋ data/board-icons/（來源 PNG），
+// build:data 額外轉出 public/assets/board-icons/<hash>.webp（CI 規則 21 守這份對應表）。
+// 不讀 tree.json 的 `icon` 欄位：那是骰子樹節點圖（帶底板），/board 刻意要換掉的正是它。
+import Base from '../layouts/Base.astro';
+import data from '../generated/tree.json';
+import boardIconsRaw from '../../data/board-icons.json';
+import { CELLS, DECK_SIZE } from '../lib/board';
+import { BRANCH_ZH } from '../lib/labels';
+import type { TreeData, TreeNode } from '../lib/types';
+
+const tree = data as unknown as TreeData;
+const boardIcons = boardIconsRaw as Record<string, string>;
+// 只收骰子本體：符文／玩家被動／支援不是「一顆能放進骰盤的骰子」。
+// 排序照節點 id，跟 /dice 圖鑑一致（id 首碼＝分支、次碼＝層級，見規則 2）。
+const dice = tree.nodes
+  .filter(n => n.type === 'dice')
+  .sort((a, b) => a.id.localeCompare(b.id)) as TreeNode[];
+
+const cells = [...Array(CELLS).keys()];
+const slots = [...Array(DECK_SIZE).keys()];
+---
+
+<Base title="骰盤">
+  <section class="page board-page">
+    <h1>骰盤</h1>
+    <p class="lede">
+      骰盤模擬工具，選擇骰子後將骰子直接拖入骰盤。
+    </p>
+
+    <!-- 組合列。每一槽自帶等級選擇器：等級是「這一槽」的屬性，拖進骰盤時直接沿用，
+         格子上不再改（設計決策 5）。要改單一格就重拖一次。 -->
+    <h2 class="board-h2">我的隊伍</h2>
+    <div id="deck-row" role="group" aria-label="我的隊伍">
+      {slots.map(slot => (
+        <div class="deck-slot" data-slot={slot}>
+          <button
+            type="button"
+            class="deck-dice"
+            data-slot={slot}
+            aria-label={`第 ${slot + 1} 槽，尚未選擇骰子，按下選擇`}
+          >
+            <span class="deck-dice-empty" aria-hidden="true">＋</span>
+          </button>
+          <!-- 等級列：⚠️ 三個元素永遠都在，沒有骰子時只是 disabled。
+               用 display 收放會讓整條組合列的寬度隨狀態跳動（CLAUDE.md
+               「工具列的尺寸不准隨篩選狀態改變」那一段記過同一個問題）。 -->
+          <div class="pips-row">
+            <button type="button" class="pips-dec" data-slot={slot} disabled aria-label={`第 ${slot + 1} 槽降低骰面點數`}>◀</button>
+            <span class="pips-value" data-slot={slot}>1</span>
+            <button type="button" class="pips-inc" data-slot={slot} disabled aria-label={`第 ${slot + 1} 槽提高骰面點數`}>▶</button>
+          </div>
+        </div>
+      ))}
+    </div>
+
+    <!-- 挑選網格。預設收起來（hidden），點組合列的槽才展開。
+         41 顆全部輸出在 HTML 裡，不是點下去才抓——這一頁沒有任何資料請求。 -->
+    <div id="dice-picker" hidden role="dialog" aria-label="選擇骰子">
+      <div class="picker-head">
+        <span>選擇骰子</span>
+        <button type="button" id="picker-close" aria-label="關閉選擇">✕</button>
+      </div>
+      <div class="picker-grid">
+        {dice.map(d => (
+          <button
+            type="button"
+            class="picker-dice"
+            data-dice-id={d.id}
+            data-branch={d.branch}
+            title={`${d.name}（${BRANCH_ZH[d.branch]}）`}
+          >
+            <img src={`/assets/board-icons/${boardIcons[d.id]}.webp`} alt="" width={d.size[0]} height={d.size[1]} loading="lazy" decoding="async" />
+            <span>{d.name}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+
+    <h2 class="board-h2">骰盤</h2>
+    <!-- 5 欄 3 列。每一格是 button：它要能 Tab、能按 Enter，鍵盤路徑是這一頁的硬需求
+         （設計時就是因為 canvas 方案給不了這個才選 DOM）。 -->
+    <div id="board-grid" role="group" aria-label="骰盤，5 欄 3 列">
+      {cells.map(i => (
+        <button type="button" class="board-cell" data-index={i} aria-label={`第 ${Math.floor(i / 5) + 1} 列第 ${(i % 5) + 1} 格，空`}></button>
+      ))}
+    </div>
+
+    <!-- 工具列：按鈕文字固定不隨狀態改變，避免整條列的寬度跳動。
+         「隱藏星數」用 aria-pressed 表達開關狀態，視覺上只換底色（跟 hover 共用同一色階），
+         不加會撐寬按鈕的圖示或文字——理由同一段見 global.css 的骰盤區塊。 -->
+    <div id="board-tools">
+      <button type="button" id="board-clear">清空骰盤</button>
+      <button type="button" id="board-export">產生分享圖</button>
+      <button type="button" id="board-hide-pips" aria-pressed="false">隱藏星數</button>
+    </div>
+
+    <p id="board-live" class="sr-only" role="status" aria-live="polite"></p>
+
+    <!-- 分享圖的輸出區塊放在整頁最後：它出現時只會把 footer 往下推，不會動到骰盤或工具列。 -->
+    <div id="board-export-out" hidden>
+      <p class="board-hint">手機上如果下載沒有反應，長按下圖即可存檔。</p>
+      <img id="board-export-img" alt="骰盤分享圖" />
+    </div>
+  </section>
+
+  <script>
+    import '../scripts/board.ts';
+  </script>
+</Base>

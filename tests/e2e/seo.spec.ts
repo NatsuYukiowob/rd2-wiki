@@ -21,6 +21,7 @@ const PAGES = [
   { request: '/', canonical: `${SITE}/`, name: '首頁' },
   { request: '/tree', canonical: `${SITE}/tree/`, name: '骰子樹' },
   { request: '/dice', canonical: `${SITE}/dice/`, name: '骰子圖鑑' },
+  { request: '/board', canonical: `${SITE}/board/`, name: '骰盤' },
   { request: '/guide', canonical: `${SITE}/guide/`, name: '遊戲介紹' },
   { request: '/guide/mechanics', canonical: `${SITE}/guide/mechanics/`, name: '骰子機制與觸發' },
   { request: '/guide/summons', canonical: `${SITE}/guide/summons/`, name: '召喚物與投射物' },

@@ -4,7 +4,7 @@ import { gzipSync } from 'node:zlib';
 import sharp from 'sharp';
 import { parseTree, COORD_TOLERANCE } from './lib/svg-parse.js';
 import { MAX_TEXT_LENGTH, loadNodeText, mergeNodes, type NodeTextMap } from './lib/node-text.js';
-import { buildSprite, buildHiRes, type IconEntry } from './lib/icons.js';
+import { buildSprite, buildHiRes, buildBoardIcon, type IconEntry } from './lib/icons.js';
 import { parseCost } from '../src/lib/cost.js';
 import { parseGrowth } from '../src/lib/growth.js';
 import { extractKeywords } from '../src/lib/keywords.js';
@@ -219,6 +219,18 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
     );
   }
   for (const [hash, buf] of hiRes) writeFileSync(`public/assets/icons/${hash}.webp`, buf);
+
+  // /board 骰盤編輯器的純骰子圖：跟正本 SVG 引用的節點圖示是平行的一條資產路徑（不進
+  // tree.json，也不經 meta.sprite）。src/pages/board.astro 直接讀 data/board-icons.json
+  // 取得節點 id -> hash 的對應，站台端組出 /assets/board-icons/<hash>.webp 這個網址。
+  const boardIcons: Record<string, string> = JSON.parse(readFileSync('data/board-icons.json', 'utf8'));
+  mkdirSync('public/assets/board-icons', { recursive: true });
+  for (const hash of new Set(Object.values(boardIcons))) {
+    writeFileSync(
+      `public/assets/board-icons/${hash}.webp`,
+      await buildBoardIcon(readFileSync(`data/board-icons/${hash}.png`)),
+    );
+  }
 
   const data = buildTreeData(svgText, { keywords, nodeText, unlockExceptions, upgradeCostTable, spriteIndex: index, spriteSize: size });
   const json = JSON.stringify(data);
