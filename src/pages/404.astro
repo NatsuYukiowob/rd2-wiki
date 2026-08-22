@@ -1,0 +1,22 @@
+---
+// 404 頁。
+//
+// ⚠️ 為什麼是 `src/pages/404.astro` 而不是 `public/404.html`：兩者的產物同樣是
+// `dist/404.html`，Cloudflare Pages 一樣會拿它來回未知路徑，但走 Astro 這條路才吃得到
+// Base.astro 的導覽列、頁尾與全站樣式。寫成 public/ 底下的靜態 HTML 就得複製一份樣式，
+// 那份副本沒有任何東西守著，改版面時一定會漂移。
+//
+// 它解掉的是 soft 404：在這個檔案存在之前，未知路徑回的是 HTTP 200 ＋ 首頁內容，
+// 於是無限多個不存在的網址都被判成首頁的重複內容，`/robots.txt` 與 `/sitemap.xml`
+// 也因此「看起來存在」（見 tests/e2e/seo.spec.ts 的說明）。
+import Base from '../layouts/Base.astro';
+---
+
+<Base title="找不到頁面" noIndex>
+  <section style="padding:2rem">
+    <h1>找不到這一頁</h1>
+    <p style="color:var(--muted)">網址可能打錯了，或這一頁已經搬走。</p>
+    <p><a href="/tree">開啟骰子樹 →</a></p>
+    <p><a href="/">回首頁</a></p>
+  </section>
+</Base>
