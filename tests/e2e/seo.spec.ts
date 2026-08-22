@@ -20,6 +20,12 @@ const SITE = 'https://rd2-wiki.pages.dev';
 const PAGES = [
   { request: '/', canonical: `${SITE}/`, name: '首頁' },
   { request: '/tree', canonical: `${SITE}/tree/`, name: '骰子樹' },
+  { request: '/dice', canonical: `${SITE}/dice/`, name: '骰子圖鑑' },
+  { request: '/guide', canonical: `${SITE}/guide/`, name: '遊戲介紹' },
+  { request: '/guide/mechanics', canonical: `${SITE}/guide/mechanics/`, name: '骰子機制與觸發' },
+  { request: '/guide/summons', canonical: `${SITE}/guide/summons/`, name: '召喚物與投射物' },
+  { request: '/guide/status', canonical: `${SITE}/guide/status/`, name: '狀態效果與增減益' },
+  { request: '/guide/monsters', canonical: `${SITE}/guide/monsters/`, name: '怪物與基本名詞' },
   { request: '/about', canonical: `${SITE}/about/`, name: '貢獻' },
 ] as const;
 
@@ -35,7 +41,7 @@ test('SEO-1. robots.txt 是真的純文字檔，不是首頁的回退', async ({
   expect(body).toContain(`Sitemap: ${SITE}/sitemap-index.xml`);
 });
 
-test('SEO-2. sitemap 存在、是 XML，且剛好列出三個現有頁面', async ({ request }) => {
+test('SEO-2. sitemap 存在、是 XML，且剛好列出所有現有頁面', async ({ request }) => {
   const index = await request.get('/sitemap-index.xml');
   expect(index.status()).toBe(200);
   expect(index.headers()['content-type']).toContain('xml');

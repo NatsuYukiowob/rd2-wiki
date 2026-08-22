@@ -1,0 +1,52 @@
+---
+// 遊戲介紹的分類頁。頁面清單在 src/lib/glossary-groups.ts 的 GUIDE_PAGES——分類本身是官方
+// 色碼決定的，這裡只決定「哪幾組印在一起」。全部共用同一個檔案：分開寫成好幾個的話，
+// 那幾份幾乎一樣的版面會各自漂移，而且多一頁就要複製貼上一次。
+import Base from '../../layouts/Base.astro';
+import GlossaryEntry from '../../components/GlossaryEntry.astro';
+import data from '../../generated/tree.json';
+import keywordsRaw from '../../../data/keywords.json';
+import { buildGlossary, displayGlossary, GROUPS, GUIDE_PAGES } from '../../lib/glossary-groups';
+import type { GlossaryRecord, TreeData } from '../../lib/types';
+
+export function getStaticPaths() {
+  return GUIDE_PAGES.map(page => ({ params: { slug: page.slug }, props: { page } }));
+}
+
+const { page } = Astro.props;
+const tree = data as unknown as TreeData;
+const keywords = keywordsRaw as Record<string, GlossaryRecord>;
+const index = buildGlossary(keywords, tree.nodes);
+const glossary = displayGlossary(keywords);
+const whitelist = Object.keys(keywords);
+
+const sections = page.groups.map(slug => ({
+  group: GROUPS.find(g => g.slug === slug)!,
+  items: index.byGroup[slug],
+}));
+const total = sections.reduce((n, s) => n + s.items.length, 0);
+---
+
+<Base title={page.title}>
+  <section class="page">
+    <h1>{page.title}</h1>
+    <p class="lede">{page.intro}</p>
+    <p class="note">
+      共 {total} 條。分組依據是官方資料表給每個標記的<strong>底色碼</strong>（同色＝同一類機制），
+      組名是本站取的。在<a href="/dice">骰子圖鑑</a>的卡片上點任何一個標記，會就地展開同一份解釋。
+    </p>
+
+    {sections.map(section => (
+      <section class="kw-section">
+        {/* 一頁只有一組時不重印組標題——標題會跟 h1 幾乎一樣，只是把版面推長一截。 */}
+        {sections.length > 1 && <h2 style={`border-left-color:${section.group.color}`}>{section.group.title}</h2>}
+        {sections.length > 1 && <p class="note">{section.group.blurb}</p>}
+        <div class="kw-list">
+          {section.items.map(item => (
+            <GlossaryEntry item={item} index={index} whitelist={whitelist} glossary={glossary} />
+          ))}
+        </div>
+      </section>
+    ))}
+  </section>
+</Base>

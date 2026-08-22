@@ -1,0 +1,359 @@
+---
+// 骰子圖鑑：41 顆骰子本體一頁全開。
+//
+// 只收**骰子本體**（`type === 'dice'`，正本裡的矩形節點）。骰子符文、玩家被動、支援那 198
+// 個節點不進圖鑑：它們是加在骰子或玩家身上的強化，不是「一顆骰子」，混在同一個網格裡會讓
+// 41 顆真正的骰子被稀釋到找不到，而它們本來就該從骰子樹的位置去理解。
+//
+// 為什麼是**一頁**而不是每顆一頁（#22 的做法）：#22 與 #29 的 slug 設計還沒定案，而這一頁
+// 已經解掉那個 issue 的主要症狀——2026-08-20 實測 `dist/tree/index.html` 只有 194 個字元，
+// 239 個節點名一個字都沒進 HTML（節點文字全是瀏覽器讀 tree.json 之後才渲染的）。這一頁把
+// 骰子的名稱、描述、覺醒全部靜態輸出，搜尋引擎第一次拿得到可以排序的文字。
+//
+// 卡片裡的 `#關鍵字` **不跳頁**：點下去在同一張卡片上就地換成那個詞的解釋（2026-08-22
+// Yuki 指定，跟 /tree 的詳情面板同一種操作感）。四組關鍵字的完整清單在 /guide 底下，
+// 那裡是「攤開來瀏覽」用的；卡片上的就地視圖是「讀到一半想起來這個詞是什麼」用的。
+import Base from '../layouts/Base.astro';
+import DiceCard from '../components/DiceCard.astro';
+import data from '../generated/tree.json';
+import keywordsRaw from '../../data/keywords.json';
+import nodeTextRaw from '../../data/nodes.json';
+import { buildGlossary, displayGlossary } from '../lib/glossary-groups';
+import { buildTermPayload } from '../lib/static-markup';
+import { BRANCH_ZH } from '../lib/labels';
+import type { GlossaryRecord, TreeData, TreeNode } from '../lib/types';
+
+const tree = data as unknown as TreeData;
+const keywords = keywordsRaw as Record<string, GlossaryRecord>;
+// data/nodes.json 是「id → 文案」的物件，這裡只取 gameId：它刻意不進 tree.json
+// （規則 16 是它唯一的防線），但圖鑑要印，因為那是玩家拿本站對照官方資料表的唯一鍵。
+const gameIds = new Map(
+  Object.entries(nodeTextRaw as Record<string, { gameId?: string }>).map(([id, v]) => [id, v.gameId]),
+);
+
+const index = buildGlossary(keywords, tree.nodes);
+const glossary = displayGlossary(keywords);
+const whitelist = Object.keys(keywords);
+// 全部 62 個標記的解釋在建置期就渲染成 HTML，整包塞進頁面裡，卡片的就地視圖直接拿現成的用。
+// 這也是為什麼詞條文字仍然進得了 HTML：它就在下面那個 div 的文字內容裡。
+const termPayload = buildTermPayload(index, whitelist, glossary);
+
+// 顯示順序＝節點 id。id 的編碼規律是「首碼＝分支、次碼＝層級」（規則 2），所以照 id 排
+// 本來就是照分支分區、區內由淺到深，不需要另外定義一套排序。
+const nodes = tree.nodes
+  .filter(n => n.type === 'dice')
+  .sort((a, b) => a.id.localeCompare(b.id)) as TreeNode[];
+
+const BRANCHES = Object.entries(BRANCH_ZH);
+---
+
+<Base title="骰子圖鑑">
+  <section class="page">
+    <h1>骰子圖鑑</h1>
+    <p class="lede">
+      {nodes.length} 顆骰子的完整資料：基本效果、7 骰點覺醒效果與官方管理 ID。
+      符文、玩家被動與支援不在這裡——它們是加在骰子與玩家身上的強化，請從<a href="/tree">骰子樹</a>看它們的位置與前置關係。
+    </p>
+
+    <!-- 篩選只是把不符合的卡片藏起來，內容一直都在 HTML 裡。沒有 JS 時整頁照常是完整的
+         41 張卡片，只是篩不動——這正是這一頁存在的理由，不能反過來讓 JS 決定有沒有內容。 -->
+    <div id="codex-filters" class="filters">
+      <fieldset>
+        <legend>分支</legend>
+        {BRANCHES.map(([value, label]) => (
+          <label><input type="checkbox" name="branch" value={value} checked /> <span class={`branch-dot branch-${value}`} aria-hidden="true"></span>{label}</label>
+        ))}
+      </fieldset>
+      <p class="filter-count" aria-live="polite">顯示 <span id="codex-count">{nodes.length}</span> / {nodes.length}</p>
+    </div>
+
+    <div id="codex-grid" class="codex-grid">
+      {nodes.map(node => (
+        <DiceCard
+          node={node}
+          gameId={gameIds.get(node.id)}
+          index={index}
+          whitelist={whitelist}
+          glossary={glossary}
+          upgradeCostTable={tree.meta.upgradeCostTable}
+        />
+      ))}
+    </div>
+
+    <!-- 全部 62 個標記的解釋（建置期就渲染好的 HTML），給卡片的就地視圖用。
+         ⚠️ 刻意用 div 的文字內容而不是 application/json 的腳本標籤：解釋 HTML 裡有 `</a>`
+         這種結束標籤，塞進腳本標籤會被 Astro 的編譯器當成腳本內容送去解析，實測直接
+         build 失敗（`Unexpected "/"`）。div 的文字內容由 Astro 自動逃逸，`textContent`
+         讀回來就是原本的 JSON。 -->
+    <div id="codex-terms" hidden>{JSON.stringify(termPayload)}</div>
+  </section>
+</Base>
+
+<script>
+  // --- 篩選 ---
+  // 勾選框 → 隱藏不符合的卡片。刻意不用 URL 狀態同步（那是 /tree 的契約，它有選取節點與
+  // 前置鏈要還原）；這一頁重新整理回到全選是可以接受的。
+  const root = document.getElementById('codex-filters');
+  const grid = document.getElementById('codex-grid');
+  const count = document.getElementById('codex-count');
+  if (root && grid && count) {
+    const boxes = [...root.querySelectorAll<HTMLInputElement>('input[type=checkbox]')];
+    const cards = [...grid.querySelectorAll<HTMLElement>('.dice-card')];
+    const apply = () => {
+      // 一個維度全不勾 = 該維度不篩（等同全勾）。全部取消勾選後畫面一片空白是最容易
+      // 踩到、又最像壞掉的狀態。
+      const picked = (name: string) => {
+        const on = boxes.filter(b => b.name === name && b.checked).map(b => b.value);
+        return on.length === 0 ? null : new Set(on);
+      };
+      const branches = picked('branch');
+      // 目前只有分支一個維度（圖鑑只收骰子本體，類型全是「骰子」，篩了也是全選）。
+      // 留著這一行是因為 picked() 對「沒有這個維度的勾選框」本來就回 null＝不篩，
+      // 之後要加回類型篩選只要補一組 checkbox，不必改這裡的邏輯。
+      const types = picked('type');
+      let shown = 0;
+      for (const card of cards) {
+        const ok =
+          (!branches || branches.has(card.dataset.branch ?? '')) &&
+          (!types || types.has(card.dataset.type ?? ''));
+        card.hidden = !ok;
+        if (ok) shown++;
+      }
+      count.textContent = String(shown);
+    };
+    root.addEventListener('change', apply);
+    apply();
+  }
+
+  // --- 卡片裡的關鍵字就地換頁 ---
+  //
+  // 跟 /tree 的詳情面板同一種操作感：點 `#關鍵字` 換內容、內容從右側滑進來、← 返回時反向
+  // 滑出、Esc 關掉。過場長度與曲線讀 CSS 的 --slide-ms／--slide-ease，不在這裡寫死第二份。
+  //
+  // 刻意少了面板的兩件事：
+  //   1. **不動卡片高度。** 每一層都是 position:absolute; inset:0，內容撐不下就自己捲。
+  //      41 張卡片排在 CSS grid 裡，任何一張改高度都會把同一列的其他卡片一起推動，
+  //      面板那種「高度跟著內容收放」的過場在網格裡不成立。
+  //   2. **不列出哪些節點用到這個詞。** 那是骰子樹的事，這裡只留一個入口把玩家帶過去。
+  //
+  // 解釋文字是建置期就渲染好的 HTML（見 buildTermPayload），這裡只負責建層、堆疊與過場——
+  // 斷詞器不必送到前端，也就不會出現伺服器與瀏覽器對同一段文字斷出不同結果。
+  interface TermPayload { color: string; href: string; html: string; used: boolean }
+  const payloadEl = document.getElementById('codex-terms');
+  const terms: Record<string, TermPayload> = payloadEl ? JSON.parse(payloadEl.textContent ?? '{}') : {};
+
+  /**
+   * 過場長度。**從 CSS 的 --slide-ms 讀**，跟 /tree 的 tree-canvas.ts 同一個理由：JS 只負責
+   * 在動畫結束後把 inline style 清乾淨，兩邊數字一旦漂開，收尾會在動畫還沒跑完就發生，
+   * 看起來像被切斷。
+   */
+  const SLIDE_MS = (() => {
+    const raw = getComputedStyle(document.documentElement).getPropertyValue('--slide-ms').trim();
+    const ms = raw.endsWith('ms') ? parseFloat(raw) : raw.endsWith('s') ? parseFloat(raw) * 1000 : NaN;
+    return Number.isFinite(ms) && ms > 0 ? ms : 280;
+  })();
+
+  /** 使用者要求減少動態時直接瞬間切換。CSS 那邊也關掉了 transition，這裡是同一個決定的另一半。 */
+  const canAnimate = () =>
+    typeof requestAnimationFrame === 'function'
+    && !(typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches);
+
+  /** 每張卡片各自的層堆疊：[卡片本文, 詞彙層 1, 詞彙層 2, …]。 */
+  const layers = new WeakMap<HTMLElement, HTMLElement[]>();
+  /**
+   * 目前開著詞彙層的那張卡片。**同時只准開一張。**
+   *
+   * 允許多張同時開的話，Esc 就沒有一個明確的對象——先前的寫法是抓 DOM 裡「第一張開著的」，
+   * 於是使用者在第二張卡片按 Esc，關掉的是第一張，焦點還被丟到第一張的連結上（2026-08-22
+   * code review 抓到）。與其去猜使用者在看哪一張，不如讓「開著的」永遠只有一張。
+   */
+  let openCard: HTMLElement | null = null;
+  /** 開啟第一層的那個連結，整疊關掉時把焦點還給它——否則焦點掉回 body，Tab 會從整頁最上面重來。 */
+  const openers = new WeakMap<HTMLElement, HTMLElement>();
+  /** 進行中的過場收尾函式。下一次操作進來時先把它跑完，狀態才不會疊在一起。 */
+  const finishers = new WeakMap<HTMLElement, () => void>();
+
+  const stageOf = (card: HTMLElement) => card.querySelector<HTMLElement>('.card-term')!;
+
+  function layersOf(card: HTMLElement): HTMLElement[] {
+    let stack = layers.get(card);
+    if (!stack) {
+      stack = [card.querySelector<HTMLElement>('.dice-card-main')!];
+      layers.set(card, stack);
+    }
+    return stack;
+  }
+
+  function finishNow(card: HTMLElement): void {
+    const finish = finishers.get(card);
+    finishers.delete(card);
+    finish?.();
+  }
+
+  function buildView(term: string): HTMLElement {
+    const entry = terms[term]!;
+    const view = document.createElement('div');
+    view.className = 'card-term-view';
+    view.tabIndex = -1;
+
+    const head = document.createElement('div');
+    head.className = 'card-term-head';
+    const back = document.createElement('button');
+    back.type = 'button';
+    back.className = 'card-term-back';
+    back.setAttribute('aria-label', '返回');
+    back.textContent = '←';
+    const title = document.createElement('p');
+    title.className = 'card-term-title';
+    title.style.color = entry.color;
+    title.textContent = `#${term}`;
+    head.append(back, title);
+
+    const body = document.createElement('div');
+    body.className = 'card-term-body';
+    // 唯一用 innerHTML 的地方，來源是建置期自己渲染、已經逐字逃逸過的字串（見 markup.ts）。
+    body.innerHTML = entry.html;
+
+    view.append(head, body);
+
+    // 沒有任何節點文案用到的標記（62 個裡有 25 個）不給搜尋入口：那條路過去是一個
+    // 0 筆結果的搜尋，比不給還糟。
+    if (entry.used) {
+      const search = document.createElement('a');
+      search.className = 'card-term-search';
+      search.href = `/tree?q=${encodeURIComponent(term)}`;
+      search.textContent = `在骰子樹搜尋 #${term} →`;
+      view.append(search);
+    }
+    return view;
+  }
+
+  /** 非最上層的那幾層要退出無障礙樹與點擊範圍，但**必須保留版面**——所以是 visibility 不是 display。 */
+  const deactivate = (el: HTMLElement) => { el.style.visibility = 'hidden'; };
+  const activate = (el: HTMLElement) => { el.style.visibility = ''; };
+
+  function slide(card: HTMLElement, fromEl: HTMLElement, toEl: HTMLElement, dir: 'forward' | 'back', done: () => void): void {
+    const cleanup = () => {
+      for (const el of [fromEl, toEl]) {
+        el.classList.remove('slide-anim');
+        el.style.transform = '';
+        el.style.opacity = '';
+      }
+      done();
+    };
+    if (!canAnimate()) {
+      cleanup();
+      return;
+    }
+    // 數值跟 /tree 的面板一致：進場那一層從整個寬度外滑進來，退場那一層只退 30% 並淡出，
+    // 兩者速度不同才有前後層次，不是兩張紙平移。
+    const enter = dir === 'forward' ? 100 : -100;
+    const exit = dir === 'forward' ? -30 : 30;
+    toEl.style.transform = `translateX(${enter}%)`;
+    toEl.style.opacity = '0';
+
+    // 兩層 rAF：第一層讓上面的起始 style 真的被套用，第二層才改成終點值，
+    // 瀏覽器才會把它當成一次過渡而不是直接跳到終點。
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        for (const el of [fromEl, toEl]) el.classList.add('slide-anim');
+        fromEl.style.transform = `translateX(${exit}%)`;
+        fromEl.style.opacity = '0';
+        toEl.style.transform = 'translateX(0)';
+        toEl.style.opacity = '1';
+      });
+    });
+
+    // 用 setTimeout 而不是 transitionend：後者在元素被 display:none、動畫被中斷、或分頁切到
+    // 背景時都可能不觸發，而這個收尾負責把 inline style 清乾淨——沒收尾的話那一層會永遠
+    // 停在半透明、位移 30% 的中間狀態。跟 tree-canvas.ts 同一個決定。
+    const timer = setTimeout(() => { finishers.delete(card); cleanup(); }, SLIDE_MS + 20);
+    finishers.set(card, () => { clearTimeout(timer); cleanup(); });
+  }
+
+  function focusTop(view: HTMLElement): void {
+    view.querySelector<HTMLElement>('.card-term-back')?.focus({ preventScroll: true });
+  }
+
+  /** 不做動畫地把一張卡片收回本文狀態。切換到別張卡片時用——那時焦點在新卡片上，不該搶。 */
+  function resetCard(card: HTMLElement): void {
+    finishNow(card);
+    const stack = layersOf(card);
+    for (const view of stack.splice(1)) view.remove();
+    activate(stack[0]!);
+    stack[0]!.removeAttribute('data-active');
+    stageOf(card).hidden = true;
+    openers.delete(card);
+    if (openCard === card) openCard = null;
+  }
+
+  function push(card: HTMLElement, term: string, opener: HTMLElement): void {
+    // 開新的一張之前先收掉舊的那張，「開著的」永遠只有一張。
+    if (openCard && openCard !== card) resetCard(openCard);
+    finishNow(card);
+    const stack = layersOf(card);
+    const stage = stageOf(card);
+    const from = stack[stack.length - 1]!;
+    const view = buildView(term);
+    if (stack.length === 1) openers.set(card, opener);
+    stage.appendChild(view);
+    stage.hidden = false;
+    stack.push(view);
+    // data-active 只掛在最上層：過場中兩層同時在畫面上，測試與樣式都需要一個明確的「現在這層」。
+    from.removeAttribute('data-active');
+    view.setAttribute('data-active', '');
+    openCard = card;
+    slide(card, from, view, 'forward', () => {
+      deactivate(from);
+      focusTop(view);
+    });
+  }
+
+  function pop(card: HTMLElement): void {
+    finishNow(card);
+    const stack = layersOf(card);
+    if (stack.length <= 1) return;
+    const stage = stageOf(card);
+    const from = stack.pop()!;
+    const to = stack[stack.length - 1]!;
+    activate(to);
+    from.removeAttribute('data-active');
+    if (stack.length > 1) to.setAttribute('data-active', '');
+    slide(card, from, to, 'back', () => {
+      from.remove();
+      if (stack.length === 1) {
+        stage.hidden = true;
+        openers.get(card)?.focus();
+        openers.delete(card);
+        if (openCard === card) openCard = null;
+      } else {
+        focusTop(to);
+      }
+    });
+  }
+
+  document.addEventListener('click', event => {
+    const target = event.target as HTMLElement | null;
+    const link = target?.closest?.('.dice-card a.kw-link[data-term]') as HTMLElement | null;
+    if (link) {
+      const term = link.dataset.term ?? '';
+      if (!terms[term]) return; // 查不到就讓它照常跳到詞條頁，不要吞掉這一次點擊
+      event.preventDefault();
+      push(link.closest('.dice-card') as HTMLElement, term, link);
+      return;
+    }
+    const back = target?.closest?.('.card-term-back') as HTMLElement | null;
+    if (back) pop(back.closest('.dice-card') as HTMLElement);
+  });
+
+  document.addEventListener('keydown', event => {
+    if (event.key !== 'Escape' || !openCard) return;
+    const card = openCard;
+    // Esc 一次關掉整疊，不是退一層——卡片是個小覆蓋層，深到第三層還要按三次才離得開，
+    // 那是把「離開」變成一件需要耐心的事。中間那幾層直接拆掉不做動畫，只讓最上面那層滑出去。
+    finishNow(card);
+    const stack = layersOf(card);
+    while (stack.length > 2) stack.splice(1, 1)[0]!.remove();
+    pop(card);
+  });
+</script>

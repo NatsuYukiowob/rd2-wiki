@@ -5,6 +5,7 @@
 import '../styles/global.css';
 import data from '../generated/tree.json';
 import { FEATURES } from '../lib/flags';
+import { GUIDE_PAGES } from '../lib/glossary-groups';
 
 interface Props {
   title: string;
@@ -84,6 +85,20 @@ const imageUrl = new URL('/favicon.png', Astro.site).href;
     <nav id="site-nav">
       <a href="/">rd2-wiki</a>
       <a href="/tree">骰子樹</a>
+      <a href="/dice">圖鑑</a>
+      <!--
+        「遊戲介紹」用 <details> 而不是自己刻一個下拉：<summary> 本來就能 Tab 聚焦、能按
+        Enter／Space 開合，螢幕閱讀器也會念出展開狀態。自訂元素要補齊這些至少三十行，
+        而且補漏一項就是一個只有滑鼠能用的選單。底下的 <script> 只加兩件 <details> 沒有的
+        事：點外面關掉、按 Esc 關掉。沒有 JS 時它仍然是一個能開能關的選單。
+      -->
+      <details class="nav-menu">
+        <summary>遊戲介紹</summary>
+        <div class="nav-menu-items">
+          <a href="/guide">總覽</a>
+          {GUIDE_PAGES.map(page => <a href={`/guide/${page.slug}`}>{page.title}</a>)}
+        </div>
+      </details>
       {FEATURES.contributeLink && <a href="/about">貢獻</a>}
       <!-- 顯示「上次更新」而非資料版本號：日期取自資料正本 SVG 的 data-updated 屬性
            （tools/build-data.ts 解析進 meta.updated），會隨資料更新自動變動，
@@ -97,5 +112,26 @@ const imageUrl = new URL('/favicon.png', Astro.site).href;
       本站為非官方（fan-made）玩家攻略站，與 111% 無隸屬關係。<br />
       遊戲圖示與文字著作權屬 111 Percent Inc.，程式碼採 MIT 授權。
     </footer>
+    <script>
+      // <details> 唯一缺的兩件事：點到選單外面、以及按 Esc，都要收起來。
+      // 沒有這兩條的話，選單一開就只能再點一次 summary 才關得掉——在手機上等於擋住半頁。
+      const menus = [...document.querySelectorAll<HTMLDetailsElement>('#site-nav .nav-menu')];
+      const closeAll = (except?: Element) => {
+        for (const m of menus) if (m !== except) m.open = false;
+      };
+      document.addEventListener('click', event => {
+        const inside = menus.find(m => m.contains(event.target as Node));
+        closeAll(inside ?? undefined);
+      });
+      document.addEventListener('keydown', event => {
+        if (event.key !== 'Escape') return;
+        const open = menus.find(m => m.open);
+        if (!open) return;
+        open.open = false;
+        // 焦點還給觸發它的 <summary>，否則按下 Esc 之後焦點掉回 <body>，下一次 Tab 會從
+        // 頁面最上面重新開始。
+        open.querySelector('summary')?.focus();
+      });
+    </script>
   </body>
 </html>

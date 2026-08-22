@@ -1,0 +1,45 @@
+---
+// 一個關鍵字詞條。/guide/* 各頁共用同一個元件。
+//
+// /dice 的卡片**不用**這個元件：那裡是就地換頁的覆蓋層，內容由前端從建置期產生的
+// `#codex-terms` 塞進去（見 dice.astro）。兩邊的視覺仍刻意一致——官方色的 `#詞` 加解釋——
+// 但實作是兩條路，改其中一邊時記得看另一邊。
+//
+// `id` 用官方 code（COMBO、FROZEN…）而不是中文：錨點會出現在網址列，ASCII 才不會被
+// 編碼成一長串 %E3%80%82，也才方便從別頁連過來。
+import { renderStaticText } from '../lib/static-markup';
+import type { GlossaryIndex, GlossaryItem } from '../lib/glossary-groups';
+
+interface Props {
+  item: GlossaryItem;
+  index: GlossaryIndex;
+  whitelist: readonly string[];
+  glossary: Record<string, { color: string; desc: string }>;
+}
+
+const { item, index, whitelist, glossary } = Astro.props;
+const desc = renderStaticText(item.desc, whitelist, glossary, index);
+---
+
+<article class="kw-entry" id={item.anchor}>
+  <h3>
+    <span class="kw-term" style={`color:${item.color}`}>#{item.term}</span>
+    <code class="kw-code">{item.anchor}</code>
+    {item.aliases.length > 0 && (
+      <span class="kw-alias">別名 {item.aliases.map(a => `#${a}`).join('、')}</span>
+    )}
+  </h3>
+  <p class="kw-desc" set:html={desc} />
+  {
+    item.usedBy.length > 0 ? (
+      /* 只給入口，不列出是哪些節點（2026-08-22 Yuki 指定）：那份清單這裡讀起來只是一串
+         名字，玩家真正要問的「它長在樹的哪裡、要多少錢」只有骰子樹答得了。 */
+      <p class="kw-used"><a href={`/tree?q=${encodeURIComponent(item.term)}`}>在骰子樹搜尋 #{item.term} →</a></p>
+    ) : (
+      /* 62 條裡有 25 條沒被任何節點文案引用。不隱藏——藏起來玩家會以為站台漏資料，
+         標出來才說得清楚「這是遊戲有、但骰子樹上沒有節點用到的機制」。
+         也刻意不給搜尋入口：那條路過去是一個 0 筆結果的搜尋，比不給還糟。 */
+      <p class="kw-unused">骰子樹的節點文案沒有用到這個標記</p>
+    )
+  }
+</article>

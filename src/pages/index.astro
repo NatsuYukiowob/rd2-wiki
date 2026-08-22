@@ -2,24 +2,78 @@
 // 首頁：版本與更新日期全部從 src/generated/tree.json 讀出，不寫死，資料改版時自動同步。
 import Base from '../layouts/Base.astro';
 import data from '../generated/tree.json';
+import changelogRaw from '../../data/changelog.json';
+import keywordsRaw from '../../data/keywords.json';
+import { displayGlossary } from '../lib/glossary-groups';
+import type { Changelog } from '../lib/changelog';
+import type { GlossaryRecord } from '../lib/types';
+
+const changelog = changelogRaw as Changelog;
+// 首頁只放最新 3 筆。更久以前的東西對「這個站最近有沒有在動」沒有幫助，卻會把首頁撐長，
+// 把底下的入口推到摺線以下。
+const recent = changelog.entries.slice(0, 3);
+const nodeCount = data.nodes.length;
+const diceCount = data.nodes.filter(n => n.type === 'dice').length;
+// ⚠️ 不能用 `data.meta.glossary`：那份是「骰子樹描述實際引用到的」子集（41 條），
+// 而同一頁的更新日誌與 /guide 都說 62 條官方標記——同一頁自相矛盾。要數的是資料檔裡
+// 有解釋的詞條（別名不算），跟 /guide 用同一個來源。
+const termCount = Object.keys(displayGlossary(keywordsRaw as Record<string, GlossaryRecord>)).length;
 ---
 
 <Base title="首頁">
-  <section style="padding:2rem">
+  <section class="page home-hero">
     <h1>Random Dice 2 wiki</h1>
-    <p><a href="/tree">開啟骰子樹 →</a></p>
+    <p class="lede">
+      骰子樹 {nodeCount} 個節點的解鎖順序、前置關係與完整效果，資料逐條對過官方資料表。
+    </p>
+
+    <div class="home-links">
+      <a class="home-card" href="/tree">
+        <h2>骰子樹 →</h2>
+        <p>可平移縮放的全樹畫布，點節點看前置鏈與累計解鎖成本。</p>
+      </a>
+      <a class="home-card" href="/dice">
+        <h2>骰子圖鑑 →</h2>
+        <p>{diceCount} 顆骰子的基本效果與 7 骰點覺醒，一頁看完。</p>
+      </a>
+      <a class="home-card" href="/guide">
+        <h2>遊戲介紹 →</h2>
+        <p>骰子描述裡那些帶 # 的官方標記是什麼意思。</p>
+      </a>
+    </div>
+
     <!-- 三個數字是三件不同的事，不要合併：遊戲版本是玩家在遊戲裡看得到的號碼；資料版本是
          這份資料抄自哪一版遊戲資源包；更新日期是這個站最後一次跟上游對過資料的日子。
          全部讀自資料正本（<svg> 的 data-game-version／<metadata> 的 resource bundle／
-         data-updated），不寫死在頁面上——寫死的版本號一定會忘記跟著改。 -->
-    <p style="color:var(--muted)">
+         data-updated），不寫死在頁面上——寫死的版本號一定會忘記跟著改。
+
+         ⚠️ id 是 tests/e2e/tree.spec.ts 的 T 抓的目標。那條測試原本抓的是 `section`，
+         首頁一多一個區塊就會踩到 Playwright 的 strict mode；選擇器綁版面結構本來就撐不住
+         版面改動，所以改綁這個 id。 -->
+    <p id="version-info" class="muted">
       遊戲版本v{data.meta.gameVersion} ・ 資料版本 {data.meta.gameBundle}（更新於 {data.meta.updated}）
+      ・ {termCount} 個關鍵字
     </p>
+  </section>
+
+  <section class="page home-changelog">
+    <h2>更新日誌</h2>
+    {recent.map(entry => (
+      <article class="log-entry">
+        <p class="log-head">
+          <time datetime={entry.date}>{entry.date}</time>
+          <strong>{entry.title}</strong>
+          {entry.data && <span class="log-stamp">遊戲 v{entry.data.gameVersion} ・ 資源包 {entry.data.gameBundle}</span>}
+        </p>
+        <ul>{entry.items.map(item => <li>{item}</li>)}</ul>
+      </article>
+    ))}
+    <!-- 目前全部條目就這幾筆，還不需要一頁完整記錄；筆數長起來之後再開 /changelog。 -->
+    {changelog.entries.length > recent.length && (
+      <p class="note">另有 {changelog.entries.length - recent.length} 筆較早的更新。</p>
+    )}
 
     <!-- 訪客計數器。
-         ⚠️ 刻意放在現有的 section 元素裡面，而不是自成一個新的：tests/e2e/tree.spec.ts
-         的 T 用 page.locator('section') 讀首頁，頁面上多一個 section 會讓那條測試以
-         Playwright strict mode violation 紅掉。
          預設 hidden，拿到數字才顯示——但 hidden 在 global.css 裡被改成
          visibility: hidden（保留高度），所以顯示與否都不會讓下面的 footer 跳動。 -->
     <p id="hit-counter" hidden>
