@@ -1,0 +1,47 @@
+---
+// 遊戲介紹的索引頁。導覽列的下拉選單直接列得出每一頁，這一頁的作用是給每一組一句說明與
+// 條數——下拉選單塞不下這些，而「召喚物與投射物」這種本站自取的組名，光看名字猜不出範圍。
+import Base from '../../layouts/Base.astro';
+import data from '../../generated/tree.json';
+import keywordsRaw from '../../../data/keywords.json';
+import { buildGlossary, GROUPS, GUIDE_PAGES } from '../../lib/glossary-groups';
+import type { GlossaryRecord, TreeData } from '../../lib/types';
+
+const tree = data as unknown as TreeData;
+const keywords = keywordsRaw as Record<string, GlossaryRecord>;
+const index = buildGlossary(keywords, tree.nodes);
+
+// ⚠️ 不能寫 `index.byTerm.size`：那份表為了讓別名也查得到本尊，會把 2 個別名（播種、傳送）
+// 也指到同一筆詞條上，數出來是 64 而不是 62 條解釋。
+const termCount = new Set(index.byTerm.values()).size;
+
+const pages = GUIDE_PAGES.map(page => ({
+  ...page,
+  count: page.groups.reduce((n, slug) => n + index.byGroup[slug].length, 0),
+  colors: page.groups.map(slug => GROUPS.find(g => g.slug === slug)!.color),
+}));
+---
+
+<Base title="遊戲介紹">
+  <section class="page">
+    <h1>遊戲介紹</h1>
+    <p class="lede">
+      骰子描述裡那些帶 <code>#</code> 的詞是遊戲的正式標記，共 {termCount} 條。
+      這裡按官方給每個標記的底色分組——同色＝同一類機制，分組不是本站的判斷，只有組名是。
+      在<a href="/dice">骰子圖鑑</a>的卡片上點任何一個標記，也會就地展開同一份解釋。
+    </p>
+
+    <div class="guide-cards">
+      {pages.map(page => (
+        <a class="guide-card" href={`/guide/${page.slug}`}>
+          <span class="guide-swatch" aria-hidden="true">
+            {page.colors.map(c => <span style={`background:${c}`}></span>)}
+          </span>
+          <h2>{page.title}</h2>
+          <p>{page.intro}</p>
+          <p class="note">{page.count} 條 →</p>
+        </a>
+      ))}
+    </div>
+  </section>
+</Base>

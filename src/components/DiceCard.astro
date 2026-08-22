@@ -1,0 +1,95 @@
+---
+// 圖鑑卡片：一個節點的全部靜態資訊。
+//
+// 跟 /tree 的詳情面板刻意共用同一套視覺與同一支 `#關鍵字` 斷詞器，但**不是同一個元件**——
+// 面板是互動的（返回／關閉／推入下一頁、前置鏈跟著畫布高亮），那些在一張靜態卡片上不成立。
+// 這裡拿掉面板的外殼與前置鏈區塊，改成一條「在骰子樹查看 →」把互動交還給 /tree；
+// 換來的是三件面板給不了的事：全部 239 筆一次看完、覺醒不用點就看得到、以及文字進 HTML
+// （面板的內容是瀏覽器讀 tree.json 之後才渲染的，搜尋引擎一個字都拿不到）。
+import { renderStaticText } from '../lib/static-markup';
+import { formatCost, formatGrowth, formatUnlockVia } from '../lib/format';
+import { cumulativeUpgradeCost, upgradeTableApplies } from '../lib/cost';
+import { AWAKENING_CONDITION, BRANCH_ZH } from '../lib/labels';
+import type { GlossaryIndex } from '../lib/glossary-groups';
+import type { TreeNode, UpgradeCostTable } from '../lib/types';
+
+interface Props {
+  node: TreeNode;
+  /** 官方資料表的管理 ID。它刻意不進 tree.json（規則 16 是它唯一的防線），所以由頁面從
+   *  data/nodes.json 讀出來傳進來。查不到就不顯示，不要印一個空的欄位。 */
+  gameId: string | undefined;
+  index: GlossaryIndex;
+  whitelist: readonly string[];
+  glossary: Record<string, { color: string; desc: string }>;
+  upgradeCostTable: UpgradeCostTable | null;
+}
+
+const { node, gameId, index, whitelist, glossary, upgradeCostTable } = Astro.props;
+
+const desc = renderStaticText(node.description, whitelist, glossary, index);
+const awakening = node.awakening ? renderStaticText(node.awakening, whitelist, glossary, index) : null;
+const growth = formatGrowth(node);
+// 練滿累計只適用骰子符文（見 UpgradeCostTable 的說明）：玩家被動的等級上限與單價各不相同，
+// 套這張表會算出一個看起來很專業的錯數字，所以套不上就整列不顯示。
+const maxUpgrade = upgradeTableApplies(upgradeCostTable, node)
+  ? cumulativeUpgradeCost(upgradeCostTable, node.maxLevel)
+  : null;
+---
+
+<article class="dice-card" id={`n${node.id}`} data-branch={node.branch} data-type={node.type}>
+  <!-- 卡片本文是「第 0 層」。關鍵字的就地視圖會蓋在它上面，換頁時它跟著往左退、淡出，
+       跟 /tree 詳情面板的過場同一種動作——所以它必須是一個可以整塊 transform 的元素，
+       不能是一堆散落在 .dice-card 底下的兄弟節點。 -->
+  <div class="dice-card-main">
+    <header>
+      <img
+        src={`/assets/icons/${node.icon}.webp`}
+        alt=""
+        width={node.size[0]}
+        height={node.size[1]}
+        loading="lazy"
+        decoding="async"
+      />
+      <div class="dice-card-title">
+        <h3>{node.name}</h3>
+        <!-- 刻意不印類型：圖鑑只收骰子本體，41 張卡片全寫「骰子」等於沒寫。 -->
+        <p class="meta">
+          <span class={`branch-dot branch-${node.branch}`} aria-hidden="true"></span>
+          {BRANCH_ZH[node.branch]}
+          {gameId && <code class="game-id">{gameId}</code>}
+        </p>
+      </div>
+    </header>
+
+    <!-- 花錢買得到的才加「解鎖」前綴：formatUnlockVia 對其餘 9 顆回的是「初始解鎖」或官方寫的
+         取得條件原文，前面再加一個「解鎖」會變成「解鎖 初始解鎖」。 -->
+    <p class="meta">{node.unlockVia === 'cost' ? `解鎖 ${formatUnlockVia(node)}` : formatUnlockVia(node)}</p>
+    {node.maxLevel > 1 && <p class="meta">等級上限 {node.maxLevel}</p>}
+    {growth && <p class="growth">{growth}</p>}
+    {maxUpgrade && <p class="upgrade">練滿 {node.maxLevel} 級累計 {formatCost(maxUpgrade)}<span class="cond">含解鎖那一次</span></p>}
+    {node.dataIssue === 'placeholder' && <p class="warn">數值待補（遊戲資料含未替換佔位符）</p>}
+
+    <p class="desc" set:html={desc} />
+
+    {
+      awakening && (
+        <div class="awakening">
+          <p class="awakening-head">骰子覺醒<span class="cond">{AWAKENING_CONDITION}</span></p>
+          <p class="desc" set:html={awakening} />
+        </div>
+      )
+    }
+
+    <a class="card-link" href={`/tree?node=${node.id}`}>在骰子樹查看前置鏈 →</a>
+  </div>
+
+  <!--
+    關鍵字解釋的就地視圖舞台。點卡片裡任何一個 `#關鍵字`，dice.astro 的腳本會在這裡建一層
+    視圖，從右側滑進來蓋住卡片本文——跟 /tree 的詳情面板同一種過場。跟面板刻意不同的兩點：
+    (1) **卡片高度不動**——視圖是 `position:absolute; inset:0`，撐不下就自己捲，
+        不做面板那種高度過場；41 張卡片排在網格裡，任何一張改高度都會推動整列。
+    (2) **不列出哪些節點用到**——那是骰子樹的事，這裡只給一個入口把玩家帶過去。
+    內容由腳本建，所以這裡是空的舞台；沒有 JS 時它永遠 hidden，`#關鍵字` 就是一條正常的連結。
+  -->
+  <div class="card-term" hidden></div>
+</article>

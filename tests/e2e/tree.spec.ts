@@ -1024,7 +1024,9 @@ test('T. 首頁的版本資訊全部來自資料正本，不是寫死在頁面�
   ).meta as { gameVersion: string; gameBundle: string; updated: string };
 
   await page.goto('/');
-  const text = (await page.locator('section').innerText()).replace(/\s+/g, '');
+  // 綁 id 不綁 `section`：首頁在 2026-08-22 多了更新日誌區塊，`locator('section')` 會
+  // 命中兩個而觸發 Playwright 的 strict mode。選擇器綁版面結構撐不住任何版面改動。
+  const text = (await page.locator('#version-info').innerText()).replace(/\s+/g, '');
   expect(text).toContain(`遊戲版本v${meta.gameVersion}`);
   expect(text).toContain(`資料版本${meta.gameBundle}`);
   expect(text).toContain(meta.updated);

@@ -432,3 +432,517 @@ pre {
   /* 數字回填前先把位子撐開，填進去的那一刻不會位移。 */
   min-width: 6ch;
 }
+
+/* ==========================================================================
+   靜態內容頁（首頁／圖鑑／遊戲介紹）
+   --------------------------------------------------------------------------
+   /tree 是一張畫布，它的版面規則（#detail、#toolbar…）全部綁在自己的 id 底下。
+   下面這一段是「會捲動的一般網頁」那一路的樣式，一律掛在 .page 底下，兩邊不會互相踩到——
+   .meta／.desc／.note 這些 class 名稱在 #detail 裡已經有一份，那是刻意的：同一個東西在
+   兩處長得一樣，但作用域分開，改其中一邊不會意外動到另一邊。
+   ========================================================================== */
+
+.page {
+  padding: 2rem 1rem 3rem;
+}
+
+.page h1 {
+  margin: 0 0 0.5rem;
+  font-size: 1.9rem;
+}
+
+.page .lede {
+  max-width: 44rem;
+  margin: 0 0 1.5rem;
+  color: var(--muted);
+}
+
+.page .note {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.page .muted {
+  color: var(--muted);
+}
+
+/* 分支色點：文字前面一顆小圓點，讓「自然／工學／魔法…」不必靠記顏色。
+   用 background 而不是文字色：色點要在深色底上看得見，而五個分支色的對比度不一致。 */
+.branch-dot {
+  display: inline-block;
+  width: 0.6em;
+  height: 0.6em;
+  margin-right: 0.35em;
+  border-radius: 50%;
+  vertical-align: baseline;
+}
+.branch-nature { background: var(--nature); }
+.branch-engineering { background: var(--engineering); }
+.branch-magic { background: var(--magic); }
+.branch-order { background: var(--order); }
+.branch-chaos { background: var(--chaos); }
+
+/* --- 導覽列的下拉選單（<details>）--- */
+#site-nav .nav-menu {
+  position: relative;
+}
+#site-nav .nav-menu > summary {
+  /* list-style: none ＋ ::-webkit-details-marker：兩者都要，才能在所有瀏覽器上拿掉
+     <summary> 預設的三角形。留著的話它會跟自己畫的箭頭疊成兩個記號。 */
+  list-style: none;
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--gold);
+  user-select: none;
+}
+#site-nav .nav-menu > summary::-webkit-details-marker {
+  display: none;
+}
+#site-nav .nav-menu > summary::after {
+  content: '▾';
+  margin-left: 0.25em;
+  font-size: 0.8em;
+  color: var(--muted);
+}
+#site-nav .nav-menu > summary:hover,
+#site-nav .nav-menu > summary:focus-visible {
+  text-decoration: underline;
+}
+#site-nav .nav-menu-items {
+  position: absolute;
+  z-index: 30; /* 蓋過 /tree 的 #tree-controls（它是 position: fixed 的浮層） */
+  top: calc(100% + 0.5rem);
+  left: -0.5rem;
+  display: flex;
+  flex-direction: column;
+  min-width: 12rem;
+  padding: 0.35rem;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 10px 30px rgb(0 0 0 / 50%);
+}
+#site-nav .nav-menu-items a {
+  padding: 0.4rem 0.6rem;
+  border-radius: 6px;
+  font-weight: 500;
+}
+#site-nav .nav-menu-items a:hover,
+#site-nav .nav-menu-items a:focus-visible {
+  background: rgb(255 255 255 / 8%);
+  text-decoration: none;
+}
+
+/* --- 首頁 --- */
+.home-links {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+  gap: 0.75rem;
+  margin: 1.5rem 0;
+}
+.home-card {
+  padding: 1rem;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--fg);
+  text-decoration: none;
+}
+.home-card:hover,
+.home-card:focus-visible {
+  border-color: var(--gold);
+  text-decoration: none;
+}
+.home-card h2 {
+  margin: 0 0 0.35rem;
+  font-size: 1.05rem;
+  color: var(--gold);
+}
+.home-card p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.home-changelog {
+  padding-top: 0;
+}
+.home-changelog h2 {
+  margin: 0 0 0.75rem;
+  font-size: 1.15rem;
+}
+.log-entry {
+  padding: 0.75rem 0;
+  border-top: 1px solid var(--border);
+}
+.log-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.5rem;
+  margin: 0 0 0.35rem;
+}
+.log-head time {
+  color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 0.85rem;
+}
+.log-stamp {
+  color: var(--gold);
+  font-size: 0.78rem;
+}
+.log-entry ul {
+  margin: 0;
+  padding-left: 1.2rem;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+/* --- 圖鑑 --- */
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem 1.5rem;
+  margin: 0 0 1.5rem;
+  padding: 0.75rem 1rem;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.filters fieldset {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.9rem;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.filters legend {
+  padding: 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+.filters label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+.filter-count {
+  margin: 0 0 0 auto;
+  color: var(--muted);
+  font-size: 0.85rem;
+  /* 等寬數字：篩選時數字每幀在變，字寬不固定的話整條列會左右抽動。 */
+  font-variant-numeric: tabular-nums;
+}
+
+.codex-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(19rem, 1fr));
+  gap: 0.75rem;
+}
+.dice-card {
+  /* 關鍵字的就地視圖是 position:absolute 的覆蓋層，定位基準在這裡。
+     overflow: hidden 是給過場用的：換頁時卡片本文會往左退 30%，不裁掉會戳到隔壁那張。 */
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 0.9rem;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.dice-card[hidden] {
+  display: none; /* 篩選用；這裡要真的收掉版面，跟 /tree 的淡出是兩回事（那裡要保留位置） */
+}
+/* ⚠️ 不要用 `.dice-card > header`：卡片本文 2026-08-22 被包進 .dice-card-main（過場要能整塊
+   transform），子代選擇器會直接失效，圖示與名稱從並排掉成上下堆疊，而且沒有任何測試會說話。 */
+.dice-card header {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 0.5rem;
+}
+.dice-card header img {
+  flex: none;
+  width: 3rem;
+  height: 3rem;
+  /* 圖示的長寬比不一（節點形狀有 rect／diamond／circle／hex），固定方框＋contain 才不會
+     把菱形壓扁。 */
+  object-fit: contain;
+}
+.dice-card h3 {
+  margin: 0;
+  font-size: 1.02rem;
+}
+.dice-card .meta {
+  margin: 0.15rem 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+.dice-card .game-id {
+  margin-left: 0.4rem;
+  padding: 0.05rem 0.3rem;
+  background: rgb(255 255 255 / 6%);
+  border-radius: 4px;
+  font-size: 0.9em;
+}
+.dice-card .growth {
+  margin: 0.15rem 0;
+  font-size: 0.85rem;
+}
+.dice-card .upgrade {
+  margin: 0.15rem 0;
+  color: var(--gold);
+  font-size: 0.85rem;
+}
+.dice-card .upgrade .cond,
+.dice-card .awakening-head .cond {
+  margin-left: 0.4rem;
+  color: var(--muted);
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+.dice-card .warn {
+  margin: 0.15rem 0;
+  color: var(--nature);
+  font-size: 0.85rem;
+}
+.dice-card .desc {
+  margin: 0.5rem 0 0;
+  font-size: 0.92rem;
+}
+.dice-card .awakening {
+  margin-top: 0.6rem;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--support);
+  border-radius: 6px;
+}
+.dice-card .awakening-head {
+  margin: 0;
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+.dice-card .awakening .desc {
+  margin-top: 0.25rem;
+  font-size: 0.88rem;
+}
+.dice-card .card-link {
+  margin-top: auto;
+  padding-top: 0.6rem;
+  font-size: 0.82rem;
+}
+
+/* --- 圖鑑卡片裡的關鍵字就地視圖 ---
+   點卡片裡的 `#關鍵字`，解釋從右側滑進來蓋住卡片本文；← 返回時反方向滑出。過場的長度與
+   曲線跟 /tree 的詳情面板共用同一組 --slide-ms／--slide-ease，兩處的手感才是同一種。
+
+   跟面板的差別是**高度完全不動**：視圖是 inset:0 的絕對定位層，撐不下就自己捲。
+   41 張卡片排在 CSS grid 裡，任何一張改高度都會把同一列的其他卡片一起推動，面板那種
+   高度過場在網格裡不成立。 */
+.dice-card-main {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+}
+.card-term {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  /* 滑進滑出的兩層都要被裁在卡片邊界內，不然會蓋到隔壁那張。 */
+  overflow: hidden;
+  border-radius: 10px;
+}
+.card-term[hidden] {
+  display: none;
+}
+.card-term-view {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 0.9rem;
+  overflow-y: auto;
+  /* 不透明底色是必要的，不是裝飾：半透明會讓底下那一層的文字透出來疊在解釋上。 */
+  background: var(--panel);
+}
+/* 焦點是換頁後用程式移進來的，不該畫成「你選到了這個東西」——鍵盤的可見焦點由裡面的
+   ← 與連結各自的 :focus-visible 給。跟 #detail .view:focus 同一個理由。 */
+.card-term-view:focus {
+  outline: none;
+}
+/* 過場只在動畫進行中掛，平常不留 transition：留著的話，篩選造成的重新排版也會被動畫化。 */
+.dice-card .slide-anim {
+  transition: transform var(--slide-ms) var(--slide-ease), opacity var(--slide-ms) var(--slide-ease);
+}
+@media (prefers-reduced-motion: reduce) {
+  /* 使用者要求減少動態時整段跳過。腳本那邊也會直接走瞬間切換，這條是雙保險。 */
+  .dice-card .slide-anim {
+    transition: none;
+  }
+}
+.card-term-head {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-bottom: 0.5rem;
+}
+.card-term-back {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 1.8rem;
+  height: 1.8rem;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  line-height: 1;
+  cursor: pointer;
+}
+.card-term-back:hover,
+.card-term-back:focus-visible {
+  background: rgb(255 255 255 / 10%);
+  color: var(--fg);
+}
+.card-term-title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.card-term-body {
+  font-size: 0.92rem;
+}
+.card-term-search {
+  margin-top: auto;
+  padding-top: 0.6rem;
+  font-size: 0.82rem;
+}
+
+/* 靜態頁的關鍵字：/tree 那邊是 <button>（點了在卡片裡換頁），這裡是連到詞條的 <a>。
+   兩邊刻意長得一樣——點虛線底線＋官方標記色——讓玩家在兩個地方認得出同一種東西。 */
+.kw-link {
+  /* 一個標記是一個詞，不准斷行。中文沒有空白，瀏覽器會在任何字之間斷開——實測
+     `#巨型尖刺` 被拆成「#尖」「刺」兩行，看起來像兩個不同的標記。 */
+  white-space: nowrap;
+  color: var(--support);
+  text-decoration: underline dotted currentcolor;
+  text-underline-offset: 0.2em;
+}
+.kw-link:hover,
+.kw-link:focus-visible {
+  text-decoration: underline solid currentcolor;
+}
+
+/* --- 關鍵字詞條（/dice 底部與 /guide/* 共用） --- */
+.kw-section {
+  margin-top: 2.5rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--border);
+}
+.kw-section h2 {
+  margin: 0 0 0.5rem;
+  padding-left: 0.6rem;
+  border-left: 4px solid var(--gold);
+  font-size: 1.25rem;
+}
+.kw-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(20rem, 1fr));
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+.kw-entry {
+  padding: 0.85rem;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  /* 從別頁的錨點跳過來時，卡片不要緊貼在導覽列下緣。 */
+  scroll-margin-top: 4.5rem;
+}
+.kw-entry:target {
+  border-color: var(--gold);
+  box-shadow: 0 0 0 1px var(--gold);
+}
+.kw-entry h3 {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.5rem;
+  margin: 0 0 0.4rem;
+  font-size: 1rem;
+}
+.kw-code {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+.kw-alias {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+.kw-desc {
+  margin: 0;
+  font-size: 0.92rem;
+}
+.kw-used,
+.kw-unused {
+  margin: 0.5rem 0 0;
+  font-size: 0.8rem;
+}
+.kw-used {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+.kw-unused {
+  color: var(--muted);
+  font-style: italic;
+}
+
+/* --- 遊戲介紹索引 --- */
+.guide-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr));
+  gap: 0.75rem;
+  margin-top: 1.5rem;
+}
+.guide-card {
+  padding: 1rem;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--fg);
+  text-decoration: none;
+}
+.guide-card:hover,
+.guide-card:focus-visible {
+  border-color: var(--gold);
+  text-decoration: none;
+}
+.guide-card h2 {
+  margin: 0.5rem 0 0.35rem;
+  font-size: 1.05rem;
+  color: var(--gold);
+}
+.guide-card p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+.guide-swatch {
+  display: flex;
+  gap: 3px;
+}
+.guide-swatch span {
+  width: 1.5rem;
+  height: 0.35rem;
+  border-radius: 2px;
+}

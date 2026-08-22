@@ -9,72 +9,29 @@ import { formatCost, formatGrowth, formatUnlockVia } from '../lib/format.js';
 import { cumulativeUpgradeCost, upgradeTableApplies } from '../lib/cost.js';
 import type { GlossaryDisplay, TreeNode, UpgradeCostTable } from '../lib/types.js';
 import type { Selection } from '../lib/selection.js';
-
-const BRANCH_ZH: Record<TreeNode['branch'], string> = {
-  nature: '自然', engineering: '工學', magic: '魔法', order: '秩序', chaos: '渾沌',
-};
-const TYPE_ZH: Record<TreeNode['type'], string> = {
-  dice: '骰子', rune: '骰子符文', passive: '玩家被動', support: '支援',
-};
-/**
- * 玩家被動的細分類。有分類時顯示它而不是「玩家被動」——70 個節點全寫同一個字沒有資訊量，
- * 而「系別屬性只加本系、全骰屬性加全部」正是玩家分不出來、又真的會影響取捨的那件事。
- */
-const CATEGORY_ZH: Record<NonNullable<TreeNode['category']>, string> = {
-  'branch-stat': '系別屬性', 'global-stat': '全骰屬性', 'branch-skill': '系別技能',
-  'player-passive': '玩家被動', 'support-upgrade': '支援強化',
-};
-
-/** 覺醒的啟用條件。遊戲資料表的「升級需求」欄 41 條全是這一個字串，所以是常數不是欄位。 */
-const AWAKENING_CONDITION = '7 骰點時啟用';
-
-const HTML_ESCAPE: Record<string, string> = {
-  '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
-};
-function escapeHtml(s: string): string {
-  return s.replace(/[&<>"']/g, ch => HTML_ESCAPE[ch] ?? ch);
-}
+import { escapeHtml, renderTaggedText } from '../lib/markup.js';
+import { AWAKENING_CONDITION, BRANCH_ZH, typeLabel } from '../lib/labels.js';
 
 /**
- * 把節點描述轉成可安全塞進 innerHTML 的字串：`\n` 轉 `<br>`，`#關鍵字` 包成
- * `<button class="kw">`——點下去會在同一張卡片裡推出那個詞的解釋（見 tree-canvas.ts 的委派）。
+ * 面板版的描述渲染：`#關鍵字` 包成 `<button class="kw">`，點下去會在同一張卡片裡推出
+ * 那個詞的解釋（見 tree-canvas.ts 的委派）。斷詞邏輯本身在 src/lib/markup.ts——靜態頁
+ * （/dice、/guide）用同一支斷詞器、換一種包法，兩邊不會各養一份而漂移。
  *
  * 用 `<button>` 而不是 `<span>`：它本來就能 Tab 聚焦、能按 Enter/Space 觸發、螢幕閱讀器
  * 會念成按鈕。用 `<span role="button" tabindex="0">` 要自己補鍵盤處理，補漏一項就是一個
  * 只有滑鼠能用的功能。
- *
- * 不能單純用「正規表達式比對 # 後面到下一個空白或 # 為止」：遊戲文案的 `#` 標記沒有結束
- * 符號，中文又沒有空格分詞，naive 正規表達式會把 `#` 後面一整句都吃進去（spec 附錄異常 8：
- * 實測 109 個標記中 50 個會這樣壞掉，例如 4008「#陰陽效果的骰子發動」會被整段誤判成一個
- * 關鍵字）。這裡改用白名單＋最長優先比對，在每個 `#` 位置只吃剛好對得上白名單詞的長度。
  */
 function renderDescription(
   description: string,
   keywords: readonly string[],
   glossary: Record<string, GlossaryDisplay>,
 ): string {
-  const sorted = [...keywords].sort((a, b) => b.length - a.length);
-  let html = '';
-  let i = 0;
-  while (i < description.length) {
-    const ch = description[i] ?? '';
-    if (ch === '#') {
-      const rest = description.slice(i + 1);
-      const hit = sorted.find(w => rest.startsWith(w));
-      if (hit) {
-        const entry = glossary[hit];
-        // 顏色照抄遊戲內該標記的底色（同色＝同一類機制），詞彙表查不到就退回統一強調色。
-        // 用 style 而不是 class：顏色是資料（data/keywords.json）不是版面，加一個詞不該要改 CSS。
-        const style = entry ? ` style="color:${escapeHtml(entry.color)}"` : '';
-        html += `<button type="button" class="kw" data-term="${escapeHtml(hit)}"${style}>#${escapeHtml(hit)}</button>`;
-        i += 1 + hit.length;
-        continue;
-      }
-    }
-    html += ch === '\n' ? '<br>' : escapeHtml(ch);
-    i += 1;
-  }
-  return html;
+  return renderTaggedText(description, keywords, glossary, (term, entry) => {
+    // 顏色照抄遊戲內該標記的底色（同色＝同一類機制），詞彙表查不到就退回統一強調色。
+    // 用 style 而不是 class：顏色是資料（data/keywords.json）不是版面，加一個詞不該要改 CSS。
+    const style = entry ? ` style="color:${escapeHtml(entry.color)}"` : '';
+    return `<button type="button" class="kw" data-term="${escapeHtml(term)}"${style}>#${escapeHtml(term)}</button>`;
+  });
 }
 
 /**
@@ -112,7 +69,7 @@ function nodeBody(
     : null;
 
   return `
-    <p class="meta">${BRANCH_ZH[node.branch]} · ${node.category ? CATEGORY_ZH[node.category] : TYPE_ZH[node.type]} · ${escapeHtml(formatUnlockVia(node))}</p>
+    <p class="meta">${BRANCH_ZH[node.branch]} · ${typeLabel(node)} · ${escapeHtml(formatUnlockVia(node))}</p>
     ${node.maxLevel > 1 ? `<p class="meta">等級上限 ${node.maxLevel}</p>` : ''}
     ${maxUpgrade ? `<p class="upgrade">練滿 ${node.maxLevel} 級累計 ${escapeHtml(formatCost(maxUpgrade))}<span class="cond">含解鎖那一次</span></p>` : ''}
     ${growth ? `<p class="growth">${escapeHtml(growth)}</p>` : ''}

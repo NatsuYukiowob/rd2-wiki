@@ -14,9 +14,10 @@ const upgradeCostTable: UpgradeCostTable = JSON.parse(readFileSync('data/upgrade
 const maxLevelOfficial: MaxLevelOfficial = JSON.parse(readFileSync('data/maxlevel-official.json', 'utf8'));
 const unlockExceptions: Record<string, { unlockVia: string; note?: string }> =
   JSON.parse(readFileSync('data/unlock-exceptions.json', 'utf8'));
+const changelog: unknown = JSON.parse(readFileSync('data/changelog.json', 'utf8'));
 const iconsDir = 'data/icons';
 const dataDir = 'data';
-const opts = { keywords, nodeText, upgradeCostTable, maxLevelOfficial, unlockExceptions, iconsDir, dataDir };
+const opts = { keywords, nodeText, upgradeCostTable, maxLevelOfficial, unlockExceptions, changelog, iconsDir, dataDir };
 
 /**
  * 產生一份「只改了某幾筆」的 nodes.json。文案搬進 JSON 之後，破壞文案的測試不再是對 SVG 字串
@@ -156,7 +157,7 @@ describe('validate', () => {
     for (const f of readdirSync(iconsDir)) writeFileSync(join(tinyDir, f), readFileSync(join(iconsDir, f)));
     // 48x31 的縮圖：建置期會把它放大四倍，成品是一團糊，過去什麼規則都沒擋
     writeFileSync(join(tinyDir, 'tree-center.png'), TINY_PNG);
-    const result = validate(svg, { keywords, nodeText, upgradeCostTable, maxLevelOfficial, unlockExceptions, iconsDir, dataDir: tinyDir });
+    const result = validate(svg, { keywords, nodeText, upgradeCostTable, maxLevelOfficial, unlockExceptions, changelog, iconsDir, dataDir: tinyDir });
     expect(result.errors.some(e => /規則 10.*小於顯示尺寸的兩倍/.test(e))).toBe(true);
   });
 
@@ -206,7 +207,7 @@ describe('validate', () => {
     // 錯誤，不影響本測試只關心的「不可達」斷言。
     const tmpIconsDir = mkdtempSync(join(tmpdir(), 'rd2-wiki-icons-'));
     writeFileSync(join(tmpIconsDir, '000000000000.png'), Buffer.from('not-a-real-png'));
-    const result = validate(wip, { keywords, nodeText: wipText, upgradeCostTable, maxLevelOfficial, unlockExceptions, iconsDir: tmpIconsDir, dataDir });
+    const result = validate(wip, { keywords, nodeText: wipText, upgradeCostTable, maxLevelOfficial, unlockExceptions, changelog, iconsDir: tmpIconsDir, dataDir });
     expect(result.errors.some(e => /不可達/.test(e))).toBe(false);
     expect(result.warnings.some(w => /規則 6\(c\)/.test(w) && w.includes('1099'))).toBe(true);
   });
@@ -250,6 +251,60 @@ describe('validate', () => {
     expect(bad({ 播種: { aliasOf: '沒有這個詞' } }).some(e => /aliasOf 指向不存在/.test(e))).toBe(true);
     expect(bad({ 播種: { aliasOf: '傳送' } }).some(e => /指向另一個別名/.test(e))).toBe(true);
     expect(validate(svg, opts).errors.filter(e => /8\(b\)/.test(e))).toEqual([]);
+  });
+
+  // code 從 2026-08-22 起是 /dice 與 /guide/* 上詞條的 HTML id 與網址錨點
+  // （`/guide/status#FROZEN`），撞號的兩個詞在同一頁上只有第一個連得到。
+  it('規則 8(b)：code 撞號或不是合法錨點都會被擋', () => {
+    const bad = (patch: Record<string, unknown>) =>
+      validate(svg, { ...opts, keywords: { ...keywords, ...patch } as typeof keywords }).errors;
+    // 把「冰凍」的 code 改成跟「燙傷」一樣
+    expect(bad({ 冰凍: { ...keywords['冰凍'], code: 'BURN' } }).some(e => /code BURN 重複/.test(e))).toBe(true);
+    expect(bad({ 冰凍: { ...keywords['冰凍'], code: '冰凍' } }).some(e => /不是合法的錨點/.test(e))).toBe(true);
+    expect(bad({ 冰凍: { ...keywords['冰凍'], code: 'A B' } }).some(e => /不是合法的錨點/.test(e))).toBe(true);
+    // 色碼決定這個詞印在 /guide 的哪一頁。沒見過的顏色＝那個詞從每一頁消失，而引用它的
+    // `#關鍵字` 全部連到不存在的錨點，兩件事在畫面上都不報錯。
+    expect(bad({ 冰凍: { ...keywords['冰凍'], color: '#123456' } })
+      .some(e => /不屬於已知的關鍵字分組/.test(e))).toBe(true);
+    expect(validate(svg, opts).errors.filter(e => /8\(b\)/.test(e))).toEqual([]);
+  });
+
+  // 規則 20 擋的不是「日誌寫錯」，是「資料改了、日誌沒改」——那件事沒有其他規則看得到。
+  it('規則 20：更新日誌的最新資料條目必須跟資料正本的版本欄位一致', () => {
+    const withLog = (c: unknown) => validate(svg, { ...opts, changelog: c }).errors.filter(e => /規則 20/.test(e));
+    const log = structuredClone(changelog) as { entries: Record<string, unknown>[] };
+    const latestDataIndex = log.entries.findIndex(e => e.data !== undefined);
+
+    // 資料版本往前走、日誌沒跟上
+    const stale = structuredClone(log);
+    (stale.entries[latestDataIndex]!.data as Record<string, string>).gameVersion = '1.0.2';
+    expect(withLog(stale).some(e => /寫遊戲版本 1\.0\.2/.test(e))).toBe(true);
+
+    const staleBundle = structuredClone(log);
+    (staleBundle.entries[latestDataIndex]!.data as Record<string, string>).gameBundle = '0.0.5';
+    expect(withLog(staleBundle).some(e => /寫資源包 0\.0\.5/.test(e))).toBe(true);
+
+    const staleDate = structuredClone(log);
+    staleDate.entries[latestDataIndex]!.date = '2026-08-21';
+    expect(withLog(staleDate).some(e => /日期 2026-08-21 與資料正本/.test(e))).toBe(true);
+
+    // 條目順序寫反、結構壞掉、以及完全沒有資料條目
+    const outOfOrder = structuredClone(log);
+    outOfOrder.entries[0]!.date = '2026-01-01';
+    expect(withLog(outOfOrder).some(e => /必須由新到舊排列/.test(e))).toBe(true);
+    expect(withLog({ entries: [] }).some(e => /entries 必須是非空陣列/.test(e))).toBe(true);
+    expect(withLog({ entries: log.entries.filter(e => e.data === undefined) })
+      .some(e => /沒有任何日誌記錄/.test(e))).toBe(true);
+
+    // `"data": null` 要報成規則 20 的錯，不能讓 validate 自己炸成堆疊追蹤——這支是資料的
+    // 守門員，它壞掉時給貢獻者的訊息必須仍然是「哪一筆、哪裡不對」。
+    const nulled = structuredClone(log);
+    nulled.entries[latestDataIndex]!.data = null;
+    expect(() => withLog(nulled)).not.toThrow();
+    expect(withLog(nulled).some(e => /data 必須是同時有 gameVersion 與 gameBundle 的物件/.test(e))).toBe(true);
+
+    // 現行資料是黃金樣本
+    expect(withLog(changelog)).toEqual([]);
   });
 
   it('規則 15：升級花費表的等級不連續、或 1 級金額與正本的解鎖金幣對不起來，都會被擋', () => {
@@ -475,14 +530,14 @@ describe('validate', () => {
     const realBuf = readFileSync(join(iconsDir, realFile));
     const wrongHash = realFile === '000000000000.png' ? '111111111111' : '000000000000';
     writeFileSync(join(tmpIconsDir, `${wrongHash}.png`), realBuf);
-    const result = validate(svg, { keywords, nodeText, upgradeCostTable, maxLevelOfficial, unlockExceptions, iconsDir: tmpIconsDir, dataDir });
+    const result = validate(svg, { keywords, nodeText, upgradeCostTable, maxLevelOfficial, unlockExceptions, changelog, iconsDir: tmpIconsDir, dataDir });
     expect(result.errors.some(e => /規則 7\(b\)/.test(e) && /sha256/.test(e))).toBe(true);
   });
 
   it('規則 7(c)：非 PNG 檔會被擋', () => {
     const tmpIconsDir = mkdtempSync(join(tmpdir(), 'rd2-wiki-icons-'));
     writeFileSync(join(tmpIconsDir, '222222222222.png'), Buffer.from('this is not a png file at all'));
-    const result = validate(svg, { keywords, nodeText, upgradeCostTable, maxLevelOfficial, unlockExceptions, iconsDir: tmpIconsDir, dataDir });
+    const result = validate(svg, { keywords, nodeText, upgradeCostTable, maxLevelOfficial, unlockExceptions, changelog, iconsDir: tmpIconsDir, dataDir });
     expect(result.errors.some(e => /規則 7\(c\)/.test(e) && /不是有效的 PNG/.test(e))).toBe(true);
   });
 
@@ -492,7 +547,7 @@ describe('validate', () => {
     const tinyPng = makeMinimalPng(10, 10);
     const tinyHash = createHash('sha256').update(tinyPng).digest('hex').slice(0, 12);
     writeFileSync(join(tmpIconsDir, `${tinyHash}.png`), tinyPng);
-    const result = validate(svg, { keywords, nodeText, upgradeCostTable, maxLevelOfficial, unlockExceptions, iconsDir: tmpIconsDir, dataDir });
+    const result = validate(svg, { keywords, nodeText, upgradeCostTable, maxLevelOfficial, unlockExceptions, changelog, iconsDir: tmpIconsDir, dataDir });
     expect(result.errors.some(e => /規則 7\(c\)/.test(e) && /小於最低要求 96px/.test(e))).toBe(true);
   });
 
@@ -504,7 +559,7 @@ describe('validate', () => {
     const orphanBuf = makeMinimalPng(100, 100);
     const orphanHash = createHash('sha256').update(orphanBuf).digest('hex').slice(0, 12);
     writeFileSync(join(tmpIconsDir, `${orphanHash}.png`), orphanBuf);
-    const result = validate(svg, { keywords, nodeText, upgradeCostTable, maxLevelOfficial, unlockExceptions, iconsDir: tmpIconsDir, dataDir });
+    const result = validate(svg, { keywords, nodeText, upgradeCostTable, maxLevelOfficial, unlockExceptions, changelog, iconsDir: tmpIconsDir, dataDir });
     expect(result.errors).toEqual([]);
     expect(result.warnings.some(w => /規則 7\(d\)/.test(w) && w.includes(orphanHash))).toBe(true);
   });

@@ -7,6 +7,8 @@ import { MAX_TEXT_LENGTH, checkNodeTextRecord, mergeNodes, type NodeTextMap, typ
 import { parseCost } from '../src/lib/cost.js';
 import { maxLevelValue, parseGrowth } from '../src/lib/growth.js';
 import { extractKeywords } from '../src/lib/keywords.js';
+import { checkChangelog } from '../src/lib/changelog.js';
+import { groupOfColor } from '../src/lib/glossary-groups.js';
 import { branchOfId, categoryOfZh, elementOfStroke, typeOfZh } from '../src/lib/taxonomy.js';
 import { buildAdjacency, detectCycle, findRoots, unreachableFrom } from '../src/lib/graph.js';
 import { readPngSize } from './lib/png.js';
@@ -84,6 +86,14 @@ export interface ValidateOpts {
    * 現在它有 9 筆而且 `note` 會直接印在面板上，規則 18 就是它唯一的防線（見那條的說明）。
    */
   unlockExceptions: Record<string, { unlockVia: string; note?: string }> | null;
+  /**
+   * `data/changelog.json`；沒有這份資料時傳 `null`。
+   *
+   * 跟其他資料檔一樣刻意必填。更新日誌是全站唯一**沒有自動來源**的內容，而「忘了寫」
+   * 在畫面上跟「這次沒更新」長得一模一樣——規則 20 是它唯一的防線，可選就等於可以被
+   * 安靜地關掉。
+   */
+  changelog: unknown;
   /** 圖示所在目錄；驗證器會實際讀取此目錄下的檔案內容做 sha256／PNG 結構檢查，並列出孤兒圖示。 */
   iconsDir: string;
   /**
@@ -244,6 +254,7 @@ export function validate(svgText: string, opts: ValidateOpts): ValidateResult {
   // 規則 8(b): 詞彙表自身。每個詞條的三個欄位都要有值，解釋文字裡的 `#` 標記也要查得到——
   // 那些解釋會跟著節點一起顯示給玩家（見 build-data 的傳遞閉包），解釋裡指到一個不存在的詞，
   // 面板上就是一個查不到東西的 `#`，而逐節點的規則 8 永遠掃不到它。
+  const codeSeen = new Map<string, string>();
   for (const [term, record] of Object.entries(opts.keywords)) {
     if (term.length === 0 || term.length > MAX_TEXT_LENGTH) push(`規則 8(b): 詞彙 ${JSON.stringify(term)} 的長度不合法`);
     if (term.startsWith('#')) push(`規則 8(b): 詞彙 ${JSON.stringify(term)} 不應包含開頭的 #`);
@@ -257,7 +268,24 @@ export function validate(svgText: string, opts: ValidateOpts): ValidateResult {
     }
     const entry = record;
     if (!entry?.code) push(`規則 8(b): 詞彙 ${term} 缺少 code`);
+    else {
+      // code 從 2026-08-22 起不只是個標識字串，它就是 /dice 與 /guide/* 上那個詞條的
+      // **HTML id 與網址錨點**（`/guide/status#FROZEN`）。兩件事因此變成硬性要求：
+      // 撞號會讓同一頁出現兩個相同的 id（瀏覽器只跳得到第一個，另一個詞從此連不到），
+      // 含非 ASCII 或空白則會讓錨點在網址列被編碼成一長串轉義字元。
+      if (!/^[A-Za-z][A-Za-z0-9_-]*$/.test(entry.code)) {
+        push(`規則 8(b): 詞彙 ${term} 的 code ${JSON.stringify(entry.code)} 不是合法的錨點（須為英文字母開頭的 ASCII 識別字）`);
+      }
+      const owner = codeSeen.get(entry.code);
+      if (owner) push(`規則 8(b): code ${entry.code} 重複（詞彙 ${owner} 與 ${term}）——它是詞條頁的 HTML id，不能撞號`);
+      else codeSeen.set(entry.code, term);
+    }
     if (!/^#[0-9A-Fa-f]{6}$/.test(entry?.color ?? '')) push(`規則 8(b): 詞彙 ${term} 的 color 不是 #RRGGBB：${JSON.stringify(entry?.color)}`);
+    // 色碼不只是顏色，它決定這個詞印在 /guide 的哪一頁（src/lib/glossary-groups.ts 的 GROUPS）。
+    // 出現沒見過的顏色時，那個詞會從每一頁消失，而所有引用它的 `#關鍵字` 會連到一個不存在的
+    // 錨點——兩件事在畫面上都不報錯。buildGlossary() 也會對同一件事丟例外（建置當場失敗），
+    // 這裡是資料閘門那一側的同一道防線，讓 `npm run validate` 就先說話。
+    else if (!groupOfColor(entry!.color)) push(`規則 8(b): 詞彙 ${term} 的 color ${entry!.color} 不屬於已知的關鍵字分組；請在 src/lib/glossary-groups.ts 的 GROUPS 補上這一組，並決定它印在 GUIDE_PAGES 的哪一頁`);
     if (!entry?.desc) push(`規則 8(b): 詞彙 ${term} 缺少 desc`);
     else if (entry.desc.length > MAX_TEXT_LENGTH) push(`規則 8(b): 詞彙 ${term} 的 desc 超過 ${MAX_TEXT_LENGTH} 字`);
     try { if (entry?.desc) extractKeywords(entry.desc, whitelist); }
@@ -566,6 +594,17 @@ export function validate(svgText: string, opts: ValidateOpts): ValidateResult {
     }
   }
 
+  // 規則 20: 更新日誌與資料正本的版本欄位一致。
+  //
+  // 這條擋的不是「日誌寫錯」，是「資料改了、日誌沒改」。那件事沒有任何其他規則看得到：
+  // 版本號、節點數、圖示全部是從正本推出來的，只有這份是人手寫的，而漏寫在畫面上跟
+  // 「這次沒更新」長得一模一樣。綁法跟規則 17 同一個手法——讓兩份資料互為對方的答案。
+  if (opts.changelog === null) {
+    warn('規則 20: 沒有提供 data/changelog.json，更新日誌與資料版本的一致性未檢查');
+  } else {
+    for (const m of checkChangelog(opts.changelog, parsed.meta)) push(`規則 20: ${m}`);
+  }
+
   return { errors, warnings };
 }
 
@@ -576,6 +615,7 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
     nodeText: JSON.parse(readFileSync('data/nodes.json', 'utf8')),
     maxLevelOfficial: JSON.parse(readFileSync('data/maxlevel-official.json', 'utf8')),
     unlockExceptions: JSON.parse(readFileSync('data/unlock-exceptions.json', 'utf8')),
+    changelog: JSON.parse(readFileSync('data/changelog.json', 'utf8')),
     iconsDir: 'data/icons',
     dataDir: 'data',
   });
