@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import {
   buildSimContext, initialSimState, ownedIds, isAvailable, missingParents,
   unlockNode, removeNode, setNodeLevel, setInitialDice, pathTo, unlockMany,
-  simTotals, maxSelectableLevel, summarizeAbilities, exceedsLimit, edgeWasUsed,
+  simTotals, maxSelectableLevel, summarizeAbilities, exceedsLimit, edgeWasUsed, edgeIsLinked,
 } from '../../src/lib/sim';
 import type { Edge, PassiveUpgradeCost, TreeData, TreeNode } from '../../src/lib/types';
 
@@ -276,6 +276,35 @@ describe('資源上限', () => {
     const over = exceedsLimit({ core: 5, gold: 900 }, { core: 1, gold: 100 }, { core: 10, gold: 200 });
     expect(over).toHaveLength(1);
     expect(over[0]).toMatch(/金幣/);
+  });
+});
+
+describe('邊的兩端在不在手上', () => {
+  const s0 = initialSimState(ctx);
+
+  it('兩端都取得就算連通，跟是誰解開的無關', () => {
+    const real = buildSimContext(realData, realTables);
+    const s = initialSimState(real);
+    // 火骰子連著風與冰，三顆都是遊戲一開始就送的——這條路是通的，畫面上不該把它畫得跟
+    // 「還沒走到的路」一樣暗（Yuki 2026-08-23 回報）。它只是沒有被「走過」，所以不上金色。
+    expect(edgeIsLinked('1001', '1005', s, real)).toBe(true);
+    expect(edgeIsLinked('1001', '1007', s, real)).toBe(true);
+    expect(edgeWasUsed('1001', '1005', s, real)).toBe(false);
+  });
+
+  it('有一端還沒取得就不算連通', () => {
+    expect(edgeIsLinked('A', 'B', s0, ctx)).toBe(false);
+    expect(edgeIsLinked('B', 'D', s0, ctx)).toBe(false);
+  });
+
+  // 金色（走過）是亮色（連通）的子集：CSS 靠這個包含關係把兩件事拆成互不搶屬性的兩條規則，
+  // `.sim-active` 只設 stroke、`.sim-linked` 只設 opacity。倒過來的話金線會變半透明。
+  it('「走過」一定也是「連通」——真實資料全邊掃描', () => {
+    const real = buildSimContext(realData, realTables);
+    let s = initialSimState(real);
+    s = unlockMany(s, real, pathTo('5201', setInitialDice(setInitialDice(s, real, '5006', true)!, real, '5008', true)!, real).need);
+    const broken = realData.edges.filter(([f, t]) => edgeWasUsed(f, t, s, real) && !edgeIsLinked(f, t, s, real));
+    expect(broken).toEqual([]);
   });
 });
 

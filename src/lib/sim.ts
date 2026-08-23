@@ -270,6 +270,22 @@ export function exceedsLimit(
 }
 
 /**
+ * 這條邊的兩端都在手上嗎？——也就是這條路通不通。
+ *
+ * 跟 `edgeWasUsed()` 是兩件事，畫面上也是兩種樣子：**連通＝正常亮度**（不淡出），
+ * **走過＝再加金色**。火骰子連著風與冰，三顆都是遊戲一開始就送的，那條路是通的，
+ * 卻不是玩家走出來的——只有「走過」一種狀態的話，它們不是被畫成金線（看起來像自己解過），
+ * 就是跟「還沒走到的路」一樣暗（Yuki 2026-08-23 兩次回報，正好是這條界線的兩邊）。
+ *
+ * ⚠️ **`edgeWasUsed` 是這個的子集**（它多要求終點不是白拿的）。CSS 靠這個包含關係把兩件事
+ * 拆成互不搶屬性的兩條規則：`.sim-linked` 只設 opacity、`.sim-active` 只設 stroke。
+ */
+export function edgeIsLinked(from: string, to: string, state: SimState, ctx: SimContext): boolean {
+  const owned = ownedIds(state, ctx);
+  return owned.has(from) && owned.has(to);
+}
+
+/**
  * 這條邊「被玩家走過」了嗎？——也就是畫面上該不該把它畫成金線。
  *
  * ⚠️ 判準**不是**「兩端都取得」。遊戲一開始就送的 5 顆骰子裡，`1001` 火骰子連著 `1005` 風
@@ -279,8 +295,7 @@ export function exceedsLimit(
  */
 export function edgeWasUsed(from: string, to: string, state: SimState, ctx: SimContext): boolean {
   if (ctx.free.has(to) || ctx.optional.has(to)) return false;
-  const owned = ownedIds(state, ctx);
-  return owned.has(from) && owned.has(to);
+  return edgeIsLinked(from, to, state, ctx);
 }
 
 /**

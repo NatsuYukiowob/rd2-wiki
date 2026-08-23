@@ -430,13 +430,26 @@ test('S20. 操作被擋下來時，面板與高亮仍然跟著切到新選的節
   await expect(page.locator('#tree g.node.sim-selected')).toHaveAttribute('data-id', READY);
 });
 
-test('S18. 一進頁面沒有任何「走過的邊」', async ({ page }) => {
+test('S18. 邊有三階：沒到手＝暗、兩端都在手上＝正常亮、真的走過＝金色', async ({ page }) => {
   await openSim(page);
-  // 1001 火骰子連著 1005 風與 1007 冰，兩端從第一秒起就都在手上——只看「兩端都取得」的話
-  // 這兩條會亮成金線，玩家會以為自己已經解了什麼。全站只有這兩條會撞到。
+  // 1001 火骰子連著 1005 風與 1007 冰，三顆都是遊戲一開始就送的。這條路是通的（該正常亮），
+  // 但玩家沒有走過它（不該金色）——Yuki 先後回報了這條界線的兩邊，所以三階都要驗。
   await expect(page.locator('#tree line.edge.sim-active')).toHaveCount(0);
+  await expect(page.locator('#tree line.edge.sim-linked')).toHaveCount(2);
+
+  const opacity = async (cls: string) =>
+    page.locator(`#tree line.edge${cls}`).first().evaluate(el => Number(getComputedStyle(el).opacity));
+  const linked = await opacity('.sim-linked');
+  const idle = await opacity(':not(.sim-linked):not(.sim-ready)');
+  expect(linked, '兩端都在手上的邊沒有回到正常亮度').toBe(1);
+  expect(idle, '還沒到手的邊應該是暗的').toBeLessThan(0.5);
+
   await tapNode(page, READY);
-  await expect(page.locator('#tree line.edge.sim-active')).toHaveCount(1);   // 解一顆才出現一條
+  await expect(page.locator('#tree line.edge.sim-active')).toHaveCount(1);   // 解一顆才出現一條金線
+  // 金色那條的 opacity 由 .sim-linked 給——`.sim-active` 只設 stroke，兩條規則互不搶屬性。
+  const gold = page.locator('#tree line.edge.sim-active');
+  await expect(gold).toHaveClass(/sim-linked/);
+  expect(await gold.evaluate(el => Number(getComputedStyle(el).opacity))).toBe(1);
 });
 
 test('S19. toast 是常駐的 live region，不靠 hidden 收放', async ({ page }) => {
