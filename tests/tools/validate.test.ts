@@ -20,9 +20,10 @@ const dataDir = 'data';
 const boardIcons: Record<string, string> = JSON.parse(readFileSync('data/board-icons.json', 'utf8'));
 const boardIconsDir = 'data/board-icons';
 const passiveUpgradeCost: unknown = JSON.parse(readFileSync('data/passive-upgrade-cost.json', 'utf8'));
+const diceStats: unknown = JSON.parse(readFileSync('data/dice-stats.json', 'utf8'));
 const opts = {
   keywords, nodeText, upgradeCostTable, maxLevelOfficial, unlockExceptions, changelog, iconsDir, dataDir,
-  boardIcons, boardIconsDir, passiveUpgradeCost,
+  boardIcons, boardIconsDir, passiveUpgradeCost, diceStats,
 };
 
 /** 換掉升級費用表、其餘照舊。深拷貝理由同 patch()。 */
@@ -171,7 +172,7 @@ describe('validate', () => {
     for (const f of readdirSync(iconsDir)) writeFileSync(join(tinyDir, f), readFileSync(join(iconsDir, f)));
     // 48x31 的縮圖：建置期會把它放大四倍，成品是一團糊，過去什麼規則都沒擋
     writeFileSync(join(tinyDir, 'tree-center.png'), TINY_PNG);
-    const result = validate(svg, { keywords, nodeText, upgradeCostTable, maxLevelOfficial, unlockExceptions, changelog, iconsDir, dataDir: tinyDir, boardIcons, boardIconsDir, passiveUpgradeCost });
+    const result = validate(svg, { keywords, nodeText, upgradeCostTable, maxLevelOfficial, unlockExceptions, changelog, iconsDir, dataDir: tinyDir, boardIcons, boardIconsDir, passiveUpgradeCost, diceStats });
     expect(result.errors.some(e => /規則 10.*小於顯示尺寸的兩倍/.test(e))).toBe(true);
   });
 
@@ -221,7 +222,7 @@ describe('validate', () => {
     // 錯誤，不影響本測試只關心的「不可達」斷言。
     const tmpIconsDir = mkdtempSync(join(tmpdir(), 'rd2-wiki-icons-'));
     writeFileSync(join(tmpIconsDir, '000000000000.png'), Buffer.from('not-a-real-png'));
-    const result = validate(wip, { keywords, nodeText: wipText, upgradeCostTable, maxLevelOfficial, unlockExceptions, changelog, iconsDir: tmpIconsDir, dataDir, boardIcons, boardIconsDir, passiveUpgradeCost });
+    const result = validate(wip, { keywords, nodeText: wipText, upgradeCostTable, maxLevelOfficial, unlockExceptions, changelog, iconsDir: tmpIconsDir, dataDir, boardIcons, boardIconsDir, passiveUpgradeCost, diceStats });
     expect(result.errors.some(e => /不可達/.test(e))).toBe(false);
     expect(result.warnings.some(w => /規則 6\(c\)/.test(w) && w.includes('1099'))).toBe(true);
   });
@@ -562,14 +563,14 @@ describe('validate', () => {
     const realBuf = readFileSync(join(iconsDir, realFile));
     const wrongHash = realFile === '000000000000.png' ? '111111111111' : '000000000000';
     writeFileSync(join(tmpIconsDir, `${wrongHash}.png`), realBuf);
-    const result = validate(svg, { keywords, nodeText, upgradeCostTable, maxLevelOfficial, unlockExceptions, changelog, iconsDir: tmpIconsDir, dataDir, boardIcons, boardIconsDir, passiveUpgradeCost });
+    const result = validate(svg, { keywords, nodeText, upgradeCostTable, maxLevelOfficial, unlockExceptions, changelog, iconsDir: tmpIconsDir, dataDir, boardIcons, boardIconsDir, passiveUpgradeCost, diceStats });
     expect(result.errors.some(e => /規則 7\(b\)/.test(e) && /sha256/.test(e))).toBe(true);
   });
 
   it('規則 7(c)：非 PNG 檔會被擋', () => {
     const tmpIconsDir = mkdtempSync(join(tmpdir(), 'rd2-wiki-icons-'));
     writeFileSync(join(tmpIconsDir, '222222222222.png'), Buffer.from('this is not a png file at all'));
-    const result = validate(svg, { keywords, nodeText, upgradeCostTable, maxLevelOfficial, unlockExceptions, changelog, iconsDir: tmpIconsDir, dataDir, boardIcons, boardIconsDir, passiveUpgradeCost });
+    const result = validate(svg, { keywords, nodeText, upgradeCostTable, maxLevelOfficial, unlockExceptions, changelog, iconsDir: tmpIconsDir, dataDir, boardIcons, boardIconsDir, passiveUpgradeCost, diceStats });
     expect(result.errors.some(e => /規則 7\(c\)/.test(e) && /不是有效的 PNG/.test(e))).toBe(true);
   });
 
@@ -579,7 +580,7 @@ describe('validate', () => {
     const tinyPng = makeMinimalPng(10, 10);
     const tinyHash = createHash('sha256').update(tinyPng).digest('hex').slice(0, 12);
     writeFileSync(join(tmpIconsDir, `${tinyHash}.png`), tinyPng);
-    const result = validate(svg, { keywords, nodeText, upgradeCostTable, maxLevelOfficial, unlockExceptions, changelog, iconsDir: tmpIconsDir, dataDir, boardIcons, boardIconsDir, passiveUpgradeCost });
+    const result = validate(svg, { keywords, nodeText, upgradeCostTable, maxLevelOfficial, unlockExceptions, changelog, iconsDir: tmpIconsDir, dataDir, boardIcons, boardIconsDir, passiveUpgradeCost, diceStats });
     expect(result.errors.some(e => /規則 7\(c\)/.test(e) && /小於最低要求 96px/.test(e))).toBe(true);
   });
 
@@ -591,7 +592,7 @@ describe('validate', () => {
     const orphanBuf = makeMinimalPng(100, 100);
     const orphanHash = createHash('sha256').update(orphanBuf).digest('hex').slice(0, 12);
     writeFileSync(join(tmpIconsDir, `${orphanHash}.png`), orphanBuf);
-    const result = validate(svg, { keywords, nodeText, upgradeCostTable, maxLevelOfficial, unlockExceptions, changelog, iconsDir: tmpIconsDir, dataDir, boardIcons, boardIconsDir, passiveUpgradeCost });
+    const result = validate(svg, { keywords, nodeText, upgradeCostTable, maxLevelOfficial, unlockExceptions, changelog, iconsDir: tmpIconsDir, dataDir, boardIcons, boardIconsDir, passiveUpgradeCost, diceStats });
     expect(result.errors).toEqual([]);
     expect(result.warnings.some(w => /規則 7\(d\)/.test(w) && w.includes(orphanHash))).toBe(true);
   });
@@ -808,6 +809,9 @@ describe('validate：邊與座標的守門（P2）', () => {
       ...patch({ '1099': { ...nodeText[copiedId], gameId: 'D999' } }),
       boardIcons: { ...boardIcons, '1099': extraHash },
       boardIconsDir: boardDir,
+      // 規則 23(a) 對 wip 節點不放水，判準跟規則 21(a) 一致：`data-wip` 豁免的是「接不接得到
+      // 根」（規則 6），不是「這顆骰子有沒有官方數值」。所以這裡也要補一筆，才回得到只驗 6(c)。
+      diceStats: { ...(diceStats as Record<string, unknown>), D999: { name: nodeText[copiedId]!['name'], stats: [{ label: '攻擊力', base: '1' }] } },
     });
     expect(errors).toEqual([]);
     expect(warnings.some(w => /規則 6\(c\).*1099/.test(w))).toBe(true);
@@ -1006,5 +1010,141 @@ describe('validate：邊與座標的守門（P2）', () => {
       expect(result.errors.filter(e => /規則 22/.test(e) && e.includes(passive[0]))).toEqual([]);
       expect(result.warnings.some(w => /規則 22/.test(w) && w.includes(passive[0]) && /同時/.test(w))).toBe(true);
     });
+  });
+});
+
+// 規則 23：骰子基本能力值與強化數據（data/dice-stats.json）。
+//
+// 這份資料跟規則 22 那份一樣不進 tree.json（/dice 是靜態頁，建置期直接讀 data/），所以
+// 「表與節點對不上」在產物層面同樣零痕跡：漏一顆骰子的話那張卡片就是少一塊數值區，
+// 跟「這顆骰子官方沒給數值」長得一模一樣；多一筆孤兒則永遠不會有人看到。
+describe('規則 23：骰子基本能力值', () => {
+  /** 真實資料的深拷貝，給「只改一個地方」的破壞測試用。 */
+  const stats = () => structuredClone(diceStats) as Record<string, {
+    name: string; note?: string;
+    stats: { label: string; base: string; dice7?: string; lv15?: string; lv15dice7?: string }[];
+  }>;
+  const withStats = (over: unknown) => ({ ...opts, diceStats: over });
+
+  it('沒有提供時只警告不擋 PR', () => {
+    const result = validate(svg, { ...opts, diceStats: null });
+    expect(result.errors.every(e => !/規則 23/.test(e))).toBe(true);
+    expect(result.warnings.some(w => /規則 23.*沒有提供 data\/dice-stats\.json/.test(w))).toBe(true);
+  });
+
+  it('真實資料通過', () => {
+    expect(validate(svg, opts).errors.filter(e => /規則 23/.test(e))).toEqual([]);
+  });
+
+  it('最外層不是物件會被擋', () => {
+    expect(validate(svg, withStats([])).errors.some(e => /規則 23.*最外層/.test(e))).toBe(true);
+    expect(validate(svg, withStats('x')).errors.some(e => /規則 23.*最外層/.test(e))).toBe(true);
+  });
+
+  // (a) 正方向：新增一顆骰子卻忘了補數值，那張卡片會安靜地少一塊。
+  it('骰子節點在表裡沒有對應會被擋，訊息指得出是哪一顆', () => {
+    const t = stats();
+    delete t['D000'];
+    const errors = validate(svg, withStats(t)).errors.filter(e => /規則 23/.test(e));
+    expect(errors.some(e => /規則 23\(a\)/.test(e) && e.includes('D000') && e.includes('1001'))).toBe(true);
+  });
+
+  // (b) 反方向：骰子從正本移除、dice-stats.json 忘了刪那筆。規則 19 抓得到 SVG↔nodes 的
+  // 殘餘，這份表以 gameId 為鍵，得自己抓自己的。
+  it('表裡對不到骰子節點的 entry 是孤兒，會被擋', () => {
+    const t = stats();
+    t['D999'] = { name: '幽靈骰子', stats: [{ label: '攻擊力', base: '1' }] };
+    expect(validate(svg, withStats(t)).errors.some(e => /規則 23\(b\)/.test(e) && e.includes('D999'))).toBe(true);
+  });
+
+  // (c) gameId 對得上但名字不一樣＝有人改了節點名卻沒同步這份表，或這一列根本抄錯行。
+  it('name 與節點名稱不符會被擋', () => {
+    const t = stats();
+    t['D000']!.name = '水骰子';
+    expect(validate(svg, withStats(t)).errors.some(e => /規則 23\(c\)/.test(e) && e.includes('D000'))).toBe(true);
+  });
+
+  it('stats 不是非空陣列會被擋', () => {
+    const t = stats();
+    t['D001']!.stats = [];
+    expect(validate(svg, withStats(t)).errors.some(e => /規則 23\(d\).*stats/.test(e))).toBe(true);
+  });
+
+  // note 是選用欄位。空字串是 falsy，會安靜地通過「有沒有備註」那種判斷——同 nodes.json
+  // 選用欄位的規矩：不用時整個省略，不可寫 ""。
+  it('note 寫成空字串會被擋', () => {
+    const t = stats();
+    t['D000']!.note = '';
+    expect(validate(svg, withStats(t)).errors.some(e => /規則 23\(d\).*note/.test(e))).toBe(true);
+  });
+
+  it('stat 的 label 或 base 不是非空字串會被擋', () => {
+    const t = stats();
+    t['D000']!.stats[0]!.base = '';
+    expect(validate(svg, withStats(t)).errors.some(e => /規則 23\(e\)/.test(e) && e.includes('D000'))).toBe(true);
+  });
+
+  // (f) 同一顆骰子兩個同名項目：畫面上是兩顆一模一樣的 pill，而 statValue() 查到哪一個
+  // 取決於陣列順序。
+  it('同一顆骰子的 label 撞號會被擋', () => {
+    const t = stats();
+    t['D000']!.stats[1]!.label = t['D000']!.stats[0]!.label;
+    expect(validate(svg, withStats(t)).errors.some(e => /規則 23\(f\)/.test(e) && e.includes('D000'))).toBe(true);
+  });
+
+  // (g) 這條是這份資料最容易壞、又最沒有症狀的一種：statValue() 對缺少的檔位刻意退回基礎值
+  // （固定項目必須這樣才不會在畫面上留下空白的 pill），所以「四檔漏了一檔」在畫面上看起來
+  // 就只是「這一檔剛好沒變」。渲染端必須寬容，閘門就不能寬容。
+  it('四檔值只有部分存在會被擋', () => {
+    const t = stats();
+    delete t['D000']!.stats[0]!.lv15;
+    expect(validate(svg, withStats(t)).errors.some(e => /規則 23\(g\)/.test(e) && e.includes('D000'))).toBe(true);
+  });
+
+  // (e) diceGrowth／spGrowth 以前完全沒驗。growthNote() 用的是 `??`，所以空字串**不會**被
+  // 換成「—」——貢獻者寫 `"diceGrowth": ""` 的結果是 pill 的 title 變成「骰點：／強化：無變化」，
+  // 而 CI 全綠。同 (d) 對 note 的判準：選用欄位不用時整個省略，不可寫 ""。
+  it('diceGrowth／spGrowth 寫成空字串或非字串會被擋', () => {
+    const t = stats();
+    (t['D000']!.stats[0] as Record<string, unknown>)['diceGrowth'] = '';
+    expect(validate(svg, withStats(t)).errors.some(e => /規則 23\(e\).*diceGrowth/.test(e))).toBe(true);
+    const t2 = stats();
+    (t2['D000']!.stats[0] as Record<string, unknown>)['spGrowth'] = 3;
+    expect(validate(svg, withStats(t2)).errors.some(e => /規則 23\(e\).*spGrowth/.test(e))).toBe(true);
+  });
+
+  // (h) 未知欄位。這條看起來只是潔癖，其實是 (g) 的補完：(g) 抓的是「三個檔位鍵只對了一部分」，
+  // 而**三個全部打錯**時 have.length 是 0，(g) 完全沉默，那一項會被 isFixed() 判成固定值
+  // ——正是 (g) 的註解說閘門不可以寬容的那種「畫面上看不出來」。
+  it('stat 或 entry 出現未知欄位會被擋', () => {
+    const t = stats();
+    (t['D000']!.stats[0] as Record<string, unknown>)['lv30'] = '9999';
+    expect(validate(svg, withStats(t)).errors.some(e => /規則 23\(h\).*lv30/.test(e))).toBe(true);
+
+    // 三個檔位鍵全部打錯：(g) 一句話都不會說，只有 (h) 抓得到。
+    const t2 = stats();
+    const st = t2['D000']!.stats[0] as Record<string, unknown>;
+    for (const [bad, good] of [['dice_7', 'dice7'], ['lv_15', 'lv15'], ['lv15_dice7', 'lv15dice7']]) {
+      st[bad!] = st[good!];
+      delete st[good!];
+    }
+    const errors = validate(svg, withStats(t2)).errors.filter(e => /規則 23/.test(e));
+    expect(errors.some(e => /規則 23\(g\)/.test(e)), '(g) 對「三個全打錯」是沉默的').toBe(false);
+    expect(errors.some(e => /規則 23\(h\)/.test(e))).toBe(true);
+
+    const t3 = stats();
+    (t3['D000'] as Record<string, unknown>)['target'] = '前方';
+    expect(validate(svg, withStats(t3)).errors.some(e => /規則 23\(h\).*target/.test(e))).toBe(true);
+  });
+
+  // 讓路測試，同規則 21(h) 的教訓：nodes.json 漏一筆文案時，說話的必須只有規則 19，
+  // 規則 23 不可以跟著噴一條「這顆骰子沒有數值」的假錯誤把真正的原因埋掉。
+  it('nodes.json 漏一筆文案時不多噴假錯誤', () => {
+    const dropped = patch({});
+    const nodeTextMinusOne = { ...(dropped.nodeText as Record<string, unknown>) };
+    delete nodeTextMinusOne['1001'];
+    const errors = validate(svg, { ...opts, nodeText: nodeTextMinusOne }).errors;
+    expect(errors.some(e => /規則 19/.test(e) && e.includes('1001'))).toBe(true);
+    expect(errors.filter(e => /規則 23/.test(e))).toEqual([]);
   });
 });

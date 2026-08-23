@@ -235,3 +235,42 @@ export interface TreeMeta {
 }
 
 export interface TreeData { meta: TreeMeta; nodes: TreeNode[]; edges: Edge[] }
+
+/**
+ * 一顆骰子的一項數值。四個檔位的值都是官方資料表直接給的，不是本站算的——
+ * 攻擊速度那一欄是「基礎值 ÷ 骰點」，自己算會在小數位上跟遊戲內顯示對不起來。
+ *
+ * `dice7` 以下四個欄位**要嘛全有要嘛全無**：官方的「骰子強化數據」分頁只收錄會隨骰點或
+ * 對局內 SP 強化改變的項目，沒被收錄就代表它是固定值（基本面板上有、但永遠是那個數）。
+ */
+export interface DiceStat {
+  label: string;
+  /** 1 骰點、SP 強化 Lv.1 的值。含單位，直接印。 */
+  base: string;
+  /** 7 骰點、SP 強化 Lv.1。 */
+  dice7?: string;
+  /** 1 骰點、SP 強化 Lv.15。 */
+  lv15?: string;
+  /** 7 骰點、SP 強化 Lv.15。 */
+  lv15dice7?: string;
+  /** 官方寫的骰點成長規則原文（例：`每提升1骰點：+100`）。 */
+  diceGrowth?: string;
+  /** 官方寫的 SP 強化規則原文（例：`每強化1級：+150`）。 */
+  spGrowth?: string;
+}
+
+/**
+ * 一顆骰子在「骰子基本能力值」分頁上的那一列。
+ *
+ * 「目標」也是 `stats` 的一員（排在攻擊速度與能力1 之間，跟官方面板同順序），不是另一個欄位
+ * ——渲染端因此不必靠索引把它插進陣列中間。它沒有強化檔位，會被 `isFixed()` 判成固定項目。
+ */
+export interface DiceStatEntry {
+  name: string;
+  /** 官方對這顆骰子的特殊機制註記；沒有就省略，不要寫空字串。 */
+  note?: string;
+  stats: DiceStat[];
+}
+
+/** `data/dice-stats.json`：以 gameId 為鍵。刻意不進 tree.json，見該檔的說明。 */
+export type DiceStatsTable = Record<string, DiceStatEntry>;
