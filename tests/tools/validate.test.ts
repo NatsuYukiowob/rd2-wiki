@@ -19,9 +19,18 @@ const iconsDir = 'data/icons';
 const dataDir = 'data';
 const boardIcons: Record<string, string> = JSON.parse(readFileSync('data/board-icons.json', 'utf8'));
 const boardIconsDir = 'data/board-icons';
+const passiveUpgradeCost: unknown = JSON.parse(readFileSync('data/passive-upgrade-cost.json', 'utf8'));
 const opts = {
   keywords, nodeText, upgradeCostTable, maxLevelOfficial, unlockExceptions, changelog, iconsDir, dataDir,
-  boardIcons, boardIconsDir,
+  boardIcons, boardIconsDir, passiveUpgradeCost,
+};
+
+/** 換掉升級費用表、其餘照舊。深拷貝理由同 patch()。 */
+const withTiers = (over: unknown) => ({ ...opts, passiveUpgradeCost: over });
+/** 真實資料的深拷貝，給「只改一個地方」的破壞測試用。 */
+const tiers = () => structuredClone(passiveUpgradeCost) as {
+  tiers: Record<string, { maxLevel: number; unlockGold: number; bands: { from: number; to: number; gold: number; core: number }[] }>;
+  special: Record<string, { maxLevel: number; levels: { level: number; gold: number; core: number }[] }>;
 };
 
 /**
@@ -162,7 +171,7 @@ describe('validate', () => {
     for (const f of readdirSync(iconsDir)) writeFileSync(join(tinyDir, f), readFileSync(join(iconsDir, f)));
     // 48x31 的縮圖：建置期會把它放大四倍，成品是一團糊，過去什麼規則都沒擋
     writeFileSync(join(tinyDir, 'tree-center.png'), TINY_PNG);
-    const result = validate(svg, { keywords, nodeText, upgradeCostTable, maxLevelOfficial, unlockExceptions, changelog, iconsDir, dataDir: tinyDir, boardIcons, boardIconsDir });
+    const result = validate(svg, { keywords, nodeText, upgradeCostTable, maxLevelOfficial, unlockExceptions, changelog, iconsDir, dataDir: tinyDir, boardIcons, boardIconsDir, passiveUpgradeCost });
     expect(result.errors.some(e => /規則 10.*小於顯示尺寸的兩倍/.test(e))).toBe(true);
   });
 
@@ -212,7 +221,7 @@ describe('validate', () => {
     // 錯誤，不影響本測試只關心的「不可達」斷言。
     const tmpIconsDir = mkdtempSync(join(tmpdir(), 'rd2-wiki-icons-'));
     writeFileSync(join(tmpIconsDir, '000000000000.png'), Buffer.from('not-a-real-png'));
-    const result = validate(wip, { keywords, nodeText: wipText, upgradeCostTable, maxLevelOfficial, unlockExceptions, changelog, iconsDir: tmpIconsDir, dataDir, boardIcons, boardIconsDir });
+    const result = validate(wip, { keywords, nodeText: wipText, upgradeCostTable, maxLevelOfficial, unlockExceptions, changelog, iconsDir: tmpIconsDir, dataDir, boardIcons, boardIconsDir, passiveUpgradeCost });
     expect(result.errors.some(e => /不可達/.test(e))).toBe(false);
     expect(result.warnings.some(w => /規則 6\(c\)/.test(w) && w.includes('1099'))).toBe(true);
   });
@@ -553,14 +562,14 @@ describe('validate', () => {
     const realBuf = readFileSync(join(iconsDir, realFile));
     const wrongHash = realFile === '000000000000.png' ? '111111111111' : '000000000000';
     writeFileSync(join(tmpIconsDir, `${wrongHash}.png`), realBuf);
-    const result = validate(svg, { keywords, nodeText, upgradeCostTable, maxLevelOfficial, unlockExceptions, changelog, iconsDir: tmpIconsDir, dataDir, boardIcons, boardIconsDir });
+    const result = validate(svg, { keywords, nodeText, upgradeCostTable, maxLevelOfficial, unlockExceptions, changelog, iconsDir: tmpIconsDir, dataDir, boardIcons, boardIconsDir, passiveUpgradeCost });
     expect(result.errors.some(e => /規則 7\(b\)/.test(e) && /sha256/.test(e))).toBe(true);
   });
 
   it('規則 7(c)：非 PNG 檔會被擋', () => {
     const tmpIconsDir = mkdtempSync(join(tmpdir(), 'rd2-wiki-icons-'));
     writeFileSync(join(tmpIconsDir, '222222222222.png'), Buffer.from('this is not a png file at all'));
-    const result = validate(svg, { keywords, nodeText, upgradeCostTable, maxLevelOfficial, unlockExceptions, changelog, iconsDir: tmpIconsDir, dataDir, boardIcons, boardIconsDir });
+    const result = validate(svg, { keywords, nodeText, upgradeCostTable, maxLevelOfficial, unlockExceptions, changelog, iconsDir: tmpIconsDir, dataDir, boardIcons, boardIconsDir, passiveUpgradeCost });
     expect(result.errors.some(e => /規則 7\(c\)/.test(e) && /不是有效的 PNG/.test(e))).toBe(true);
   });
 
@@ -570,7 +579,7 @@ describe('validate', () => {
     const tinyPng = makeMinimalPng(10, 10);
     const tinyHash = createHash('sha256').update(tinyPng).digest('hex').slice(0, 12);
     writeFileSync(join(tmpIconsDir, `${tinyHash}.png`), tinyPng);
-    const result = validate(svg, { keywords, nodeText, upgradeCostTable, maxLevelOfficial, unlockExceptions, changelog, iconsDir: tmpIconsDir, dataDir, boardIcons, boardIconsDir });
+    const result = validate(svg, { keywords, nodeText, upgradeCostTable, maxLevelOfficial, unlockExceptions, changelog, iconsDir: tmpIconsDir, dataDir, boardIcons, boardIconsDir, passiveUpgradeCost });
     expect(result.errors.some(e => /規則 7\(c\)/.test(e) && /小於最低要求 96px/.test(e))).toBe(true);
   });
 
@@ -582,7 +591,7 @@ describe('validate', () => {
     const orphanBuf = makeMinimalPng(100, 100);
     const orphanHash = createHash('sha256').update(orphanBuf).digest('hex').slice(0, 12);
     writeFileSync(join(tmpIconsDir, `${orphanHash}.png`), orphanBuf);
-    const result = validate(svg, { keywords, nodeText, upgradeCostTable, maxLevelOfficial, unlockExceptions, changelog, iconsDir: tmpIconsDir, dataDir, boardIcons, boardIconsDir });
+    const result = validate(svg, { keywords, nodeText, upgradeCostTable, maxLevelOfficial, unlockExceptions, changelog, iconsDir: tmpIconsDir, dataDir, boardIcons, boardIconsDir, passiveUpgradeCost });
     expect(result.errors).toEqual([]);
     expect(result.warnings.some(w => /規則 7\(d\)/.test(w) && w.includes(orphanHash))).toBe(true);
   });
@@ -882,5 +891,120 @@ describe('validate：邊與座標的守門（P2）', () => {
   it('規則 4：等級行混回 cost 會被擋（等級上限只能寫在 maxLevel 欄位）', () => {
     expect(validate(svg, patch({ '1201': { ...nodeText['1201'], cost: '金幣 2,000\n最高 50 級' } }))
       .errors.some(e => /規則 4.*不可換行.*maxLevel/.test(e))).toBe(true);
+  });
+
+  // 規則 22：玩家被動／支援的升級費用表（data/passive-upgrade-cost.json）。
+  //
+  // 這份資料不進 tree.json——tier 是 `(maxLevel, 解鎖金幣)` 的純函數，那兩個欄位產物裡本來就有。
+  // 代價是「表與節點對不上」完全沒有產物層面的痕跡：一顆節點對不到 tier，/sim 只會安靜地
+  // 不讓它升級（跟「這顆本來就不能升級」在畫面上一模一樣），一個多餘的 tier 則永遠不會被察覺。
+  describe('規則 22：玩家被動升級費用表', () => {
+    it('沒有提供時只警告不擋 PR', () => {
+      const result = validate(svg, { ...opts, passiveUpgradeCost: null });
+      expect(result.errors.every(e => !/規則 22/.test(e))).toBe(true);
+      expect(result.warnings.some(w => /規則 22.*沒有提供 data\/passive-upgrade-cost\.json/.test(w))).toBe(true);
+    });
+
+    it('真實資料通過', () => {
+      expect(validate(svg, opts).errors.filter(e => /規則 22/.test(e))).toEqual([]);
+    });
+
+    it('最外層不是物件會被擋', () => {
+      expect(validate(svg, withTiers([])).errors.some(e => /規則 22.*最外層/.test(e))).toBe(true);
+      expect(validate(svg, withTiers('x')).errors.some(e => /規則 22.*最外層/.test(e))).toBe(true);
+    });
+
+    it('tier 的 maxLevel 或 unlockGold 不是正整數會被擋', () => {
+      const t = tiers();
+      t.tiers['A']!.maxLevel = 0;
+      expect(validate(svg, withTiers(t)).errors.some(e => /規則 22.*A.*maxLevel/.test(e))).toBe(true);
+      const t2 = tiers();
+      (t2.tiers['B'] as { unlockGold: unknown }).unlockGold = '8000';
+      expect(validate(svg, withTiers(t2)).errors.some(e => /規則 22.*B.*unlockGold/.test(e))).toBe(true);
+    });
+
+    // 少一段 band 的後果是那幾級在累加時被安靜跳過——畫面上「這一級免費」跟「這一級的資料
+    // 不見了」長得一模一樣。
+    it('band 沒有連續涵蓋 2..maxLevel 會被擋', () => {
+      const t = tiers();
+      t.tiers['C']!.bands.splice(1, 1);
+      expect(validate(svg, withTiers(t)).errors.some(e => /規則 22.*C.*(連續|涵蓋)/.test(e))).toBe(true);
+    });
+
+    // tierKeyOf() 是拿 (maxLevel, unlockGold) 去線性搜尋的，兩個 tier 撞號時哪一個贏
+    // 完全取決於 JSON 的鍵順序——那是「改一行縮排就換一張費用表」等級的脆弱。
+    it('兩個 tier 的 (maxLevel, unlockGold) 撞號會被擋', () => {
+      const t = tiers();
+      t.tiers['D']!.maxLevel = t.tiers['C']!.maxLevel;
+      t.tiers['D']!.unlockGold = t.tiers['C']!.unlockGold;
+      expect(validate(svg, withTiers(t)).errors.some(e => /規則 22.*撞號|規則 22.*同一組/.test(e))).toBe(true);
+    });
+
+    it('有節點對不到任何 tier 會被擋，並列出節點 id', () => {
+      const t = tiers();
+      delete t.tiers['A'];
+      const errors = validate(svg, withTiers(t)).errors;
+      expect(errors.some(e => /規則 22.*對不到/.test(e) && e.includes('1105'))).toBe(true);
+    });
+
+    it('有 tier 對不到任何節點會被擋', () => {
+      const t = tiers();
+      t.tiers['Z'] = { maxLevel: 7, unlockGold: 777, bands: [{ from: 2, to: 7, gold: 1, core: 0 }] };
+      expect(validate(svg, withTiers(t)).errors.some(e => /規則 22.*Z.*沒有任何節點/.test(e))).toBe(true);
+    });
+
+    it('special 的鍵不是節點 id 會被擋', () => {
+      const t = tiers();
+      t.special['9999'] = t.special['4303']!;
+      delete t.special['4303'];
+      expect(validate(svg, withTiers(t)).errors.some(e => /規則 22.*9999/.test(e))).toBe(true);
+    });
+
+    it('special 的 maxLevel 與節點對不上會被擋', () => {
+      const t = tiers();
+      t.special['4303']!.maxLevel = 5;
+      expect(validate(svg, withTiers(t)).errors.some(e => /規則 22.*4303.*maxLevel/.test(e))).toBe(true);
+    });
+
+    it('special 的 levels 不是 2..maxLevel 連續會被擋', () => {
+      const t = tiers();
+      t.special['4303']!.levels = [{ level: 2, gold: 1, core: 0 }];
+      expect(validate(svg, withTiers(t)).errors.some(e => /規則 22.*4303.*(連續|涵蓋)/.test(e))).toBe(true);
+    });
+
+    // ⚠️ `special` 的定義就是「套不進任何 tier 的節點」，所以節點端必須把它們排除掉——
+    // 不排除的話，一顆放進 special 的玩家被動不是被判「對不到任何升級類型」（沒有 tier
+    // 撞上時），就是被判「一顆節點兩張表」（有 tier 撞上時），兩條路都紅，而那份資料是合法的。
+    // 目前唯一的 special 是 4303（骰子符文，被型別過濾掉），所以這件事現在不會爆——
+    // 等哪天有一顆被動需要單獨列表才會擋住人。
+    it('玩家被動放進 special 之後不再要求它對得到 tier', () => {
+      const t = tiers();
+      const passive = Object.entries(nodeText).find(([, v]) => (v as { type: string }).type === '玩家被動'
+        && (v as { maxLevel: number }).maxLevel > 1)!;
+      const max = (passive[1] as { maxLevel: number }).maxLevel;
+      // 給一張合法的逐級表（Lv.2..max），並把它從 tier 表裡拿掉，模擬「這顆套不進任何 tier」
+      t.special[passive[0]] = {
+        maxLevel: max,
+        levels: Array.from({ length: max - 1 }, (_, i) => ({ level: i + 2, gold: 100, core: 0 })),
+      };
+      const errors = validate(svg, withTiers(t)).errors.filter(e => /規則 22/.test(e));
+      expect(errors.filter(e => e.includes(passive[0]))).toEqual([]);
+    });
+
+    // 兩張表同時對得到不是錯（`levelTableFor()` 明確讓 special 優先），但很可能其中一張
+    // 是舊的——留一條警告，不擋 PR。
+    it('special 的節點同時也對得到 tier 時只警告不擋', () => {
+      const t = tiers();
+      const passive = Object.entries(nodeText).find(([, v]) => (v as { type: string }).type === '玩家被動'
+        && (v as { maxLevel: number }).maxLevel > 1)!;
+      const max = (passive[1] as { maxLevel: number }).maxLevel;
+      t.special[passive[0]] = {
+        maxLevel: max,
+        levels: Array.from({ length: max - 1 }, (_, i) => ({ level: i + 2, gold: 100, core: 0 })),
+      };
+      const result = validate(svg, withTiers(t));
+      expect(result.errors.filter(e => /規則 22/.test(e) && e.includes(passive[0]))).toEqual([]);
+      expect(result.warnings.some(w => /規則 22/.test(w) && w.includes(passive[0]) && /同時/.test(w))).toBe(true);
+    });
   });
 });

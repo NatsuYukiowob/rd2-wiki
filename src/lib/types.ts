@@ -149,6 +149,37 @@ export interface UpgradeCostTable {
   levels: { level: number; gold: number; core: number }[];
 }
 
+/** 一張逐級升級表的一列。`level 1` 是解鎖那一次，算升級追加花費時一律跳過（見 upgradeExtraCost）。 */
+export interface LevelCost { level: number; gold: number; core: number }
+
+/**
+ * 官方升級費用表的一個區間：`from`~`to` 每一級都花 `gold`，而 `core` **只在 `from` 那一級收一次**。
+ *
+ * 這是官方表格自己的寫法——它只列 `Lv.5→6`／`Lv.10→11` 這些跨區間的格子（例如 `16000+6`），
+ * 並在表頭註明「等級5以後未說明之等級費用以前一級所需金幣資源相同」。照逐級展開存進 JSON 的話，
+ * 那 100 級的 tier F 要寫 99 列，而且沒有任何地方看得出「這一段是同一個區間」。
+ */
+export interface UpgradeBand { from: number; to: number; gold: number; core: number }
+
+/** 一個升級 tier：等級上限與解鎖金幣是它的識別（見 tierKeyOf），bands 是 Lv.2 之後的費用。 */
+export interface UpgradeTier { maxLevel: number; unlockGold: number; bands: UpgradeBand[] }
+
+/**
+ * 玩家被動／支援的升級費用表（`data/passive-upgrade-cost.json`），另含少數不適用任何通用表的特例。
+ *
+ * ⚠️ **這份資料不進 `tree.json`**：tier 是 `(maxLevel, unlockCost.gold)` 的純函數，那兩個欄位
+ * 產物裡本來就有，複製一份 `costTier` 欄位進去只是拿 gzip 預算換一個推得出來的值。
+ * `/sim` 是靜態頁，建置期直接讀這個檔。
+ */
+export interface PassiveUpgradeCost {
+  note: string;
+  source: string;
+  /** 鍵是官方表格的升級類型代號（A–F）。 */
+  tiers: Record<string, UpgradeTier>;
+  /** 鍵是節點 id。官方表格單獨列出來、套不進任何 tier 的節點（目前只有 `4303`）。 */
+  special: Record<string, { maxLevel: number; levels: LevelCost[] }>;
+}
+
 /**
  * 官方資料表在「技能效果」欄標註的滿級數值（`Lv.50：216%`），鍵是 `data-game-id`。
  *

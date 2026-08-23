@@ -14,7 +14,7 @@ import { readFileSync } from 'node:fs';
  * - `0` 與 `auto`：不是尺寸，沒有級距可言。
  * - `em` 與 `%`：相對於元素自己的字級或尺寸，改成絕對級距反而是錯的。
  */
-const FILES = ['src/styles/global.css', 'src/pages/tree.astro', 'src/pages/about.astro'];
+const FILES = ['src/styles/global.css', 'src/pages/tree.astro', 'src/pages/about.astro', 'src/pages/sim.astro'];
 
 const SIZED_PROPS = new Set([
   'padding', 'margin', 'gap', 'row-gap', 'column-gap', 'border-radius', 'font-size',
@@ -82,6 +82,7 @@ describe('版面級距', () => {
     const runtime = new Set([
       '--nav-h', // src/lib/nav-height.ts 量導覽列高度後寫進 documentElement
       '--chips-h', // src/scripts/tree-canvas.ts 量手機版底部分支列高度
+      '--sim-panel-h', // src/scripts/sim.ts 量 /sim 手機版抽屜的實際高度（footer 靠它讓位）
       '--branch', // .dice-card[data-branch=…] 自己設，見 global.css 的分支色條
     ]);
 
