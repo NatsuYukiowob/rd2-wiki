@@ -6,6 +6,9 @@ import type { Edge, TreeNode } from '../../src/lib/types';
 
 const node = (id: string, core: number, gold: number, via: TreeNode['unlockVia'] = 'cost') =>
   ({ id, unlockCost: { core, gold }, unlockVia: via } as TreeNode);
+/** 成就／任務開門但仍要付錢的節點（例：恐懼骰子＝合作累積 900 擊殺後，使用 8 核心解鎖）。 */
+const paidNode = (id: string, core: number, gold: number, via: TreeNode['unlockVia']) =>
+  ({ id, unlockCost: { core, gold }, unlockVia: via, unlockPaid: true } as TreeNode);
 
 describe('graph', () => {
   //  A → B → D
@@ -23,6 +26,20 @@ describe('graph', () => {
 
   it('prerequisiteChain 對根節點只回傳自身', () => {
     expect([...prerequisiteChain('A', parents)]).toEqual(['A']);
+  });
+
+  // 「可跳過前置」＝官方資料表寫明「無視骰子樹前置」的節點（貪婪／空虛骰子）。
+  // 它們從討伐獎勵／通行證直接領取，所以走到它就不必再往上追祖先。
+  it('prerequisiteChain 遇到可跳過的節點就不再往上追祖先', () => {
+    expect([...prerequisiteChain('D', parents, new Set(['B', 'C']))].sort()).toEqual(['B', 'C', 'D']);
+  });
+
+  it('prerequisiteChain 的起點自己可跳過時只回傳自身', () => {
+    expect([...prerequisiteChain('D', parents, new Set(['D']))]).toEqual(['D']);
+  });
+
+  it('prerequisiteChain 沒傳 bypass 時行為與原本完全相同', () => {
+    expect([...prerequisiteChain('D', parents, new Set())].sort()).toEqual(['A', 'B', 'C', 'D']);
   });
 
   it('prerequisiteChain 遇到環仍會終止', () => {
@@ -55,5 +72,15 @@ describe('graph', () => {
     const r = sumUnlockCost(prerequisiteChain('D', parents), byId);
     expect(r.cost).toEqual({ core: 10, gold: 11000 });
     expect(r.skipped).toEqual(['A']);
+  });
+
+  // unlockVia 只說「靠什麼開門」，不等於「不用付錢」。恐懼骰子是成就開門＋仍要 8 核心，
+  // 少了 unlockPaid 這個旗標，它的核心會從每一條經過它的前置鏈裡安靜消失。
+  it('sumUnlockCost 計入 unlockPaid 的節點，且不列進 skipped', () => {
+    const byId = new Map([paidNode('A', 5, 0, 'achievement'), node('B', 0, 3000), node('C', 10, 0), node('D', 0, 8000)]
+      .map(n => [n.id, n]));
+    const r = sumUnlockCost(prerequisiteChain('D', parents), byId);
+    expect(r.cost).toEqual({ core: 15, gold: 11000 });
+    expect(r.skipped).toEqual([]);
   });
 });

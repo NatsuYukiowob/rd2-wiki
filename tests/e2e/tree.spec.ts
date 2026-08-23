@@ -1931,3 +1931,64 @@ test('Z9. 標籤只在有滑鼠的裝置升成合成層（手機會閃爍），�
   await page.mouse.wheel(0, -120);
   expect((await read()).visibility).toBe('visible');
 });
+
+test('X2. 可跳過的前置邊畫成虛線，而且只有那兩條', async ({ page }) => {
+  // 官方資料表 v1.0.3 v2 寫明貪婪（5006）與空虛（5008）「無視骰子樹前置」。圖結構沒有變
+  // ——239／248 照舊、邊還在——差別只在那條路可以不走，所以用虛線而不是刪線表達。
+  //
+  // ⚠️ 兩件事一起驗：dasharray 有沒有生效，以及**只有那兩條**。`.edge-bypassable` 是
+  // render.ts 依**終點**節點的 bypassPrereq 掛的，掛成看起點的話整棵樹會變虛線圖，
+  // 而單元測試只驗得到 class、驗不到 CSS 有沒有真的接上。
+  await page.goto('/tree');
+  await page.waitForSelector('#tree g.node');
+
+  const dashed = await page.evaluate(() => {
+    const all = [...document.querySelectorAll('#tree line.edge')];
+    const withDash = all.filter(e => {
+      const d = getComputedStyle(e).strokeDasharray;
+      return d !== '' && d !== 'none';
+    });
+    return {
+      total: all.length,
+      ids: withDash.map(e => `${e.getAttribute('data-from')}→${e.getAttribute('data-to')}`).sort(),
+    };
+  });
+  expect(dashed.total).toBe(248);
+  expect(dashed.ids).toEqual(['5007→5006', '5009→5008']);
+
+  // 三組狀態下虛線都不可以被洗掉——`.edge-bypassable` 只設 stroke-dasharray，而另外三組規則
+  // 只動 stroke／stroke-width／opacity，這條測試就是釘住那個「互不搶屬性」的前提。
+  //
+  // (1) 鏈外：`#tree.has-selection .edge:not(.in-chain)` 把它壓到 opacity .12。
+  await page.goto('/tree?node=5101');
+  await page.waitForSelector('#tree g.node');
+  await expect(page.locator('#tree.has-selection')).toHaveCount(1);
+  const outside = await page.evaluate(() => {
+    const e = document.querySelector('#tree line.edge[data-from="5007"][data-to="5006"]')!;
+    const cs = getComputedStyle(e);
+    return { dash: cs.strokeDasharray, stroke: cs.stroke, opacity: cs.opacity, chain: e.classList.contains('in-chain') };
+  });
+  expect(outside.chain).toBe(false);
+  expect(Number(outside.opacity)).toBeLessThan(0.5);
+  expect(outside.dash === '' || outside.dash === 'none').toBe(false);
+
+  // (2) 鏈內：`.in-chain` 把它染成金色。⚠️ 這個狀態**構得出來**——5005 變異骰子的前置是 5006
+  // 與 5103，而 5103 的祖先鏈是 5002 → 5007 → 5103，所以 5007 與 5006 同時在鏈上，
+  // 那條虛線邊被高亮成金色。全站有 18 個選取會踩到，其中 11 個連一個前置都沒省到。
+  await page.goto('/tree?node=5005');
+  await page.waitForSelector('#tree g.node');
+  const inside = await page.evaluate(() => {
+    const e = document.querySelector('#tree line.edge[data-from="5007"][data-to="5006"]')!;
+    const cs = getComputedStyle(e);
+    return { dash: cs.strokeDasharray, stroke: cs.stroke, opacity: cs.opacity, chain: e.classList.contains('in-chain') };
+  });
+  expect(inside.chain).toBe(true);
+  expect(Number(inside.opacity)).toBe(1);
+  expect(inside.dash === '' || inside.dash === 'none').toBe(false);
+  expect(inside.stroke).not.toBe(outside.stroke);   // 真的被染成金色了，不是只加了 class
+
+  // (3) 而且那個狀態下畫面上要有東西解釋這條虛線——5005 一個前置都沒省到（bypassed = 0），
+  // 說明若綁在「省了幾個」上，這裡會是一條金色虛線配上零說明。
+  await expect(page.locator('#detail')).toContainText('鏈上有 1 顆可直接領的骰子');
+  await expect(page.locator('#detail')).not.toContainText('已跳過');
+});

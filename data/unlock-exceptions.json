@@ -5,7 +5,7 @@
   "2001": { "unlockVia": "default", "note": "初始解鎖" },
   "3001": { "unlockVia": "default", "note": "初始解鎖" },
   "4008": { "unlockVia": "quest", "note": "新手任務 700 點獎勵" },
-  "5002": { "unlockVia": "achievement", "note": "合作累計擊殺 900 隻怪物" },
-  "5006": { "unlockVia": "achievement", "note": "合作第 40 波獎勵（累計擊殺 2,100 隻怪物）" },
-  "5008": { "unlockVia": "achievement", "note": "競技場 300 分獎勵" }
+  "5002": { "unlockVia": "achievement", "note": "合作累積900擊殺後，使用8核心解鎖", "unlockPaid": true },
+  "5006": { "unlockVia": "achievement", "note": "合作累積2100擊殺後，從討伐獎勵領取（無視骰子樹前置）", "bypassPrereq": true },
+  "5008": { "unlockVia": "achievement", "note": "競技場達到300分後，從競技場通行證領取（無視骰子樹前置）", "bypassPrereq": true }
 }

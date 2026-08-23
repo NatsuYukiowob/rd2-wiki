@@ -49,8 +49,8 @@ describe('formatUnlockVia', () => {
   // 退回分類詞就等於把三條完全不同的取得路徑壓成同一句話。
   it('有 unlockNote 時顯示官方取得條件原文，而不是分類詞', () => {
     expect(formatUnlockVia({
-      unlockVia: 'achievement', unlockCost: { core: 8, gold: 0 }, unlockNote: '競技場 300 分獎勵',
-    })).toBe('競技場 300 分獎勵');
+      unlockVia: 'achievement', unlockCost: { core: 8, gold: 0 }, unlockNote: '競技場達到300分後，從競技場通行證領取（無視骰子樹前置）',
+    })).toBe('競技場達到300分後，從競技場通行證領取（無視骰子樹前置）');
     expect(formatUnlockVia({
       unlockVia: 'quest', unlockCost: { core: 8, gold: 0 }, unlockNote: '新手任務 700 點獎勵',
     })).toBe('新手任務 700 點獎勵');

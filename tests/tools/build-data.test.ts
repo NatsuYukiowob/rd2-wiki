@@ -47,6 +47,23 @@ describe('buildTreeData', () => {
     expect(data.nodes.find(x => x.id === '4008')!.unlockVia).toBe('quest');
     expect(data.nodes.find(x => x.id === '2001')!.unlockVia).toBe('default');
   });
+  // 官方資料表 v1.0.3 v2 的三條解鎖條件原文（2026-08-23）：
+  //   5002 恐懼「合作累積900擊殺後，使用8核心解鎖」        → 成就開門，仍要付 8 核心
+  //   5006 貪婪「…從討伐獎勵領取（無視骰子樹前置）」      → 免費，且不必解前置
+  //   5008 空虛「…從競技場通行證領取（無視骰子樹前置）」  → 同上
+  // 兩個旗標都是「為真才放欄位」，所以其餘 236 個節點必須完全沒有這兩個 key。
+  it('unlockPaid 與 bypassPrereq 只落在該落的三顆骰子上', () => {
+    const byId = new Map(data.nodes.map(n => [n.id, n]));
+    expect(byId.get('5002')!.unlockPaid).toBe(true);
+    expect(byId.get('5002')!.bypassPrereq).toBeUndefined();
+    expect(byId.get('5006')!.bypassPrereq).toBe(true);
+    expect(byId.get('5006')!.unlockPaid).toBeUndefined();
+    expect(byId.get('5008')!.bypassPrereq).toBe(true);
+    expect(byId.get('5008')!.unlockPaid).toBeUndefined();
+
+    expect(data.nodes.filter(n => n.unlockPaid).map(n => n.id)).toEqual(['5002']);
+    expect(data.nodes.filter(n => n.bypassPrereq).map(n => n.id).sort()).toEqual(['5006', '5008']);
+  });
   it('正本目前一個佔位符都沒有，但機制還在（注入一個就會被標記）', () => {
     // 2026-08-20：四個帶 `{n}` 的描述全部改成遊戲內實際顯示的文字（遊戲把沒填值的佔位符
     // 直接渲染成空字串），所以真實資料的佔位符歸零。

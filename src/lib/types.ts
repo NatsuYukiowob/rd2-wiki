@@ -15,8 +15,12 @@ export type PassiveCategory =
   | 'branch-stat' | 'global-stat' | 'branch-skill' | 'player-passive' | 'support-upgrade';
 export type Shape = 'rect' | 'diamond' | 'circle' | 'hex';
 /**
- * 節點的取得方式。`cost` 以外的三種都代表「玩家不能花這筆錢買到它」，
- * `sumUnlockCost()` 與 `upgradeTableApplies()` 都是照這個欄位排除的。
+ * 節點的取得方式——它只說「靠什麼開門」，**不等於「要不要付錢」**。
+ *
+ * ⚠️ 這兩件事一度被綁在一起（`cost` 以外＝不用付錢），2026-08-23 拆開了：官方資料表
+ * v1.0.3 v2 把恐懼骰子寫成「合作累積900擊殺後，使用8核心解鎖」。付不付錢現在看
+ * `unlockPaid`，`sumUnlockCost()` 與 `upgradeTableApplies()` 兩邊排除的判準都是
+ * `unlockVia === 'cost' || unlockPaid`。
  *
  * `quest` 與 `achievement` 分開：前者是遊戲裡的任務系統（新手任務點數），後者是累計進度
  * 獎勵（合作擊殺數、競技場分數）。玩家拿到它們的路徑完全不同，混成一種的話面板只能寫
@@ -43,13 +47,30 @@ export interface TreeNode {
   unlockCost: Cost;
   unlockVia: UnlockVia;
   /**
-   * 官方資料表寫的取得條件原文（「合作第 40 波獎勵（累計擊殺 2,100 隻怪物）」）。
+   * 官方資料表寫的取得條件原文（「合作累積2100擊殺後，從討伐獎勵領取（無視骰子樹前置）」）。
    *
    * 只有 `unlockVia !== 'cost'` 的節點才有，來源是 `data/unlock-exceptions.json` 的 `note`。
    * 面板優先顯示它而不是「任務解鎖」這種分類詞——分類詞只說得出「不是用買的」，玩家真正
    * 需要知道的是「那要怎麼拿」。沒有原文時才退回分類詞，所以這個欄位是可選的。
    */
   unlockNote?: string;
+  /**
+   * 成就／任務只是開門，玩家仍要付 `unlockCost` 那一筆。
+   *
+   * `unlockVia` 原本被當成「非 cost ＝ 不用付錢」在用，但官方資料表 v1.0.3 v2 把恐懼骰子
+   * 寫成「合作累積900擊殺後，**使用8核心解鎖**」——條件與價錢是兩回事。沒有這個旗標的話，
+   * 那 8 核心會從每一條經過它的前置鏈裡安靜消失（`sumUnlockCost()` 直接跳過非 cost 節點），
+   * 而畫面上不會有任何地方說話。只在為真時才寫進 tree.json。
+   */
+  unlockPaid?: true;
+  /**
+   * 這顆從骰子樹外面直接領得到，不必解前置（官方原文：「無視骰子樹前置」）。
+   *
+   * 目前是貪婪骰子（討伐獎勵）與空虛骰子（競技場通行證）。它**不改變圖結構**——邊照樣存在、
+   * 239／248 不變，只有 `prerequisiteChain()` 走到它時停止往上追祖先。`/tree` 上指向它的
+   * 那條邊會畫成虛線（見 render.ts）。只在為真時才寫進 tree.json。
+   */
+  bypassPrereq?: true;
   maxLevel: number;
   prereqMode: null;
   upgradeCost: null;

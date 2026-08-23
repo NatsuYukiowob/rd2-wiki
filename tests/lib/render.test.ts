@@ -14,6 +14,16 @@ describe('renderTree', () => {
     expect(svg.querySelectorAll('g.node')).toHaveLength(239);
     expect(svg.querySelectorAll('line.edge')).toHaveLength(248);
   });
+  // 指向「可直接領」節點的那條邊畫成虛線（CSS 在 src/styles/global.css）。標記的是**邊**不是節點：
+  // 玩家要看懂的是「這條前置可以不走」，而節點外框虛線會跟 in-chain 金色光暈與焦點框疊在一起。
+  it('只有指向 bypassPrereq 節點的入邊帶 .edge-bypassable', () => {
+    const dashed = [...svg.querySelectorAll('line.edge-bypassable')]
+      .map(e => `${e.getAttribute('data-from')}→${e.getAttribute('data-to')}`).sort();
+    expect(dashed).toEqual(['5007→5006', '5009→5008']);
+    // 反向斷言：其餘 246 條不可以被順手標到，否則整棵樹會變成虛線圖
+    expect(svg.querySelectorAll('line.edge')).toHaveLength(248);
+    expect(svg.querySelectorAll('line.edge-bypassable')).toHaveLength(2);
+  });
   it('中央樞紐畫成獨立的 g.tree-center：放射線接到每個 links 節點、圖用 meta.center 的網址與尺寸', () => {
     const c = data.meta.center!;
     expect(c).not.toBeNull();
@@ -96,8 +106,14 @@ describe('renderTree', () => {
     expect(quest.getAttribute('aria-label')).not.toContain('核心 8');
     expect(byDefault.getAttribute('aria-label')).toContain('初始解鎖');
     expect(byDefault.getAttribute('aria-label')).not.toContain('核心 5');
-    expect(achievement.getAttribute('aria-label')).toContain('競技場 300 分獎勵');
+    expect(achievement.getAttribute('aria-label')).toContain('競技場達到300分後，從競技場通行證領取');
     expect(achievement.getAttribute('aria-label')).not.toContain('核心 8');
+
+    // ⚠️ 恐懼骰子（unlockPaid）是唯一的例外：官方原文自己就寫著「使用8核心解鎖」，
+    // 它**該**被唸出來——這顆玩家真的要付那 8 核心。上面那組「不含核心 N」的斷言
+    // 若無條件套到它身上，讀螢幕的使用者會以為它跟另外 8 顆一樣不用錢。
+    const paid = svg.querySelector('g.node[data-id="5002"]')!;
+    expect(paid.getAttribute('aria-label')).toContain('合作累積900擊殺後，使用8核心解鎖');
   });
   it('每個節點都有 <title> 子元素供瀏覽器原生 hover tooltip 使用（spec §6.2 第 2 點）', () => {
     const n = svg.querySelector('g.node[data-id="1001"]')!;

@@ -117,6 +117,35 @@ describe('renderDetail', () => {
     expect(host.textContent ?? '').toContain(`已排除 ${sel.skipped.length} 個非成本解鎖節點`);
   });
 
+  // 前置鏈突然從 4 個節點變成 2 個，畫面上必須有地方解釋。這一行跟「已排除 N 個非成本解鎖
+  // 節點」是兩件不同的事：那句講的是「在鏈上但不用付錢」，這句講的是「根本不在鏈上了」。
+  it('鏈上有可直接領的節點時，面板同時說明虛線與跳過的前置數量', () => {
+    const { host, sel } = renderNode('5206');
+    expect(sel.bypassed).toBe(2);
+    expect(host.querySelector('.chain h3')?.textContent).toBe('前置鏈（2 個節點）');
+    expect(host.textContent ?? '').toContain('鏈上有 1 顆可直接領的骰子');
+    expect(host.textContent ?? '').toContain('已跳過 2 個前置');
+  });
+
+  // ⚠️ 5005 的前置是 5006 與 5103，而 5103 的祖先鏈把 5007／5002 帶回來，所以一個前置都沒省到
+  // （bypassed = 0）——但畫面上那條虛線是**在**前置鏈裡被高亮成金色的。虛線的說明因此不能綁在
+  // 「省了幾個」上，否則這 11 個節點會出現「一條金色虛線，畫面上沒有任何地方解釋它」。
+  it('鏈上有可直接領的骰子但一個前置都沒省到時，仍要說明虛線', () => {
+    const { host, sel } = renderNode('5005');
+    expect(sel.bypassed).toBe(0);
+    expect(sel.bypassNodes).toBe(1);
+    expect(host.textContent ?? '').toContain('鏈上有 1 顆可直接領的骰子');
+    expect(host.textContent ?? '').not.toContain('已跳過');
+  });
+
+  it('鏈上沒有可直接領的骰子時，兩行都不印', () => {
+    const { host, sel } = renderNode('1002');
+    expect(sel.bypassed).toBe(0);
+    expect(sel.bypassNodes).toBe(0);
+    expect(host.textContent ?? '').not.toContain('已跳過');
+    expect(host.textContent ?? '').not.toContain('可直接領');
+  });
+
   it('滿級成長換算會顯示在 .growth', () => {
     // 1201：maxLevel 50、growth { base:20, perLevel:4, unit:'%' }，無 dataIssue。
     const { host } = renderNode('1201');
@@ -161,9 +190,17 @@ describe('renderDetail', () => {
   it('成就解鎖節點（5008 空虛骰子）的 meta 列顯示官方取得條件，不顯示成本數字', () => {
     const { host } = renderNode('5008');
     const meta = host.querySelectorAll('.meta')[0]?.textContent ?? '';
-    expect(meta).toBe('渾沌 · 骰子 · 競技場 300 分獎勵');
+    expect(meta).toBe('渾沌 · 骰子 · 競技場達到300分後，從競技場通行證領取（無視骰子樹前置）');
     expect(meta).not.toContain('核心');
     expect(meta).not.toContain('金幣');
+  });
+
+  // ⚠️ 恐懼骰子是唯一「成就開門但仍要付錢」的節點，所以上面那條「meta 列不可出現核心」
+  // 對它剛好相反——官方原文自己就寫著要 8 核心，藏起來才是說謊。
+  it('unlockPaid 節點（5002 恐懼骰子）的 meta 列照原文唸出那 8 核心', () => {
+    const { host } = renderNode('5002');
+    const meta = host.querySelectorAll('.meta')[0]?.textContent ?? '';
+    expect(meta).toBe('渾沌 · 骰子 · 合作累積900擊殺後，使用8核心解鎖');
   });
 
   // unlockNote 是資料檔裡的自由文字，而 renderDetail 是用 innerHTML 塞的。這個 repo 的

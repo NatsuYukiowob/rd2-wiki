@@ -44,13 +44,20 @@ export function findRoots(ids: string[], parents: Map<string, string[]>): string
  * @param parents 前置節點對映（由 `buildAdjacency` 產生）
  * @returns 包含目標節點及所有祖先的 Set（去重）
  */
-export function prerequisiteChain(id: string, parents: Map<string, string[]>): Set<string> {
+export function prerequisiteChain(
+  id: string,
+  parents: Map<string, string[]>,
+  bypass: ReadonlySet<string> = new Set(),
+): Set<string> {
   const seen = new Set<string>();
   const stack = [id];
   while (stack.length > 0) {
     const cur = stack.pop()!;
     if (seen.has(cur)) continue;
     seen.add(cur);
+    // 可跳過的節點自己仍留在鏈上（玩家還是得去領它），但它的祖先整條不必走。
+    // 起點自己就是可跳過的節點時同樣適用，所以這個判斷放在 seen.add 之後、展開之前。
+    if (bypass.has(cur)) continue;
     for (const p of parents.get(cur) ?? []) stack.push(p);
   }
   return seen;
@@ -113,8 +120,9 @@ export function unreachableFrom(roots: string[], ids: string[], children: Map<st
 /**
  * 對前置鏈中的節點加總解鎖成本。
  *
- * 只計入 `unlockVia === 'cost'` 的節點（即玩家需要花錢解鎖的）。
- * 任務獎勵或預設解鎖的節點會被排除，並在 `skipped` 陣列中回報。
+ * 只計入玩家真的要付錢的節點：`unlockVia === 'cost'`，或雖然靠成就／任務開門、
+ * 但仍要付一筆的 `unlockPaid` 節點（官方 v1.0.3 v2 的「合作累積900擊殺後，使用8核心解鎖」）。
+ * 其餘的預設／任務／成就解鎖節點會被排除，並在 `skipped` 陣列中回報。
  *
  * @param ids 待加總的節點 id 迭代器
  * @param byId 節點 id 對映到節點資料的 Map
@@ -126,7 +134,7 @@ export function sumUnlockCost(ids: Iterable<string>, byId: Map<string, TreeNode>
   for (const id of ids) {
     const n = byId.get(id);
     if (!n) continue;
-    if (n.unlockVia !== 'cost') { skipped.push(id); continue; }
+    if (n.unlockVia !== 'cost' && !n.unlockPaid) { skipped.push(id); continue; }
     cost.core += n.unlockCost.core;
     cost.gold += n.unlockCost.gold;
   }

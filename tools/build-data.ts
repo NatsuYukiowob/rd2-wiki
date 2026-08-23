@@ -21,7 +21,7 @@ interface BuildOpts {
    * `mergeNodes()` 依 id 合併——id 對不起來就丟錯，不會靜默少一個節點。
    */
   nodeText: NodeTextMap;
-  unlockExceptions: Record<string, { unlockVia: UnlockVia; note?: string }>;
+  unlockExceptions: Record<string, { unlockVia: UnlockVia; note?: string; unlockPaid?: boolean; bypassPrereq?: boolean }>;
   /**
    * `data/upgrade-cost.json`；沒有這份資料時傳 `null`。
    *
@@ -59,6 +59,10 @@ export function buildTreeData(svgText: string, opts: BuildOpts): TreeData {
       // 取得條件原文只有例外節點才有（目前 9 個），照 wip／category 的作法「為真才放欄位」，
       // 其餘 230 個節點完全不佔 tree.json 的 gzip 預算。
       ...(opts.unlockExceptions[r.id]?.note ? { unlockNote: opts.unlockExceptions[r.id]!.note! } : {}),
+      // 兩個旗標同樣「為真才放欄位」。它們補的是 unlockVia 表達不出來的兩件事：
+      // 成就開門仍要付錢（恐懼），以及從骰子樹外面直接領、不必解前置（貪婪／空虛）。
+      ...(opts.unlockExceptions[r.id]?.unlockPaid ? { unlockPaid: true as const } : {}),
+      ...(opts.unlockExceptions[r.id]?.bypassPrereq ? { bypassPrereq: true as const } : {}),
       maxLevel: level,
       prereqMode: null, upgradeCost: null,
       description: r.description,
