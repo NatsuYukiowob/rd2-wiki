@@ -15,7 +15,7 @@ import {
 import {
   buildSimContext, initialSimState, ownedIds, isAvailable, missingParents,
   unlockNode, removeNode, setNodeLevel, setInitialDice, pathTo, unlockMany,
-  simTotals, maxSelectableLevel, summarizeAbilities, exceedsLimit, edgeWasUsed,
+  simTotals, maxSelectableLevel, summarizeAbilities, exceedsLimit, edgeWasUsed, edgeIsLinked,
 } from '../lib/sim.js';
 import type { AbilityGroup, SimState } from '../lib/sim.js';
 import { SIM_STORAGE_KEY, deserializeSim, serializeSim, simReport } from '../lib/sim-io.js';
@@ -236,6 +236,7 @@ function renderCanvas(): void {
   for (const el of edgeEls) {
     const from = el.getAttribute('data-from')!;
     const to = el.getAttribute('data-to')!;
+    el.classList.toggle('sim-linked', edgeIsLinked(from, to, state, ctx));
     el.classList.toggle('sim-active', edgeWasUsed(from, to, state, ctx));
     el.classList.toggle('sim-ready', owned.has(from) && !owned.has(to) && isAvailable(to, state, ctx));
   }
