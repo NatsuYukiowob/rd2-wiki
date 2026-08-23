@@ -68,21 +68,33 @@ function nodeBody(
     ? cumulativeUpgradeCost(upgradeCostTable, node.maxLevel)
     : null;
 
+  // 兩欄：左欄是「這個節點是什麼」，右欄是「要花多少才走得到」，
+  // 最後那句重置警告（spec §2.1 強制要求，永遠是卡片最後一段）**跨兩欄**放底部——
+  // 它是三段裡最長的一句，塞在右欄會把整張卡片撐高、左欄底下留一大塊空白。
+  // ⚠️ 分欄是**版面**不是內容，所以只加兩層 <div>、由 CSS 決定要不要真的並排
+  //（桌機兩欄、手機仍是一欄，見 src/pages/tree.astro 的媒體查詢）。
+  // 原本兩段之間的 <hr> 拿掉了：並排之後那條橫線會橫跨兩欄、切在莫名其妙的位置，
+  // 分隔改由 .chain 的左框線（手機是上框線）給。
   return `
-    <p class="meta">${BRANCH_ZH[node.branch]} · ${typeLabel(node)} · ${escapeHtml(formatUnlockVia(node))}</p>
-    ${node.maxLevel > 1 ? `<p class="meta">等級上限 ${node.maxLevel}</p>` : ''}
-    ${maxUpgrade ? `<p class="upgrade">練滿 ${node.maxLevel} 級累計 ${escapeHtml(formatCost(maxUpgrade))}<span class="cond">含解鎖那一次</span></p>` : ''}
-    ${growth ? `<p class="growth">${escapeHtml(growth)}</p>` : ''}
-    ${node.dataIssue === 'placeholder' ? '<p class="warn">數值待補（遊戲資料含未替換佔位符）</p>' : ''}
-    <p class="desc">${desc}</p>
-    ${node.awakening ? `<button type="button" class="awakening-link" data-detail-awakening>骰子覺醒<span class="cond">${AWAKENING_CONDITION}</span><span class="chev" aria-hidden="true">›</span></button>` : ''}
-    <hr>
-    <h3>前置鏈（${sel.chain.size} 個節點）</h3>
-    <p class="cost">${formatCost(sel.cost)}</p>
-    <p class="note">此為 AND 假設下的上限值，不含強化費用。</p>
-    ${sel.skipped.length > 0 ? `<p class="note">已排除 ${sel.skipped.length} 個非成本解鎖節點</p>` : ''}
-    ${sel.hiddenByFilter > 0 ? `<p class="note">含 ${sel.hiddenByFilter} 個被篩選隱藏的前置</p>` : ''}
-    <p class="note">⚠️ 骰子樹重置需要初期化券，且有已解鎖骰子消失的災情回報，重置前請先確認。</p>
+    <div class="node-body">
+      <div class="col">
+        <p class="meta">${BRANCH_ZH[node.branch]} · ${typeLabel(node)} · ${escapeHtml(formatUnlockVia(node))}</p>
+        ${node.maxLevel > 1 ? `<p class="meta">等級上限 ${node.maxLevel}</p>` : ''}
+        ${maxUpgrade ? `<p class="upgrade">練滿 ${node.maxLevel} 級累計 ${escapeHtml(formatCost(maxUpgrade))}<span class="cond">含解鎖那一次</span></p>` : ''}
+        ${growth ? `<p class="growth">${escapeHtml(growth)}</p>` : ''}
+        ${node.dataIssue === 'placeholder' ? '<p class="warn">數值待補（遊戲資料含未替換佔位符）</p>' : ''}
+        <p class="desc">${desc}</p>
+        ${node.awakening ? `<button type="button" class="awakening-link" data-detail-awakening>骰子覺醒<span class="cond">${AWAKENING_CONDITION}</span><span class="chev" aria-hidden="true">›</span></button>` : ''}
+      </div>
+      <div class="col chain">
+        <h3>前置鏈（${sel.chain.size} 個節點）</h3>
+        <p class="cost">${formatCost(sel.cost)}</p>
+        <p class="note">此為 AND 假設下的上限值，不含強化費用。</p>
+        ${sel.skipped.length > 0 ? `<p class="note">已排除 ${sel.skipped.length} 個非成本解鎖節點</p>` : ''}
+        ${sel.hiddenByFilter > 0 ? `<p class="note">含 ${sel.hiddenByFilter} 個被篩選隱藏的前置</p>` : ''}
+      </div>
+      <p class="note reset-warn">⚠️ 骰子樹重置需要初期化券，且有已解鎖骰子消失的災情回報，重置前請先確認。</p>
+    </div>
   `;
 }
 

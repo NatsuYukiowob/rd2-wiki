@@ -841,29 +841,42 @@ test('M. 標籤只在需要時出現：符文／被動預設不標字，選進�
   await expect(offChain.first().locator('.label')).toBeHidden();
 });
 
-test('N. 詳情卡片貼在被選節點旁邊，不擋工具列，畫布平移時跟著走', async ({ page, isMobile }) => {
+test('N. 選節點時鏡頭置中、卡片貼在節點上方或下方，不擋工具列，畫布平移時跟著走', async ({ page, isMobile }) => {
   test.skip(isMobile, '僅桌機：手機版 #detail 是從底部升起的抽屜，沒有「節點旁邊」這種空間');
+  // 2026-08-23 改版：卡片從「貼在節點左右兩側」改成「節點平移置中 ＋ 卡片貼在節點上方或
+  // 下方」。左右兩側正是前置鏈延伸出去的方向，卡片開在那裡會把剛剛高亮起來的鏈整條蓋掉
+  // （見 N2）。這條守的是新版面的三個形狀：置中、垂直緊鄰、水平中心對齊。
   await page.goto('/tree?node=1002');
   const panel = page.locator('#detail');
   const icon = page.locator('g.node[data-id="1002"] .icon');
   await expect(panel).toBeVisible();
 
+  // ⚠️ 一定要 poll：置中是一段約 200ms 的緩動平移，goto 回來的當下它多半還在跑，
+  // 直接量 boundingBox 會量到半路的位置（實測會落在目標左邊一兩百 px）。
+  await expect.poll(async () => {
+    const n = (await icon.boundingBox())!;
+    return Math.round(Math.abs((n.x + n.width / 2) - page.viewportSize()!.width / 2));
+  }, { message: '節點應該被平移到畫面水平中央' }).toBeLessThanOrEqual(2);
+
   const p1 = (await panel.boundingBox())!;
   const n1 = (await icon.boundingBox())!;
   const toolbar = (await page.locator('#toolbar').boundingBox())!;
 
-  // 貼在節點旁：水平方向緊鄰（左右都可以，靠近邊緣時會翻面），垂直方向大致對齊節點中心。
-  const gapRight = p1.x - (n1.x + n1.width);
-  const gapLeft = n1.x - (p1.x + p1.width);
-  expect(Math.max(gapRight, gapLeft)).toBeGreaterThanOrEqual(0);
-  expect(Math.max(gapRight, gapLeft)).toBeLessThan(40);
-  expect(Math.abs((p1.y + p1.height / 2) - (n1.y + n1.height / 2))).toBeLessThan(p1.height);
+  // 垂直緊鄰：卡片下緣貼節點上緣，或卡片上緣貼節點下緣（哪一邊由前置鏈決定，見 N2）。
+  const gapAbove = n1.y - (p1.y + p1.height);
+  const gapBelow = p1.y - (n1.y + n1.height);
+  expect(Math.max(gapAbove, gapBelow)).toBeGreaterThanOrEqual(0);
+  expect(Math.max(gapAbove, gapBelow)).toBeLessThan(20);
+  // 水平中心對齊節點中心
+  expect(Math.abs((p1.x + p1.width / 2) - (n1.x + n1.width / 2))).toBeLessThan(2);
   // 不擋工具列
   expect(p1.y).toBeGreaterThanOrEqual(toolbar.y + toolbar.height - 1);
 
-  // 平移畫布後要跟著節點跑——卡片留在原地的話，它就指著一個已經不在那裡的節點了
-  // 起點挑畫布左下角的空白處：卡片本身佔了畫面右上一大塊，從那裡起手等於在拖卡片、
-  // 畫布不會動，測試會變成「前提不成立」的假紅。
+  // 平移畫布後要跟著節點跑——卡片留在原地的話，它就指著一個已經不在那裡的節點了。
+  // ⚠️ 起點挑畫布左半邊的空白處：卡片現在置中（1280 寬時大約佔 x 464–816），從它身上起手
+  // 等於在拖卡片、畫布不會動，測試會變成「前提不成立」的假紅。
+  // 這一下拖曳同時也驗了「使用者一碰畫布就中止置中平移」——沒中止的話兩股力量會互相拉扯，
+  // 下面「與節點的相對位置維持不變」那條會抖出誤差。
   await page.mouse.move(200, 600);
   await page.mouse.down();
   await page.mouse.move(80, 600, { steps: 8 });
@@ -873,6 +886,303 @@ test('N. 詳情卡片貼在被選節點旁邊，不擋工具列，畫布平移�
   expect(n2.x).toBeLessThan(n1.x - 40); // 前提：畫布真的移動了
   expect(p2.x).toBeLessThan(p1.x - 40);
   expect(Math.abs((p2.x - n2.x) - (p1.x - n1.x))).toBeLessThan(4); // 與節點的相對位置維持不變
+
+  // 從畫布上直接點一顆節點也要置中。
+  // ⚠️ 這一段不是重複：`?node=` 進站與畫布點擊是**兩條不同的程式路徑**（前者由模組初始化
+  // 尾端補一次 centerOnSelected()，後者走 openNode()）。上面那組只驗得到前者——實測把
+  // openNode() 裡的 centerOnSelected() 整行刪掉，這條測試在補上這一段之前仍然全綠。
+  await page.goto('/tree');
+  await page.waitForSelector('#tree g.node');
+  // ⚠️ 挑 4112（x=100，整棵樹最左邊那一顆）不挑 1001：1001 在 viewBox 正中央（x=1000），
+  // 桌機預設視角本來就把它擺在畫面中線上，拿它當受測對象的話「有沒有置中」根本量不出差別
+  // ——實測把 centerOnSelected() 刪掉，用 1001 的版本仍然全綠。
+  await page.locator('g.node[data-id="4112"]').click();
+  await expect(page.locator('#detail')).toBeVisible();
+  await expect.poll(async () => {
+    const n = (await page.locator('g.node[data-id="4112"] .icon').boundingBox())!;
+    return Math.round(Math.abs((n.x + n.width / 2) - page.viewportSize()!.width / 2));
+  }, { message: '在畫布上點節點，鏡頭也要把它帶到畫面水平中央' }).toBeLessThanOrEqual(2);
+});
+
+/**
+ * N2. 這一整輪改動存在的理由：卡片不可以蓋住剛剛高亮起來的前置鏈。
+ *
+ * Yuki 2026-08-23 回報：桌機點開骰子資訊時，卡片跟前置鏈都跑到節點右邊，卡片把鏈整條蓋掉。
+ * 全站掃過 239 顆節點的實測數字（1440×900）：
+ *   舊版（卡片貼節點左右）        152 顆節點的前置鏈被蓋，被蓋節點共 749 個，單顆最慘 14/15
+ *   只固定放上方                  155 顆                                     單顆最慘 13/14
+ *   置中 ＋ 上下擇一（現在這版）   44 顆                       共 69 個      單顆最慘  5/14
+ * 「只固定放上方」沒有比較好，因為 2／3 系是**往下長**的，深層節點的前置鏈整條在節點上方。
+ * 所以擺法必須是算出來的（tree-canvas.ts 的 sideLeastCovered()），不是寫死一邊。
+ *
+ * 這裡挑四顆舊版最慘的節點釘死在 0，四個生長方向各一顆：4 系往左、2 系往下、5 系往右、
+ * 以及往左長但深度中等的 4112。
+ * ⚠️ 剩下那 44 顆不是漏掉：分支是扇形展開的，5401／5301／4113 這些節點的前置鏈上下都有，
+ * 沒有任何一側能全避開。這條測試守的是「該歸零的有歸零」，不是「全站零遮擋」。
+ */
+test('N2. 詳情卡片不蓋住前置鏈（這一輪改動的驗收）', async ({ page, isMobile }) => {
+  test.skip(isMobile, '僅桌機：手機版卡片是底部抽屜，本來就不疊在節點上');
+  for (const [id, wasCovered] of [['2304', 14], ['2113', 13], ['5113', 12], ['4112', 7]] as const) {
+    await page.goto(`/tree?node=${id}`);
+    await expect(page.locator('#detail')).toBeVisible();
+    // poll 的理由同 N：置中平移還在跑的時候量到的是半路的位置。
+    await expect.poll(async () => page.evaluate((nid) => {
+      const r = (el: Element) => el.getBoundingClientRect();
+      const p = r(document.getElementById('detail')!);
+      const chain = [...document.querySelectorAll('svg g.node.in-chain .icon')].map(r);
+      const overlap = (c: DOMRect) =>
+        Math.max(0, Math.min(p.right, c.right) - Math.max(p.left, c.left))
+        * Math.max(0, Math.min(p.bottom, c.bottom) - Math.max(p.top, c.top));
+      const icon = document.querySelector(`g.node[data-id="${nid}"] .icon`)!;
+      const centered = Math.abs((r(icon).left + r(icon).width / 2) - window.innerWidth / 2) < 2;
+      // 還沒平移到定位就回一個不可能通過的值，讓 poll 繼續等而不是量到半路的畫面。
+      return centered ? chain.filter(c => overlap(c) > 0).length : -1;
+    }, id), { message: `節點 ${id}（舊版被蓋 ${wasCovered} 個）的前置鏈不該被卡片蓋到` })
+      .toBe(0);
+    // 前提斷言：前置鏈真的有東西可以被蓋。少了它，資料改動讓 .in-chain 變成 0 個時上面會
+    // 自動成立——這個 repo 已經因為「防線其實沒在防」踩過好幾次（見 CLAUDE.md 規則 4）。
+    expect(await page.locator('svg g.node.in-chain').count()).toBeGreaterThan(1);
+  }
+});
+
+/**
+ * N3. 置中平移期間卡片不可以動（Yuki 2026-08-23 回報「移動的動畫會閃爍」）。
+ *
+ * 兩個成因疊在一起，各修一半：
+ * 1. `schedulePositionPanel()` 原本是 `cancelAnimationFrame()` ＋ 重排。平移每一幀都寫
+ *    `#viewport` 的 style，於是排好的重新定位回呼**永遠在執行前就被取消**——卡片整段動畫
+ *    完全不動，最後一幀才瞬移到位（實測水平錯位一路拉到 450px）。改成「已經排了就不再排」。
+ * 2. 就算跟得上，動畫途中節點還在畫面上緣附近，卡片會被 top 的夾制壓在工具列下方、
+ *    跟節點重疊，等節點降下來才彈回貼齊（實測垂直間距 −50px → +12px）。
+ *    所以現在改成**卡片一開始就定在終點**、整段動畫只有畫布在走。
+ *
+ * 這條測試量的是「卡片自己在動畫全程出現過幾個位置」——1 個才對。
+ * ⚠️ 取樣必須在頁面內用 rAF 做（同 Z4）：Playwright 往返一趟 10–20ms，量不到中間格。
+ */
+test('N3. 置中平移期間，卡片一次到位不跟著滑（閃爍修正）', async ({ page, isMobile }) => {
+  test.skip(isMobile, '僅桌機：手機版不做置中平移，卡片是底部抽屜');
+  await page.goto('/tree');
+  await page.waitForSelector('#tree g.node');
+
+  await page.evaluate(() => {
+    const w = window as unknown as { __p: string[]; __n: number[] };
+    w.__p = [];
+    w.__n = [];
+    const tick = () => {
+      const d = document.getElementById('detail')!;
+      const icon = document.querySelector('g.node[data-id="4112"] .icon');
+      if (!d.hidden && icon) {
+        const r = d.getBoundingClientRect();
+        w.__p.push(`${r.left.toFixed(0)},${r.top.toFixed(0)},${r.height.toFixed(0)}`);
+        const n = icon.getBoundingClientRect();
+        w.__n.push(+(n.left + n.width / 2).toFixed(1));
+      }
+      if (w.__p.length < 60) requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  });
+  // 挑最左邊那一顆，平移量才夠大（實測要走 468px）。挑靠中間的節點量不出差別。
+  await page.locator('g.node[data-id="4112"]').click();
+  await page.waitForTimeout(1200);
+
+  const { positions, nodeXs } = await page.evaluate(() => {
+    const w = window as unknown as { __p: string[]; __n: number[] };
+    return { positions: w.__p, nodeXs: w.__n };
+  });
+  // 前提斷言：畫布真的走了一大段，而且取樣有涵蓋到動畫期間。少了這兩條，卡片「沒動」
+  // 也可能只是因為根本沒有動畫發生（這個 repo 的假綠已經踩過好幾次，見 CLAUDE.md 規則 4）。
+  expect(positions.length).toBeGreaterThan(20);
+  expect(Math.max(...nodeXs) - Math.min(...nodeXs)).toBeGreaterThan(200);
+
+  expect([...new Set(positions)], '卡片在整段置中平移中只能有一個位置').toHaveLength(1);
+
+  // 第二半：「每幀都寫 transform」的來源不可以把重新定位餓死。
+  // ⚠️ 這一段是獨立的斷言，不是重複：釘住（上面那條）之後，置中平移期間根本不會叫
+  // positionPanel()，所以把 schedulePositionPanel() 改回 cancelAnimationFrame() ＋ 重排，
+  // 上面那條仍然全綠（實測過）。這裡直接裝一個每幀寫入的來源來打那條路徑。
+  // 拖曳測不到：pointermove 沒有真的每幀都來（實測錯位最多 12px，卡片跟得上）。
+  await page.goto('/tree?node=1002');
+  await expect(page.locator('#detail')).toBeVisible();
+  await page.waitForTimeout(500);
+  const offsets = await page.evaluate(async () => {
+    const vpEl = document.getElementById('viewport')!;
+    const m = new DOMMatrixReadOnly(getComputedStyle(vpEl).transform);
+    const out: number[] = [];
+    await new Promise<void>(resolve => {
+      let i = 0;
+      const tick = () => {
+        // 每一幀都寫一次 style.transform，就跟置中平移的寫入頻率一樣。
+        vpEl.style.transform = `translate(${m.e - i * 8}px,${m.f}px) scale(${m.a})`;
+        const icon = document.querySelector('g.node[data-id="1002"] .icon')!;
+        const n = icon.getBoundingClientRect();
+        const p = document.getElementById('detail')!.getBoundingClientRect();
+        out.push(+((p.left + p.width / 2) - (n.left + n.width / 2)).toFixed(1));
+        if (++i < 40) requestAnimationFrame(tick);
+        else resolve();
+      };
+      requestAnimationFrame(tick);
+    });
+    return out;
+  });
+  // 前提：畫布真的被推走了一大段（不然「卡片跟得上」是廢話）。
+  expect(offsets.length).toBeGreaterThan(20);
+  // 卡片最多落後一幀（一幀 8px）。餓死的話它整段不動，錯位會一路累積到 300px 以上。
+  expect(Math.max(...offsets.map(Math.abs)),
+    '每幀都寫 transform 時，卡片的重新定位不可以被餓死').toBeLessThan(20);
+});
+
+/**
+ * N4. 節點卡片在桌機是**橫式兩欄**，在手機仍是單欄。
+ *
+ * Yuki 2026-08-23：「卡片在上方還是直立長方形有點奇怪，可以改成橫的」。卡片浮在節點正上方
+ * 時，直立的長方形會往上戳很高、把樹切成兩半；橫的貼著節點鋪開，遮住的只是一條扁帶。
+ * 版面是純 CSS（`#detail .node-body` 的 grid），沒有任何 JS 會說話——把
+ * `grid-template-columns` 改回 `1fr` 全站測試仍然綠，所以要這一條。
+ */
+test('N4. 節點卡片：桌機橫式兩欄、手機單欄，重置警告跨兩欄', async ({ page, isMobile }) => {
+  await page.goto('/tree?node=1001');
+  await expect(page.locator('#detail')).toBeVisible();
+  await page.waitForTimeout(400); // 置中平移跑完再量
+
+  const m = await page.evaluate(() => {
+    const r = (el: Element) => el.getBoundingClientRect();
+    const d = r(document.getElementById('detail')!);
+    const cols = [...document.querySelectorAll('#detail .node-body > .col')].map(r);
+    const warn = r(document.querySelector('#detail .reset-warn')!);
+    return {
+      w: d.width, h: d.height,
+      tops: cols.map(c => Math.round(c.top)),
+      widths: cols.map(c => c.width),
+      count: cols.length,
+      warnW: warn.width,
+    };
+  });
+
+  // 前提：兩個欄位都在（版面之外，這也守著 NodeDetail.ts 沒有把 .col 拆掉）。
+  expect(m.count).toBe(2);
+
+  if (isMobile) {
+    // 手機是全寬抽屜，分兩欄每欄只剩約 180px：維持上下排。
+    expect(m.tops[0]!, '手機版兩段應該上下排').toBeLessThan(m.tops[1]!);
+  } else {
+    expect(m.tops[0], '桌機版兩欄應該從同一條基線開始').toEqual(m.tops[1]);
+    expect(m.w, '卡片應該是橫的（寬 > 高）').toBeGreaterThan(m.h);
+    // 重置警告跨兩欄：它比單獨一欄寬得多。
+    expect(m.warnW).toBeGreaterThan(m.widths[1]! * 1.5);
+  }
+});
+
+/** 節點中心離視窗水平中線差幾 px（四捨五入）。置中平移是動畫，量之前一律用 expect.poll。 */
+async function centerOffset(page: Page, id: string): Promise<number> {
+  const n = (await page.locator(`g.node[data-id="${id}"] .icon`).boundingBox())!;
+  return Math.round(Math.abs((n.x + n.width / 2) - page.viewportSize()!.width / 2));
+}
+
+/** 卡片與節點的重疊面積（px²）。0 才對——卡片不可以蓋住它正在描述的那顆節點。 */
+function nodeOverlap(page: Page, id: string) {
+  return page.evaluate((nid) => {
+    const p = document.getElementById('detail')!.getBoundingClientRect();
+    const n = document.querySelector(`g.node[data-id="${nid}"] .icon`)!.getBoundingClientRect();
+    const ox = Math.max(0, Math.min(p.right, n.right) - Math.max(p.left, n.left));
+    const oy = Math.max(0, Math.min(p.bottom, n.bottom) - Math.max(p.top, n.top));
+    return {
+      overlap: +(ox * oy).toFixed(1),
+      height: +p.height.toFixed(1),
+      side: p.bottom <= n.top + 1 ? 'above' : 'below',
+    };
+  }, id);
+}
+
+/**
+ * N5. 鍵盤開節點也要置中，而且置中途中按鍵不可以把平移掐掉。
+ *
+ * 2026-08-23 code review 抓到：`window` 的 keydown handler 在**檢查按了什麼鍵之前**就無條件
+ * 呼叫 `cancelCenterPan()`。節點上按 Enter 時，svg 的 keydown 先跑 `openNode()` →
+ * `animatePan()` 排好 rAF，同一個事件冒泡到 window 就把它取消——實測節點停在 x=172 而不是
+ * 畫面中央 640，等於 Enter 這條路完全沒有置中。`isTypingTarget()` 只認 INPUT/TEXTAREA/SELECT，
+ * 焦點在 `<g class="node">` 上不會被擋掉。同一行也會讓「點完之後 200ms 內按任何鍵」把平移
+ * 掐在半路。修法是把 `cancelCenterPan()` 移進「真的是平移／縮放按鍵」那個分支。
+ */
+test('N5. 鍵盤 Enter 開節點也會置中，途中按其他鍵不會把平移掐掉', async ({ page, isMobile }) => {
+  test.skip(isMobile, '僅桌機：手機版不做置中平移');
+  await page.goto('/tree');
+  await page.waitForSelector('#tree g.node');
+
+  await page.locator('g.node[data-id="4112"]').focus();
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#detail')).toBeVisible();
+  await expect.poll(() => centerOffset(page, '4112'),
+    { message: 'Enter 開節點也要把鏡頭帶到畫面中央' }).toBeLessThanOrEqual(2);
+
+  // 第二半：點開之後立刻按一個不管平移的鍵（'a' 兩邊的 handler 都不處理），平移要照樣走完。
+  await page.goto('/tree');
+  await page.waitForSelector('#tree g.node');
+  await page.locator('g.node[data-id="5113"]').click();
+  await page.keyboard.press('a');
+  await expect.poll(() => centerOffset(page, '5113'),
+    { message: '平移途中按無關的鍵不該把它掐掉' }).toBeLessThanOrEqual(2);
+});
+
+/**
+ * N6. 選好節點之後在搜尋框打字，卡片會多一行——但不可以因此壓到它正在描述的那顆節點。
+ *
+ * 2026-08-23 code review 抓到：篩選一變，`applyFilter()` → `select()` 重畫卡片，多出
+ * 「含 N 個被篩選隱藏的前置」一行（實測 279.7 → 312.2）。這條路徑**刻意不重新置中**
+ * （不然每打一個字鏡頭就飛一次），而當時的高度上限是用整個視窗算的，於是卡片一長高就被
+ * 下面的夾制推到節點身上——四顆抽樣節點有三顆被完全蓋住（重疊 467.6 px²）。
+ * 修法有兩半：高度上限改用「卡片那一側到畫面邊緣還剩多少」算，以及置中時多留一行的餘裕
+ * （CENTER_SLACK），讓這種長高吸收得掉、不必冒出捲軸。
+ */
+test('N6. 打字改篩選之後，卡片不壓到節點、也不跳到另一邊', async ({ page, isMobile }) => {
+  test.skip(isMobile, '僅桌機：手機版卡片是底部抽屜，本來就不疊在節點上');
+  for (const id of ['2113', '4112', '2304', '5113']) {
+    await page.goto(`/tree?node=${id}`);
+    await expect(page.locator('#detail')).toBeVisible();
+    await expect.poll(() => centerOffset(page, id)).toBeLessThanOrEqual(2);
+
+    const before = await nodeOverlap(page, id);
+    expect(before.overlap, `${id} 打字前就不該重疊`).toBe(0);
+
+    await page.locator('#search').fill('骰');
+    await expect.poll(async () => (await nodeOverlap(page, id)).overlap,
+      { message: `${id} 打字之後卡片不可以壓到節點` }).toBe(0);
+
+    const after = await nodeOverlap(page, id);
+    // 前提斷言：卡片**真的**長高了。少了它，「沒重疊」也可能是因為根本沒發生重排。
+    expect(after.height, `${id} 篩選那一行應該讓卡片變高`).toBeGreaterThan(before.height);
+    // 擺法不准跟著打字跳邊：sideLeastCovered() 模擬的是「置中之後」的版面，而這條路徑
+    // 不會置中，重算只會算出一個不存在的版面。
+    expect(after.side, `${id} 擺法不該因為打字而換邊`).toBe(before.side);
+  }
+
+  // 第二半：使用者把節點往上拖，卡片那一側的空間縮到「比整張卡片矮、但還不到換邊門檻」時，
+  // 卡片必須自己變矮（內部捲動），不可以被夾制推到節點身上。
+  // ⚠️ 這一段是獨立的：上面那組打字的成長量（+32.5px）已經被 CENTER_SLACK 吸收掉，
+  // 所以把高度上限改回「整個視窗」算，上面那組仍然全綠（實測過）。這裡才真的打到那條路。
+  await page.goto('/tree?node=4112');
+  await expect(page.locator('#detail')).toBeVisible();
+  await expect.poll(() => centerOffset(page, '4112')).toBeLessThanOrEqual(2);
+
+  const natural = (await nodeOverlap(page, '4112')).height;
+  const room = () => page.evaluate(() => {
+    const n = document.querySelector('g.node[data-id="4112"] .icon')!.getBoundingClientRect();
+    const tb = document.getElementById('toolbar')!.getBoundingClientRect();
+    return n.top - tb.bottom - 24; // 24 = 上下各一個 GAP
+  });
+  // 目標留白 240：介於 MIN_PANEL_H（200，低於它就換邊）與卡片自然高度（約 280）之間，
+  // 正好是「不換邊但整張放不下」那條縫。
+  const dy = Math.round(await room() - 240);
+  expect(dy, '前提：一開始那一側的空間要比目標大，才有得拖').toBeGreaterThan(20);
+  await page.mouse.move(200, 600);
+  await page.mouse.down();
+  for (let i = 1; i <= 10; i++) await page.mouse.move(200, 600 - (dy * i) / 10);
+  await page.mouse.up();
+  await expect.poll(async () => Math.round(await room()),
+    { message: '前提：畫布真的被拖上去了' }).toBeLessThanOrEqual(245);
+
+  const dragged = await nodeOverlap(page, '4112');
+  expect(dragged.overlap, '空間變小時卡片要自己變矮，不可以壓到節點').toBe(0);
+  expect(dragged.height, '卡片應該被那一側的空間裁短').toBeLessThan(natural);
 });
 
 /**
@@ -1381,12 +1691,14 @@ test('Z2. 詞彙頁的「搜尋 #X」才會真的搜尋，而且會退回節點�
   expect(new URL(page.url()).searchParams.get('q')).toBe('破滅');
 });
 
-test('Z4. 卡片換頁的過渡：高度單調、垂直中心不漂、不反向', async ({ page }) => {
+test('Z4. 卡片換頁的過渡：高度單調、貼著節點的那一緣不漂、不反向', async ({ page }) => {
   // 換頁時卡片會抖（2026-08-20 人工回報）。四個獨立原因，全部是量錯東西：
   //   1. 量起始高度時新視圖還在正常流程 → `.stack` 是兩張加起來，先暴衝到 565px 再縮回。
   //   2. `.animating` 才加 `overflow: hidden` → 建立 BFC 改變邊界外距收合，class 一掛上
   //      高度就自己跳 12.4px，觸發一次多餘的 transition，真正的動畫開始前先抖一下。
   //   3. 只動 height 不動 top → 卡片是「往上收」不是「上下往中間收」。
+  //      ⚠️ 2026-08-23 卡片改成擺在節點上方／下方之後，這一條要守的東西換了：現在該固定不動
+  //      的是**貼著節點的那一緣**（放上方＝下緣、放下方＝上緣），不是垂直中心。
   //   4. 把 `.stack` 的高度餵給 positionPanel（它要的是**整張卡片**的高度，多一層 padding）
   //      → top 算偏一半，動畫途中卡片往下漂 16.9px。
   //
@@ -1395,12 +1707,15 @@ test('Z4. 卡片換頁的過渡：高度單調、垂直中心不漂、不反向'
   async function trace(click: () => Promise<void>) {
     await page.evaluate(() => {
       const el = document.getElementById('detail')!;
-      const w = window as unknown as { __s: { top: number; h: number; c: number }[] };
+      const w = window as unknown as { __s: { top: number; b: number; h: number; c: number }[] };
       w.__s = [];
       const t0 = performance.now();
       const tick = () => {
         const r = el.getBoundingClientRect();
-        w.__s.push({ top: +r.top.toFixed(1), h: +r.height.toFixed(1), c: +(r.top + r.height / 2).toFixed(1) });
+        w.__s.push({
+          top: +r.top.toFixed(1), b: +r.bottom.toFixed(1),
+          h: +r.height.toFixed(1), c: +(r.top + r.height / 2).toFixed(1),
+        });
         if (performance.now() - t0 < 900) requestAnimationFrame(tick);
       };
       requestAnimationFrame(tick);
@@ -1408,7 +1723,7 @@ test('Z4. 卡片換頁的過渡：高度單調、垂直中心不漂、不反向'
     await click();
     await page.waitForTimeout(1000);
     const samples = await page.evaluate(() =>
-      (window as unknown as { __s: { top: number; h: number; c: number }[] }).__s);
+      (window as unknown as { __s: { top: number; b: number; h: number; c: number }[] }).__s);
     expect(samples.length).toBeGreaterThan(20);   // rAF 取樣真的有跑
     return samples;
   }
@@ -1452,14 +1767,24 @@ test('Z4. 卡片換頁的過渡：高度單調、垂直中心不漂、不反向'
   assertSmoothHeight(pop);
   assertNoCenterReversal(pop);
 
-  // (B) 沒有被夾制時（節點在畫面中段、視窗夠高）：垂直中心必須**完全不動**，
-  //     也就是「上下往中間收」。這才是原因 3 與 4 真正的守門條件——(A) 那組被夾制，
-  //     中心本來就會移動，量不出那兩個 bug。
+  // (B) 沒有被夾制時（節點在畫面中段、視窗夠高）：**貼著節點的那一緣**必須完全不動。
+  //     這才是原因 3 與 4 真正的守門條件——(A) 那組被夾制，那一緣本來就會移動，量不出
+  //     那兩個 bug。
+  //     ⚠️ 方向鍵平移會中止置中平移（那是刻意的：使用者一動畫布就該讓位），所以這裡按完
+  //     ArrowUp 之後卡片跟節點的相對位置就固定了，量到的不是動畫半路的值。
   await page.setViewportSize({ width: 1400, height: 1000 });
   await page.goto('/tree?node=5004');
+  await expect(page.locator('#detail')).toBeVisible();
   await page.locator('#tree').focus();
   for (let i = 0; i < 3; i++) await page.keyboard.press('ArrowUp');
   await page.waitForTimeout(200);
+
+  // 卡片擺上面還是下面是算出來的（tree-canvas.ts 的 sideLeastCovered()），測試不猜、當場問。
+  const above = await page.evaluate(() => {
+    const p = document.getElementById('detail')!.getBoundingClientRect();
+    const n = document.querySelector('g.node[data-id="5004"] .icon')!.getBoundingClientRect();
+    return p.bottom <= n.top + 1;
+  });
 
   for (const act of [
     async () => { await top().locator('.kw').first().click(); },
@@ -1467,10 +1792,12 @@ test('Z4. 卡片換頁的過渡：高度單調、垂直中心不漂、不反向'
   ]) {
     const s = await trace(act);
     assertSmoothHeight(s);
-    const cs = s.map(x => x.c);
-    expect(Math.max(...cs) - Math.min(...cs)).toBeLessThanOrEqual(1);
-    // 而且 top 真的有跟著動——不然「中心不動」也可能是因為高度根本沒變
-    expect(Math.abs(s[s.length - 1]!.top - s[0]!.top)).toBeGreaterThan(50);
+    const glued = s.map(x => (above ? x.b : x.top));
+    const free = s.map(x => (above ? x.top : x.b));
+    expect(Math.max(...glued) - Math.min(...glued),
+      `卡片貼著節點的那一緣（${above ? '下緣' : '上緣'}）不該動`).toBeLessThanOrEqual(1);
+    // 而且另一緣真的有跟著動——不然「那一緣不動」也可能是因為高度根本沒變
+    expect(Math.abs(free[free.length - 1]! - free[0]!)).toBeGreaterThan(50);
   }
 });
 

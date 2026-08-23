@@ -602,6 +602,11 @@ const TYPES: Array<[string, string]> = [
       width: 100%;
       max-width: 100%;
       max-height: 55vh;
+      /* 桌機卡片 2026-08-23 縮了一級（寬 18rem、內距 --space-3、字級 --fs-md），
+         那是為了「浮在節點正上方時不要壓迫」。手機抽屜是全寬、貼在螢幕底部，沒有那個
+         問題，字再縮只會更難讀——這裡還原成原本的內距與字級。 */
+      padding: var(--space-4);
+      font-size: var(--fs-base);
       border: none;
       border-top: 1px solid var(--border);
       border-radius: 0;
@@ -618,6 +623,24 @@ const TYPES: Array<[string, string]> = [
          現在改成讓抽屜的**可視方框**就停在 chip 列上方（`bottom: var(--chips-h)`）：
          不管捲到哪裡，面板裡的任何一個像素都不會落進 chip 列。這也是 CLAUDE.md 那條
          「不要再引入新的固定偏移量」的同一個教訓——量出來的值，不是猜出來的值。 */
+    }
+    /* 標題與成本那兩行也還原：它們是**粗體中文**，桌機版降到 --fs-base 已經是下限
+       （小字粗體中文的橫筆畫會連成一條，見 CLAUDE.md），手機抽屜沒有縮的理由。 */
+    #detail .view-head h2,
+    #detail .cost {
+      font-size: var(--fs-lg);
+    }
+    /* 桌機的橫式兩欄在手機上不成立：全寬抽屜再分兩欄，每欄只剩約 180px，
+       「核心 34 ＋ 金幣 117,000」這種一行就會折成三行。回到單欄，分隔線改成橫的。 */
+    #detail .node-body {
+      grid-template-columns: 1fr;
+      gap: var(--space-3);
+    }
+    #detail .node-body > .chain {
+      border-left: none;
+      padding-left: 0;
+      border-top: 1px solid var(--border);
+      padding-top: var(--space-3);
     }
     /* 手機版篩選抽屜：**留在 #toolbar 的正常流程裡**，收起就不存在、展開就接在工具列下面。
        不用 position:fixed，也不用任何位移量。
