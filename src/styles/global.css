@@ -66,6 +66,9 @@
   /* 表面層次。原本全站只有一個 --panel，nav／卡片／下拉／篩選列同色同框，看不出誰疊在誰
      上面。三階由低到高：卡片 → 浮起的列與選單 → hover／選中的填色。
      舊的 --panel 已經拆掉：一個東西兩個名字，正是這一輪要收掉的漂移來源。 */
+  /* --surface-0 比卡片還低一階，只給「凹進去」的元素用（目前是 /dice 的數值 pill）。
+     --bg 只比 --surface-1 深 3 個亮度單位，拿它當 pill 底色在卡片上幾乎看不出層次。 */
+  --surface-0: #262038;
   --surface-1: #322b4b;
   --surface-2: #3a3358;
   --surface-3: #453d68;
@@ -1123,6 +1126,103 @@ pre {
   margin: var(--space-2) 0 0;
   font-size: var(--fs-md);
 }
+/* ==========================================================================
+   /dice 的官方數值面板（基本能力值 ＋ 強化數據）
+   --------------------------------------------------------------------------
+   一項一顆深色半橢圓（Yuki 2026-08-24 指定的形狀），底下四顆切換鈕換檔位。
+
+   ⚠️ **整塊不需要 JS**：四個檔位的值都是真的文字節點，由 `:has()` ＋ radio 決定顯示哪一個。
+   換 textContent 的做法會讓另外三檔的數字進不了 HTML，而「文字進得了 HTML」正是這一頁存在
+   的理由（2026-08-20 實測 /tree 的 HTML 只有 194 個字元）。
+   ========================================================================== */
+.dice-stats {
+  margin: var(--space-3) 0 var(--space-2);
+}
+.stat-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+/* 半橢圓＝--r-pill。底色比卡片低一階，讀起來是「嵌在卡片上的面板」而不是又一張卡片。 */
+.stat-pill {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  padding: var(--space-h) var(--space-3);
+  background: var(--surface-0);
+  border: 1px solid var(--border);
+  border-radius: var(--r-pill);
+  /* 切檔時只有透明度會變。**尺寸不動這件事不是這裡守的**，是 .stat-v 的 inline-grid 疊放
+     （見下面）——41 張卡片排在 CSS grid 裡，任何一顆 pill 變寬都可能多擠出一列而把同一列的
+     鄰居一起撐高，同 /tree 工具列那條「會出現／消失的東西尺寸不准變」的教訓。 */
+  transition: opacity var(--t-fast) ease;
+}
+.stat-pill .stat-k {
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  white-space: nowrap;
+}
+.stat-pill .stat-v {
+  color: var(--fg);
+  font-size: var(--fs-md);
+  /* 數字用粗體沒問題；⚠️ 中文標籤不要跟著加粗，--fs-xs ＋ 600 的中文橫筆畫會連成一條線。 */
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  /* ⚠️ 四個值**疊在同一個 grid 格子裡**，所以這一格的寬度永遠等於最長的那一個值。
+     這不是排版偏好，是尺寸穩定性的唯一來源：`.stat-pills` 會 wrap，pill 一變寬就可能多擠出
+     一列，而卡片在 CSS grid 的同一列裡會把鄰居一起撐高。實測（2026-08-24，/code-review 抓到）
+     尖刺骰子的攻擊力 750 → 15750 讓 pill 區塊從 68px 變 106px，火骰子與花骰子跟著從
+     424.6px 被撐到 462.7px——而那三張卡片使用者根本沒去動。 */
+  display: inline-grid;
+}
+
+/* 檔位切換：四個值都佔位，只有被選中的那一個看得見。固定項目只印一份（.stat-fixed），四檔共用。
+   ⚠️ 用 `visibility` 不用 `display`：`display: none` 的元素不參與 grid 的尺寸計算，格子會縮回
+   當前值的寬度，上面那個穩定性就沒了。`visibility: hidden` 一樣不進無障礙樹，讀屏不會念到四份。 */
+.stat-v > [data-m] {
+  grid-area: 1 / 1;
+  visibility: hidden;
+}
+.dice-stats:has(input[value='base']:checked) .stat-v > [data-m='base'],
+.dice-stats:has(input[value='dice7']:checked) .stat-v > [data-m='dice7'],
+.dice-stats:has(input[value='lv15']:checked) .stat-v > [data-m='lv15'],
+.dice-stats:has(input[value='lv15dice7']:checked) .stat-v > [data-m='lv15dice7'] {
+  visibility: visible;
+}
+/* 不隨骰點或強化改變的項目：在基礎檔跟其他項目平起平坐（那是遊戲內面板的樣子），
+   一旦切到別的檔就淡下去——「這幾項剛才沒有跟著變」因此不必用文字解釋。 */
+.dice-stats:not(:has(input[value='base']:checked)) .stat-pill.is-fixed {
+  opacity: 0.5;
+}
+/* ⚠️ `:has()` 不支援時，四個 [data-m] 會同時顯示成「150 750 2250 2850」。退化路徑是
+   只留基礎值並把切換鈕收掉——給不出功能就不要留一排按不動的按鈕。 */
+@supports not (selector(:has(*))) {
+  .stat-v > [data-m='base'] { visibility: visible; }
+  .stat-modes { display: none; }
+}
+
+.stat-note {
+  margin: var(--space-2) 0 0;
+  color: var(--muted);
+  font-size: var(--fs-xs);
+}
+.stat-modes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin-top: var(--space-2);
+}
+/* 卡片裡的切換鈕比篩選列的小一階：一張卡片上要塞四顆，而它是輔助控制項不是主角。 */
+.chip-xs {
+  padding: 0 var(--space-2);
+  font-size: var(--fs-xs);
+  line-height: 1.9;
+}
+
 /* 覺醒區塊原本靠左邊一條 --support 色條標示自己。卡片左緣 2026-08-22 改掛分支色條之後，
    同一張卡上會出現兩條顏色不同的直條，互相搶。改成填一階底色來分層，身分改由標題的
    --support 字色講。 */

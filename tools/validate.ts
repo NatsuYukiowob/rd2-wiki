@@ -214,6 +214,14 @@ export interface ValidateOpts {
    * 畫面上一模一樣。規則 22 是它唯一的防線。
    */
   passiveUpgradeCost: unknown;
+  /**
+   * `data/dice-stats.json`：41 顆骰子的基本能力值與強化數據（官方資料表的兩個分頁併成一份）。
+   *
+   * 型別刻意用 `unknown`（同 `boardIcons`／`passiveUpgradeCost`）：這份檔案是社群 PR 直接改的，
+   * 宣告成已驗過的型別等於在型別層面假設它一定合法，而規則 23 要擋的正是不合法的那些。
+   * 沒有這份資料時傳 `null`，規則 23 只警告——`/dice` 的數值區跟著整塊不顯示，站台照常運作。
+   */
+  diceStats: unknown;
 }
 
 export interface ValidateResult {
@@ -231,6 +239,10 @@ export interface ValidateResult {
  * （svg-parse／cost／growth／keywords）拋出的引導語（例如「請先執行 npm run normalize」）。
  */
 /** `typeOfZh` 的反向查表；只有規則 15 需要（它拿到的是英文型別，正本寫的是中文）。 */
+/** 規則 22 與 23 共用：社群改得到的 JSON 拿進來時，第一件事都是問「它是不是一個普通物件」。 */
+const isPlainObject = (v: unknown): v is Record<string, unknown> =>
+  typeof v === 'object' && v !== null && !Array.isArray(v);
+
 const ZH_BY_TYPE: Record<string, string> = { dice: '骰子', rune: '骰子符文', passive: '玩家被動', support: '支援' };
 const zhOfType = (t: string | undefined) => (t ? ZH_BY_TYPE[t] : undefined);
 const typeOfZhSafe = (t: string | undefined) => (t ? ZH_BY_TYPE[t] !== undefined : false);
@@ -829,8 +841,6 @@ export function validate(svgText: string, opts: ValidateOpts): ValidateResult {
     push('規則 22: data/passive-upgrade-cost.json 的最外層必須是物件（含 tiers 與 special 兩個欄位）');
   } else {
     const { tiers: rawTiers, special: rawSpecial } = pu as { tiers?: unknown; special?: unknown };
-    const isPlainObject = (v: unknown): v is Record<string, unknown> =>
-      typeof v === 'object' && v !== null && !Array.isArray(v);
     if (!isPlainObject(rawTiers)) push('規則 22: data/passive-upgrade-cost.json 的 tiers 必須是以升級類型代號為鍵的物件');
     if (!isPlainObject(rawSpecial)) push('規則 22: data/passive-upgrade-cost.json 的 special 必須是以節點 id 為鍵的物件');
 
@@ -949,6 +959,126 @@ export function validate(svgText: string, opts: ValidateOpts): ValidateResult {
     }
   }
 
+  // 規則 23：骰子基本能力值與強化數據（`data/dice-stats.json`）。
+  //
+  // 跟規則 22 那份資料一樣不進 tree.json——`/dice` 是靜態頁，建置期直接讀 `data/`，不吃
+  // tree.json 那個只剩不到 1.5KB 的 gzip 預算。代價同樣是「表與節點對不上」在產物層面零痕跡：
+  // 漏一顆骰子，那張卡片就是少一塊數值區，跟「官方沒給這顆數值」長得一模一樣；多一筆孤兒
+  // 則永遠不會有人看到。所以這條規則是雙向的。
+  //
+  // ⚠️ 它以 **gameId** 為鍵，不是節點 id——這份資料是拿官方資料表對出來的，而任何跟官方表
+  // 的對帳一律用 gameId（239 筆雙射，用名稱會配錯）。規則 19 抓的是 SVG↔nodes 的殘餘，
+  // 對這張表的殘餘視而不見。
+  //
+  // 子規則：(a) 骰子漏一筆／(b) 表自己的孤兒 entry／(c) name 與節點不符／(d) entry 結構／
+  // (e) stat 欄位型別／(f) 同一顆骰子的 label 撞號／(g) 四檔值要嘛全有要嘛全無。
+  const diceStats = opts.diceStats;
+  if (diceStats === null || diceStats === undefined) {
+    warn('規則 23: 沒有提供 data/dice-stats.json，骰子基本能力值未檢查');
+  } else if (typeof diceStats !== 'object' || Array.isArray(diceStats)) {
+    push('規則 23: data/dice-stats.json 的最外層必須是以 gameId 為鍵的物件');
+  } else {
+    const entries = Object.entries(diceStats as Record<string, unknown>);
+    const entryIds = new Set(entries.map(([g]) => g));
+    // 判斷「是不是骰子」跟規則 21 用同一個定義（見那裡的說明：type 在文案那一側，
+    // 所以只能走 withText，而 withText 濾掉的那些各自有規則 19 與規則 1 在說話）。
+    const diceNodes = withText.filter(n => n.typeZh === '骰子');
+
+    // (a) 每一顆骰子節點的 gameId 都要在表裡有一筆。訊息同時印 gameId 與節點 id：
+    // 貢獻者手上是官方資料表（只有 gameId），維護者手上是正本（只有節點 id）。
+    for (const n of diceNodes) {
+      if (!entryIds.has(n.gameId)) push(`規則 23(a): 骰子 ${n.gameId}（節點 ${n.id} ${n.name}）在 data/dice-stats.json 沒有對應的數值`);
+    }
+
+    // (b) 反方向。跟規則 21(h) 一樣要先替規則 19 與規則 1 讓路：那兩者濾掉的節點在
+    // `diceNodes` 裡不存在，照樣報下去的話「nodes.json 漏一筆文案」就會多出一條指向這份表的
+    // 假錯誤，把真正的原因埋掉。所以只認「這個 gameId 在整份正本裡完全找不到」。
+    const gameIdEverywhere = new Set(Object.values(nodeText as Record<string, { gameId?: unknown }>)
+      .map(v => v?.gameId).filter((g): g is string => typeof g === 'string'));
+    const diceGameIds = new Set(diceNodes.map(n => n.gameId));
+    //
+    // ⚠️ 「在正本裡完全找不到」這一半要先確認規則 19 與規則 1 沒話說。這份表以 gameId 為鍵，
+    // 而 gameId 住在 nodes.json 裡——nodes.json 漏一筆文案時，那顆骰子的 gameId 會跟著從整份
+    // 正本消失，於是那一筆變成「找不到對應的節點」。實測：刪掉 1001 的文案 → 規則 23 多噴
+    // 一條指著 D000 的假錯誤，把規則 19 那句真正的原因埋掉。
+    const yielded = structurallyBad.size > 0
+      || [...geomIds].some(id => !textIds.has(id))
+      || [...textIds].some(id => !geomIds.has(id));
+    for (const g of entryIds) {
+      if (diceGameIds.has(g)) continue;
+      if (gameIdEverywhere.has(g)) {
+        push(`規則 23(b): data/dice-stats.json 的 ${g} 不是（或已不是）骰子節點，這筆數值是孤兒`);
+      } else if (!yielded) {
+        push(`規則 23(b): data/dice-stats.json 的 ${g} 在正本裡找不到對應的節點，這筆數值是孤兒`);
+      }
+    }
+
+    const nodeByGameId = new Map(diceNodes.map(n => [n.gameId, n]));
+    for (const [gameId, raw] of entries) {
+      if (!isPlainObject(raw)) { push(`規則 23(d): data/dice-stats.json 的 ${gameId} 必須是物件`); continue; }
+      const e = raw as { name?: unknown; note?: unknown; stats?: unknown };
+
+      // (c) gameId 對得上但名字不一樣＝有人改了節點名沒同步這份表，或這一列根本抄錯行。
+      // 兩者都會讓玩家在卡片上看到別顆骰子的數值，而 gameId 對得上所以 (a)(b) 全程沉默。
+      const node = nodeByGameId.get(gameId);
+      if (node && e.name !== node.name) {
+        push(`規則 23(c): data/dice-stats.json 的 ${gameId} 寫的名稱是 ${JSON.stringify(e.name)}，正本節點 ${node.id} 叫 ${JSON.stringify(node.name)}`);
+      }
+
+      // (h) entry 的未知欄位。理由同下面 stat 那一層：這份表是社群 PR 直接改的，而多寫一個
+      // 欄位的後果是「我明明填了，畫面上就是沒有」——寫錯的那個名字沒有任何東西會提起它。
+      for (const k of Object.keys(e)) {
+        if (k !== 'name' && k !== 'note' && k !== 'stats') push(`規則 23(h): ${gameId} 有未知欄位 ${JSON.stringify(k)}`);
+      }
+      if (e.note !== undefined && (typeof e.note !== 'string' || e.note.length === 0)) {
+        // 空字串是 falsy，會安靜地通過「有沒有備註」那種判斷——同 nodes.json 選用欄位的規矩：
+        // 不用時整個省略，不可寫 ""。
+        push(`規則 23(d): ${gameId} 的 note 若存在就必須是非空字串（不用時整個省略）`);
+      }
+      if (!Array.isArray(e.stats) || e.stats.length === 0) { push(`規則 23(d): ${gameId} 的 stats 必須是非空陣列`); continue; }
+
+      const labelSeen = new Set<string>();
+      for (const [i, s] of (e.stats as unknown[]).entries()) {
+        if (!isPlainObject(s)) { push(`規則 23(e): ${gameId} 的第 ${i + 1} 項數值必須是物件`); continue; }
+        const st = s as Record<string, unknown>;
+        for (const k of ['label', 'base'] as const) {
+          if (typeof st[k] !== 'string' || (st[k] as string).length === 0) push(`規則 23(e): ${gameId} 的第 ${i + 1} 項數值的 ${k} 必須是非空字串`);
+        }
+        // (f) 同一顆骰子兩個同名項目：畫面上是兩顆一模一樣的 pill，而查值查到哪一個
+        // 完全取決於陣列順序。
+        const label = st['label'];
+        if (typeof label === 'string') {
+          if (labelSeen.has(label)) push(`規則 23(f): ${gameId} 有兩項數值都叫 ${JSON.stringify(label)}`);
+          labelSeen.add(label);
+        }
+        // (g) 官方的「骰子強化數據」分頁要嘛收錄了這一項（四個檔位的值都有），要嘛完全沒收錄
+        // （＝固定值）。中間狀態代表落地時漏了一欄，而**畫面上看不出來**：statValue() 對缺少
+        // 的檔位刻意退回基礎值（固定項目必須這樣才不會留下空白的 pill），所以「漏一檔」看起來
+        // 就只是「這一檔剛好沒變」。渲染端必須寬容，閘門就不能寬容。
+        const MODES = ['dice7', 'lv15', 'lv15dice7'] as const;
+        const have = MODES.filter(k => st[k] !== undefined);
+        if (have.length > 0 && have.length < MODES.length) {
+          push(`規則 23(g): ${gameId} 的 ${JSON.stringify(label)} 只有 ${have.join('、')}，四個檔位的值要嘛全有要嘛全無`);
+        }
+        // 三個檔位 ＋ 兩條官方成長規則原文，都是「有就必須是非空字串」。
+        // ⚠️ 成長規則不可以放過空字串：`growthNote()` 用的是 `??`，`""` 不會被換成「—」，
+        // pill 的 title 會變成「骰點：／強化：無變化」，而 CI 全綠（同 (d) 對 note 的判準）。
+        for (const k of [...MODES, 'diceGrowth', 'spGrowth'] as const) {
+          if (st[k] !== undefined && (typeof st[k] !== 'string' || (st[k] as string).length === 0)) {
+            push(`規則 23(e): ${gameId} 的 ${JSON.stringify(label)} 的 ${k} 必須是非空字串`);
+          }
+        }
+        // (h) 未知欄位。這條是 (g) 的補完，不是潔癖：(g) 抓的是「三個檔位鍵只對了一部分」，
+        // **三個全部打錯**時 `have.length` 是 0，(g) 完全沉默，那一項會被 `isFixed()` 判成
+        // 固定值——正是 (g) 說閘門不可以寬容的那種「畫面上跟『它本來就不會變』一模一樣」。
+        const KNOWN = new Set(['label', 'base', ...MODES, 'diceGrowth', 'spGrowth']);
+        for (const k of Object.keys(st)) {
+          if (!KNOWN.has(k)) push(`規則 23(h): ${gameId} 的 ${JSON.stringify(label)} 有未知欄位 ${JSON.stringify(k)}`);
+        }
+      }
+    }
+  }
+
   return { errors, warnings };
 }
 
@@ -998,6 +1128,7 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
     boardIcons: readDataFile('data/board-icons.json', true),
     boardIconsDir: 'data/board-icons',
     passiveUpgradeCost: readDataFile('data/passive-upgrade-cost.json', true),
+    diceStats: readDataFile('data/dice-stats.json', true),
   };
 
   // 有資料檔讀不到時就停在這裡：接下來每一條規則都會拿著一份空殼在猜，噴出來的幾百條錯誤

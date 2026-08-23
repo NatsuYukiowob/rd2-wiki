@@ -18,10 +18,12 @@ import DiceCard from '../components/DiceCard.astro';
 import data from '../generated/tree.json';
 import keywordsRaw from '../../data/keywords.json';
 import nodeTextRaw from '../../data/nodes.json';
+import diceStatsRaw from '../../data/dice-stats.json';
 import { buildGlossary, displayGlossary } from '../lib/glossary-groups';
 import { buildTermPayload } from '../lib/static-markup';
 import { BRANCH_ZH } from '../lib/labels';
-import type { GlossaryRecord, TreeData, TreeNode } from '../lib/types';
+import { statsOf } from '../lib/dice-stats';
+import type { DiceStatsTable, GlossaryRecord, TreeData, TreeNode } from '../lib/types';
 
 const tree = data as unknown as TreeData;
 const keywords = keywordsRaw as Record<string, GlossaryRecord>;
@@ -30,6 +32,11 @@ const keywords = keywordsRaw as Record<string, GlossaryRecord>;
 const gameIds = new Map(
   Object.entries(nodeTextRaw as Record<string, { gameId?: string }>).map(([id, v]) => [id, v.gameId]),
 );
+
+// 官方基本能力值與強化數據。以 gameId 為鍵（跟官方資料表對帳一律用 gameId），
+// 刻意不進 tree.json——這一頁是靜態頁、建置期直接讀 data/，不吃 tree.json 那個 gzip 預算。
+// 兩邊對不上時說話的是 CI 規則 23，不是這裡。
+const diceStats = diceStatsRaw as DiceStatsTable;
 
 const index = buildGlossary(keywords, tree.nodes);
 const glossary = displayGlossary(keywords);
@@ -96,6 +103,7 @@ const BRANCHES = Object.entries(BRANCH_ZH);
           whitelist={whitelist}
           glossary={glossary}
           upgradeCostTable={tree.meta.upgradeCostTable}
+          stats={statsOf(diceStats, gameIds.get(node.id))}
         />
       ))}
     </div>

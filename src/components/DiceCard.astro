@@ -7,11 +7,12 @@
 // 換來的是三件面板給不了的事：全部 239 筆一次看完、覺醒不用點就看得到、以及文字進 HTML
 // （面板的內容是瀏覽器讀 tree.json 之後才渲染的，搜尋引擎一個字都拿不到）。
 import { renderStaticText } from '../lib/static-markup';
+import { STAT_MODES, isFixed, growthNote, statValue } from '../lib/dice-stats';
 import { formatCost, formatGrowth, formatUnlockVia } from '../lib/format';
 import { cumulativeUpgradeCost, upgradeTableApplies } from '../lib/cost';
 import { AWAKENING_CONDITION, BRANCH_ZH } from '../lib/labels';
 import type { GlossaryIndex } from '../lib/glossary-groups';
-import type { TreeNode, UpgradeCostTable } from '../lib/types';
+import type { DiceStatEntry, TreeNode, UpgradeCostTable } from '../lib/types';
 
 interface Props {
   node: TreeNode;
@@ -22,9 +23,11 @@ interface Props {
   whitelist: readonly string[];
   glossary: Record<string, { color: string; desc: string }>;
   upgradeCostTable: UpgradeCostTable | null;
+  /** 官方基本能力值與強化數據；沒有這顆的資料就整塊不顯示（不要印一塊空面板）。 */
+  stats: DiceStatEntry | null;
 }
 
-const { node, gameId, index, whitelist, glossary, upgradeCostTable } = Astro.props;
+const { node, gameId, index, whitelist, glossary, upgradeCostTable, stats } = Astro.props;
 
 const desc = renderStaticText(node.description, whitelist, glossary, index);
 const awakening = node.awakening ? renderStaticText(node.awakening, whitelist, glossary, index) : null;
@@ -34,6 +37,8 @@ const growth = formatGrowth(node);
 const maxUpgrade = upgradeTableApplies(upgradeCostTable, node)
   ? cumulativeUpgradeCost(upgradeCostTable, node.maxLevel)
   : null;
+// radio 的 name 要全頁唯一，否則 41 張卡片會變成同一組——切一張的模式會把其他 40 張一起切掉。
+const modeName = `stat-mode-${node.id}`;
 ---
 
 <article class="dice-card" id={`n${node.id}`} data-branch={node.branch} data-type={node.type}>
@@ -60,6 +65,46 @@ const maxUpgrade = upgradeTableApplies(upgradeCostTable, node)
         </p>
       </div>
     </header>
+
+    <!--
+      官方基本面板。四個檔位的值**全部都是真的文字節點**，靠 `:has()` ＋ radio 決定顯示哪一個
+      ——沒有一行 JS。三個理由：
+      (1) 這一頁存在的意義就是「文字進得了 HTML」，用 JS 換 textContent 的話另外三檔搜尋引擎
+          一個字都拿不到；
+      (2) 切換鈕不必等腳本載入才長出來，不會有 41 張卡片同時跳版的那一幀；
+      (3) radio group 是**一個** Tab 停留點（方向鍵在組內移動），41 張卡片才不會變成 164 個
+          Tab 停留點。
+      固定項目（官方強化表沒收錄，或收錄了但四檔全等）只印一個值，不用複製四份。
+    -->
+    {
+      stats && (
+        <div class="dice-stats">
+          <ul class="stat-pills">
+            {stats.stats.map(s => (
+              <li class={`stat-pill${isFixed(s) ? ' is-fixed' : ''}`} title={growthNote(s) ?? undefined}>
+                <span class="stat-k">{s.label}</span>
+                <span class="stat-v">
+                  {isFixed(s)
+                    ? <span class="stat-fixed">{s.base}</span>
+                    : STAT_MODES.map(m => <span data-m={m.key}>{statValue(s, m.key)}</span>)}
+                </span>
+              </li>
+            ))}
+          </ul>
+          {stats.note && <p class="stat-note">{stats.note}</p>}
+          <!-- 切換鈕排在數值下面（Yuki 指定）。`:has()` 是往上找的，所以 DOM 順序不受選擇器
+               牽制，視覺順序＝DOM 順序＝焦點順序，三者一致。 -->
+          <div class="stat-modes" role="group" aria-label={`${node.name} 的數值模式`}>
+            {STAT_MODES.map((m, i) => (
+              <label class="chip chip-xs">
+                <input type="radio" name={modeName} value={m.key} checked={i === 0} />
+                {m.label}
+              </label>
+            ))}
+          </div>
+        </div>
+      )
+    }
 
     <!-- 花錢買得到的才加「解鎖」前綴：formatUnlockVia 對其餘 9 顆回的是「初始解鎖」或官方寫的
          取得條件原文，前面再加一個「解鎖」會變成「解鎖 初始解鎖」。 -->

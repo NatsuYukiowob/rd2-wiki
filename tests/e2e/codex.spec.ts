@@ -279,3 +279,141 @@ test('C6. 篩選切換鈕外觀是按鈕、骨子裡仍是 checkbox：鍵盤操�
     })
     .toBe(branch);
 });
+
+// ---------------------------------------------------------------------------
+// 官方數值面板（2026-08-24）
+//
+// ⚠️ 這一塊的斷言一律要加 `useInnerText`：`toHaveText` 預設讀 textContent，而四個檔位的值
+// 全部都是真的文字節點（只有一個被 CSS 顯示出來）。不加的話拿到的是「攻擊力 15075022502850」
+// ——而它**仍然會通過** /攻擊力\s*150/ 這種樣式，等於什麼都沒驗。
+//
+// 這一塊的實作是**純 CSS**（四個檔位的值都是真的文字節點，`:has()` ＋ radio 決定顯示哪一個），
+// 所以它會壞的地方跟 JS 版完全不同：不是「腳本沒跑」，而是「選擇器沒選中」「radio 分組錯了」
+// 「值沒進 HTML」。單元測試看得到 statValue()／isFixed()，看不到這三件的任何一件。
+// ---------------------------------------------------------------------------
+
+test('C7. 41 顆骰子的四個檔位數值全部是伺服器輸出的 HTML', async ({ request }) => {
+  const res = await request.get('/dice');
+  const html = await res.text();
+
+  // 抽三顆有代表性的：火骰子（四檔都不同）、鐵甲骰子（sheet3 獨有的第 4 項）、
+  // 原子骰子（官方自己沒填值的兩格）。四檔的值都必須真的在 HTML 裡，不是靠 JS 算出來的
+  // ——用 JS 換 textContent 的話另外三檔搜尋引擎一個字都拿不到，而那正是這一頁存在的理由。
+  for (const v of ['150', '750', '2250', '2850']) expect(html, `火骰子攻擊力 ${v}`).toContain(`>${v}<`);
+  expect(html, '鐵甲骰子的首領傷害倍率（只在官方強化分頁上，不在基本面板）').toContain('首領傷害倍率');
+  expect(html, '原子骰子官方未填值的格子照原文寫「待實測」').toContain('待實測');
+
+  // 目標與備註也要在，那是基本面板的一部分。
+  expect(html).toContain('高生命值');
+  expect(html).toContain('技能物件型，無標準基本攻擊');
+
+  // 反向斷言：官方分頁的備註欄混了一條**資料表作者自己的校訂記錄**（D401 吞噬骰子的
+  // 「原始目標文本：範圍前」＝官方原文寫「範圍前」、那一欄被正規化成「範圍內」）。
+  // 那是給維護者看的，印在卡片上對玩家只會像個錯字（2026-08-24 Yuki 回報）。
+  // 這條守著「別又把整欄照抄回去」。
+  expect(html, '資料表的校訂記錄不可以印給玩家').not.toContain('原始目標文本');
+  expect(html, '吞噬骰子的目標是正規化過的「範圍內」').toContain('範圍內');
+});
+
+test('C8. 切檔只換數字：41 張卡片的 pill 區塊高度在四個檔位全都不動', async ({ page }) => {
+  await page.goto('/dice');
+  const card = page.locator('.dice-card').filter({ hasText: '火骰子' }).first();
+  const pills = card.locator('.stat-pill');
+
+  // 先驗一次真的使用者動線：點下去、數字換掉、pill 數量與卡片高度不變。
+  const before = { count: await pills.count(), h: (await card.boundingBox())!.height };
+  await expect(pills.first()).toHaveText(/攻擊力\s*150/, { useInnerText: true });
+  await card.locator('.stat-modes input[value="lv15dice7"]').check();
+  await expect(pills.first()).toHaveText(/攻擊力\s*2850/, { useInnerText: true });
+  expect(await pills.count(), 'pill 數量不可以隨檔位改變').toBe(before.count);
+  // ⚠️ 這裡不可以用 toBe：boundingBox 回的是裝置像素換算後的浮點數，同一個版面重量一次就會
+  // 差到 3e-5（實測 424.625 vs 424.6249694824219）。用嚴格相等的話這一行會在版面完全沒變時
+  // 隨機紅，而且會**搶在下面那段全站掃描之前**紅掉——真正的成因反而看不到。
+  expect((await card.boundingBox())!.height, '卡片高度不可以隨檔位改變').toBeCloseTo(before.h, 1);
+  await card.locator('.stat-modes input[value="base"]').check();
+
+  // ⚠️ 上面那一張擋不住這條規則真正會壞的地方。2026-08-24 的 /code-review 實測：**火骰子
+  // 從來不會 reflow**（四個檔位都是 2 列），而真正會的是尖刺骰子（攻擊力 750 → 15750 讓
+  // pill 區塊 68px → 106px）。卡片排在 CSS grid 的同一列裡，它一變高就把火骰子與花骰子
+  // 一起從 424.6px 撐到 462.7px——**使用者根本沒去動那兩張**。只量一張卡片＝假通過。
+  //
+  // 所以掃全部 41 張 × 四個檔位。用 page.evaluate 直接改 checked 而不是 41×4 次 Playwright
+  // 點擊：後者在這套測試裡要跑兩分鐘。（沒有 JS 也切得動這件事由 C11 守。）
+  const result = await page.evaluate(() => {
+    const modes = ['base', 'dice7', 'lv15', 'lv15dice7'];
+    const bad: string[] = [];
+    let measured = 0;
+    let anyValueChanged = false;
+    for (const c of document.querySelectorAll('.dice-card')) {
+      const block = c.querySelector('.stat-pills');
+      if (block === null) continue;
+      measured++;
+      const first = c.querySelector('.stat-v') as HTMLElement | null;
+      const seen = new Set<string>();
+      const heights = new Set<number>();
+      for (const m of modes) {
+        (c.querySelector(`.stat-modes input[value="${m}"]`) as HTMLInputElement).checked = true;
+        heights.add(Math.round(block.getBoundingClientRect().height));
+        const shown = first?.querySelector(`[data-m="${m}"]`)?.textContent;
+        if (shown !== undefined && shown !== null) seen.add(shown);
+      }
+      if (seen.size > 1) anyValueChanged = true;
+      (c.querySelector('.stat-modes input[value="base"]') as HTMLInputElement).checked = true;
+      if (heights.size > 1) {
+        bad.push(`${c.querySelector('h3')?.textContent} ${[...heights].join('→')}`);
+      }
+    }
+    return { bad, measured, anyValueChanged };
+  });
+
+  // 前提斷言：真的掃到 41 張，而且四個檔位真的有值在變。少了這兩行，選擇器哪天改名之後
+  // 這條測試會掃到 0 張卡片、然後「通過」。
+  expect(result.measured, '應該掃到 41 張卡片').toBe(41);
+  expect(result.anyValueChanged, '四個檔位應該真的有值不一樣，否則這條在量一個不會動的東西').toBe(true);
+  expect(result.bad, 'pill 區塊高度隨檔位改變的卡片').toEqual([]);
+});
+
+test('C9. 不隨骰點或強化改變的項目，切到別的檔會淡下去', async ({ page }) => {
+  await page.goto('/dice');
+  const card = page.locator('.dice-card').filter({ hasText: '火骰子' }).first();
+  const fixed = card.locator('.stat-pill.is-fixed').first();   // 目標
+  const scaling = card.locator('.stat-pill:not(.is-fixed)').first(); // 攻擊力
+
+  // 基礎檔＝遊戲內面板的樣子，所有項目一律等重。
+  await expect(fixed).toHaveCSS('opacity', '1');
+
+  await card.locator('.stat-modes input[value="dice7"]').check();
+  // 「這幾項剛才沒有跟著變」靠淡化講，不另外寫字。
+  await expect(fixed).not.toHaveCSS('opacity', '1');
+  await expect(scaling).toHaveCSS('opacity', '1');
+});
+
+test('C10. 每張卡片是獨立的一組：切一張不會動到別張', async ({ page }) => {
+  await page.goto('/dice');
+  const fire = page.locator('.dice-card').filter({ hasText: '火骰子' }).first();
+  const poison = page.locator('.dice-card').filter({ hasText: '毒骰子' }).first();
+
+  await fire.locator('.stat-modes input[value="lv15dice7"]').check();
+
+  // radio 的 name 要是全頁唯一的。忘了帶節點 id 的話 41 張卡片會變成同一組，
+  // 切一張把其他 40 張的選取狀態一起清掉——而畫面上「數字沒變」跟「這顆本來就不會變」
+  // 長得一模一樣，只有另一張卡片的 checked 狀態會說話。
+  await expect(poison.locator('.stat-modes input[value="base"]')).toBeChecked();
+  await expect(poison.locator('.stat-pill').first()).toHaveText(/攻擊力\s*100/, { useInnerText: true });
+  await expect(fire.locator('.stat-pill').first()).toHaveText(/攻擊力\s*2850/, { useInnerText: true });
+});
+
+test('C11. 沒有 JS 時檔位照樣切得動（整塊是純 CSS）', async ({ browser }) => {
+  // 這一頁的其他互動（篩選、#關鍵字 就地視圖）沒有 JS 就不會動，數值面板刻意不是那樣：
+  // 它是這一頁唯一一個「沒有腳本也完整可用」的控制項。有人哪天把它改成 JS 換 textContent，
+  // 畫面上完全看不出差別，只有這條會紅。
+  const ctx = await browser.newContext({ javaScriptEnabled: false });
+  const page = await ctx.newPage();
+  await page.goto('/dice');
+  const card = page.locator('.dice-card').filter({ hasText: '火骰子' }).first();
+
+  await expect(card.locator('.stat-pill').first()).toHaveText(/攻擊力\s*150/, { useInnerText: true });
+  await card.locator('.stat-modes input[value="lv15dice7"]').check();
+  await expect(card.locator('.stat-pill').first()).toHaveText(/攻擊力\s*2850/, { useInnerText: true });
+  await ctx.close();
+});
