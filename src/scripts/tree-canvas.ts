@@ -124,6 +124,21 @@ let currentSelected: string | null = initialSelected;
 // 根本讀不到這個變數），只有真瀏覽器會炸。
 let upgradeRaf = 0;
 
+// 置中平移的 rAF 控制碼，以及卡片擺在節點的哪一邊。⚠️ 宣告提到這裡的理由跟 upgradeRaf 一模
+// 一樣，而且**是實際踩到的**：jumpToBranch()（手機版初始視角，模組初始化階段就會跑）會呼叫
+// cancelCenterPan()，宣告留在函式旁邊時 400×800 與 720×800 都直接
+// `ReferenceError: Cannot access 'centerRaf' before initialization`，整個模組掛掉、詳情面板
+// 永遠是 hidden。1440×900 完全正常——桌機不走 jumpToBranch()，所以只有窄畫面會炸。
+let centerRaf = 0;
+// 卡片放在節點上方還是下方。select() 決定（見 sideLeastCovered()），positionPanel() 與
+// centerOnSelected() 共用同一個值——兩邊各算一次的話，平移目標與實際擺法會對不上。
+let panelSide: 'above' | 'below' = 'above';
+// panelSide 是為了哪一顆節點算的。applyFilter() 每次輸入都會呼叫 select(currentSelected)，
+// 不記這個的話會跟著重算——見 select() 裡的說明。
+let sidePickedFor: string | null = null;
+// 置中平移期間把卡片**釘在終點位置**，不讓它跟著節點跑（見 centerOnSelected()）。
+let panelPinned = false;
+
 /**
  * 高解析升級的批次世代號。跟 `upgradeRaf` 同一個理由提到這裡（見上面那段說明）：
  * `jumpToBranch()` 在模組初始化階段就會呼叫 `maybeUpgradeIcons()`，宣告留在函式旁邊會落進
@@ -192,6 +207,10 @@ if (typeof addEventListener === 'function') {
   addEventListener('scroll', invalidateCanvasMetrics, { capture: true, passive: true });
 }
 svg.addEventListener('pointerdown', invalidateCanvasMetrics);
+// 使用者一碰畫布就放棄進行中的置中平移——兩股力量同時寫 transform 會互相拉扯。
+// 掛在 pointerdown／wheel 上（不是 pointermove）：手勢一開始就該讓位，不必等真的移動。
+svg.addEventListener('pointerdown', cancelCenterPan);
+svg.addEventListener('wheel', cancelCenterPan, { passive: true });
 
 /**
  * 切換 `#tree.shadows`：圖示在畫面上夠大時才畫節點投影（見 src/pages/tree.astro 那條規則的
@@ -272,6 +291,7 @@ function applyReadabilityFloor(): void {
  * 手機都會，見該函式的說明）。
  */
 function jumpToBranch(branch: Branch): void {
+  cancelCenterPan();
   vp.fitTo(data.meta.bounds[branch]);
   applyReadabilityFloor();
   // 同 focusMatches()：程式移動鏡頭後要自己補一次高解析升級。分支按鈕在 <svg> 之外，
@@ -507,7 +527,18 @@ window.addEventListener('keydown', e => {
   // 要等使用者之後剛好又滾一下滑鼠才會補上（code review 找到的真實落差，這裡補齊，讓
   // 「哪些操作會改到可視範圍」跟「該不該檢查要不要升級圖示」這兩件事保持一致，不看操作是
   // 用滑鼠還是鍵盤）。
-  if (moved) maybeUpgradeIcons();
+  if (moved) {
+    // ⚠️ `cancelCenterPan()` 只能放在**確定是平移／縮放按鍵**的這條路上。
+    // 放在 handler 開頭（一度是那樣寫的）會咬到兩件事：
+    // (a) 節點上按 Enter 開卡片時，svg 的 keydown 先跑 openNode() → animatePan() 排好 rAF，
+    //     同一個事件接著冒泡到 window 就把它取消——實測節點停在 x=172 而不是畫面中央 640，
+    //     Enter 這條路等於完全沒有置中（isTypingTarget 只認 INPUT/TEXTAREA/SELECT，
+    //     焦點在 <g class="node"> 上不會被前面那行擋掉）。
+    // (b) 點擊開節點之後 200ms 內按任何一個鍵（Tab、Esc、任一個字母）都會把平移中途掐掉，
+    //     節點卡在半路。
+    cancelCenterPan();
+    maybeUpgradeIcons();
+  }
 });
 
 // --- 點選節點：前置鏈高亮 + 詳情面板 ---
@@ -584,7 +615,75 @@ function select(id: string | null): void {
 
   renderDetail(node, sel, panel, data.meta.glossary, data.meta.upgradeCostTable);
   viewStack = [{ view: { kind: 'node', id }, scrollTop: 0 }];
+  // ⚠️ 只有「真的換了一顆節點」才重算擺法。`applyFilter()` 每次 input 事件都會呼叫
+  // `select(currentSelected)` 重畫高亮（見那裡的註解），跟著重算有兩個問題：
+  // (a) 每打一個字多兩次強制版面計算 ＋ 一次前置鏈模擬，疊在本來就有的 239 節點篩選上；
+  // (b) `sideLeastCovered()` 模擬的是「**置中之後**」的螢幕座標，而篩選這條路徑根本不會
+  //     置中——算出來的擺法描述的是一個不存在的版面。
+  // 順帶讓擺法在打字期間保持穩定，卡片不會邊打字邊上下跳。
+  if (id !== sidePickedFor) {
+    // 兩趟：第一趟只是為了套上 max-height，量到夾制**之後**的真實高度，那是決定「上面還是
+    // 下面比較不擋」的輸入；第二趟才是最終位置。一趟做不到——擺法要用高度算，高度又要先
+    // 擺過一次才量得準。globalCap 的理由見 positionPanel() 的參數說明。
+    panelSide = 'above';
+    positionPanel({ globalCap: true });
+    panelSide = sideLeastCovered(node, sel.chain, panel.getBoundingClientRect().height);
+    sidePickedFor = id;
+  }
   positionPanel();
+}
+
+/**
+ * 卡片要放節點上方還是下方：**實際算一遍兩種擺法各會蓋住幾個前置節點**，取少的那個。
+ *
+ * 為什麼一定要能翻面：五個分支的生長方向不同。1 系往上長、2／3 系往下長、4 系往左、
+ * 5 系往右——「一律放上方」只解掉往上長與左右長的那三系，2／3 系深層節點的前置鏈整條
+ * 在節點**上方**，卡片放上面照樣全蓋住（2026-08-23 實測：固定放上方時 239 顆有 155 顆
+ * 仍有前置鏈被蓋，其中 2108 是 14 個蓋掉 13 個；能翻面之後降到 44 顆、單顆最多 5 個）。
+ *
+ * 為什麼不用「前置節點在上面的多還是下面的多」這種便宜的判斷：分支是扇形展開的，很多節點
+ * 的前置鏈上下都有，而**離得遠的那些根本不在卡片的水平範圍內**，算進去只會把擺法帶偏。
+ * 直接模擬一次就沒有這個誤差，成本也只是幾十次乘法。
+ *
+ * 只比上下、不比左右：左右兩側正是 4／5 系前置鏈延伸的方向，多一個維度只會讓擺法更難
+ * 預期，而上下兩種已經把最壞情況從「整條鏈」壓到「零星一兩顆」。
+ *
+ * 模擬的座標系是**平移置中之後的螢幕座標**（節點會落在 innerWidth/2, targetCenterY）——
+ * 那才是使用者真正看到的版面。使用者座標換算成 CSS px 的比例是
+ * 「根 svg 的 CTM ✕ 畫布自己的縮放」，兩層都要算進去。
+ */
+function sideLeastCovered(node: TreeNode, chain: Set<string>, cardH: number): 'above' | 'below' {
+  const nodeEl = svg.querySelector(`g.node[data-id="${node.id}"] .icon`);
+  if (!nodeEl) return 'above';
+  const n = nodeEl.getBoundingClientRect();
+  const cardW = panel.getBoundingClientRect().width;
+  const topLimit = panelTopLimit();
+  const ppu = (svg.getScreenCTM?.()?.a ?? 1) * vp.scale;
+  const others = [...chain]
+    .filter(id => id !== node.id)
+    .map(id => byId.get(id))
+    .filter((o): o is TreeNode => !!o);
+  if (others.length === 0) return 'above';
+
+  const cx = window.innerWidth / 2;
+  const radius = n.height / 2;
+  const covered = (side: 'above' | 'below'): number => {
+    const cy = targetCenterY(side, cardH, n.height, topLimit);
+    const cardTop = side === 'above' ? cy - radius - GAP - cardH : cy + radius + GAP;
+    const cardBottom = cardTop + cardH;
+    const cardLeft = cx - cardW / 2;
+    const cardRight = cardLeft + cardW;
+    let hit = 0;
+    for (const o of others) {
+      const ox = cx + (o.x - node.x) * ppu;
+      const oy = cy + (o.y - node.y) * ppu;
+      if (ox + radius > cardLeft && ox - radius < cardRight
+        && oy + radius > cardTop && oy - radius < cardBottom) hit++;
+    }
+    return hit;
+  };
+  // 平手維持預設的上方（卡片壓在節點上方時，視線是「先看卡片再往下看樹」，比反過來自然）。
+  return covered('below') < covered('above') ? 'below' : 'above';
 }
 
 /**
@@ -602,29 +701,229 @@ function selectionFor(id: string) {
   return sel;
 }
 
+/** 卡片與節點、卡片與視窗邊界之間的留白（CSS px）。 */
+const GAP = 12;
 /**
- * 把詳情卡片挪到被選節點旁邊（spec 外，2026-08-18 人工檢視回報：卡在右上角時，眼睛要在
- * 「點下去的節點」和「螢幕另一角」之間來回跑）。
+ * 卡片高度的下限（CSS px）。
+ *
+ * 高度上限是「卡片那一側到畫面邊緣還剩多少」，而使用者可以把節點拖到貼著畫面上緣——那時
+ * 上方的空間會趨近 0，照算會把卡片壓成一條看不出是什麼的細縫。低於這個值時寧可換到另一側
+ * （另一側也塞不下才容許重疊，那已經是「整個視窗都放不下」的極端）。
+ */
+const MIN_PANEL_H = 200;
+/**
+ * 置中時多留給卡片的高度（CSS px），約一行的量。
+ *
+ * 不留的話節點會被推到「卡片剛好放得下」的位置，之後卡片只要長高一點點就會超過那一側的
+ * 空間、被 max-height 裁掉而冒出捲軸。實際會長高的情形至少有一個：選好節點後在搜尋框打字，
+ * 卡片多出「含 N 個被篩選隱藏的前置」一行（實測 279.7 → 312.2）。留一行就吸收得掉。
+ */
+const CENTER_SLACK = 40;
+/**
+ * 置中平移時要在節點下方留的空間（CSS px）。
+ *
+ * 卡片放在節點上方，所以「卡片放得下」等於「節點必須夠低」。這個值只用來算卡片的
+ * `max-height` 上限，刻意是**常數**而不是量到的節點高度：節點大小會隨縮放在 9–50 CSS px
+ * 之間變動（見 src/lib/viewport.ts 的 SHADOW_ON_AT_ICON_PX＝50），拿它當上限的話縮放時
+ * 卡片會跟著一格一格改高度。56 蓋得住最大的那一顆。
+ */
+const NODE_ROOM = 56;
+
+/**
+ * 現在是不是窄畫面（手機版底部抽屜）。
+ *
+ * 每次都重新問一次 matchMedia，不用模組頂端那個載入時算一次的 `isMobile`——視窗是會被拉的。
+ */
+function isNarrow(): boolean {
+  return typeof matchMedia === 'function' && matchMedia(NARROW_QUERY).matches;
+}
+
+/**
+ * 卡片與置中平移共用的上界：**工具列下緣**。
+ *
+ * #toolbar 是疊在畫布左上角的固定圖層（搜尋框＋篩選），只看 --nav-h 的話卡片會滑到它底下、
+ * 把搜尋框蓋掉一半。量它的實際下緣而不是再寫一個固定偏移量——這個 repo 的版面偏移量已經
+ * 寫死出過三次 bug（見 CLAUDE.md）。
+ */
+function panelTopLimit(): number {
+  const toolbarEl = document.getElementById('toolbar');
+  return toolbarEl
+    ? toolbarEl.getBoundingClientRect().bottom
+    : parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--nav-h')) || 48;
+}
+
+/** 置中平移的長度。跟 FILTERS_MS／SLIDE_MS 同一個原則：**從 CSS 讀**，不在 JS 寫第二份。 */
+const CENTER_MS = cssMs('--t-med', 200);
+
+/**
+ * 中止進行中的置中平移。
+ *
+ * 使用者一動畫布（拖曳、滾輪、雙指、鍵盤方向鍵）或程式自己搬鏡頭（搜尋跳轉、分支跳轉）時
+ * 都要叫：兩股力量同時寫 transform 的話，畫面會在兩個目標之間來回被拉扯。
+ */
+function cancelCenterPan(): void {
+  if (typeof cancelAnimationFrame === 'function') cancelAnimationFrame(centerRaf);
+  centerRaf = 0;
+  // 中途被打斷（使用者自己動畫布）時一定要解除釘住並重新對齊，否則卡片會停在一個
+  // 「本來預定要到、但畫布沒走完」的位置，跟節點對不上而且再也不會自己修正。
+  if (panelPinned) {
+    panelPinned = false;
+    positionPanel();
+  }
+}
+
+/**
+ * 以螢幕座標的位移量做一段緩動平移（easeOutCubic）。
+ *
+ * 逐幀累加**差值**而不是每幀重算絕對位置：`vp.pan()` 收的就是差值，這樣寫不必知道畫布現在
+ * 在哪，也不會跟同一幀裡別的平移互相覆蓋。
+ * `canAnimate()` 為 false（linkedom 測試環境沒有 rAF、或使用者要求減少動態）時直接跳到位。
+ */
+function animatePan(dx: number, dy: number, onDone: () => void): void {
+  // ⚠️ 這裡**不**呼叫 cancelCenterPan()：它會順手解除釘住並重新對齊，而呼叫端正是在
+  // 「卡片剛剛釘到終點」之後才進來的，清掉等於把剛擺好的位置又推回節點現在的位置。
+  // 「取消上一段動畫」由呼叫端在釘住**之前**做。
+  if (!canAnimate() || typeof performance === 'undefined'
+    || (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5)) {
+    vp.pan(dx, dy);
+    onDone();
+    maybeUpgradeIcons();
+    return;
+  }
+  const start = performance.now();
+  let done = 0;
+  const step = (now: number): void => {
+    const t = Math.min(1, (now - start) / CENTER_MS);
+    const eased = 1 - (1 - t) ** 3;
+    vp.pan(dx * (eased - done), dy * (eased - done));
+    done = eased;
+    if (t < 1) {
+      centerRaf = requestAnimationFrame(step);
+      return;
+    }
+    centerRaf = 0;
+    onDone();
+    // 鏡頭一動就會有新的節點進到畫面裡，它們還掛著 sprite 的低解析 pattern（放大後會糊）。
+    // maybeUpgradeIcons() 平常只掛在 wheel／pointerup 上，程式自己移動鏡頭時不會被觸發——
+    // 跟 focusMatches() 末尾那一行同一個理由。
+    maybeUpgradeIcons();
+  };
+  centerRaf = requestAnimationFrame(step);
+}
+
+/**
+ * 節點平移置中之後，它的垂直中心該落在哪（螢幕 CSS px）。
+ *
+ * 基準是「工具列下緣 → 視窗底部」的中央；卡片那一側放不下時，把節點往卡片的**反**方向
+ * 推到剛好放得下為止（需求卡驗收 3：卡片完整顯示且不蓋到節點），能不動就不動。
+ * `sideLeastCovered()` 也用同一個函式模擬兩種擺法，兩邊算出來的版面才會一致。
+ */
+function targetCenterY(
+  side: 'above' | 'below',
+  cardH: number,
+  nodeH: number,
+  topLimit: number,
+): number {
+  const center = (topLimit + window.innerHeight) / 2;
+  const need = GAP + cardH + CENTER_SLACK;
+  const lo = topLimit + GAP + nodeH / 2 + (side === 'above' ? need : 0);
+  const hi = window.innerHeight - GAP - nodeH / 2 - (side === 'below' ? need : 0);
+  // 兩邊擠不下時（極矮的視窗）以「卡片完整顯示」為優先，讓節點貼到另一側的邊。
+  if (hi < lo) return side === 'above' ? hi : lo;
+  return Math.min(Math.max(center, lo), hi);
+}
+
+/**
+ * 把目前選取的節點平移到畫面中央，讓卡片那一側空出一整塊。
+ *
+ * ⚠️ 刻意**不放進 `select()`**：`applyFilter()` 每次都會呼叫 `select(currentSelected)` 來重畫
+ * 高亮（見那裡的註解），放進去的話使用者在搜尋框每打一個字鏡頭就飛一次。這裡只掛在真正的
+ * 「開啟一個節點」動線上：畫布點擊、鍵盤 Enter、以及 `?node=` 進站。
+ *
+ * 垂直目標是「工具列下緣 → 視窗底部」的中央；卡片比那個位置上方的空間還高時，把節點再往下
+ * 推到「卡片剛好放得下」為止（需求卡驗收 3：卡片完整顯示且不蓋到節點）。水平目標就是視窗
+ * 中央——側欄只是左上角一小塊浮層，畫布本身是整個視窗寬。
+ */
+function centerOnSelected(): void {
+  if (isNarrow() || panel.hidden || !currentSelected) return;
+  // 上一段還在跑就先收乾淨（含解除釘住），再重新量、重新釘。
+  cancelCenterPan();
+  const nodeEl = svg.querySelector(`g.node[data-id="${currentSelected}"] .icon`);
+  if (!nodeEl) return;
+
+  const topLimit = panelTopLimit();
+  const n = nodeEl.getBoundingClientRect();
+  // ⚠️ 要的是卡片的**自然高度**（只受整個可視區限制），不是它現在被那一側空間裁過的高度。
+  // 節點此刻還在平移前的位置，那一側可能只剩一點空間；拿被裁過的高度算目標，平移完卡片
+  // 長回自然高度就又會壓到節點——正是 2026-08-23 code review 抓到的那一族問題。
+  positionPanel({ globalCap: true });
+  const height = panel.getBoundingClientRect().height;
+
+  const target = {
+    cx: window.innerWidth / 2,
+    cy: targetCenterY(panelSide, height, n.height, topLimit),
+  };
+  // ⚠️ 卡片**先跳到終點**，然後整段動畫只有畫布在走。
+  // 讓卡片跟著節點一起滑看起來才「對」，但實際上不行：動畫途中節點還在畫面上緣附近，
+  // 卡片被 top 的夾制壓在工具列下方、跟節點重疊，等節點降下來才彈回貼齊——2026-08-23
+  // 實測那段垂直間距從 −50px 一路爬到 +12px，就是 Yuki 回報的「移動的動畫會閃爍」的另一半。
+  // 釘住之後卡片一次到位、只有樹在底下滑進來，是安靜的。
+  positionPanel({ nodeCenter: target });
+  panelPinned = true;
+  animatePan(
+    target.cx - (n.left + n.width / 2),
+    target.cy - (n.top + n.height / 2),
+    () => {
+      panelPinned = false;
+      positionPanel();
+    },
+  );
+}
+
+/** 「使用者開啟了一個節點」：選取 ＋ 把鏡頭帶過去。`id` 為 null 時就只是清掉選取。 */
+function openNode(id: string | null): void {
+  select(id);
+  if (id !== null) centerOnSelected();
+}
+
+/**
+ * 把詳情卡片挪到被選節點**正上方**（2026-08-23 Yuki 指定；在那之前是「貼在節點左右兩側，
+ * 右邊放不下就翻左邊」）。
+ *
+ * 為什麼不再左右擺：左右兩側正是前置鏈延伸出去的方向。2 系與 4 系長在畫布左半邊，深層節點
+ * 的前置鏈整條往**右**長，而卡片預設就開在右邊——實測 `?node=4112`，9 個前置鏈節點有 7 個
+ * 被卡片蓋住。翻面只是把問題丟給另一邊（1 系與 3 系反過來），真正沒有鏈的方向是上下。
+ * 搭配 `centerOnSelected()`（選取時把節點平移到畫面中央）之後，節點上方永遠有一整塊空地。
  *
  * 只在桌機做。手機版的 #detail 是從螢幕底部升起的抽屜（見 src/pages/tree.astro 的媒體
  * 查詢），窄螢幕上根本沒有「節點旁邊」這種空間，硬擠只會兩邊都看不清。
  *
- * 位置規則：預設放在節點右邊；右邊放不下就翻到左邊；再放不下就夾回可視範圍內。垂直方向
- * 對齊節點中心，同樣夾在工具列下緣與視窗底部之間。這幾個夾制不是防禦性程式碼——樹的四個
- * 角落本來就有節點，不夾就會有卡片一半在畫面外的情況。
+ * 位置規則：卡片**下緣**貼節點上緣（GAP），水平**中心**對齊節點中心；兩個方向都夾回可視
+ * 範圍內，水平還要避開 #branch-nav 側欄。這幾個夾制不是防禦性程式碼——樹的四個角落本來就
+ * 有節點，而使用者可以把畫布拖到任何位置，不夾就會有卡片一半在畫面外的情況。
  */
 /**
  * @param opts.assumeHeight 用這個高度算位置，而不是量卡片現在的高度。
  *   換頁時用：高度正在動畫中，要先把**終點**的位置寫進 `top`，讓 top 與 height 同時跑完，
- *   卡片的垂直中心才會固定不動（＝「上下往中間收」而不是「往上收」）。
+ *   卡片的**下緣**才會固定不動（＝「往上收」而不是「往下掉一截再回來」）。
+ * @param opts.nodeCenter 用這個螢幕座標當節點中心，而不是量節點現在在哪。
+ *   置中平移開始前用：先把卡片放到**平移結束後**該在的位置，整段動畫就只有畫布在動。
+ *   傳了這個參數也代表「我知道自己在做什麼」，會蓋過 panelPinned 的早退。
+ * @param opts.globalCap 高度上限改用「整個可視區」算，而不是「卡片那一側剩多少空間」。
+ *   `select()` 量自然高度時用：那一刻節點還在平移前的位置，用當下的側邊空間算會量到一個
+ *   被壓扁的高度，而置中的目標位置正是拿那個高度算的——目標會算錯，平移完卡片再長回來就
+ *   又壓到節點了。
  */
-function positionPanel(opts: { assumeHeight?: number } = {}): void {
+function positionPanel(opts: {
+  assumeHeight?: number;
+  nodeCenter?: { cx: number; cy: number };
+  globalCap?: boolean;
+} = {}): void {
   // 這裡刻意**不用**模組頂端那個 isMobile：它在載入時算一次就定案，而視窗是會被拉的。
   // 桌機視窗拉窄到斷點以下時，CSS 會把面板切成底部抽屜（inset: auto 0 0 0），但這裡留下的
   // 行內 left/top 優先級更高，抽屜會被釘在桌機算出來的位置上（code review 實測：400×800 下
   // 面板停在 top=162、left=12、寬 400，右邊突出畫面外）。每次都重新問一次媒體查詢才對。
-  const narrow = typeof matchMedia === 'function' && matchMedia(NARROW_QUERY).matches;
-  if (narrow) {
+  if (isNarrow()) {
     panel.style.left = '';
     panel.style.top = '';
     panel.style.right = '';
@@ -632,19 +931,14 @@ function positionPanel(opts: { assumeHeight?: number } = {}): void {
     return;
   }
   if (panel.hidden || !currentSelected) return;
+  // 置中平移進行中：卡片已經放在終點，不要每幀再跟著節點算一次（見 centerOnSelected()）。
+  if (panelPinned && !opts.nodeCenter) return;
   const nodeEl = svg.querySelector(`g.node[data-id="${currentSelected}"] .icon`);
   if (!nodeEl) return;
 
-  const GAP = 12;
-  // 上緣夾在**工具列**下方：#toolbar 是疊在畫布左上角的固定圖層（搜尋框＋篩選），只看
-  // --nav-h 的話卡片會滑到它底下、把搜尋框蓋掉一半。量它的實際下緣而不是再寫一個固定
-  // 偏移量——這個 repo 的版面偏移量已經寫死出過三次 bug（見 CLAUDE.md）。
-  const toolbarEl = document.getElementById('toolbar');
-  const topLimit = toolbarEl
-    ? toolbarEl.getBoundingClientRect().bottom
-    : parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--nav-h')) || 48;
+  const topLimit = panelTopLimit();
 
-  // 左緣還要避開 #branch-nav 側欄。只避 #toolbar 是不夠的：側欄比工具列矮但更長，760px 寬時
+  // 左右緣要避開 #branch-nav 側欄。只避 #toolbar 是不夠的：側欄比工具列矮但更長，760px 寬時
   // 卡片會被夾到 left=12，正好壓在側欄按鈕上並攔截點擊（實測 760×800：#detail 12–364 /
   // 158.91–549.28，#branch-nav 0–79.19 / 146.91–356.75，兩個矩形相交）。
   //
@@ -658,15 +952,53 @@ function positionPanel(opts: { assumeHeight?: number } = {}): void {
   // 下緣（低了約 68px），兩邊基準不一致時面板下緣會超出視窗——而面板最後一段固定是 spec
   // §2.1 強制要求的「重置需要初期化券」災情警告，捲到底也看不到（code review 實測 1000×480
   // 下超出 43.8px）。先設上限、再量高度，量到的才是夾制後的結果。
-  panel.style.maxHeight = `${Math.max(0, window.innerHeight - topLimit - GAP * 2)}px`;
+  //
+  const now = nodeEl.getBoundingClientRect();
+  // 節點的「盒子」：尺寸一律用量到的（跟著縮放走），位置可以被 nodeCenter 換成終點座標。
+  const n = opts.nodeCenter
+    ? {
+        top: opts.nodeCenter.cy - now.height / 2,
+        bottom: opts.nodeCenter.cy + now.height / 2,
+        left: opts.nodeCenter.cx - now.width / 2,
+        width: now.width,
+        height: now.height,
+      }
+    : now;
 
-  const n = nodeEl.getBoundingClientRect();
+  // 高度上限。基準是工具列下緣而不是 --nav-h：CSS 的 max-height 用 --nav-h 起算，但實際起點
+  // 低了約 68px，兩邊基準不一致時面板下緣會超出視窗——而面板最後一段固定是 spec §2.1 強制
+  // 要求的「重置需要初期化券」災情警告，捲到底也看不到（code review 實測 1000×480 下超出
+  // 43.8px）。先設上限、再量高度，量到的才是夾制後的結果。
+  //
+  // ⚠️ 上限用的是**卡片那一側到畫面邊緣還剩多少**，不是整個視窗的高度。
+  // 用整窗高度算的話，卡片只要長到超過那一側的空間，下面的夾制就會把它推到節點身上——
+  // 2026-08-23 code review 實測：選好節點後在搜尋框打一個字，卡片多出「含 N 個被篩選隱藏
+  // 的前置」一行（279.7 → 312.2），四顆抽樣節點有三顆被卡片完全蓋住（重疊 467.6 px²）。
+  // 那條路徑不會重新置中（刻意的，見 centerOnSelected() 的註解），所以只能靠上限自己收斂。
+  const roomAbove = n.top - topLimit - GAP * 2;
+  const roomBelow = window.innerHeight - n.bottom - GAP * 2;
+  // 偏好側連 MIN_PANEL_H 都放不下、而另一側放得下時，這一次先讓到另一側。
+  // ⚠️ opts.globalCap（select() 量自然高度時用）走的是另一條路：那時節點還沒平移到定位，
+  // 拿當下的空間算會量到一個被壓扁的高度，而置中的目標位置正是用那個高度算出來的。
+  const side: 'above' | 'below' = !opts.globalCap
+    && (panelSide === 'above' ? roomAbove : roomBelow) < MIN_PANEL_H
+    && (panelSide === 'above' ? roomBelow : roomAbove) >= MIN_PANEL_H
+    ? (panelSide === 'above' ? 'below' : 'above')
+    : panelSide;
+  // 置中之後那一側必定放得下自然高度（見 targetCenterY()），所以這個上限在正常動線上不會
+  // 真的裁到卡片；它只在使用者把節點拖到畫面邊緣、或內容變高之後才生效。
+  const globalCap = Math.max(0, window.innerHeight - topLimit - GAP * 3 - NODE_ROOM);
+  const sideRoom = Math.max(MIN_PANEL_H, side === 'above' ? roomAbove : roomBelow);
+  panel.style.maxHeight = `${opts.globalCap ? globalCap : Math.min(globalCap, sideRoom)}px`;
+
   const rect = panel.getBoundingClientRect();
   const height = opts.assumeHeight ?? rect.height;
   const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(v, hi));
 
+  // 垂直：卡片下緣貼節點上緣（above），或卡片上緣貼節點下緣（below）。
+  // 夾制的下界是工具列下緣、上界是「卡片整張還留在視窗內」。
   const top = clamp(
-    n.top + n.height / 2 - height / 2,
+    side === 'below' ? n.bottom + GAP : n.top - GAP - height,
     topLimit + GAP,
     Math.max(topLimit + GAP, window.innerHeight - height - GAP),
   );
@@ -680,9 +1012,8 @@ function positionPanel(opts: { assumeHeight?: number } = {}): void {
   // 把卡片推出視窗——看不到比被壓住更糟。
   const leftLimit = Math.min(overlapsSidebar ? Math.max(GAP, obstacle!.right + GAP) : GAP, rightLimit);
 
-  let left = n.right + GAP;
-  if (left + rect.width > window.innerWidth - GAP) left = n.left - GAP - rect.width;
-  left = clamp(left, leftLimit, rightLimit);
+  // 水平：中心對齊節點中心。
+  const left = clamp(n.left + n.width / 2 - rect.width / 2, leftLimit, rightLimit);
 
   panel.style.left = `${left}px`;
   panel.style.top = `${top}px`;
@@ -710,8 +1041,17 @@ function schedulePositionPanel(): void {
     positionPanel();
     return;
   }
-  cancelAnimationFrame(positionRaf);
-  positionRaf = requestAnimationFrame(() => positionPanel());
+  // ⚠️ 「已經排了就不要再排」，**不可以**寫成 cancelAnimationFrame() ＋ 重排。
+  // 兩者都是「一幀最多做一次」，但取消重排會被**每幀都寫 transform** 的來源餓死：
+  // 排好的回呼還沒輪到執行就被下一次寫入取消，如此循環，卡片一次都不會重新定位。
+  // 2026-08-23 實測：置中平移（每幀寫一次）期間卡片完全不動，節點滑走 468px 之後卡片
+  // 在最後一幀瞬移到位——那就是 Yuki 回報的「移動的動畫會閃爍」。
+  // 拖曳看不出來只是因為 pointermove 沒有真的每幀都來（實測錯位最多 12px）。
+  if (positionRaf) return;
+  positionRaf = requestAnimationFrame(() => {
+    positionRaf = 0;
+    positionPanel();
+  });
 }
 if (typeof MutationObserver === 'function') {
   // 包一層而不是直接把 schedulePositionPanel 當 callback：它現在收一個 options 物件，
@@ -756,7 +1096,7 @@ svg.addEventListener('pointerup', e => {
   if (touches.size > 0) return;
   const moved = Math.hypot(e.clientX - downPos.x, e.clientY - downPos.y);
   if (moved > DRAG_THRESHOLD_PX) return;
-  select(downTarget ? downTarget.getAttribute('data-id') : null);
+  openNode(downTarget ? downTarget.getAttribute('data-id') : null);
 });
 
 // Enter／Esc 掛在 svg 上而不是 window：keydown 事件要先冒泡經過 svg 才會觸發這裡，
@@ -765,7 +1105,7 @@ svg.addEventListener('pointerup', e => {
 // 詳情面板，可以留給搜尋框自己處理「清空搜尋」。
 svg.addEventListener('keydown', e => {
   const g = (e.target as Element).closest?.('g.node');
-  if (e.key === 'Enter' && g) select(g.getAttribute('data-id'));
+  if (e.key === 'Enter' && g) openNode(g.getAttribute('data-id'));
   if (e.key === 'Escape') select(null);
 });
 
@@ -866,6 +1206,7 @@ function updateFilterStatus(matchCount: number): void {
 function focusMatches(): void {
   const matched = matchedNodes();
   if (matched.length === 0) return;
+  cancelCenterPan();
   const xs = matched.map(n => n.x);
   const ys = matched.map(n => n.y);
   const PAD = 90;
@@ -1152,7 +1493,12 @@ function slide(fromEl: HTMLElement, toEl: HTMLElement, dir: 'forward' | 'back', 
   fromEl.classList.add('sliding');
   toEl.classList.remove('sliding');
   const toH = stack.offsetHeight || fromH;
-  const toPanelH = panel.offsetHeight;
+  // ⚠️ 用 getBoundingClientRect().height 不用 offsetHeight：後者**四捨五入成整數**
+  // （實測 280 vs 實際 279.7）。這個值是動畫終點餵給 positionPanel() 的高度，差 0.3px 就會
+  // 讓卡片在動畫最後一格越過落定位置、再被收尾的重新定位拉回來——肉眼看不到，但那是一次
+  // 真正的反向，Z4 的「不反向」斷言（門檻 0.3px）會直接紅。
+  // 2026-08-23 兩欄版面把自然高度從 280 改成 279.7，剛好把這個既有的取整誤差推過門檻。
+  const toPanelH = panel.getBoundingClientRect().height;
   toEl.classList.add('sliding');
 
   const enter = dir === 'forward' ? 100 : -100;
@@ -1410,3 +1756,8 @@ applyFilter();
 // 網址帶了搜尋字串就把鏡頭帶到命中的節點上。分享連結（或按下重新整理）本來就是在說
 // 「看這些」，落在原本的初始視角只會看到一片灰，跟點關鍵字時的死路一模一樣。
 if (filterState.query.trim() !== '') focusMatches();
+// `?node=` 進站也要置中——分享連結指名了一顆節點，它落在初始視角的哪個角落是隨機的。
+// 順序在 focusMatches() **之後**：兩個參數同時出現時，指名的那顆節點比「命中的那一群」具體。
+// 選取本身是上面 applyFilter() 內部的 select(currentSelected) 做掉的（見那裡的註解），
+// 這裡只補鏡頭；centerOnSelected() 自己會在窄畫面／沒有選取時直接返回。
+centerOnSelected();
