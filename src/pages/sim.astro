@@ -1,0 +1,624 @@
+---
+// 骰子樹模擬器：在骰子樹上逐顆解鎖、調等級，即時算出這套規劃要花多少核心與金幣。
+//
+// **刻意不做**：戰鬥／機率模擬、骰子強度評分、網址編碼分享、分支點數統計
+// （Yuki 2026-08-23 指定）。進度存在 localStorage，重整會接續上次——這跟 /board 刻意不存
+// 是相反的裁決，理由是模擬一棵 239 節點的樹是會做很久的事，而擺 5 顆骰子不是。
+//
+// 畫布用 renderTree() ＋ Viewport 自己組（見 src/scripts/sim.ts），**不重用
+// src/scripts/tree-canvas.ts**：那支是 side-effect 腳本，載入即掛載，而且跟 /tree 的
+// 篩選器、詳情卡片擺位、高解析圖示 LOD 綁在一起。
+// ⚠️ 版面骨架與**節點／邊／標籤的外觀**兩頁共用 global.css 那兩節，不要在這裡另寫一份
+// ——第一版漏了節點外觀那一節，標籤吃 SVG 預設的 16px，蓋住 10 顆節點的圖示中心讓它們
+// 點不到（E2E 的 S13 守，反例會一次紅 10 對）。
+//
+// 升級費用表在建置期讀進來（data/passive-upgrade-cost.json），**不進 tree.json**——
+// tier 是 (maxLevel, unlockCost.gold) 的純函數，那兩個欄位產物裡本來就有，複製一份
+// costTier 欄位進去只是拿 gzip 預算換一個推得出來的值。
+import Base from '../layouts/Base.astro';
+import data from '../generated/tree.json';
+import tablesRaw from '../../data/passive-upgrade-cost.json';
+import { buildSimContext } from '../lib/sim';
+import type { PassiveUpgradeCost, TreeData } from '../lib/types';
+
+const tree = data as unknown as TreeData;
+const tables = tablesRaw as unknown as PassiveUpgradeCost;
+
+// 可選初始骰子的清單在建置期就算好：它是「unlockVia 非 cost 非 default 且不用付錢」的
+// 節點，從資料推導而不是硬編碼 id——官方哪天多送一顆，unlock-exceptions 改一行這裡就跟著對。
+const ctx = buildSimContext(tree, tables);
+const byId = new Map(tree.nodes.map(n => [n.id, n]));
+const optional = [...ctx.optional]
+  .map(id => byId.get(id)!)
+  .sort((a, b) => a.id.localeCompare(b.id));
+---
+
+<Base title="骰子樹-模擬器(beta)">
+  <!-- 工具列浮在畫布上（同 /tree 的 #toolbar）。⚠️ 裡面每一項都是常駐的，undo／redo
+       用 disabled 而不是收起來——「工具列的尺寸不准隨狀態改變」在這個 repo 已經記過三次。 -->
+  <div id="sim-toolbar">
+    <input id="sim-search" type="search" placeholder="搜尋骰子或符文" aria-label="搜尋節點" autocomplete="off" />
+
+    <div class="sim-menu">
+      <button type="button" id="sim-initial-toggle" aria-expanded="false" aria-controls="sim-initial-menu">
+        初始骰子<span class="sim-count" id="sim-initial-count">0</span>
+      </button>
+      <div class="sim-menu-body" id="sim-initial-menu" hidden>
+        <p class="note">這幾顆不用花資源，但要靠遊戲外的條件取得。勾起來代表你已經有了。</p>
+        {optional.map(n => (
+          <label class="sim-check">
+            <input type="checkbox" data-initial={n.id} />
+            <span>
+              {n.name}
+              <em>{n.unlockNote}</em>
+            </span>
+          </label>
+        ))}
+      </div>
+    </div>
+
+    <div class="sim-menu">
+      <button type="button" id="sim-limit-toggle" aria-expanded="false" aria-controls="sim-limit-menu">
+        資源上限
+      </button>
+      <div class="sim-menu-body" id="sim-limit-menu" hidden>
+        <p class="note">填了之後，會超出的操作會被擋下來。留白＝不限。</p>
+        <label class="sim-field">核心 <input id="sim-limit-core" type="number" min="0" step="1" inputmode="numeric" /></label>
+        <label class="sim-field">金幣 <input id="sim-limit-gold" type="number" min="0" step="1" inputmode="numeric" /></label>
+      </div>
+    </div>
+
+    <button type="button" id="sim-undo" disabled aria-label="復原">↶</button>
+    <button type="button" id="sim-redo" disabled aria-label="重做">↷</button>
+    <button type="button" id="sim-abilities">能力彙總</button>
+    <button type="button" id="sim-export">匯出</button>
+    <button type="button" id="sim-reset">重置</button>
+  </div>
+
+  <div id="canvas-host">
+    <script>
+      import '../scripts/sim.ts';
+    </script>
+  </div>
+
+  <!-- 側欄常駐顯示資源合計——那是這一頁存在的理由，不該藏在要點開的地方。
+       選了節點時下半部才出現詳情。手機版整個變成底部抽屜。 -->
+  <aside id="sim-panel">
+    <div id="sim-totals">
+      <h2>資源合計</h2>
+      <dl>
+        <div class="sim-total-row is-total"><dt>總計</dt><dd id="sim-total">核心 0 ／金幣 0</dd></div>
+        <div class="sim-total-row"><dt>解鎖</dt><dd id="sim-total-unlock">核心 0 ／金幣 0</dd></div>
+        <div class="sim-total-row"><dt>升級</dt><dd id="sim-total-upgrade">核心 0 ／金幣 0</dd></div>
+        <div class="sim-total-row"><dt>已取得</dt><dd id="sim-owned-count">5 / {tree.nodes.length}</dd></div>
+      </dl>
+      <p id="sim-limit-warn" class="warn" hidden></p>
+    </div>
+    <div id="sim-detail" class="empty">
+      <p class="note">點畫布上的節點看它的詳情；前置都解開的節點點一下就會取得。</p>
+    </div>
+  </aside>
+
+  <div id="sim-ability-modal" hidden>
+    <div class="sim-modal-box" role="dialog" aria-modal="true" aria-labelledby="sim-ability-title">
+      <div class="sim-modal-head">
+        <h2 id="sim-ability-title">能力彙總</h2>
+        <button type="button" id="sim-ability-close" aria-label="關閉">✕</button>
+      </div>
+      <div id="sim-ability-body"></div>
+    </div>
+  </div>
+
+  <p id="sim-toast" role="status" aria-live="polite"></p>
+</Base>
+
+<style is:global>
+  /* ⚠️ 一律 is:global：畫布上的節點是 JS 在執行期產生的，Astro 的 scoped 樣式靠建置期加在
+     標記上的 data 屬性生效，動態元素拿不到那個屬性（tree.astro 同一段註解）。 */
+
+  /* --- 工具列 --------------------------------------------------------------- */
+  #sim-toolbar {
+    position: fixed;
+    top: var(--nav-h, 3rem);
+    left: 0;
+    z-index: 5;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-3);
+    background: var(--surface-2);
+    border-right: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+    border-bottom-right-radius: var(--r-md);
+    box-shadow: var(--shadow-3);
+  }
+
+  #sim-toolbar input[type='search'],
+  #sim-toolbar input[type='number'] {
+    padding: var(--space-1) var(--space-2);
+    font-size: var(--fs-md);
+    color: var(--fg);
+    background: var(--surface-1);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--r-sm);
+  }
+
+  #sim-toolbar input[type='search'] {
+    width: 11rem;
+  }
+
+  #sim-toolbar button {
+    padding: var(--space-1) var(--space-3);
+    font-size: var(--fs-md);
+    color: var(--fg);
+    cursor: pointer;
+    background: var(--surface-1);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--r-sm);
+    transition: background var(--t-fast);
+  }
+
+  #sim-toolbar button:hover:not(:disabled) {
+    background: var(--surface-3);
+  }
+
+  #sim-toolbar button:disabled {
+    color: var(--muted);
+    cursor: default;
+    opacity: 0.55;
+  }
+
+  /* 勾了幾顆初始骰子。⚠️ 這個徽章**一直存在**，沒勾時顯示 0 而不是收起來——只在有值時才
+     長出來的話按鈕寬度會隨狀態跳動（同 /tree 金點那條）。 */
+  .sim-count {
+    display: inline-block;
+    min-width: 1.4em;
+    margin-left: var(--space-1);
+    padding: 0 var(--space-h);
+    font-size: var(--fs-xs);
+    text-align: center;
+    background: var(--surface-3);
+    border-radius: var(--r-pill);
+  }
+
+  /* --- 下拉選單 ------------------------------------------------------------- */
+  /* 用絕對定位浮出去，不是撐開工具列：展開會改變工具列高度的話，整排東西會在點下去的
+     那一刻跳一次。 */
+  .sim-menu {
+    position: relative;
+  }
+
+  .sim-menu-body {
+    position: absolute;
+    top: calc(100% + var(--space-2));
+    left: 0;
+    z-index: 6;
+    width: max-content;
+    max-width: 22rem;
+    padding: var(--space-3);
+    background: var(--surface-2);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--r-md);
+    box-shadow: var(--shadow-3);
+  }
+
+  .sim-menu-body .note {
+    margin: 0 0 var(--space-2);
+    color: var(--muted);
+    font-size: var(--fs-xs);
+  }
+
+  .sim-check {
+    display: flex;
+    gap: var(--space-2);
+    align-items: flex-start;
+    padding: var(--space-1) 0;
+    cursor: pointer;
+  }
+
+  .sim-check em {
+    display: block;
+    color: var(--muted);
+    font-size: var(--fs-xs);
+    font-style: normal;
+  }
+
+  .sim-field {
+    display: flex;
+    gap: var(--space-2);
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--space-1) 0;
+    font-size: var(--fs-md);
+  }
+
+  .sim-field input {
+    width: 8rem;
+  }
+
+  /* 超出上限時把輸入框標紅。--nature 是站台既有的警示色用法（見 #detail .warn）。 */
+  #sim-toolbar input.over-limit {
+    border-color: var(--nature);
+  }
+
+  /* --- 側欄 ----------------------------------------------------------------- */
+  #sim-panel {
+    position: fixed;
+    top: var(--nav-h, 3rem);
+    right: 0;
+    bottom: 0;
+    z-index: 4;
+    display: flex;
+    flex-direction: column;
+    width: 22rem;
+    padding: var(--space-3);
+    overflow-y: auto;
+    background: var(--surface-2);
+    border-left: 1px solid var(--border);
+    box-shadow: var(--shadow-3);
+  }
+
+  #sim-totals h2 {
+    margin: 0 0 var(--space-2);
+    font-size: var(--fs-lg);
+  }
+
+  #sim-totals dl {
+    margin: 0;
+  }
+
+  .sim-total-row {
+    display: flex;
+    gap: var(--space-2);
+    justify-content: space-between;
+    padding: var(--space-h) 0;
+    font-size: var(--fs-md);
+  }
+
+  .sim-total-row dt {
+    color: var(--muted);
+  }
+
+  .sim-total-row dd {
+    margin: 0;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .sim-total-row.is-total {
+    padding-bottom: var(--space-2);
+    font-size: var(--fs-base);
+    font-weight: 600;
+    border-bottom: 1px solid var(--border);
+  }
+
+  #sim-limit-warn {
+    margin: var(--space-2) 0 0;
+    color: var(--nature);
+    font-size: var(--fs-sm);
+  }
+
+  #sim-detail {
+    margin-top: var(--space-4);
+    padding-top: var(--space-3);
+    border-top: 1px solid var(--border);
+  }
+
+  #sim-detail h3 {
+    margin: 0 0 var(--space-1);
+    font-size: var(--fs-lg);
+  }
+
+  #sim-detail .tag {
+    display: inline-block;
+    margin-right: var(--space-1);
+    padding: var(--space-h) var(--space-2);
+    color: var(--muted);
+    font-size: var(--fs-xs);
+    background: var(--surface-3);
+    border-radius: var(--r-pill);
+  }
+
+  #sim-detail .desc {
+    margin: var(--space-2) 0;
+    font-size: var(--fs-md);
+    line-height: 1.6;
+  }
+
+  /* 關鍵字標記。/tree 的版本是可點的按鈕（推出詞彙視圖），這一頁只上色不可點。 */
+  #sim-detail .sim-term {
+    color: var(--support);
+    text-decoration: underline dotted currentcolor;
+    text-underline-offset: 0.2em;
+  }
+
+  #sim-detail .note {
+    margin: var(--space-1) 0;
+    color: var(--muted);
+    font-size: var(--fs-sm);
+  }
+
+  #sim-detail .warn {
+    color: var(--nature);
+  }
+
+  #sim-detail .cta {
+    display: block;
+    width: 100%;
+    margin-top: var(--space-2);
+    padding: var(--space-2);
+    color: var(--bg);
+    font-size: var(--fs-md);
+    font-weight: 600;
+    cursor: pointer;
+    background: var(--gold);
+    border: none;
+    border-radius: var(--r-sm);
+  }
+
+  #sim-detail .cta.danger {
+    color: var(--fg);
+    background: transparent;
+    border: 1px solid var(--nature);
+  }
+
+  #sim-detail .cta:disabled {
+    color: var(--muted);
+    cursor: default;
+    background: var(--surface-3);
+  }
+
+  /* --- 等級調整 ------------------------------------------------------------- */
+  .sim-level {
+    margin-top: var(--space-3);
+    padding-top: var(--space-3);
+    border-top: 1px solid var(--border);
+  }
+
+  .sim-level-row {
+    display: flex;
+    gap: var(--space-2);
+    align-items: center;
+  }
+
+  .sim-level-row input[type='range'] {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .sim-level-row button {
+    width: 2rem;
+    padding: var(--space-1);
+    color: var(--fg);
+    cursor: pointer;
+    background: var(--surface-1);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--r-sm);
+  }
+
+  .sim-level-value {
+    min-width: 5em;
+    font-size: var(--fs-md);
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+  }
+
+  /* --- 畫布上的節點狀態 ------------------------------------------------------ */
+  /* `#tree.sim` 前綴讓這幾條只在模擬器頁生效——/tree 的 SVG 也叫 #tree，共用的基本樣式
+     （節點、邊、標籤）刻意留著吃 global.css 那一份。 */
+  #tree.sim .node {
+    cursor: pointer;
+  }
+
+  #tree.sim .node.sim-locked {
+    opacity: 0.28;
+  }
+
+  #tree.sim .node.sim-available .icon {
+    filter: drop-shadow(0 0 5px var(--gold));
+  }
+
+  /* 選取的節點一律看得見。⚠️ 具體度要壓過 `.sim-locked` 的 opacity（多帶一個 class），
+     不要靠「後到者勝」——這個 repo 已經因為順序保護而讓一條反例測試假綠過一次。 */
+  #tree.sim .node.sim-locked.sim-selected,
+  #tree.sim .node.sim-selected {
+    opacity: 1;
+  }
+
+  #tree.sim .node.sim-selected .icon {
+    filter: drop-shadow(0 0 6px var(--fg));
+  }
+
+  /* ⚠️ 鍵盤焦點的金邊必須贏過上面兩條狀態色。`#tree.sim .node.sim-available .icon` 的具體度
+     是 (1,4,0)，壓過 global.css 的 `.node:focus .icon { filter: url(#focus-ring) }` (0,3,0)，
+     而 `.node:focus` 又已經 `outline: none`——結果是 Tab 到「可取得」或「已選取」的節點時
+     **畫面零變化**（那圈金光不管有沒有 focus 都在）。這裡補回來，具體度 (1,5,0) 拿得下。
+     這是 CLAUDE.md 為 `/tree` 記過的同一族坑（「投影拆成兩條規則，順序與權重都不能動」），
+     由 `/code-review high` 抓到，E2E 的 S15 守。 */
+  #tree.sim .node.sim-available:focus .icon,
+  #tree.sim .node.sim-selected:focus .icon,
+  #tree.sim .node.sim-locked:focus .icon {
+    filter: url(#focus-ring);
+  }
+
+  #tree.sim .edge {
+    opacity: 0.25;
+  }
+
+  /* 兩端都取得了的邊畫成實線亮色——那是玩家已經走過的路。 */
+  #tree.sim .edge.sim-active {
+    stroke: var(--gold);
+    opacity: 1;
+  }
+
+  /* 起點取得了、終點還沒的邊：下一步可以走。 */
+  #tree.sim .edge.sim-ready {
+    opacity: 0.7;
+  }
+
+  /* 搜尋不符的節點淡出但留在原位（同 /tree 的篩選，不能用 display:none）。 */
+  #tree.sim .node.sim-dimmed {
+    opacity: 0.08;
+    pointer-events: none;
+  }
+
+  /* 等級牌只掛在已取得的節點上。⚠️ 這件事一定要用 CSS 做：**SVG 元素不吃 HTML 的 `hidden`
+     屬性**，JS 那邊 `toggleAttribute('hidden')` 是完全沒有作用的一行，239 個牌子會全部
+     留在畫面上（第一版就是這樣，測試全綠、截圖才看得出來）。 */
+  #tree.sim .node:not(.sim-owned) .sim-badge {
+    display: none;
+  }
+
+  #tree.sim .sim-badge rect {
+    fill: var(--surface-1);
+    stroke: var(--border-strong);
+  }
+
+  #tree.sim .sim-badge text {
+    fill: var(--fg);
+    /* 跟節點標籤同一階（tree.astro 的 `.node .label`）。在 <g transform> 底下 rem 一樣會
+       跟著畫布縮放，所以這裡不需要、也不該用一個「SVG 專用」的裸數值。 */
+    font-size: var(--fs-xs);
+    text-anchor: middle;
+  }
+
+  /* --- 能力彙總 ------------------------------------------------------------- */
+  #sim-ability-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 20;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: var(--space-4);
+    background: rgb(0 0 0 / 55%);
+  }
+
+  #sim-ability-modal[hidden] {
+    display: none;
+  }
+
+  .sim-modal-box {
+    display: flex;
+    flex-direction: column;
+    width: min(38rem, 100%);
+    max-height: 80vh;
+    padding: var(--space-4);
+    overflow-y: auto;
+    background: var(--surface-1);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--r-lg);
+    box-shadow: var(--shadow-3);
+  }
+
+  .sim-modal-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: var(--space-3);
+  }
+
+  .sim-modal-head h2 {
+    margin: 0;
+    font-size: var(--fs-xl);
+  }
+
+  .sim-modal-head button {
+    padding: var(--space-1) var(--space-2);
+    color: var(--fg);
+    font-size: var(--fs-lg);
+    cursor: pointer;
+    background: none;
+    border: none;
+  }
+
+  .sim-ability-group {
+    margin-bottom: var(--space-4);
+  }
+
+  .sim-ability-group h3 {
+    margin: 0 0 var(--space-2);
+    font-size: var(--fs-md);
+    color: var(--muted);
+  }
+
+  .sim-ability-row {
+    display: flex;
+    gap: var(--space-3);
+    justify-content: space-between;
+    padding: var(--space-1) 0;
+    font-size: var(--fs-md);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .sim-ability-row strong {
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+
+  .sim-ability-empty {
+    color: var(--muted);
+    font-size: var(--fs-md);
+  }
+
+  /* --- toast ---------------------------------------------------------------- */
+  #sim-toast {
+    position: fixed;
+    bottom: var(--space-6);
+    left: 50%;
+    z-index: 30;
+    margin: 0;
+    padding: var(--space-2) var(--space-4);
+    color: var(--bg);
+    font-size: var(--fs-md);
+    background: var(--gold);
+    border-radius: var(--r-pill);
+    box-shadow: var(--shadow-2);
+    transform: translateX(-50%);
+  }
+
+  /* ⚠️ 不要用 `[hidden]`／`display:none`／`visibility:hidden` 收這個元素：它是這一頁唯一的
+     `role="status"`，那三種收法會讓它一併從無障礙樹消失，於是「超出資源上限」這些唯一的
+     失敗回饋對螢幕閱讀器完全不存在。改成內容空的時候只收視覺（元素本身一直在）。 */
+  #sim-toast:empty {
+    padding: 0;
+    background: none;
+    box-shadow: none;
+  }
+
+  /* --- 手機版 --------------------------------------------------------------- */
+  /* 側欄改成底部抽屜（同 /tree 的 #detail）。工具列改成全寬、可橫捲的一列，
+     免得 8 個按鈕在 390px 寬的螢幕上折成四行把畫布壓掉一半。 */
+  @media (width <= 720px) {
+    /* ⚠️ 這裡**不能**用 `overflow-x: auto` 把工具列變成一條橫捲的列：第一版那樣做，390px
+       寬的螢幕上「重置」之後的按鈕整批看不到，而畫面上沒有任何東西告訴使用者可以往右滑
+       ——看不到的按鈕等於不存在。換行多佔一列，但每一顆都摸得到。 */
+    #sim-toolbar {
+      right: 0;
+      border-right: none;
+      border-bottom-right-radius: 0;
+    }
+
+    #sim-toolbar input[type='search'] {
+      flex: 1;
+      min-width: 6rem;
+    }
+
+    #sim-panel {
+      top: auto;
+      width: 100%;
+      max-height: 42dvh;
+      border-top: 1px solid var(--border);
+      border-left: none;
+    }
+
+    /* footer 讓位給抽屜：#sim-panel 是 fixed bottom:0，而這一頁不捲動，抽屜會永遠疊在
+       footer 上，「遊戲圖示與文字著作權屬 111 Percent Inc.」那句就完全讀不到。
+       高度由 src/scripts/sim.ts 的 ResizeObserver 量實際值寫進 --sim-panel-h（抽屜會隨
+       選不選節點長高變矮），不寫死數字——這個 repo 的固定偏移量已經咬過五次。
+       <main> 是 flex: 1，footer 變高只會讓畫布跟著縮，不會把捲軸叫回來。 */
+    body:has(#canvas-host) footer {
+      padding-bottom: calc(var(--space-4) + var(--sim-panel-h, 42dvh));
+    }
+  }
+</style>

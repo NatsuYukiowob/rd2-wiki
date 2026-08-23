@@ -1,0 +1,88 @@
+{
+  "note": "玩家被動與支援節點的升級費用。官方表格把 75 個共通節點分成 6 個升級類型（A–F），而識別一個類型的就是「等級上限」與「解鎖金幣」這兩個值——拿去對 data/nodes.json 是 40 個可升級節點 40/40 全中、零遺漏零多餘（規則 22 每次建置都重驗一次）。bands 是官方表格自己的寫法：from~to 每一級都花 gold，core 只在 from 那一級收一次（表頭註記「等級5以後未說明之等級費用以前一級所需金幣資源相同」）。level 1（解鎖）不在 bands 裡，它是節點自己的 cost。骰子符文的 50 級表在 data/upgrade-cost.json，不在這裡。",
+  "source": "Random Dice 2 骰子樹升級資源表（社群整理，2026-08-23）。同一份檔案裡的符文 1–50 級表與 data/upgrade-cost.json 逐級全等，可當這份資料的交叉驗算。",
+  "tiers": {
+    "A": {
+      "maxLevel": 10, "unlockGold": 12000,
+      "bands": [
+        {"from":   2, "to":   5, "gold":   8000, "core":  0},
+        {"from":   6, "to":  10, "gold":  16000, "core":  6}
+      ]
+    },
+    "B": {
+      "maxLevel": 15, "unlockGold": 8000,
+      "bands": [
+        {"from":   2, "to":   5, "gold":   4000, "core":  0},
+        {"from":   6, "to":  10, "gold":   8000, "core":  3},
+        {"from":  11, "to":  15, "gold":  15000, "core":  6}
+      ]
+    },
+    "C": {
+      "maxLevel": 20, "unlockGold": 3000,
+      "bands": [
+        {"from":   2, "to":   5, "gold":   1500, "core":  0},
+        {"from":   6, "to":  10, "gold":   3000, "core":  2},
+        {"from":  11, "to":  15, "gold":   6000, "core":  2},
+        {"from":  16, "to":  20, "gold":  12000, "core":  4}
+      ]
+    },
+    "D": {
+      "maxLevel": 20, "unlockGold": 15000,
+      "bands": [
+        {"from":   2, "to":   5, "gold":   8000, "core":  0},
+        {"from":   6, "to":  10, "gold":  10000, "core":  5},
+        {"from":  11, "to":  15, "gold":  15000, "core":  5},
+        {"from":  16, "to":  20, "gold":  30000, "core": 10}
+      ]
+    },
+    "E": {
+      "maxLevel": 50, "unlockGold": 8000,
+      "bands": [
+        {"from":   2, "to":   5, "gold":   3000, "core":  0},
+        {"from":   6, "to":  10, "gold":   4000, "core":  2},
+        {"from":  11, "to":  15, "gold":   5000, "core":  2},
+        {"from":  16, "to":  20, "gold":   7000, "core":  4},
+        {"from":  21, "to":  25, "gold":   8000, "core":  4},
+        {"from":  26, "to":  30, "gold":  10000, "core":  6},
+        {"from":  31, "to":  35, "gold":  12000, "core":  6},
+        {"from":  36, "to":  40, "gold":  14000, "core":  8},
+        {"from":  41, "to":  45, "gold":  16000, "core":  8},
+        {"from":  46, "to":  50, "gold":  20000, "core": 10}
+      ]
+    },
+    "F": {
+      "maxLevel": 100, "unlockGold": 3000,
+      "bands": [
+        {"from":   2, "to":   5, "gold":   1000, "core":  0},
+        {"from":   6, "to":  10, "gold":   2000, "core":  1},
+        {"from":  11, "to":  15, "gold":   3000, "core":  1},
+        {"from":  16, "to":  20, "gold":   4000, "core":  2},
+        {"from":  21, "to":  25, "gold":   5000, "core":  2},
+        {"from":  26, "to":  30, "gold":   7000, "core":  3},
+        {"from":  31, "to":  35, "gold":   9000, "core":  3},
+        {"from":  36, "to":  40, "gold":  12000, "core":  4},
+        {"from":  41, "to":  45, "gold":  15000, "core":  4},
+        {"from":  46, "to":  50, "gold":  18000, "core":  5},
+        {"from":  51, "to":  55, "gold":  21000, "core":  5},
+        {"from":  56, "to":  60, "gold":  24000, "core":  6},
+        {"from":  61, "to":  65, "gold":  27000, "core":  6},
+        {"from":  66, "to":  70, "gold":  30000, "core":  7},
+        {"from":  71, "to":  75, "gold":  35000, "core":  7},
+        {"from":  76, "to":  80, "gold":  40000, "core":  8},
+        {"from":  81, "to":  85, "gold":  45000, "core":  8},
+        {"from":  86, "to":  90, "gold":  50000, "core":  9},
+        {"from":  91, "to":  95, "gold":  55000, "core":  9},
+        {"from":  96, "to": 100, "gold":  60000, "core": 10}
+      ]
+    }
+  },
+  "special": {
+    "4303": {
+      "maxLevel": 3,
+      "levels": [
+        {"level": 2, "gold": 60000, "core": 6},
+        {"level": 3, "gold": 120000, "core": 10}
+      ]
+    }
+  }
+}

@@ -53,7 +53,7 @@
 ## 指令
 
 ```bash
-npm run validate    # 資料驗證（規則 0–21，CI 守門員）
+npm run validate    # 資料驗證（規則 0–22，CI 守門員）
 npm run typecheck   # tsc --noEmit（含 noUnusedLocals）
 npm run normalize   # 攤平圖層/matrix/相對路徑、清掉 <text> 與註解（送 PR 前必跑）
 npm run preview     # 把標籤注回幾何，產出 data/dice-tree.preview.svg（不進版控）
@@ -79,8 +79,11 @@ npm run e2e         # 有 pree2e 自動跑 build
 | `dataIssue` | `placeholder` 0 ／ `no-growth` 0 | 規則 17 |
 | `unlockVia !== 'cost'` | 9 個，全是骰子 | `data/unlock-exceptions.json`，規則 18 |
 | `unlockPaid` ／ `bypassPrereq` | 1 個（`5002`）／ 2 個（`5006` `5008`） | 同上；`unlockVia` 只說「靠什麼開門」，這兩個才說「要不要付錢」「要不要解前置」 |
+| 可升級節點 | 84 ＝ 50 級符文 43 ＋ `4303` ＋ 玩家被動／支援 40 | 其餘 155 個 `maxLevel` 是 1 |
+| 升級 tier ↔ 節點 | 6 個 tier 對 40 個節點，**雙向零殘餘** | `data/passive-upgrade-cost.json`，規則 22 |
+| 初始就可解鎖的節點 | 11 個（前置只有起始骰子） | `/sim` 的測試挑節點時要從這裡挑 |
 | 畫布 viewBox | `0 0 2000 1700` | |
-| 效能預算（硬斷言） | `tree.json` gzip ≤ 20KB（目前 19.1KB）／sprite ≤ 400KB（目前 130KB） | |
+| 效能預算（硬斷言） | `tree.json` gzip ≤ 20KB（目前 18.5KB）／sprite ≤ 400KB（目前 130KB） | |
 
 - **版本欄位有三個、意義不同**：`data-game-version`（玩家看得到的遊戲版本，1.0.3）、
   `<metadata>` 的 `resource bundle`（資料抄自哪一版資源包，0.0.6）、`data-version`（正本自己的
@@ -147,6 +150,16 @@ npm run e2e         # 有 pree2e 自動跑 build
   ⚠️ **鍵一定要用 `gameId`**：光「所有骰子傷害」就有 15 個同名節點。
   ⚠️ 兩個容易改壞的地方：(1) **佔位符要略過不能報錯**（否則跟規則 9 的「不擋 PR」政策自相矛盾）；
   (2) **有覆蓋率下限**——只走夾具裡有的項目等於「刪掉一個鍵就關掉那顆節點的檢查」。
+- **`data/passive-upgrade-cost.json`＝玩家被動與支援的升級費用**（6 個 tier A–F ＋ `4303` 特例），
+  由**規則 22** 守。⚠️ **它不進 tree.json**：tier 是 `(maxLevel, unlockCost.gold)` 的純函數，那兩個
+  欄位產物裡本來就有，複製一份 `costTier` 欄位進去只是拿 gzip 預算換一個推得出來的值。
+  代價是「表與節點對不上」在產物層面完全沒有痕跡——一顆節點對不到 tier，`/sim` 只會安靜地不讓它
+  升級（跟「這顆本來就不能升級」在畫面上一模一樣），一個多餘的 tier 則永遠不會被察覺。所以規則 22
+  是**雙向**的：40 個節點每一顆都要對得到 tier，6 個 tier 每一個也都要對得到節點。
+  ⚠️ `bands` 是官方表格自己的寫法（`from`~`to` 每級花 `gold`，`core` **只在 `from` 那一級收一次**），
+  展開成逐級表的是 `src/lib/upgrade-tiers.ts` 的 `expandTier()`，validate 與 `/sim` 共用同一份
+  ——連續性判斷寫兩份就會漂移。**符文的 1–50 級表仍在 `data/upgrade-cost.json`，兩份不要合併**
+  （適用型別、識別方式、資料來源都不同）。
 - **`data/changelog.json`＝站台更新日誌**（首頁顯示最新 3 筆），由**規則 20** 守。它是全站唯一
   沒有自動來源的內容，而「忘了寫」在畫面上跟「這次沒更新」長得一模一樣。規則 20 檢查的是
   **最新一筆帶 `data` 區塊的條目**而不是 `entries[0]`——純站台功能的條目排在最前面卻沒有資料版本
@@ -209,6 +222,7 @@ npm run e2e         # 有 pree2e 自動跑 build
 | 19 | SVG 的 `data-id` 集合 ≡ `nodes.json` 的鍵集合，雙射零殘餘，**兩種殘餘都要逐一列出 id**（239 個節點，只說「數量對不上」等於沒說） |
 | 20 | changelog 的結構，以及最新一筆資料條目與正本版本欄位一致。擋的不是「日誌寫錯」，是**「資料改了、日誌沒改」** |
 | 21 | `/board` 純骰子圖：(a) 骰子漏一筆對應 (b)(c)(d) 目錄本身 (e) 值必須是 12 碼小寫 hex（擋路徑穿越與 `[object Object].png`） (f) 指向的檔不存在 (g) **兩筆指到同一張圖** (h) 對應表自己留著一筆不是（或已不是）骰子的 id |
+| 22 | 玩家被動升級費用表：6 個 tier 的形狀與區間連續性、`(maxLevel, unlockGold)` 不得撞號、**每個可升級的共通節點都對得到 tier、每個 tier 也都對得到節點**、`special` 的鍵是節點 id 且不與 tier 重疊 |
 
 ⚠️ **幾何規則吃 `nodes`，文案規則吃 `withText`**。`withText` 是「兩邊都在、結構又合法」的過濾集合；
 把它餵給幾何規則的話，`nodes.json` 漏一筆會被翻譯成幾十條指向 SVG 的假錯誤（實測：刪掉 `1001`
@@ -274,6 +288,10 @@ npm run e2e         # 有 pree2e 自動跑 build
   `white-space: nowrap`（中文沒有空白，瀏覽器會在任意兩字之間斷開），≤720px 時不顯示「上次更新」
   （它比其他四項加起來還寬）。D9 守——實測只有隱藏那段拿掉才會紅，`nowrap` 是防更窄的裝置，
   **不要因為「拿掉也是綠的」就刪**。
+- ⚠️ **窄螢幕塞不下時是「導覽列自己橫向捲動」**（≤720px，Yuki 2026-08-23 指定），不是換行、
+  不是縮字級、也不是拿掉入口。捲的必須是 `#site-nav` 自己——讓整份文件橫捲會踩到 `/board` 的
+  B13。`overflow-x` 一設 `overflow-y` 就會被算成 `auto`，而「遊戲介紹」的下拉是絕對定位掛在 nav
+  底下的，**一定要明確寫 `overflow-y: visible`**，否則它會被整個裁掉。D13 守。
 - **工具列的尺寸不准隨篩選狀態改變**（浮在畫布上的盒子，寬度一變整排東西跟著跳，而且是邊打字邊跳）。
   「符合 N 個節點」那句話已整個拿掉。⚠️ 金點的 `::before` 要**一直存在**、平常 `background: transparent`
   ——只在 `.active` 才長出 `content` 的話按鈕會寬 16px，問題原地復發。⚠️ `清除篩選` 用
@@ -468,6 +486,70 @@ PNG，檔名＝內容 sha256 前 12 碼，`addIcon()` 直接重用）＋ `data/b
 `src/scripts/board.ts` 的 `diceMeta` 是從 `#dice-picker` 的 `<img src>` 讀回來的，所以拖曳、骰盤格、
 分享圖三處畫面全部自動跟著換，不必維護第二份路徑。
 
+### `/sim` 骰子樹模擬器
+
+在骰子樹上逐顆解鎖、調等級，即時算出這套規劃要花多少核心與金幣。**刻意不做**：戰鬥／機率模擬、
+骰子強度評分、網址編碼分享、分支點數統計（Yuki 2026-08-23 指定）。⚠️ **進度存在 `localStorage`
+（鍵 `rd2-sim-v1`），這跟 `/board` 刻意不存是相反的裁決**——理由是模擬一棵 239 節點的樹是會做很久
+的事，而擺 5 顆骰子不是。版本號寫在鍵名裡，格式改了就換一個鍵，不寫遷移程式。
+
+- **算術全部在純函式層**：`src/lib/sim.ts`（狀態機）、`src/lib/sim-io.ts`（存檔與文字報告）、
+  `src/lib/upgrade-tiers.ts`（費用查表）。`src/scripts/sim.ts` 只做「把狀態畫成畫面、把事件翻成
+  狀態轉換」。**每個操作都回傳新狀態而不是就地改**——undo／redo 直接把整份狀態推進堆疊，不必為
+  每種操作各寫一次反向操作（而反向操作正是最容易漏掉連帶效果的地方）。
+- **畫布是自己組的**（`renderTree()` ＋ `Viewport`），**不重用 `src/scripts/tree-canvas.ts`**：
+  那支是 side-effect 腳本、載入即掛載，而且跟 `/tree` 的篩選器、詳情卡片擺位、高解析圖示 LOD
+  綁死。⚠️ 共用的是 **`global.css` 的兩個區塊**（「畫布頁的版面骨架」與「畫布內容」），2026-08-23
+  從 `tree.astro` 搬過去——搬的當下就抓到一個真 bug：`/sim` 完全沒有節點外觀那一節，標籤吃
+  SVG 預設的 **16px**（使用者座標），**別的節點的標籤蓋住了 10 顆節點的圖示中心**，症狀是
+  「點某幾顆完全沒反應」。⚠️ 反例測過：擋住這件事的是**字級**——單獨拿掉
+  `pointer-events: none`、或讓符文標籤全部顯示，S13 都不會紅，把字級改回 16px 才紅。
+  **加樣式時不要以為 `pointer-events: none` 是那道防線。**
+- ⚠️ **不能在節點上綁 `click`。** `svg.setPointerCapture()` 一旦生效，後續 pointer 事件（以及由
+  它們合成的 click）的 target 全部被改標成 svg 本身，節點的 handler 永遠不會跑——實測就是整頁點
+  下去沒反應。做法跟 `/tree` 一樣：pointerdown「當下」記下被按到的節點，pointerup 只用來量位移。
+- ⚠️ **SVG 元素不吃 HTML 的 `hidden` 屬性。** 等級牌第一版用 `toggleAttribute('hidden')` 收放，
+  那是完全沒有作用的一行，239 個牌子全部留在畫面上——**所有測試照樣綠，是截圖才看出來的**。
+  現在交給 CSS 的 `.node:not(.sim-owned) .sim-badge { display: none }`。
+- **可選初始骰子（陰陽／貪婪／空虛）只能用勾的，不能在樹上點。** 它們不花錢，讓玩家點一下就拿到
+  等於送。判準從資料推導（`unlockVia` 非 cost 非 default 且無 `unlockPaid`），不硬編碼 id。
+  ⚠️ **恐懼骰子（`5002`）不在這一組**：它是成就開門但仍要付 8 核心（`unlockPaid`），走一般解鎖流程。
+- **「一鍵點亮」遇到沒勾的初始骰子時一顆都不解**（`pathTo()` 回 `need: []`）。解一半的話玩家會花掉
+  資源、目標節點卻仍然點不開，而畫面上只會說「還缺前置」。
+- **能力彙總的分組判準是「這個名稱在整份資料裡跨不跨系」**，不是「玩家現在解了哪幾顆」——用後者的話
+  同一個效果會隨解鎖進度在分組之間跳來跳去（解第一顆時歸在該系、解第二顆時突然變成全域）。
+  沒有 `growth` 的節點**不硬湊數字**，照描述列出來並標次數；要解析「起始SP增加40」這種固定值得另寫
+  一組認得四種句型的正則，而那組正則挖錯不會有任何地方說話（同 `growth` 需要規則 17 反向驗算的理由）。
+- ⚠️ **資源上限只能擋「會變貴」的方向。** 玩家的實際用法是「先規劃、事後才填上限」，填完那一刻
+  通常已經超支；只看新總額有沒有超的話，連取消節點、降等級這些**會讓成本下降**的操作都會被擋，
+  他除了 undo 或整份重置之外沒有出路。`exceedsLimit()` 收一個選用的 `previous` 就是為了這件事
+  （不傳＝純看現況，給畫面上那行「已超出設定的上限」用）。E2E 的 S16 守。
+- ⚠️ **狀態轉換失敗時，畫面仍然要跟著 `selected` 走。** `activate()` 先改 `selected` 再讓
+  `commit()` 失敗的話，面板與 `.sim-selected` 會停在上一顆節點，而面板上那些按鈕讀的是
+  `selected`——按下去作用在畫面上看不到的那顆。S20 守。
+- ⚠️ **拖曳等級滑桿時不可以重建面板。** `renderDetailPanel()` 是 `innerHTML` 整段重寫，拖到一半
+  重寫會把玩家正按著的 `<input type="range">` 換成新元素，指標捕捉隨之失效——實測 100 級的節點
+  從最左端拖到最右端**只走到 Lv.6**。所以 `input` 走 `applyState()` ＋ `updateLevelReadout()`
+  （只改文字），`change`（放開）才推一步 undo 並完整重畫。整段拖曳算**一步**復原，不是 99 步。
+  ⚠️ **驗這件事一定要用真的滑鼠拖曳**：`fill()` ＋ `dispatchEvent('input')` 只送一次事件，完全
+  繞過這條路徑（S3 就是這樣一直綠著的）。S17 用真滑鼠、S17b 直接驗「元素沒被換掉」這個根因；
+  **手機的觸控拖曳 Playwright 驅動不了原生 range，只能真機驗**。
+- ⚠️ **狀態色的 `filter` 會蓋掉鍵盤焦點的 `#focus-ring`。** `#tree.sim .node.sim-available .icon`
+  的具體度 (1,4,0) 壓過 global.css 的 `.node:focus .icon` (0,3,0)，而 `.node:focus` 已經
+  `outline: none`——Tab 到「可取得」或「已選取」的節點時**畫面零變化**。補一條
+  `.sim-available:focus .icon` (1,5,0) 拿回來。這是這份文件為 `/tree` 記過的同一族坑。S15 守。
+- ⚠️ **`#sim-toast` 是這一頁唯一的 `role="status"`，不可以用 `hidden` 收放。** 收放靠清空
+  `textContent`，視覺由 CSS 的 `:empty` 收——`hidden`／`display:none`／`visibility:hidden` 三種
+  都會讓它從無障礙樹消失，於是「超出資源上限」這些唯一的失敗回饋對螢幕閱讀器完全不存在。S19 守。
+- ⚠️ **金線的判準是「這條邊被走過」，不是「兩端都取得」。** `1001` 火骰子連著 `1005` 風與 `1007`
+  冰，兩端從第一秒起就都在手上——只看兩端的話一進頁面就有兩條金線亮著（Yuki 回報）。
+  可選初始骰子同理（從討伐獎勵／通行證領的，指向它的邊沒被使用）。判斷在 `edgeWasUsed()`，S18 守。
+- **E2E 挑節點要挑「初始狀態就可解鎖」的那 11 顆**（前置只有起始骰子），否則每條測試都得先「一鍵
+  點亮」，測到的就不是自己要測的那件事。⚠️ **定位要用 `.icon` 不是整個 `<g>`**：節點群組的
+  bounding box 是「圖示 ∪ 標籤」的聯集，標籤比圖示寬得多，聯集框的中心常常落在**隔壁那顆節點**上
+  （實測點 1201 打到 1001）。⚠️ 安全點擊區**兩個方向都要算**：工具列與手機版抽屜擋上下，桌機側欄
+  擋右邊——只算上下的話節點會落在 `<aside>` 底下，症狀是「側欄一直停在空狀態」。
+
 ## 圖示
 
 ⚠️ **圖示的 alpha 輪廓＝高亮的形狀。** `.node.in-chain` 的金色光暈與鍵盤 focus 的 `#focus-ring`
@@ -564,6 +646,11 @@ PNG，檔名＝內容 sha256 前 12 碼，`addIcon()` 直接重用）＋ `data/b
   已補上，**不要拿掉**。
 - linkedom 沒有 `getScreenCTM()`，`.focus()` 也不會更新 `document.activeElement` → 這類行為只能靠 E2E 驗。
 - 臨時的 Playwright 腳本要放在 **repo 目錄下**才 import 得到 `@playwright/test`。
+- ⚠️ **備份檔名要帶上路徑，不要只用 `basename`。** 這個 repo 有好幾組同名不同路徑的檔案
+  （`src/lib/sim.ts` 與 `src/scripts/sim.ts`、`src/lib/board.ts` 與 `src/scripts/board.ts`）。
+  2026-08-23 用 `for f in …; do cp "$f" "$SCRATCH/$(basename $f).bak"; done` 備份三個檔去跑反例，
+  後備份的 `src/lib/sim.ts` 覆蓋掉前一個同名備份，還原時把 lib 的內容寫進了 scripts——那一輪的
+  修改全部消失，靠 `git checkout` 取回上一個 commit 再重做才救回來。
 - ⚠️ **兩個工作區同時跑 E2E 會互相偷 server。** `playwright.config.ts` 的 `reuseExistingServer: true` 配上寫死的埠，意思是
   **只要那個埠上有人在聽就拿它當受測站台**。2026-08-19 實際咬到人：worktree 那邊跑 E2E 時 Playwright
   重用了主 checkout 殘留的 `serve dist`，測到別份產物，症狀是「element(s) not found」，看起來完全像

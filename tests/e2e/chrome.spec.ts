@@ -225,3 +225,36 @@ test('D12. 篩選切換鈕換行時列與列之間有縫，而且焦點框不被
   expect(clip.overflow, '分組會裁掉切換鈕的焦點框').toBe('visible');
   expect(clip.groupOverflowX).toBe('visible');
 });
+
+test('D13. 窄螢幕：導覽列自己橫向捲動，不換行也不把整份文件推寬', async ({ page, isMobile }) => {
+  // 2026-08-23 加了第六個入口「骰子樹-模擬器(beta)」之後，六項在 320px 要 389px，塞不下。
+  // 裁決（Yuki 指定）是「讓他可以左右拖動即可」——但捲的必須是**導覽列自己**：
+  // 讓整份文件橫捲會踩到 /board 的 B13（320／360／390／412 都不得出現橫向捲動），
+  // 而 D9 的「永遠一行」也還要成立。
+  test.skip(!isMobile, '桌機寬度本來就塞得下，這條測的是行動版的捲動策略');
+  await page.goto('/board');
+  for (const w of [320, 360, 412]) {
+    await page.setViewportSize({ width: w, height: 900 });
+    const r = await page.evaluate(() => {
+      const nav = document.getElementById('site-nav')!;
+      return {
+        docOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+        navScrollable: nav.scrollWidth > nav.clientWidth,
+        rows: new Set([...nav.querySelectorAll(':scope > a, :scope > .nav-menu > summary')]
+          .map(n => Math.round(n.getBoundingClientRect().top))).size,
+      };
+    });
+    expect(r.docOverflow, `寬度 ${w}px 時整份文件出現橫向捲動`).toBeLessThanOrEqual(0);
+    expect(r.navScrollable, `寬度 ${w}px 時導覽列自己捲不動，後面的入口就摸不到了`).toBe(true);
+    expect(r.rows, `寬度 ${w}px 時導覽列折成 ${r.rows} 列`).toBe(1);
+  }
+
+  // ⚠️ `overflow-x` 一設，`overflow-y` 就會被算成 auto，而「遊戲介紹」的下拉是絕對定位
+  // 掛在 nav 底下的——不明確寫 `overflow-y: visible` 的話它會被整個裁掉。
+  await page.setViewportSize({ width: 320, height: 900 });
+  await page.locator('#site-nav .nav-menu > summary').click();
+  const menu = (await page.locator('#site-nav .nav-menu-items').boundingBox())!;
+  const nav = (await page.locator('#site-nav').boundingBox())!;
+  expect(menu.y + menu.height, '下拉選單被導覽列的 overflow 裁掉了').toBeGreaterThan(nav.y + nav.height);
+  await expect(page.locator('#site-nav .nav-menu-items a').first()).toBeVisible();
+});

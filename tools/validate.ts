@@ -13,7 +13,8 @@ import { branchOfId, categoryOfZh, elementOfStroke, typeOfZh } from '../src/lib/
 import { buildAdjacency, detectCycle, findRoots, unreachableFrom } from '../src/lib/graph.js';
 import { readPngSize } from './lib/png.js';
 import { isGlossaryAlias } from '../src/lib/types.js';
-import type { Edge, GlossaryRecord, MaxLevelOfficial, UpgradeCostTable } from '../src/lib/types.js';
+import { expandTier } from '../src/lib/upgrade-tiers.js';
+import type { Edge, GlossaryRecord, MaxLevelOfficial, UpgradeCostTable, UpgradeTier } from '../src/lib/types.js';
 
 /**
  * 資料樹的預期根節點（各分支的第一個骰子）。
@@ -201,6 +202,18 @@ export interface ValidateOpts {
    * 跟 iconsDir 一樣刻意分開傳入（不推導自 dataDir）：測試會把圖示複製到暫存目錄再驗。
    */
   boardIconsDir: string;
+  /**
+   * `data/passive-upgrade-cost.json`；沒有這份資料時傳 `null`。
+   *
+   * 型別刻意用 `unknown`（同 `boardIcons`／`nodeText`）：這份檔案是社群 PR 直接改的，
+   * `/sim` 讀它時也只有一個 `as`。宣告成已驗過的型別，等於在型別層面假設它一定合法。
+   *
+   * 跟其他資料檔一樣刻意必填。這份資料**不進 `tree.json`**（tier 是
+   * `(maxLevel, unlockCost.gold)` 的純函數），代價是「表與節點對不上」在產物層面完全沒有
+   * 痕跡：一顆節點對不到 tier，`/sim` 只會安靜地不讓它升級——跟「這顆本來就不能升級」在
+   * 畫面上一模一樣。規則 22 是它唯一的防線。
+   */
+  passiveUpgradeCost: unknown;
 }
 
 export interface ValidateResult {
@@ -803,6 +816,139 @@ export function validate(svgText: string, opts: ValidateOpts): ValidateResult {
     }
   }
 
+  // 規則 22：玩家被動／支援的升級費用表（`data/passive-upgrade-cost.json`）。
+  //
+  // 官方表格把共通節點分成 6 個升級類型，而識別一個類型的就是「等級上限」與「解鎖金幣」
+  // 這兩個值——那兩個欄位 tree.json 本來就有，所以這份資料刻意不進產物（見 ValidateOpts）。
+  // 這條規則守的是那個推導：**每顆可升級的共通節點都要對得到一個 tier，每個 tier 也都要
+  // 對得到節點**。少了任一邊，畫面上都不會有東西說話。
+  const pu = opts.passiveUpgradeCost;
+  if (pu === null || pu === undefined) {
+    warn('規則 22: 沒有提供 data/passive-upgrade-cost.json，玩家被動的升級費用未檢查');
+  } else if (typeof pu !== 'object' || Array.isArray(pu)) {
+    push('規則 22: data/passive-upgrade-cost.json 的最外層必須是物件（含 tiers 與 special 兩個欄位）');
+  } else {
+    const { tiers: rawTiers, special: rawSpecial } = pu as { tiers?: unknown; special?: unknown };
+    const isPlainObject = (v: unknown): v is Record<string, unknown> =>
+      typeof v === 'object' && v !== null && !Array.isArray(v);
+    if (!isPlainObject(rawTiers)) push('規則 22: data/passive-upgrade-cost.json 的 tiers 必須是以升級類型代號為鍵的物件');
+    if (!isPlainObject(rawSpecial)) push('規則 22: data/passive-upgrade-cost.json 的 special 必須是以節點 id 為鍵的物件');
+
+    /** 通過形狀檢查、可以拿去比對節點的 tier。形狀壞掉的那幾筆不進來，免得再噴一輪「對不到 tier」。 */
+    const goodTiers = new Map<string, UpgradeTier>();
+    for (const [key, raw] of Object.entries(isPlainObject(rawTiers) ? rawTiers : {})) {
+      if (!isPlainObject(raw)) { push(`規則 22: 升級類型 ${key} 必須是物件`); continue; }
+      const { maxLevel, unlockGold, bands } = raw as { maxLevel?: unknown; unlockGold?: unknown; bands?: unknown };
+      let ok = true;
+      if (!Number.isInteger(maxLevel) || (maxLevel as number) < 2) {
+        push(`規則 22: 升級類型 ${key} 的 maxLevel 必須是 ≥2 的整數，實際是 ${JSON.stringify(maxLevel)}`);
+        ok = false;
+      }
+      if (!Number.isInteger(unlockGold) || (unlockGold as number) < 0) {
+        push(`規則 22: 升級類型 ${key} 的 unlockGold 必須是非負整數，實際是 ${JSON.stringify(unlockGold)}`);
+        ok = false;
+      }
+      if (!Array.isArray(bands) || bands.length === 0) {
+        push(`規則 22: 升級類型 ${key} 的 bands 必須是非空陣列`);
+        ok = false;
+      } else {
+        for (const b of bands) {
+          if (!isPlainObject(b) || !(['from', 'to', 'gold', 'core'] as const).every(
+            f => Number.isInteger(b[f]) && (b[f] as number) >= 0)) {
+            push(`規則 22: 升級類型 ${key} 有一段區間不是 {from,to,gold,core} 四個非負整數：${JSON.stringify(b)}`);
+            ok = false;
+          }
+        }
+      }
+      if (!ok) continue;
+      const tier = raw as unknown as UpgradeTier;
+      // 連續性交給 expandTier——`/sim` 算費用時走的就是它，兩邊各寫一份判斷就會漂移。
+      try { expandTier(tier); } catch (e) { push(`規則 22: 升級類型 ${key} 的${(e as Error).message}`); continue; }
+      goodTiers.set(key, tier);
+    }
+
+    // tier 是用 `(maxLevel, unlockGold)` 線性搜尋出來的，兩個 tier 撞號時哪一個贏完全取決於
+    // JSON 的鍵順序——那是「改一行縮排就換一張費用表」等級的脆弱。
+    const byKeyPair = new Map<string, string>();
+    for (const [key, t] of goodTiers) {
+      const pair = `${t.maxLevel}:${t.unlockGold}`;
+      const prev = byKeyPair.get(pair);
+      if (prev !== undefined) push(`規則 22: 升級類型 ${prev} 與 ${key} 的 (maxLevel, unlockGold) 撞號（都是 ${pair}），查表結果會取決於 JSON 的鍵順序`);
+      else byKeyPair.set(pair, key);
+    }
+
+    // 節點端：哪些節點該對得到 tier。走 withText（要 maxLevel 與 cost，是文案的地盤）。
+    const tierUsed = new Set<string>();
+    const uncovered: string[] = [];
+    const tierOfNode = new Map<string, string>();
+    // ⚠️ `special` 的定義就是「套不進任何 tier 的節點」，所以它們不參與涵蓋率檢查。
+    // 不排除的話，一顆放進 special 的玩家被動不是被判「對不到任何升級類型」，就是被判
+    // 「一顆節點兩張表」，兩條路都紅，而那份資料是合法的（`levelTableFor()` 執行期也是
+    // special 優先）。目前唯一的 special 是 4303（骰子符文，被下面的型別過濾掉），
+    // 所以這件事現在不會爆——它擋的是「哪天有一顆被動需要單獨列表」。
+    const specialIds = new Set(Object.keys(isPlainObject(rawSpecial) ? rawSpecial : {}));
+    for (const n of withText) {
+      if (n.typeZh !== '玩家被動' && n.typeZh !== '支援') continue;
+      if (n.maxLevel <= 1) continue;
+      if (specialIds.has(n.id)) continue;
+      // 表格的解鎖那一格就是玩家付的那筆錢；預設／任務解鎖的節點根本沒付過，拿它的解鎖金幣
+      // 當 key 在語意上就不成立（同 sumUnlockCost 與 upgradeTableApplies 的排除判準）。
+      const exc = opts.unlockExceptions?.[n.id];
+      if (exc && exc.unlockVia !== 'cost' && exc.unlockPaid !== true) continue;
+      let unlockGold: number;
+      try { unlockGold = parseCost(n.costRaw).cost.gold; } catch { continue; }  // 成本格式壞掉是規則 4 的事
+      const key = byKeyPair.get(`${n.maxLevel}:${unlockGold}`);
+      if (key === undefined) uncovered.push(n.id);
+      else { tierUsed.add(key); tierOfNode.set(n.id, key); }
+    }
+    if (uncovered.length > 0) {
+      push(`規則 22: 這些可升級的共通節點對不到任何升級類型（(maxLevel, 解鎖金幣) 查不到表）：${uncovered.join('、')}`);
+    }
+    for (const key of goodTiers.keys()) {
+      if (!tierUsed.has(key)) push(`規則 22: 升級類型 ${key} 沒有任何節點用得到，這一筆是孤兒`);
+    }
+
+    // special：官方單獨列出來、套不進任何 tier 的節點（目前只有 4303）。
+    const byIdText = new Map(withText.map(n => [n.id, n]));
+    for (const [id, raw] of Object.entries(isPlainObject(rawSpecial) ? rawSpecial : {})) {
+      if (!isPlainObject(raw)) { push(`規則 22: special 的 ${id} 必須是物件`); continue; }
+      const node = byIdText.get(id);
+      if (!node) {
+        // 規則 19／規則 1 的地盤不重複報（同規則 21(h) 的判準）。
+        if (textIds.has(id) !== geomIds.has(id) || structurallyBad.has(id)) continue;
+        push(`規則 22: special 的 ${id} 不是（或已不是）節點 id，這筆對應是孤兒`);
+        continue;
+      }
+      const { maxLevel, levels } = raw as { maxLevel?: unknown; levels?: unknown };
+      if (maxLevel !== node.maxLevel) {
+        push(`規則 22: special 的 ${id} 寫 maxLevel ${JSON.stringify(maxLevel)}，但節點 ${id} 的 maxLevel 是 ${node.maxLevel}`);
+        continue;
+      }
+      if (!Array.isArray(levels)) { push(`規則 22: special 的 ${id} 的 levels 必須是陣列`); continue; }
+      // 表格從 Lv.2 起（Lv.1 是解鎖，那是節點自己的 cost），所以第 i 列的 level 必須是 i+2。
+      let contiguous = levels.length === node.maxLevel - 1;
+      levels.forEach((r, i) => {
+        if (!isPlainObject(r) || r['level'] !== i + 2) contiguous = false;
+        else if (!(['gold', 'core'] as const).every(f => Number.isInteger(r[f]) && (r[f] as number) >= 0)) {
+          push(`規則 22: special 的 ${id} 的 Lv.${i + 2} 的 gold／core 不是非負整數：${JSON.stringify(r)}`);
+        }
+      });
+      if (!contiguous) {
+        push(`規則 22: special 的 ${id} 的 levels 必須是 Lv.2 到 Lv.${node.maxLevel} 連續，實際有 ${levels.length} 列`);
+      }
+      // 兩張表同時對得到不是錯——`levelTableFor()` 明確讓 special 優先，語意是確定的。
+      // 但很可能其中一張已經過時，所以留一條警告讓它在 PR 摘要上看得見。
+      // ⚠️ 這裡查的是「拿掉 special 之後它會落到哪個 tier」，而上面的節點端迴圈已經跳過
+      // special 節點，所以 tierOfNode 對它一定是空的——要自己再查一次。
+      let unlockGold: number | null = null;
+      try { unlockGold = parseCost(node.costRaw).cost.gold; } catch { /* 規則 4 的地盤 */ }
+      const clash = unlockGold === null ? undefined : byKeyPair.get(`${node.maxLevel}:${unlockGold}`);
+      if (clash !== undefined) {
+        warn(`規則 22: 節點 ${id} 同時對得到升級類型 ${clash} 與 special 表；執行期會用 special，但其中一張可能已經過時`);
+      }
+    }
+  }
+
   return { errors, warnings };
 }
 
@@ -851,6 +997,7 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
     dataDir: 'data',
     boardIcons: readDataFile('data/board-icons.json', true),
     boardIconsDir: 'data/board-icons',
+    passiveUpgradeCost: readDataFile('data/passive-upgrade-cost.json', true),
   };
 
   // 有資料檔讀不到時就停在這裡：接下來每一條規則都會拿著一份空殼在猜，噴出來的幾百條錯誤
