@@ -86,4 +86,10 @@ describe('cumulativeUpgradeCost / upgradeTableApplies', () => {
     expect(upgradeTableApplies(table, { type: 'rune', maxLevel: 1 })).toBe(false);
     expect(upgradeTableApplies(null, { type: 'rune', maxLevel: 50 })).toBe(false);
   });
+  // 表格的第 1 級就是解鎖那一次，所以判準是「玩家有沒有付這筆錢」而不是 unlockVia 的字面值。
+  // 成就開門但仍要付費的節點（unlockPaid）付了，套得上；純成就／任務解鎖的沒付，套不上。
+  it('unlockVia 不是 cost 時看 unlockPaid：有付錢就套得上，沒付錢就套不上', () => {
+    expect(upgradeTableApplies(table, { type: 'rune', maxLevel: 50, unlockVia: 'achievement' })).toBe(false);
+    expect(upgradeTableApplies(table, { type: 'rune', maxLevel: 50, unlockVia: 'achievement', unlockPaid: true })).toBe(true);
+  });
 });

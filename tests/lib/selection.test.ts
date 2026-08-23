@@ -27,4 +27,56 @@ describe('computeSelection', () => {
     const sel = computeSelection('4008', data);
     expect(sel.skipped).toContain('4008');
   });
+
+  // 貪婪骰子（5006）與空虛骰子（5008）官方寫明「無視骰子樹前置」，走到它就不必再往上追。
+  it('可跳過前置的節點自己：鏈只剩自身，被跳掉的祖先數記在 bypassed', () => {
+    const sel = computeSelection('5006', data);
+    expect([...sel.chain]).toEqual(['5006']);
+    // 原本的鏈是 5002 → 5007 → 5006，跳掉 5007 與 5002 兩個
+    expect(sel.bypassed).toBe(2);
+    expect(sel.cost).toEqual({ core: 0, gold: 0 });
+  });
+
+  it('可跳過前置的下游節點：鏈停在那顆，成本不含被跳過的祖先', () => {
+    const sel = computeSelection('5206', data);
+    expect([...sel.chain].sort()).toEqual(['5006', '5206']);
+    expect(sel.bypassed).toBe(2);
+    expect(sel.cost).toEqual({ core: 0, gold: 2000 });
+  });
+
+  it('沒有可跳過前置時 bypassed 為 0', () => {
+    expect(computeSelection('1002', data).bypassed).toBe(0);
+  });
+
+  // ⚠️ `bypassed > 0` 不等於「鏈上有可直接領的骰子」。5005 變異骰子的前置是 5006 與 5103，
+  // 而 5103 的祖先鏈是 5002 → 5007 → 5103——跳過 5006 的祖先一個都沒省到（5007／5002 從
+  // 另一條路回來），所以 bypassed 是 0，但鏈上確實有 5006、畫面上那條虛線也確實被高亮成金色。
+  // 面板的說明必須由「鏈上有沒有」驅動，不是由「省了幾個」驅動。
+  it('bypassNodes 數的是鏈上可直接領的骰子，跟省了幾個前置是兩件事', () => {
+    const s5005 = computeSelection('5005', data);
+    expect(s5005.chain.has('5006')).toBe(true);
+    expect(s5005.chain.has('5007')).toBe(true);   // 從 5103 那條路回來
+    expect(s5005.bypassed).toBe(0);
+    expect(s5005.bypassNodes).toBe(1);
+
+    const s5206 = computeSelection('5206', data);
+    expect(s5206.bypassed).toBe(2);
+    expect(s5206.bypassNodes).toBe(1);
+
+    expect(computeSelection('1002', data).bypassNodes).toBe(0);
+  });
+
+  // 恐懼骰子（5002）是成就開門＋仍要 8 核心：它自己就是根，鏈只有自身，但成本不是 0。
+  it('unlockPaid 的節點成本要算進去，且不列進 skipped', () => {
+    const sel = computeSelection('5002', data);
+    expect([...sel.chain]).toEqual(['5002']);
+    expect(sel.cost).toEqual({ core: 8, gold: 0 });
+    expect(sel.skipped).toEqual([]);
+  });
+
+  // 這是全站最常被引用的那組不變量。5109（金幣 3,000）原本靠 5008 的前置鏈被算進來，
+  // 5008 改成可直接領之後就不該再算了；核心不變是因為拿掉 5007 的 8 核與加回 5002 的 8 核抵消。
+  it('5201 的前置鏈成本＝核心 42 ／金幣 20,000', () => {
+    expect(computeSelection('5201', data).cost).toEqual({ core: 42, gold: 20000 });
+  });
 });

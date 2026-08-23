@@ -91,6 +91,8 @@ function nodeBody(
         <p class="cost">${formatCost(sel.cost)}</p>
         <p class="note">此為 AND 假設下的上限值，不含強化費用。</p>
         ${sel.skipped.length > 0 ? `<p class="note">已排除 ${sel.skipped.length} 個非成本解鎖節點</p>` : ''}
+        ${sel.bypassNodes > 0 ? `<p class="note">鏈上有 ${sel.bypassNodes} 顆可直接領的骰子，通往它的前置邊畫成虛線</p>` : ''}
+        ${sel.bypassed > 0 ? `<p class="note">因此已跳過 ${sel.bypassed} 個前置</p>` : ''}
         ${sel.hiddenByFilter > 0 ? `<p class="note">含 ${sel.hiddenByFilter} 個被篩選隱藏的前置</p>` : ''}
       </div>
       <p class="note reset-warn">⚠️ 骰子樹重置需要初期化券，且有已解鎖骰子消失的災情回報，重置前請先確認。</p>

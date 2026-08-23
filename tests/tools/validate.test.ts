@@ -427,6 +427,24 @@ describe('validate', () => {
     expect(withExc({ ...unlockExceptions, '5008': { unlockVia: 'achievement', note: '' } })
       .some(e => /note 長度 0 不合法/.test(e))).toBe(true);
 
+    // (e) unlockPaid／bypassPrereq 寫成非布林 → build-data 用的是 truthiness，`"false"`
+    //     這種字串會被當成真。兩個旗標一個管錢、一個管前置鏈，寫反了畫面上都不會報錯。
+    expect(withExc({ ...unlockExceptions, '5008': { unlockVia: 'achievement', note: 'x', unlockPaid: 'false' } })
+      .some(e => /unlockPaid "false" 不合法/.test(e))).toBe(true);
+    expect(withExc({ ...unlockExceptions, '5008': { unlockVia: 'achievement', note: 'x', bypassPrereq: 1 } })
+      .some(e => /bypassPrereq 1 不合法/.test(e))).toBe(true);
+    // 合法的 true 不可以被誤擋
+    expect(withExc({ ...unlockExceptions, '5008': { unlockVia: 'achievement', note: 'x', unlockPaid: true, bypassPrereq: true } }))
+      .toEqual([]);
+
+    // (f) 欄位名打錯 → (e) 那條完全看不到它（它只認得正確的鍵），而 build-data 讀的是正確的
+    //     鍵名，於是旗標安靜地變成 undefined。實測 `bypassPrereqs` 多一個 s：validate 回
+    //     「✅ 驗證通過」，`5006.bypassPrereq === undefined`，5007／5002 悄悄回到每一條經過它的
+    //     前置鏈上、成本跟著變。這是 (e) 的鏡像——(e) 擋「寫了 false 卻生效」，(f) 擋「寫了
+    //     true 卻沒生效」，兩種在畫面上都不報錯。
+    expect(withExc({ ...unlockExceptions, '5006': { unlockVia: 'achievement', note: 'x', bypassPrereqs: true } })
+      .some(e => /未知欄位 "bypassPrereqs"/.test(e))).toBe(true);
+
     expect(withExc(null)).toEqual([]);
     expect(validate(svg, opts).errors.filter(e => /規則 18/.test(e))).toEqual([]);
   });

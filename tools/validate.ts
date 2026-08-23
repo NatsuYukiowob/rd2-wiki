@@ -165,7 +165,7 @@ export interface ValidateOpts {
    * 一樣刻意必填。這個檔案在 2026-08-21 之前只有 2 筆、沒有任何顯示用途，所以沒人守它；
    * 現在它有 9 筆而且 `note` 會直接印在面板上，規則 18 就是它唯一的防線（見那條的說明）。
    */
-  unlockExceptions: Record<string, { unlockVia: string; note?: string }> | null;
+  unlockExceptions: Record<string, { unlockVia: string; note?: string; unlockPaid?: unknown; bypassPrereq?: unknown }> | null;
   /**
    * `data/changelog.json`；沒有這份資料時傳 `null`。
    *
@@ -508,6 +508,7 @@ export function validate(svgText: string, opts: ValidateOpts): ValidateResult {
   if (exceptions) {
     const nodeIds = new Set(nodes.map(n => n.id));
     const VALID_VIA = ['quest', 'default', 'achievement'];
+    const VALID_KEYS = ['unlockVia', 'note', 'unlockPaid', 'bypassPrereq'];
     for (const [id, entry] of Object.entries(exceptions)) {
       if (!nodeIds.has(id)) push(`規則 18: 解鎖例外表指向不存在的節點 ${JSON.stringify(id)}`);
       // 'cost' 是預設值，寫進例外表沒有意義，而且會讓人以為它有作用
@@ -516,6 +517,24 @@ export function validate(svgText: string, opts: ValidateOpts): ValidateResult {
       }
       if (entry?.note !== undefined && (entry.note.length === 0 || entry.note.length > MAX_TEXT_LENGTH)) {
         push(`規則 18: 節點 ${id} 的 note 長度 ${entry.note.length} 不合法（1..${MAX_TEXT_LENGTH}）`);
+      }
+      // 4. **`unlockPaid`／`bypassPrereq` 寫成非布林**（`"false"`）→ `build-data` 判斷的是
+      //    truthiness，非空字串一律為真，於是「我明明寫了 false」變成「已啟用」。
+      //    前者決定那筆核心算不算進前置鏈成本、後者決定要不要往上追祖先，兩個都是靜默生效。
+      for (const flag of ['unlockPaid', 'bypassPrereq'] as const) {
+        const v = (entry as Record<string, unknown> | undefined)?.[flag];
+        if (v !== undefined && typeof v !== 'boolean') {
+          push(`規則 18: 節點 ${id} 的 ${flag} ${JSON.stringify(v)} 不合法，必須是布林值`);
+        }
+      }
+      // 5. **欄位名打錯**（`bypassPrereqs` 多一個 s）→ 上面那條看不到它（它只認得正確的鍵），
+      //    而 `build-data` 讀的也是正確的鍵，於是旗標安靜地變成 undefined。這是第 4 種的鏡像：
+      //    第 4 種擋「寫了 false 卻生效」，這條擋「寫了 true 卻沒生效」。
+      //    白名單而不是逐個猜錯字——`nodes.json` 的規則 1 也是這樣擋未知欄位的。
+      for (const key of Object.keys(entry ?? {})) {
+        if (!VALID_KEYS.includes(key)) {
+          push(`規則 18: 節點 ${id} 有未知欄位 ${JSON.stringify(key)}，合法欄位只有 ${VALID_KEYS.join('／')}`);
+        }
       }
     }
   }
@@ -826,7 +845,7 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
     upgradeCostTable: readDataFile('data/upgrade-cost.json', true) as UpgradeCostTable | null,
     nodeText: readDataFile('data/nodes.json', false),
     maxLevelOfficial: readDataFile('data/maxlevel-official.json', true) as MaxLevelOfficial | null,
-    unlockExceptions: readDataFile('data/unlock-exceptions.json', true) as Record<string, { unlockVia: string; note?: string }> | null,
+    unlockExceptions: readDataFile('data/unlock-exceptions.json', true) as Record<string, { unlockVia: string; note?: string; unlockPaid?: unknown; bypassPrereq?: unknown }> | null,
     changelog: readDataFile('data/changelog.json', true),
     iconsDir: 'data/icons',
     dataDir: 'data',
