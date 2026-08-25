@@ -9,6 +9,9 @@
 # 「安裝瀏覽器＋起站台」拖慢到好幾分鐘後才回報——想快速看到「資料本身有沒有問題」的人不需要等
 # E2E 裝完瀏覽器。deploy 則相反，必須等兩者都綠（`needs`），因為它的存在意義就是「CI 綠才上線」。
 #
+# E2E 實際上跑在 `e2e-shard` 這個 matrix 上（分成 3 片、各自一台 runner），`e2e` 只是把三片的結果
+# 收成一個檢查——為什麼要分片、為什麼不是多開 worker、為什麼停在 3 片，見該 job 上方的註解。
+#
 # ⚠️ job 的 `name` 一律用 ASCII：main 的 ruleset 把 `verify`／`e2e` 設成 required status checks，
 # 而 required check 是用**名字**綁定的——改名會讓那條規則永遠停在 pending、PR 再也 merge 不了。
 # 要改名就得同時改 ruleset（`gh api repos/NatsuYukiowob/rd2-wiki/rulesets`）。
@@ -114,10 +117,42 @@ jobs:
           path: dist/
           retention-days: 1
 
-  e2e:
-    name: e2e
+  e2e-shard:
+    name: e2e-shard ${{ matrix.shard }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    # E2E 是整個 CI 的關鍵路徑：2026-08-23 的 run 32655761955 逐步驟時間是
+    # verify 47 秒、e2e 4 分 07 秒、deploy 30 秒——省時間只有省 e2e 這一條路。
+    #
+    # ⚠️ **不要改成「同一台 runner 開更多 worker」**。runner 是 4 vCPU，Playwright 預設砍半
+    # （CI 日誌會印 `Running 334 tests using 2 workers`）。2026-08-25 在同為 4 核的機器上、
+    # 同一份 dist、`CI=1` 實測三種設定：
+    #
+    #   2 workers（現況）                    216 秒 wall／380.7 test-seconds
+    #   --workers=100%                       173 秒 wall／505.1 test-seconds
+    #   --workers=100% --fully-parallel      152 秒 wall／562.6 test-seconds
+    #
+    # 牆鐘只換到 -30%，CPU 秒數卻多了 48%——瀏覽器測試本來就把 4 核吃滿，多開 worker 是拿
+    # 爭用換平行度。代價還不只慢：`Z4`（tree.spec.ts 的 rAF 取樣）與 `Z6`（Esc 的監聽器順序）
+    # 這種對排程抖動敏感的斷言在爭用下會紅，Z6 在 4 worker 那次連 retry 都沒救回來。
+    #
+    # 分片是乾淨的軸：每個 shard 是**自己的一台 runner**，worker 數維持 2、爭用不變，
+    # 只是測試變少。同一天實測 `--shard=i/3` 為 60／83／89 秒，最長的那片決定牆鐘。
+    #
+    # 為什麼停在 3 片：每片都要重跑 set up job 5 秒＋checkout 1 秒＋setup-node 3 秒＋
+    # `npm ci` 6 秒＋裝瀏覽器 11 秒＋`pree2e` 建置 8 秒 ≒ 43 秒固定成本。3 片時 89+43 ≒ 2 分 12 秒，
+    # 4 片只再省十幾秒，固定成本已經佔掉一半。
+    #
+    # 分片數只寫在 `matrix.shard` 這一個地方，分母用 `strategy.job-total`（＝這個 matrix 展開出來的
+    # job 數）帶進去。⚠️ 兩邊各寫一次的話，其中一個漂移方向是**安靜的**：只把分母改成 `/4`、
+    # 忘了加 matrix 條目，1～3 片照樣全綠，而被分到第 4 片的那批測試從此完全沒跑過。
+    # （反方向倒是會大聲紅：`--shard=4/3` 會被 Playwright 直接拒絕。）
+    strategy:
+      # fail-fast: false——一片紅掉時其餘的照跑完。預設的 true 會把其他 shard 直接砍掉，
+      # 於是「只壞一個測試」跟「壞一整片」在 CI 上長得一模一樣，還少了另外兩片的失敗痕跡。
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
@@ -151,19 +186,53 @@ jobs:
         # 這裡刻意沒有獨立的「建置站台」步驟：package.json 的 `pree2e` 已經會跑一次
         # `npm run build`，多加一步等於整包資料與站台建兩次（多花 5–7 秒且兩份產物可能不同步）。
         # 看到這裡覺得「怎麼沒建置」而想補回來的人，先看這行註解。
-        run: npm run e2e
+        #
+        # `--` 後面的旗標會原封不動傳給 `playwright test`，`pree2e` 照跑（實測 `--shard=2/3 --list`
+        # 回 `Total: 114 tests in 4 files`）。分片是 Playwright 自己按檔案切的，各片不重疊也不遺漏。
+        run: npm run e2e -- --shard=${{ matrix.shard }}/${{ strategy.job-total }}
       - name: 上傳失敗痕跡
         # E2E 在 CI 上紅掉時，光看記錄檔很難知道是哪個斷言、畫面長怎樣。
         # ⚠️ 這裡**沒有** HTML 報告：playwright.config.ts 刻意用 `reporter: 'list'`（見該檔註解），
         # 所以 playwright-report/ 不會產生，只有 test-results/ 裡的截圖與 trace
         # （config 的 screenshot: only-on-failure、trace: retain-on-failure）。
         # 想要 HTML 報告就得先改 config 的 reporter，不是在這裡多列一個目錄。
+        #
+        # ⚠️ 名字**必須帶 shard 編號**：upload-artifact@v4 不允許同一次 run 上傳兩個同名 artifact，
+        # 兩片一起紅的時候第二片會 409 失敗，而那正是最需要看痕跡的情況。
         if: failure()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: playwright-failure-traces
+          name: playwright-failure-traces-${{ matrix.shard }}
           path: test-results/
           retention-days: 7
+
+  e2e:
+    # 這個 job 不跑測試，只是把上面三片的結果收成一個叫 `e2e` 的檢查。
+    #
+    # ⚠️ **名字必須維持 `e2e`**：main 的 ruleset 把 `verify`／`e2e` 設成 required status checks，
+    # 而 required check 是用**名字**綁的。matrix 產生的 job 叫 `e2e-shard 1`…，湊不出這個名字，
+    # 所以真正被 ruleset 盯著的是這個彙總 job（要改名就得同時改 ruleset）。
+    #
+    # ⚠️ **條件式 ＋ 自己檢查 `result` 缺一不可。** 只寫 `needs:` 的話，某一片紅掉時這個 job
+    # 會變成 skipped，而 **GitHub 把 skipped 的 required check 當成通過**——閘門會安靜地失效。
+    #
+    # ⚠️ 條件是 `!cancelled()` 而**不是 `always()`**：`always()` 連整個 run 被取消時都還會跑。
+    # 這個 workflow 對 PR 開了 `cancel-in-progress`（見檔案上方 concurrency），連推兩個 commit 時
+    # 舊的 run 會被取消、分片的 `result` 是 `cancelled`，用 `always()` 的話彙總 job 照跑照 exit 1，
+    # 於是每次「推新 commit 蓋掉舊的」都多一顆紅色的 `e2e` 與一封失敗通知。真的有分片紅掉時
+    # `result` 是 `failure` 不是 `cancelled`，`!cancelled()` 照樣會跑、照樣擋下來。
+    # ⚠️ 要寫成 `${{ !cancelled() }}`：YAML 裡開頭的 `!` 是 tag 指示字，裸寫 `!cancelled()` 會解析失敗。
+    name: e2e
+    needs: [e2e-shard]
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: 檢查所有分片都綠
+        run: |
+          result='${{ needs.e2e-shard.result }}'
+          echo "e2e-shard 的彙總結果：${result}"
+          test "$result" = success
 
   deploy:
     name: deploy
