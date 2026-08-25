@@ -1691,6 +1691,57 @@ test('Z2. 詞彙頁的「搜尋 #X」才會真的搜尋，而且會退回節點�
   expect(new URL(page.url()).searchParams.get('q')).toBe('破滅');
 });
 
+/**
+ * 等「載入時的置中平移真的跑完」，回傳實際等了幾毫秒。
+ *
+ * ⚠️ 逐格量過渡的測試如果 `goto` 完就立刻點下去，量到的是**兩段位移疊在一起**：開場的置中平移
+ * 還在跑，卡片就開始換頁。平移期間卡片是**被釘住的**（`panelPinned`，見下），釘的位置是「縮之前
+ * 那個高度的貼齊位置」，所以高度一縮只有下緣往上收、上緣不動，中心往上跑；等平移結束解除釘住、
+ * `positionPanel()` 依新高度重新貼齊，卡片再整個往下跳一次（實測一格 +125px）。中心於是來回擺，
+ * `assertNoCenterReversal` 紅掉。那不是產品在抖，是測試把「不屬於這次過渡」的位移也量進去了。
+ *
+ * ⚠️⚠️ **判定一定要看 `#viewport` 的 transform，不能只看卡片的 rect。**
+ * `centerOnSelected()` 是「卡片先跳到終點、`panelPinned = true`、整段動畫只有畫布在走」，
+ * 而 `positionPanel()` 在釘住期間直接早退（見 src/scripts/tree-canvas.ts）——也就是說
+ * **平移進行中卡片的 rect 依定義完全不動**，只盯它的話一定在第 6 格就以為停了。
+ * 2026-08-25 實測 10 次：整個 1.2 秒的窗裡卡片 rect 只出現過 1 種值，只看 rect 的等待每次都在
+ * 85～135ms 收工，而平移實際上跑到 165～268ms 才停——那種寫法等於一個偽裝成條件式的固定 sleep。
+ * 把 transform 併進 key 之後，10 次的收工時間與平移結束時間**完全一致**。
+ *
+ * 用頁面內的 rAF 判定「卡片 top/height ＋ 畫布 transform 連續 5 格都沒變」，不用固定 sleep：
+ * 固定等待要嘛在慢機器上不夠（照樣 race），要嘛每次都付最壞情況的時間。
+ * ⚠️ 3 秒的上限用 `setTimeout` 而不是在 rAF 裡判斷：分頁被切到背景時 rAF 根本不派發，
+ * 寫在迴圈裡的上限永遠不會被檢查，測試會卡到 Playwright 的逾時、拿不到這裡的錯誤訊息。
+ */
+async function waitForLayoutSettled(page: Page): Promise<number> {
+  return page.evaluate(() => new Promise<number>(resolve => {
+    const panel = document.getElementById('detail')!;
+    // ⚠️ 用 `!` 不用 `?.`：`#viewport` 若不在（改名、掛載順序變了），`?.` 會讓 key 靜靜退化成
+    // 只看 rect——正好變回上面說的那個「偽裝成條件式的固定 sleep」，而且沒有任何徵兆。
+    const viewport = document.getElementById('viewport')!;
+    let prev = '';
+    let same = 0;
+    const t0 = performance.now();
+    // `stopped`：上限觸發後要真的把迴圈收掉。只 resolve 的話 tick 會一直排下去、之後每一幀
+    // 都多讀一次版面，墊在後面所有量測底下。
+    let stopped = false;
+    const cap = setTimeout(() => { stopped = true; resolve(performance.now() - t0); }, 3000);
+    const tick = (): void => {
+      if (stopped) return;
+      const r = panel.getBoundingClientRect();
+      const key = `${r.top.toFixed(1)}|${r.height.toFixed(1)}|${viewport.style.transform}`;
+      same = key === prev ? same + 1 : 0;
+      prev = key;
+      if (same >= 5) {
+        clearTimeout(cap);
+        return resolve(performance.now() - t0);
+      }
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  }));
+}
+
 test('Z4. 卡片換頁的過渡：高度單調、貼著節點的那一緣不漂、不反向', async ({ page }) => {
   // 換頁時卡片會抖（2026-08-20 人工回報）。四個獨立原因，全部是量錯東西：
   //   1. 量起始高度時新視圖還在正常流程 → `.stack` 是兩張加起來，先暴衝到 565px 再縮回。
@@ -1754,9 +1805,14 @@ test('Z4. 卡片換頁的過渡：高度單調、貼著節點的那一緣不漂�
 
   const top = () => page.locator('#detail .view:not([hidden])').last();
 
-  // (A) 預設取景：節點靠近畫面上緣，卡片被夾在工具列下方。中心一定會移動（卡片變矮之後
-  //     才容得下「對齊節點中心」），但必須是單向的平滑滑行，不能來回抖。
+  // (A) 預設取景（1280×720）：開場的置中平移把節點帶到畫面中段，卡片貼在它上方。
+  //     ⚠️ 2026-08-25 實測：等平移停下來之後，卡片下緣距節點上緣正好是 GAP（12px），
+  //     **不是**「被夾在工具列下方」——舊註解那句是 2026-08-23 卡片改成上下擺放之前的事實。
+  //     短視窗（1280×520）量到的也一樣是 12px，(A) 這條路徑沒有在測被夾制的情形。
+  //     中心一定會移動（高度縮了、貼齊的那一緣不動），但必須是單向的平滑滑行，不能來回抖。
   await page.goto('/tree?node=5004');
+  // ⚠️ 先等開場的置中平移真的跑完再開始量，否則量到的是兩段位移疊在一起，見 waitForLayoutSettled。
+  expect(await waitForLayoutSettled(page), '開場版面 3 秒內沒停下來').toBeLessThan(3000);
   const push = await trace(async () => { await top().locator('.kw').first().click(); });
   expect(push[push.length - 1]!.h).toBeLessThan(push[0]!.h);
   assertSmoothHeight(push);
@@ -1767,9 +1823,10 @@ test('Z4. 卡片換頁的過渡：高度單調、貼著節點的那一緣不漂�
   assertSmoothHeight(pop);
   assertNoCenterReversal(pop);
 
-  // (B) 沒有被夾制時（節點在畫面中段、視窗夠高）：**貼著節點的那一緣**必須完全不動。
-  //     這才是原因 3 與 4 真正的守門條件——(A) 那組被夾制，那一緣本來就會移動，量不出
-  //     那兩個 bug。
+  // (B) 自己決定節點落在哪（方向鍵平移、視窗放大）：**貼著節點的那一緣**必須完全不動。
+  //     這才是原因 3 與 4 真正的守門條件——(A) 只斷言中心單向移動，不看那一緣。
+  //     ⚠️ 舊註解在這裡寫的是「(A) 那組被夾制，那一緣本來就會移動」；2026-08-25 量過**不是**
+  //     這樣（見 (A) 的註解），兩段量到的都是貼齊的狀態，被夾制的情形目前兩段都沒覆蓋到。
   //     ⚠️ 方向鍵平移會中止置中平移（那是刻意的：使用者一動畫布就該讓位），所以這裡按完
   //     ArrowUp 之後卡片跟節點的相對位置就固定了，量到的不是動畫半路的值。
   await page.setViewportSize({ width: 1400, height: 1000 });
