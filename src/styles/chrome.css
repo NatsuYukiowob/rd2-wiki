@@ -61,9 +61,18 @@
   white-space: nowrap;
 }
 
+/* 「上次更新 2026-08-23」——中英混排，日期走 Archivo、中文退回 --font。
+   ⚠️ tabular-nums **不等於「日期換一天寬度不變」**，不要照著這樣寫註解或測試。實測
+   （2026-08-26，Chromium headless、16px）：Chrome 把每個字形的前進寬度四捨五入到整數像素，
+   Archivo 的數字在 16px 下仍然落在 9px 或 10px 兩種，開不開 tabular-nums 都一樣——
+   `2026-08-23` 是 90px、`1111-11-11` 是 84px。這一行是給支援次像素前進寬度的環境用的保險
+   （字型裡確實帶著 tnum，見 public/fonts/README.md），不是這個字級下的保證。
+   這個 span 是 `margin-left: auto`，右緣釘死，寬度變動只會讓文字往左長，不推擠任何東西。 */
 #site-nav .nav-updated {
   margin-left: auto;
   color: var(--muted);
+  font-family: var(--font-num);
+  font-variant-numeric: tabular-nums;
 }
 
 @media (max-width: 720px) {

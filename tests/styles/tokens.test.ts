@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 
 /**
  * 版面級距的守門測試（2026-08-22）。
@@ -269,5 +269,63 @@ describe('board-export 的色票 fallback', () => {
       expect(fallback, `${token} fallback ${fallback} ≠ tokens.css 的 ${defined.get(token)}`)
         .toBe(defined.get(token));
     }
+  });
+});
+
+/**
+ * 自架字型的兩條靜態守門（2026-08-26 PR ⑤）。
+ *
+ * 這兩件事壞掉時**畫面照樣能看**——瀏覽器找不到字型檔或解析不出字型名，都只會安靜地退回
+ * 系統字型，不報錯、不影響版面以外的任何行為。E2E 的 D15 從瀏覽器那一端驗同一件事；
+ * 這裡是靜態這一端，跑得快、而且在 `npm test` 就會紅，不必等到 e2e。
+ */
+describe('自架字型（Archivo）', () => {
+  const BASE_FILE = `${STYLE_DIR}/base.css`;
+
+  it('@font-face 指到的檔案真的在 public/ 底下', () => {
+    const src = stripComments(readFileSync(BASE_FILE, 'utf8'));
+    const urls = [...src.matchAll(/@font-face\s*\{[^}]*url\('([^']+)'\)/g)].map(m => m[1]!);
+    // 先確認正則沒過期：抓到 0 條的話底下的迴圈一次都不跑，測試會安靜全綠。
+    expect(urls, 'base.css 掃不到任何 @font-face 的 url()——正則過期，或字型被移走了').toHaveLength(1);
+    for (const url of urls) {
+      // ⚠️ 這條攔的是「路徑寫成 /assets/fonts/…」：`public/assets/` 整個在 .gitignore
+      // （build:data 的產出目錄），字型放進去本機看得到、CI 與 Cloudflare 上是 404。
+      expect(url.startsWith('/'), `${url} 不是絕對路徑，換頁之後會解析到不同的位置`).toBe(true);
+      expect(existsSync(`public${url}`), `@font-face 指到 ${url}，但 public${url} 不存在`).toBe(true);
+    }
+  });
+
+  /**
+   * 體積上限。spec 給的門檻是 30KB（Yuki 2026-08-26 拍板：超過就不載這個字型）。
+   * 這條攔的是「有人照 README 重跑 subset，但漏了 --unicodes 或 wght 裁切」——上游的完整
+   * 拉丁 subset 是 34.1KB，直接放進來會過門檻而沒有任何東西說話。
+   */
+  it('出貨的 woff2 不超過 30KB', () => {
+    const bytes = statSync('public/fonts/archivo-latin-500-700.woff2').size;
+    expect(bytes, `字型檔 ${(bytes / 1024).toFixed(1)}KB 超過 30KB 門檻——`
+      + '八成是重跑 subset 時漏了 --unicodes 或 varLib.instancer 那一步').toBeLessThanOrEqual(30 * 1024);
+  });
+
+  it('--font-num 是「Archivo ＋ --font 的全部成員」，中文才不會掉到瀏覽器預設', () => {
+    const tokens = stripComments(readFileSync(TOKENS_FILE, 'utf8'));
+    const defined = new Map(
+      [...tokens.matchAll(/^\s{2}(--[a-z0-9-]+):\s*([^;]+);/gm)].map(m => [m[1]!, m[2]!.trim()]),
+    );
+    const split = (v: string) => v.split(',').map(x => x.trim());
+    const font = defined.get('--font');
+    const fontNum = defined.get('--font-num');
+    expect(font, 'tokens.css 沒有 --font').toBeDefined();
+    expect(fontNum, 'tokens.css 沒有 --font-num').toBeDefined();
+
+    const face = stripComments(readFileSync(BASE_FILE, 'utf8'))
+      .match(/@font-face\s*\{[^}]*font-family:\s*([^;]+);/)?.[1]!.trim();
+    expect(split(fontNum!)[0], `--font-num 的第一順位（${split(fontNum!)[0]}）跟 @font-face 宣告的`
+      + `字型名（${face}）對不起來，整個字型等於沒掛`).toBe(face);
+
+    // ⚠️ Archivo 沒有中文字。掛著 --font-num 的位置全是中英混排，所以後面**必須**原封不動
+    // 接上 --font 的全部成員；只寫 `Archivo, sans-serif` 的話中文會掉到瀏覽器預設 sans-serif，
+    // 跟同一句話裡其他中文長得不一樣。
+    expect(split(fontNum!).slice(1), '--font-num 後面接的不是 --font 的完整清單，中文會掉到瀏覽器預設')
+      .toEqual(split(font!));
   });
 });

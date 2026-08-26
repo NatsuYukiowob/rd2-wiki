@@ -71,15 +71,20 @@
   --r-lg: 7px;
   --r-pill: 999px;
 
-  /* 字級：--fs-base 是 1rem，往下三階給輔助資訊、往上四階給標題。 */
-  --fs-xs: 0.78rem;
-  --fs-sm: 0.86rem;
-  --fs-md: 0.94rem;
+  /* 字級：--fs-base 是 1rem，往下三階給輔助資訊、往上四階給標題。
+     2026-08-26 把整條級距拉開對比：往下三階再收一點、往上四階明顯放大（--fs-3xl 1.9 → 2.4）。
+     舊級距從 0.78 到 1.9 只有 2.4 倍，八階擠在一起，於是「標題」與「輔助文字」得靠顏色和
+     粗細去分，排版本身講不出層級。新級距是 3.2 倍。
+     ⚠️ 往下三階全部變小，**跟著變小的中文一律不准再加 font-weight 600**：--fs-xs 現在是
+     12px，粗體中文的橫筆畫在這個尺寸會連成一條線（見 dice.css 的 .awakening-head）。 */
+  --fs-xs: 0.75rem;
+  --fs-sm: 0.84rem;
+  --fs-md: 0.92rem;
   --fs-base: 1rem;
-  --fs-lg: 1.15rem;
-  --fs-xl: 1.3rem;
-  --fs-2xl: 1.55rem;
-  --fs-3xl: 1.9rem;
+  --fs-lg: 1.2rem;
+  --fs-xl: 1.45rem;
+  --fs-2xl: 1.85rem;
+  --fs-3xl: 2.4rem;
 
   /* 表面層次。原本全站只有一個 --panel，nav／卡片／下拉／篩選列同色同框，看不出誰疊在誰
      上面。三階由低到高：卡片 → 浮起的列與選單 → hover／選中的填色。
@@ -132,12 +137,31 @@
      再驗 reduce 之下被關掉。把這裡改成 0 會讓那條的正向控制紅。 */
   --p-lift: 2px;
 
+  /* 小標籤的字距（.meta／.stat-k）。0.1em 在 12px 上是 1.2px，中文小字加了這一階之後
+     字與字之間分得開，讀起來是「一排標籤」而不是一團擠在一起的小字。
+     ⚠️ 收成 token 是因為它出現在**三個作用域各一份**：`.dice-card .meta`（dice.css）、
+     `#detail .meta`（detail.css）、`.stat-pill .stat-k`（dice.css）。前兩個是刻意分開的
+     同名 class（見 content.css 開頭的說明），規則不能合併，但值必須是同一個——不然就是
+     這個 repo 一路在收的「同一個東西兩份數字」。
+     ⚠️ **不要往內文擴**：中文內文加字距會把行內的詞界抹平，整行變成等距字塊。 */
+  --ls-label: 0.1em;
+
   /* 全站唯一的鍵盤焦點框，見底下的 :focus-visible 規則。 */
   --ring: 2px solid var(--gold);
   --ring-offset: 2px;
 
-  /* 字型只用系統堆疊，不自架字型檔（CJK 字型體積過大）。 */
+  /* 中文與內文：只用系統堆疊，不自架字型檔（CJK 字型體積過大）。 */
   --font: 'Noto Sans TC', 'Microsoft JhengHei', sans-serif;
+
+  /* 數字與代號用的拉丁字型（2026-08-26）。自架 12.3KB 的 Archivo 拉丁 subset，
+     @font-face 在 base.css，來源與重製指令在 public/fonts/README.md。
+     ⚠️ **Archivo 沒有中文字**，所以這個堆疊一定要把 --font 的成員接在後面：掛了這個
+     字型的位置（.meta／.stat-v／.game-id／.nav-updated）文字是中英混排，中文得靠後備
+     退回系統字型。只寫 `Archivo, sans-serif` 的話中文會掉到瀏覽器預設 sans-serif，
+     跟旁邊同一句話的其他中文長得不一樣。
+     ⚠️ 只給「數字與代號」用，不要拿去當標題字。中文標題的個性來自字重與字距
+     （見 base.css 的 h1/h2/h3），不是拉丁 display face——那只會讓標題裡的數字跳出來。 */
+  --font-num: 'Archivo', 'Noto Sans TC', 'Microsoft JhengHei', sans-serif;
 }
 
 /* 減少動態：把 --face-lift 的下緣硬邊壓回跟 --face 同一階。

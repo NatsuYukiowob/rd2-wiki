@@ -102,17 +102,32 @@
   margin: 0;
   font-size: var(--fs-base);
 }
+/* 標籤那一路：小、灰、字距拉開。⚠️ 字距走 --ls-label，不要在這裡寫死 0.1em——
+   `#detail .meta` 有一份一模一樣的規則（同名 class、刻意分作用域），兩邊的值必須同源。
+   font-family 走 --font-num：這一行是「自然 D005」這種中英混排，中文會自動退回 --font。 */
 .dice-card .meta {
   margin: var(--space-1) 0;
   color: var(--muted);
+  font-family: var(--font-num);
   font-size: var(--fs-xs);
+  letter-spacing: var(--ls-label);
 }
+/* 遊戲內部代號（D000 這種）。
+   ⚠️ font-family **一定要明寫**，不能靠繼承 .meta：它是 <code>，而 base.css 的
+   `code, pre` 會把它拉去 ui-monospace（實測過——沒寫這一行時 computed 是 ui-monospace
+   10.8px，整塊 Archivo 就這一格沒跟上）。
+   ⚠️ letter-spacing 也要明寫成 normal：它繼承 .meta 的 --ls-label，而 0.1em 疊在四個
+   拉丁字上會把最後一個字推出右邊那塊底色（字距是加在每個字後面的，包含最後一個）。
+   中文標籤要字距、拉丁代號不要。 */
 .dice-card .game-id {
   margin-left: var(--space-2);
   padding: var(--space-h) var(--space-1);
   background: rgb(255 255 255 / 6%);
   border-radius: var(--r-xs);
+  font-family: var(--font-num);
   font-size: 0.9em;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: normal;
 }
 .dice-card .growth {
   margin: var(--space-1) 0;
@@ -177,13 +192,20 @@
      鄰居一起撐高，同 /tree 工具列那條「會出現／消失的東西尺寸不准變」的教訓。 */
   transition: opacity var(--t-fast) ease;
 }
+/* ⚠️ 字距走 --ls-label（跟 .meta 同源），並且**只有這個 token 可以動**：pill 會 wrap，
+   字距一改就是 pill 變寬，而卡片在 CSS grid 的同一列裡會被最寬的鄰居撐高（同下面 .stat-v
+   那條註解記的 750 → 15750 事件）。 */
 .stat-pill .stat-k {
   color: var(--muted);
   font-size: var(--fs-xs);
+  letter-spacing: var(--ls-label);
   white-space: nowrap;
 }
 .stat-pill .stat-v {
   color: var(--fg);
+  /* 純數字，走 Archivo。它的數字比系統中文字型的全形數字窄且齊，是這整塊面板改字型
+     最有感的地方。 */
+  font-family: var(--font-num);
   font-size: var(--fs-md);
   /* 數字用粗體沒問題；⚠️ 中文標籤不要跟著加粗，--fs-xs ＋ 600 的中文橫筆畫會連成一條線。 */
   font-weight: 600;
@@ -246,8 +268,9 @@
 .dice-card .awakening-head {
   margin: 0;
   color: var(--support);
-  /* ⚠️ 不要降回 --fs-xs：12.48px 的中文再加 font-weight 600，橫筆畫會糊成一條連續的橫線，
-     「骰子覺醒」四個字看起來像被劃掉（2026-08-22 放大截圖確認）。粗體的中文標籤至少 --fs-sm。 */
+  /* ⚠️ 不要降回 --fs-xs：那個尺寸的中文再加 font-weight 600，橫筆畫會糊成一條連續的橫線，
+     「骰子覺醒」四個字看起來像被劃掉（2026-08-22 放大截圖確認，當時 --fs-xs 是 12.48px；
+     2026-08-26 級距收小之後只會更嚴重，現在是 12px）。粗體的中文標籤至少 --fs-sm。 */
   font-size: var(--fs-sm);
   font-weight: 600;
 }
