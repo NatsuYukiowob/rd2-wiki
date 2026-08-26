@@ -590,7 +590,7 @@ describe('tree-canvas 整合：邊也要跟著篩選淡出（task-17 補漏，�
     expect(oneFiltered.classList.contains('filtered-out')).toBe(false);
   });
 
-  it('前置鏈上的邊即使兩端都被篩掉，仍然同時帶有 .filtered-out 與 .in-chain（靠 global.css 的 !important 疊加規則蓋過淡出，不是這裡的邏輯排除它）', async () => {
+  it('前置鏈上的邊即使兩端都被篩掉，仍然同時帶有 .filtered-out 與 .in-chain（靠 canvas.css 的 !important 疊加規則蓋過淡出，不是這裡的邏輯排除它）', async () => {
     // 1301 的前置鏈是 {1301,1201,1001}（rune、rune、dice），邊 1201->1301 兩端都是符文，
     // type=dice 篩選下兩端都會被判定不符合、但兩者都在前置鏈上。
     const page = await loadTreePage('?node=1301&type=dice');

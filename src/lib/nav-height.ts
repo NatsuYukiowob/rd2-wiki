@@ -3,8 +3,8 @@
  *
  * 消費者（三處，全部吃同一個變數）：
  * - `#tree-controls`（src/pages/tree.astro）：position: fixed 的工具列。
- * - `#detail`（src/styles/global.css）：position: fixed 的詳情面板。
- * - `.filters`（src/styles/global.css）：/dice 沾在導覽列底下的篩選列。
+ * - `#detail`（src/styles/detail.css）：position: fixed 的詳情面板。
+ * - `.filters`（src/styles/dice.css）：/dice 沾在導覽列底下的篩選列。
  * 另外 `html { scroll-padding-top }` 與 `.kw-entry { scroll-margin-top }` 也用它，
  * 讓錨點跳轉不會躲進沾頂的導覽列底下。
  *

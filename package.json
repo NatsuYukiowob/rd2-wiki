@@ -17,6 +17,7 @@
     "add-icon": "tsx tools/add-icon.ts",
     "render-nodes": "tsx tools/render-nodes.ts",
     "build:data": "tsx tools/build-data.ts",
+    "compare": "tsx tools/compare-computed.ts",
     "build": "npm run build:data && astro build",
     "dev": "npm run build:data && astro dev",
     "pree2e": "npm run build",

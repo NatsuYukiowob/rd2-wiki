@@ -1,0 +1,341 @@
+/* --- 圖鑑 --- */
+.filters {
+  /* 沾在導覽列底下（2026-08-22）：底下是 41 張卡片的網格，篩選列一捲就不見的話，
+     改條件得整頁捲回去。z-index 只要蓋過卡片內的 .card-term（1）即可，導覽列是 40。
+     `top` 一定要吃實測的 --nav-h，不要再寫死一個 3rem——這個 repo 的固定版面偏移量
+     已經咬過四次（見 tree.astro #tree-controls 的註解）。 */
+  position: sticky;
+  top: var(--nav-h, 3rem);
+  z-index: 20;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3) var(--space-5);
+  margin: 0 0 var(--space-5);
+  padding: var(--space-3) var(--space-4);
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-1);
+}
+.filter-count {
+  margin: 0 0 0 auto;
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  /* 等寬數字：篩選時數字每幀在變，字寬不固定的話整條列會左右抽動。 */
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 720px) {
+  /* 窄畫面下切換鈕已經佔滿兩列，計數再被 `margin-left: auto` 推到最右邊就會自己獨佔第三列、
+     跟切換鈕之間空出一大塊。讓它接在切換鈕後面就好。 */
+  .filter-count {
+    margin-left: 0;
+  }
+}
+
+.codex-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(19rem, 1fr));
+  gap: var(--space-3);
+}
+
+.dice-card {
+  /* 關鍵字的就地視圖是 position:absolute 的覆蓋層，定位基準在這裡。
+     overflow: hidden 是給過場用的：換頁時卡片本文會往左退 30%，不裁掉會戳到隔壁那張。 */
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: var(--space-3);
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  /* fallback 走 --border：資料若冒出第六個分支，卡片會退回一般邊框，不會變成透明或黑色。 */
+  border-left: 3px solid var(--branch, var(--border));
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-1);
+  transition:
+    border-color var(--t-fast) ease,
+    box-shadow var(--t-fast) ease,
+    transform var(--t-fast) ease;
+}
+.dice-card:hover {
+  border-color: var(--branch, var(--gold));
+  box-shadow: var(--shadow-2);
+  transform: translateY(-2px);
+}
+.dice-card[hidden] {
+  display: none; /* 篩選用；這裡要真的收掉版面，跟 /tree 的淡出是兩回事（那裡要保留位置） */
+}
+/* ⚠️ 不要用 `.dice-card > header`：卡片本文 2026-08-22 被包進 .dice-card-main（過場要能整塊
+   transform），子代選擇器會直接失效，圖示與名稱從並排掉成上下堆疊，而且沒有任何測試會說話。 */
+.dice-card header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-2);
+}
+.dice-card header img {
+  flex: none;
+  width: 3rem;
+  height: 3rem;
+  /* 圖示的長寬比不一（節點形狀有 rect／diamond／circle／hex），固定方框＋contain 才不會
+     把菱形壓扁。 */
+  object-fit: contain;
+}
+.dice-card h3 {
+  margin: 0;
+  font-size: var(--fs-base);
+}
+.dice-card .meta {
+  margin: var(--space-1) 0;
+  color: var(--muted);
+  font-size: var(--fs-xs);
+}
+.dice-card .game-id {
+  margin-left: var(--space-2);
+  padding: var(--space-h) var(--space-1);
+  background: rgb(255 255 255 / 6%);
+  border-radius: var(--r-xs);
+  font-size: 0.9em;
+}
+.dice-card .growth {
+  margin: var(--space-1) 0;
+  font-size: var(--fs-sm);
+}
+.dice-card .upgrade {
+  margin: var(--space-1) 0;
+  color: var(--gold);
+  font-size: var(--fs-sm);
+}
+.dice-card .upgrade .cond,
+.dice-card .awakening-head .cond {
+  margin-left: var(--space-2);
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  white-space: nowrap;
+}
+.dice-card .warn {
+  margin: var(--space-1) 0;
+  color: var(--nature);
+  font-size: var(--fs-sm);
+}
+.dice-card .desc {
+  margin: var(--space-2) 0 0;
+  font-size: var(--fs-md);
+}
+/* ==========================================================================
+   /dice 的官方數值面板（基本能力值 ＋ 強化數據）
+   --------------------------------------------------------------------------
+   一項一顆深色半橢圓（Yuki 2026-08-24 指定的形狀），底下四顆切換鈕換檔位。
+
+   ⚠️ **整塊不需要 JS**：四個檔位的值都是真的文字節點，由 `:has()` ＋ radio 決定顯示哪一個。
+   換 textContent 的做法會讓另外三檔的數字進不了 HTML，而「文字進得了 HTML」正是這一頁存在
+   的理由（2026-08-20 實測 /tree 的 HTML 只有 194 個字元）。
+   ========================================================================== */
+.dice-stats {
+  margin: var(--space-3) 0 var(--space-2);
+}
+.stat-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+/* 半橢圓＝--r-pill。底色比卡片低一階，讀起來是「嵌在卡片上的面板」而不是又一張卡片。 */
+.stat-pill {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  padding: var(--space-h) var(--space-3);
+  background: var(--surface-0);
+  border: 1px solid var(--border);
+  border-radius: var(--r-pill);
+  /* 切檔時只有透明度會變。**尺寸不動這件事不是這裡守的**，是 .stat-v 的 inline-grid 疊放
+     （見下面）——41 張卡片排在 CSS grid 裡，任何一顆 pill 變寬都可能多擠出一列而把同一列的
+     鄰居一起撐高，同 /tree 工具列那條「會出現／消失的東西尺寸不准變」的教訓。 */
+  transition: opacity var(--t-fast) ease;
+}
+.stat-pill .stat-k {
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  white-space: nowrap;
+}
+.stat-pill .stat-v {
+  color: var(--fg);
+  font-size: var(--fs-md);
+  /* 數字用粗體沒問題；⚠️ 中文標籤不要跟著加粗，--fs-xs ＋ 600 的中文橫筆畫會連成一條線。 */
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  /* ⚠️ 四個值**疊在同一個 grid 格子裡**，所以這一格的寬度永遠等於最長的那一個值。
+     這不是排版偏好，是尺寸穩定性的唯一來源：`.stat-pills` 會 wrap，pill 一變寬就可能多擠出
+     一列，而卡片在 CSS grid 的同一列裡會把鄰居一起撐高。實測（2026-08-24，/code-review 抓到）
+     尖刺骰子的攻擊力 750 → 15750 讓 pill 區塊從 68px 變 106px，火骰子與花骰子跟著從
+     424.6px 被撐到 462.7px——而那三張卡片使用者根本沒去動。 */
+  display: inline-grid;
+}
+
+/* 檔位切換：四個值都佔位，只有被選中的那一個看得見。固定項目只印一份（.stat-fixed），四檔共用。
+   ⚠️ 用 `visibility` 不用 `display`：`display: none` 的元素不參與 grid 的尺寸計算，格子會縮回
+   當前值的寬度，上面那個穩定性就沒了。`visibility: hidden` 一樣不進無障礙樹，讀屏不會念到四份。 */
+.stat-v > [data-m] {
+  grid-area: 1 / 1;
+  visibility: hidden;
+}
+.dice-stats:has(input[value='base']:checked) .stat-v > [data-m='base'],
+.dice-stats:has(input[value='dice7']:checked) .stat-v > [data-m='dice7'],
+.dice-stats:has(input[value='lv15']:checked) .stat-v > [data-m='lv15'],
+.dice-stats:has(input[value='lv15dice7']:checked) .stat-v > [data-m='lv15dice7'] {
+  visibility: visible;
+}
+/* 不隨骰點或強化改變的項目：在基礎檔跟其他項目平起平坐（那是遊戲內面板的樣子），
+   一旦切到別的檔就淡下去——「這幾項剛才沒有跟著變」因此不必用文字解釋。 */
+.dice-stats:not(:has(input[value='base']:checked)) .stat-pill.is-fixed {
+  opacity: 0.5;
+}
+/* ⚠️ `:has()` 不支援時，四個 [data-m] 會同時顯示成「150 750 2250 2850」。退化路徑是
+   只留基礎值並把切換鈕收掉——給不出功能就不要留一排按不動的按鈕。 */
+@supports not (selector(:has(*))) {
+  .stat-v > [data-m='base'] { visibility: visible; }
+  .stat-modes { display: none; }
+}
+
+.stat-note {
+  margin: var(--space-2) 0 0;
+  color: var(--muted);
+  font-size: var(--fs-xs);
+}
+.stat-modes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin-top: var(--space-2);
+}
+/* 覺醒區塊原本靠左邊一條 --support 色條標示自己。卡片左緣 2026-08-22 改掛分支色條之後，
+   同一張卡上會出現兩條顏色不同的直條，互相搶。改成填一階底色來分層，身分改由標題的
+   --support 字色講。 */
+.dice-card .awakening {
+  margin-top: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+}
+.dice-card .awakening-head {
+  margin: 0;
+  color: var(--support);
+  /* ⚠️ 不要降回 --fs-xs：12.48px 的中文再加 font-weight 600，橫筆畫會糊成一條連續的橫線，
+     「骰子覺醒」四個字看起來像被劃掉（2026-08-22 放大截圖確認）。粗體的中文標籤至少 --fs-sm。 */
+  font-size: var(--fs-sm);
+  font-weight: 600;
+}
+.dice-card .awakening .desc {
+  margin-top: var(--space-1);
+  font-size: var(--fs-sm);
+}
+.dice-card .card-link {
+  margin-top: auto;
+  padding-top: var(--space-3);
+  font-size: var(--fs-xs);
+}
+
+/* --- 圖鑑卡片裡的關鍵字就地視圖 ---
+   點卡片裡的 `#關鍵字`，解釋從右側滑進來蓋住卡片本文；← 返回時反方向滑出。過場的長度與
+   曲線跟 /tree 的詳情面板共用同一組 --slide-ms／--slide-ease，兩處的手感才是同一種。
+
+   跟面板的差別是**高度完全不動**：視圖是 inset:0 的絕對定位層，撐不下就自己捲。
+   41 張卡片排在 CSS grid 裡，任何一張改高度都會把同一列的其他卡片一起推動，面板那種
+   高度過場在網格裡不成立。 */
+.dice-card-main {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+}
+.card-term {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  /* 滑進滑出的兩層都要被裁在卡片邊界內，不然會蓋到隔壁那張。 */
+  overflow: hidden;
+  border-radius: var(--r-md);
+}
+.card-term[hidden] {
+  display: none;
+}
+.card-term-view {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-3);
+  overflow-y: auto;
+  /* 不透明底色是必要的，不是裝飾：半透明會讓底下那一層的文字透出來疊在解釋上。 */
+  background: var(--surface-1);
+}
+/* 焦點是換頁後用程式移進來的，不該畫成「你選到了這個東西」——鍵盤的可見焦點由裡面的
+   ← 與連結各自的 :focus-visible 給。跟 #detail .view:focus 同一個理由。 */
+.card-term-view:focus {
+  outline: none;
+}
+/* 過場只在動畫進行中掛，平常不留 transition：留著的話，篩選造成的重新排版也會被動畫化。 */
+.dice-card .slide-anim {
+  transition: transform var(--slide-ms) var(--slide-ease), opacity var(--slide-ms) var(--slide-ease);
+}
+.card-term-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+.card-term-back {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 1.8rem;
+  height: 1.8rem;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  line-height: 1;
+  cursor: pointer;
+}
+.card-term-back:hover,
+.card-term-back:focus-visible {
+  background: rgb(255 255 255 / 10%);
+  color: var(--fg);
+}
+.card-term-title {
+  margin: 0;
+  font-size: var(--fs-base);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.card-term-body {
+  font-size: var(--fs-md);
+}
+.card-term-search {
+  margin-top: auto;
+  padding-top: var(--space-3);
+  font-size: var(--fs-xs);
+}
+
+
+/* 減少動態：圖鑑卡片這一份。理由與寫法見 chrome.css 檔尾同一段。
+   ⚠️ `.dice-card` 的 transition 這一條有 E2E 在守（chrome.spec.ts 的 D7，在 /dice 上
+   emulateMedia reduce 之後斷言 transitionDuration 是 0s）。拿掉就會紅——那是好事。 */
+@media (prefers-reduced-motion: reduce) {
+  .dice-card,
+  .dice-card .slide-anim {
+    transition: none;
+  }
+  .dice-card:hover {
+    transform: none;
+  }
+}

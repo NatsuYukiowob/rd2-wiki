@@ -3,6 +3,8 @@
 // 選取/前置鏈高亮/詳情面板 + 搜尋/篩選/網址狀態同步。
 // 掛載邏輯放在 src/scripts/tree-canvas.ts，方便各任務在同一支腳本上疊加互動。
 import Base from '../layouts/Base.astro';
+import '../styles/detail.css';
+import '../styles/canvas.css';
 
 // 分支（5 個，spec §6.3）與類型（4 個）在編譯期就是固定的字面聯集，不是要跑期才知道的
 // 節點資料，所以直接在這裡的 frontmatter 迴圈產生 checkbox 標記（Astro 本來就是做這件事
@@ -96,7 +98,7 @@ const TYPES: Array<[string, string]> = [
 </Base>
 
 <style is:global>
-  /* ⚠️ 畫布頁的版面（body／main／#canvas-host／#tree／#viewport 升層）**在 src/styles/global.css**，
+  /* ⚠️ 畫布頁的版面（body／main／#canvas-host／#tree／#viewport 升層）**在 src/styles/canvas.css**，
      不在這裡——`/sim` 用的是同一套骨架，複製第二份出去就一定漂移（CLAUDE.md 記過三次同一件事）。
      這個檔案只留 `/tree` 專屬的東西：工具列、篩選面板、詳情卡片、分支導覽。 */
 
@@ -115,7 +117,7 @@ const TYPES: Array<[string, string]> = [
      border-right 往上戳出 nav 下緣）。這次不換一個新的寫死數字，改成
      src/scripts/tree-canvas.ts 的 updateNavHeight() 在載入與 resize 時實測
      #site-nav 的 getBoundingClientRect().bottom，寫進 :root 的 --nav-h 自訂屬性；
-     3rem 只當 JS 執行前的 fallback。#detail 面板（src/styles/global.css）用同一個
+     3rem 只當 JS 執行前的 fallback。#detail 面板（src/styles/detail.css）用同一個
      變數，兩者高度基準永遠一致。 */
   #tree-controls {
     position: fixed;
@@ -215,10 +217,10 @@ const TYPES: Array<[string, string]> = [
     cursor: pointer;
   }
 
-  /* 這裡刻意不再定義 #filters label：它現在是 .chip，樣式全部來自 global.css。
+  /* 這裡刻意不再定義 #filters label：它現在是 .chip，樣式全部來自 components.css。
      留一條 id 具體度的規則在這裡的話，會把共用樣式蓋掉一半，兩頁的篩選器又長得不一樣。 */
 
-  /* ⚠️ 節點／邊／標籤／focus 外框的樣式**在 src/styles/global.css**（「畫布內容」那一節），
+  /* ⚠️ 節點／邊／標籤／focus 外框的樣式**在 src/styles/canvas.css**（「畫布內容」那一節），
      不在這裡——`/sim` 畫的是同一份 renderTree() 產物，兩頁共用一份。
      2026-08-23 搬過去時抓到一個真 bug：`/sim` 完全沒有 `.node .label` 的樣式，標籤吃 SVG
      預設的 16px（使用者座標），**別的節點的標籤蓋住了 10 顆節點的圖示中心**，點下去打到的
@@ -432,6 +434,17 @@ const TYPES: Array<[string, string]> = [
       border-top: 1px solid var(--border);
       box-shadow: var(--shadow-3);
       z-index: 5;
+    }
+  }
+
+  /* 減少動態：篩選開關這一份（2026-08-26 從舊的 `global.css` 總表搬過來）。
+     ⚠️ 它必須待在這裡：#filters-toggle 的本體就在這份 scoped style 裡，
+     全站 CSS 那邊沒有任何一條規則定義它。放進 dice.css 的話 /tree 根本載不到。 */
+  @media (prefers-reduced-motion: reduce) {
+    #filters-toggle,
+    #filters-toggle::before,
+    #filters-toggle::after {
+      transition: none;
     }
   }
 </style>

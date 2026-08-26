@@ -43,6 +43,7 @@
 import { test, expect, type Page, type Locator } from '@playwright/test';
 import sharp from 'sharp';
 import { readFileSync } from 'node:fs';
+import { resolveColor } from './probe';
 
 /**
  * locator 目前的中心點（CSS px）。
@@ -1490,6 +1491,31 @@ test('P. 工具列對齊：搜尋框與分支側欄切齊同一條左邊界，�
   // 反向守門：正確的修法是把規則收斂到 #site-nav，不是把那條線整個刪掉——全站導覽列跟底下
   // 內容之間本來就該有分隔線。
   expect(borders.siteNav).not.toBe('0px');
+});
+
+// 分支色的唯一守門本來只在 /dice（codex.spec.ts 的 C6），/tree 的 P 對 `#filters .chip`
+// 只量座標不量顏色（design doc 第 3 節記過這個缺口，CSS 拆檔 PR 要補一條）。
+// 這條守的是 `:is(.dice-card, .chip)[data-branch=…]`（--branch 的供應者）必須留在
+// Base 級的檔（components.css）——它一旦被搬進頁面級的 dice.css，/tree 的五顆分支切換鈕
+// 會全部掉回 fallback `var(--gold)`，而顏色不對這件事沒有任何幾何斷言看得出來。
+test('P2. /tree 篩選面板的分支切換鈕勾選後邊框走該分支的顏色', async ({ page }) => {
+  await page.goto('/tree');
+  // 手機版 #filters 收在抽屜裡、預設不顯示（同上面 O2/O3 那組測試），要先展開才點得到。
+  const filters = page.locator('#filters');
+  if (!(await filters.isVisible())) await page.locator('#filters-toggle').click();
+  const chip = page.locator('#filters .chip[data-branch="nature"]');
+  const checkbox = chip.locator('input[data-branch="nature"]');
+  await checkbox.check();
+  await expect(checkbox).toBeChecked();
+
+  const nature = await resolveColor(page, '--nature');
+  // ⚠️ 一定要 poll：border-color 有 var(--t-fast) 的過場，勾選當下讀會讀到過場中途的混色
+  // （同 codex.spec.ts C6 那條的理由），一次性斷言會偶爾紅。
+  await expect
+    .poll(() => chip.evaluate(el => getComputedStyle(el).borderTopColor), {
+      message: '#filters 的分支切換鈕勾選後沒有走分支色（--branch 供應者可能被搬出 Base 級的檔）',
+    })
+    .toBe(nature);
 });
 
 test('R. 分頁標題不帶破折號，分頁圖示指向實際存在的檔案', async ({ page }) => {

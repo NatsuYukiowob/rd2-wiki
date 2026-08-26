@@ -1,0 +1,91 @@
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  color-scheme: dark;
+  /* 導覽列 2026-08-22 改成 position: sticky 之後，錨點跳轉（#kw-xxx）會把目標捲到視窗
+     頂端、剛好躲進導覽列底下。這一行讓瀏覽器自己留出導覽列的高度。--nav-h 由
+     src/lib/nav-height.ts 實測寫入，每一頁都有；3rem 只是腳本執行前的 fallback。 */
+  scroll-padding-top: calc(var(--nav-h, 3rem) + var(--space-3));
+}
+
+body {
+  /* flex column ＋ `main { flex: 1 }`：內容不滿一屏時把 footer 推到視窗底部。
+     沒有這兩行的話，/guide 這種短頁面的 footer 會停在頁面中間，它的 border-top 變成一條
+     半路截斷的橫線，底下一大片空白（2026-08-22 人工檢視發現）。
+     /tree 的 `body:has(#canvas-host)` 設的是同一組值，兩邊不衝突。 */
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font);
+  line-height: 1.6;
+}
+
+a {
+  color: var(--gold);
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+/*
+ * 全站唯一的鍵盤焦點框（2026-08-22）。
+ * 之前每個可聚焦元件各自刻一份 :focus-visible，粗細、顏色、offset 都不一樣，而且新元件
+ * 很容易整個忘記寫——那是「只有滑鼠能用」的無障礙缺口。這裡給預設值，元件只在需要
+ * **額外**回饋（例如同時換底色）時才自己補，不要再各自定義 outline。
+ * 用 :focus-visible 而不是 :focus：滑鼠點下去不該畫框，鍵盤 Tab 過去才要。
+ */
+:focus-visible {
+  outline: var(--ring);
+  outline-offset: var(--ring-offset);
+}
+
+main {
+  flex: 1;
+  /* ⚠️ `width: 100%` ＋ `margin-inline: auto`，不要寫 `margin: 0 auto`：body 是 flex
+     column 之後，水平方向的 auto 邊界會取消 stretch，main 會縮到內容寬。這個坑
+     tree.astro 的 `main:has(#canvas-host)` 註解裡已經寫過一次。 */
+  width: 100%;
+  max-width: 64rem;
+  margin-inline: auto;
+}
+
+footer {
+  padding: var(--space-4);
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  border-top: 1px solid var(--border);
+  text-align: center;
+}
+
+h1,
+h2,
+h3 {
+  line-height: 1.3;
+}
+
+code,
+pre {
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+}
+
+/* 只給螢幕閱讀器的文字：看不見，但仍在無障礙樹裡、仍會被 aria-live 播報。
+   ⚠️ 不能用 display: none／visibility: hidden／hidden 屬性——那三種都會讓內容一併從
+   無障礙樹消失，live region 就不會播報了。 */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}

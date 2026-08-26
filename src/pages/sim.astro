@@ -8,7 +8,7 @@
 // 畫布用 renderTree() ＋ Viewport 自己組（見 src/scripts/sim.ts），**不重用
 // src/scripts/tree-canvas.ts**：那支是 side-effect 腳本，載入即掛載，而且跟 /tree 的
 // 篩選器、詳情卡片擺位、高解析圖示 LOD 綁在一起。
-// ⚠️ 版面骨架與**節點／邊／標籤的外觀**兩頁共用 global.css 那兩節，不要在這裡另寫一份
+// ⚠️ 版面骨架與**節點／邊／標籤的外觀**兩頁共用 canvas.css 那兩節，不要在這裡另寫一份
 // ——第一版漏了節點外觀那一節，標籤吃 SVG 預設的 16px，蓋住 10 顆節點的圖示中心讓它們
 // 點不到（E2E 的 S13 守，反例會一次紅 10 對）。
 //
@@ -16,6 +16,7 @@
 // tier 是 (maxLevel, unlockCost.gold) 的純函數，那兩個欄位產物裡本來就有，複製一份
 // costTier 欄位進去只是拿 gzip 預算換一個推得出來的值。
 import Base from '../layouts/Base.astro';
+import '../styles/canvas.css';
 import data from '../generated/tree.json';
 import tablesRaw from '../../data/passive-upgrade-cost.json';
 import { buildSimContext } from '../lib/sim';
@@ -405,7 +406,7 @@ const optional = [...ctx.optional]
 
   /* --- 畫布上的節點狀態 ------------------------------------------------------ */
   /* `#tree.sim` 前綴讓這幾條只在模擬器頁生效——/tree 的 SVG 也叫 #tree，共用的基本樣式
-     （節點、邊、標籤）刻意留著吃 global.css 那一份。 */
+     （節點、邊、標籤）刻意留著吃 canvas.css 那一份。 */
   #tree.sim .node {
     cursor: pointer;
   }
@@ -430,7 +431,7 @@ const optional = [...ctx.optional]
   }
 
   /* ⚠️ 鍵盤焦點的金邊必須贏過上面兩條狀態色。`#tree.sim .node.sim-available .icon` 的具體度
-     是 (1,4,0)，壓過 global.css 的 `.node:focus .icon { filter: url(#focus-ring) }` (0,3,0)，
+     是 (1,4,0)，壓過 canvas.css 的 `.node:focus .icon { filter: url(#focus-ring) }` (0,3,0)，
      而 `.node:focus` 又已經 `outline: none`——結果是 Tab 到「可取得」或「已選取」的節點時
      **畫面零變化**（那圈金光不管有沒有 focus 都在）。這裡補回來，具體度 (1,5,0) 拿得下。
      這是 CLAUDE.md 為 `/tree` 記過的同一族坑（「投影拆成兩條規則，順序與權重都不能動」），

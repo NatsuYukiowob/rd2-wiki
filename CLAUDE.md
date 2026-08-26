@@ -64,6 +64,8 @@ npm run build:data  # 產出 src/generated/tree.json + public/assets/
 npm run build       # build:data + astro build
 npm test            # 有 pretest 自動跑 build:data
 npm run e2e         # 有 pree2e 自動跑 build
+npm run compare -- <beforeURL> <afterURL>  # computed-style 逐元素比對，兩個 port 各服務一份 dist
+                     # ⚠️ 不在 CI 上，純靠人記得跑；改動 CSS（尤其是拆檔／搬檔）送 PR 前必跑，見 tools/compare-computed.ts 檔頭
 ```
 
 ## 不變量（改動後務必重驗）
@@ -206,7 +208,7 @@ npm run e2e         # 有 pree2e 自動跑 build
   | `bypassPrereq` | `5006` 貪婪／`5008` 空虛 | 從討伐獎勵／競技場通行證**直接領，無視骰子樹前置** | `prerequisiteChain()`、`render.ts` |
 
   **`bypassPrereq` 不改變圖結構**——邊照樣存在、239／248 不變，只有前置鏈遍歷走到它時停止往上追。
-  `/tree` 上指向它的入邊掛 `.edge-bypassable` 畫成虛線（CSS 在 `global.css`，**只設
+  `/tree` 上指向它的入邊掛 `.edge-bypassable` 畫成虛線（CSS 在 `canvas.css`，**只設
   `stroke-dasharray`**，所以跟 `.in-chain`／篩選／`has-selection` 那三組 opacity 規則互不搶屬性）。
   站台**沒有全站圖例**，虛線的意思由詳情面板那句「鏈上有 N 顆可直接領的骰子」承擔。
 
@@ -281,7 +283,10 @@ npm run e2e         # 有 pree2e 自動跑 build
 
 ## 設計系統
 
-`:root` 有五組 token，**新增樣式一律用它們**：
+`:root` 有五組 token，全部定義在 **`src/styles/tokens.css`**，**新增樣式一律用它們**：
+⚠️ **token 定義只准留在 `tokens.css`，不要寫到別的檔**——`tests/styles/tokens.test.ts`「每個
+`var(--x)` 都真的定義得出來」那條拿 `tokens.css` 當唯一來源，正則是 `^\s{2}(--…)`（只認縮排
+兩格、不綁 `:root` 區塊，故意不合併九個檔一起掃），寫到別處會讓那條檢查對那個 token 失效。
 
 ⚠️ **`--surface-0` 比卡片還低一階**，只給「凹進去」的元素用（目前是 `/dice` 的數值 pill）。
 不要拿 `--bg` 代替：它只比 `--surface-1` 深 3 個亮度單位，疊在卡片上幾乎看不出層次。
@@ -299,17 +304,66 @@ npm run e2e         # 有 pree2e 自動跑 build
   舊的 `--panel` 已刪除——一個東西兩個名字正是要收掉的漂移來源。
 - **焦點框全站只有一條** `:focus-visible { outline: var(--ring) }`。元件只在需要**額外**回饋時才補。
 - **動畫長度一律用 `cssMs()` 從 CSS 讀**，JS 不寫第二份。
-- **減少動態的規則收在檔尾一個 `@media` 裡**，刻意不寫成 `*{transition-duration:0.01ms!important}`：
-  那會連 opacity 一起關掉，而 `/tree` 的篩選淡出是靠 opacity 在**傳達資訊**，不是裝飾。
+- **減少動態的規則每個檔自帶一份**（`chrome.css`／`components.css`／`dice.css`／`detail.css`
+  各一個 `@media (prefers-reduced-motion: reduce)`；`/tree` 另有兩個區塊收在
+  `src/pages/tree.astro` 自己的 `<style is:global>` 裡——`#filters.animating`（篩選面板寬度
+  過場）與 `#filters-toggle`（三條）各一個），刻意不寫成
+  `*{transition-duration:0.01ms!important}`：那會連 opacity 一起關掉，而 `/tree` 的篩選淡出是靠
+  opacity 在**傳達資訊**，不是裝飾。
 - ⚠️ **`:has()` 與 `color-mix()` 都要有退化路徑。** 切換鈕的「選中」完全靠 `:has(input:checked)`
   ＋底色而真正的 checkbox 是 `opacity: 0`——不支援 `:has()` 的引擎或 `forced-colors: active` 下，
   五顆鈕長得一模一樣、焦點也看不見。`color-mix()` 一律在前面補一行純色 fallback。
 - **守門**：`tests/styles/tokens.test.ts` 掃裸的 px／rem（例外寫在檔案裡的 `ALLOWED` 並附理由），
   並確認每個 `var(--x)` 都在 `:root` 定義得出來（打錯的名字不會報錯，只會安靜掉回預設值）。
+  ⚠️ **掃描名單全部自動列舉**（2026-08-26 拆檔後）：`.css` 用 `readdirSync(src/styles)`；
+  `.astro` 用 `readdirSync({ recursive: true })` 掃 `src/pages`（含 `guide/` 子目錄）與
+  `src/components`，挑出內容含 `<style` 的檔案，不是寫死幾個檔名。並自帶一條**反例斷言**：
+  把 `readdirSync` 掃到的 `.css` 集合拿去跟一份**寫死**的 `EXPECTED_CSS`（九個檔名）比對——
+  少一個、多一個沒人知道的檔、或改名，三種壞法都會紅（2026-08-26 code review 抓到：舊版是
+  拿同一個 `readdirSync` 運算式跟自己比，恆真，已修正）。
   `tests/e2e/chrome.spec.ts` 的 D1–D12 守沾頂、`--nav-h`、`aria-current`、焦點框、footer 沉底、過場時間。
+
+### 九個 CSS 檔
+
+`src/styles/global.css`（2029 行）2026-08-26 拆成九個按作用域劃分的檔案，畫面零變化
+（`tools/compare-computed.ts` 驗過，見「指令」一節）。新樣式要放哪個檔，先查這張表：
+
+| 檔 | 放什麼 | 誰載 |
+|---|---|---|
+| `tokens.css` | `:root` 的五組 token（間距／圓角／字級／表面／陰影與節奏）——**唯一**允許定義 token 的地方 | Base |
+| `base.css` | 全站重置（`*`／`html`／`body`／`main`／`footer`／`a`／`pre`）＋ `.sr-only` | Base |
+| `chrome.css` | 全站導覽列 `#site-nav`（含「遊戲介紹」下拉） | Base |
+| `content.css` | 靜態內容頁共用 `.page`（首頁／圖鑑／遊戲介紹）＋首頁訪客計數器 `#hit-counter`＋詞彙頁 `.kw-*` | Base |
+| `components.css` | 跨頁共用元件：篩選切換鈕 `.chip`、`--branch` 供應者（`:is(.dice-card, .chip)[data-branch=…]`）、分支色點 `.branch-dot`、首頁卡片、遊戲介紹索引卡 | Base |
+| `detail.css` | `/tree` 詳情面板 `#detail`（含視圖堆疊換頁動畫） | `/tree` |
+| `canvas.css` | 畫布本體：`#canvas-host`／`#tree`／`#viewport`、節點與邊 `.node`／`.edge`、中央樞紐 `.tree-center*` | `/tree`、`/sim` |
+| `dice.css` | `/dice` 圖鑑：卡片網格 `.codex-grid`、`.dice-card` 本體、關鍵字卡片 `.card-term*`、數值面板 `.dice-stats`、篩選列 `.filters` | `/dice` |
+| `board.css` | `/board` 骰盤編輯器：`.board-*`／`#board-*`、組合列 `#deck-row`／`.deck-*`、選骰面板 `#dice-picker`／`.picker-*` | `/board` |
+
+⚠️ **`#toolbar`／`#filters`／`#branch-nav`／`#branch-chips`（`/tree` 工具列與篩選面板）不在
+`canvas.css` 裡**，它們留在 `src/pages/tree.astro` 自己的 `<style is:global>` 區塊——那個區塊
+在這次拆檔之前就已經是頁面自己的樣式，不是 `global.css` 的一部分，所以拆檔沒有動它，找 `#filters`
+的樣式要去 `tree.astro`，不是九個 CSS 檔。
+
+⚠️ **只看「放什麼」與「誰載」，不要抄行號**——原始行號對應的是拆檔當下那個 commit 的
+`global.css`，檔案一改行號就過期，`docs/superpowers/plans/2026-08-26-css-split.md` 的完整版
+（含行號、不進版控）才是那次拆檔的第一手記錄。
+
+- **頁面級 import 順序＝層疊順序，見「版面的硬規則」那一節的第一條**（`import Base` 必須排在
+  頁面自己的 CSS import 之前）。
+- **兩個容易分錯的分派**：`--branch` 供應者留在 `components.css` 不進 `dice.css`——它是
+  `.chip[data-branch]` 的唯一來源，而 `.chip` 用在 `/tree` 的篩選面板；`.chip-xs` 同理留在
+  `components.css`，它跟 `.chip` 具體度相同 (0,1,0)，只靠檔案順序排在後面才贏。
 
 ### 版面的硬規則
 
+- ⚠️ **頁面級 `import '../styles/x.css'` 一定要寫在該頁 `import Base from …` 那一行之後。**
+  Astro 依 import 順序輸出 `<link>`，寫在 `import Base` 前面的話頁面級 `<link>` 會排到 Base
+  的五個 `<link>` 前面，頁面級規則需要蓋過 Base 級同具體度的規則時就會靜靜地輸掉層疊，而且是
+  **零錯誤零警告**——實測把 `board.astro` 的 `import '../styles/board.css'` 移到 `import Base`
+  之前重建，`/board` 的 `<style>` offset 1976 落在 Base `<link>` offset 5783 之前，build 完全
+  正常。`tests/styles/tokens.test.ts` 的「import 順序＝層疊順序」守著這條，也守 `Base.astro`
+  自己那五行 CSS import 的固定順序（同一族坑：那五行的順序本身就是層疊順序，調換一樣是靜默的）。
 - **導覽列是 `position: sticky` 的**，一換行就等於永久佔掉畫面：`#site-nav` 每一項都要
   `white-space: nowrap`（中文沒有空白，瀏覽器會在任意兩字之間斷開），≤720px 時不顯示「上次更新」
   （它比其他四項加起來還寬）。D9 守——實測只有隱藏那段拿掉才會紅，`nowrap` 是防更窄的裝置，
@@ -527,13 +581,13 @@ PNG，檔名＝內容 sha256 前 12 碼，`addIcon()` 直接重用）＋ `data/b
 
 1. **四個顯示點**——`.board-cell img`／`.deck-dice img`／`.picker-dice img`／`.drag-ghost`——
    一律 `object-fit: contain`（`cover` 會裁掉骰子的角）。改成 `cover` 會 CI 全綠而畫面上出事，
-   所以 `tests/lib/board-image.test.ts` 直接讀 `global.css` 釘住這四個選擇器。
+   所以 `tests/lib/board-image.test.ts` 直接讀 `board.css` 釘住這四個選擇器。
 2. **分享圖（`src/scripts/board-export.ts` 用 canvas 畫的那張）不能把圖片拉伸貼滿格子**。
    `src/lib/board-image.ts` 的 `iconRect(box, imgW, imgH, ratio)` 依
    `min(內框寬/imgW, 內框高/imgH)` 等比縮放置中，跟畫面上的 contain 對齊。`imgW`／`imgH` 刻意做成
    **必填**（不像 `ratio` 有預設值），呼叫端量不到真實尺寸時寧可在型別層面就過不了。
    ⚠️ `ratio` 的預設 0.78 跟 `.board-cell img { width: 78% }` 是配套關係，兩邊各寫死同一個數字，
-   由一條讀 `global.css` 的測試比對兩邊沒有各自漂移。
+   由一條讀 `board.css` 的測試比對兩邊沒有各自漂移。
 
 `src/scripts/board.ts` 的 `diceMeta` 是從 `#dice-picker` 的 `<img src>` 讀回來的，所以拖曳、骰盤格、
 分享圖三處畫面全部自動跟著換，不必維護第二份路徑。
@@ -551,7 +605,7 @@ PNG，檔名＝內容 sha256 前 12 碼，`addIcon()` 直接重用）＋ `data/b
   每種操作各寫一次反向操作（而反向操作正是最容易漏掉連帶效果的地方）。
 - **畫布是自己組的**（`renderTree()` ＋ `Viewport`），**不重用 `src/scripts/tree-canvas.ts`**：
   那支是 side-effect 腳本、載入即掛載，而且跟 `/tree` 的篩選器、詳情卡片擺位、高解析圖示 LOD
-  綁死。⚠️ 共用的是 **`global.css` 的兩個區塊**（「畫布頁的版面骨架」與「畫布內容」），2026-08-23
+  綁死。⚠️ 共用的是 **`canvas.css` 的兩個區塊**（「畫布頁的版面骨架」與「畫布內容」），2026-08-23
   從 `tree.astro` 搬過去——搬的當下就抓到一個真 bug：`/sim` 完全沒有節點外觀那一節，標籤吃
   SVG 預設的 **16px**（使用者座標），**別的節點的標籤蓋住了 10 顆節點的圖示中心**，症狀是
   「點某幾顆完全沒反應」。⚠️ 反例測過：擋住這件事的是**字級**——單獨拿掉
@@ -587,7 +641,7 @@ PNG，檔名＝內容 sha256 前 12 碼，`addIcon()` 直接重用）＋ `data/b
   繞過這條路徑（S3 就是這樣一直綠著的）。S17 用真滑鼠、S17b 直接驗「元素沒被換掉」這個根因；
   **手機的觸控拖曳 Playwright 驅動不了原生 range，只能真機驗**。
 - ⚠️ **狀態色的 `filter` 會蓋掉鍵盤焦點的 `#focus-ring`。** `#tree.sim .node.sim-available .icon`
-  的具體度 (1,4,0) 壓過 global.css 的 `.node:focus .icon` (0,3,0)，而 `.node:focus` 已經
+  的具體度 (1,4,0) 壓過 canvas.css 的 `.node:focus .icon` (0,3,0)，而 `.node:focus` 已經
   `outline: none`——Tab 到「可取得」或「已選取」的節點時**畫面零變化**。補一條
   `.sim-available:focus .icon` (1,5,0) 拿回來。這是這份文件為 `/tree` 記過的同一族坑。S15 守。
 - ⚠️ **`#sim-toast` 是這一頁唯一的 `role="status"`，不可以用 `hidden` 收放。** 收放靠清空

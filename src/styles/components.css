@@ -1,0 +1,271 @@
+/* --- 首頁 --- */
+.home-links {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+  gap: var(--space-3);
+  margin: var(--space-5) 0;
+}
+/* 首頁入口卡與遊戲介紹索引卡是同一種東西，共用一份宣告（分開寫過，兩邊逐字相同）。 */
+:is(.home-card, .guide-card) {
+  padding: var(--space-4);
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-1);
+  color: var(--fg);
+  text-decoration: none;
+  transition:
+    border-color var(--t-fast) ease,
+    box-shadow var(--t-fast) ease,
+    transform var(--t-fast) ease;
+}
+:is(.home-card, .guide-card):hover,
+:is(.home-card, .guide-card):focus-visible {
+  border-color: var(--gold);
+  box-shadow: var(--shadow-2);
+  transform: translateY(-2px);
+  text-decoration: none;
+}
+.home-card h2 {
+  margin: 0 0 var(--space-2);
+  font-size: var(--fs-base);
+  color: var(--gold);
+}
+.home-card p {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--fs-sm);
+}
+
+.home-changelog {
+  padding-top: 0;
+}
+/* 跟 .kw-section h2 同一種樣子：內容頁的 <h2> 一律左邊一條金線。之前只有詞條區塊有，
+   首頁的「更新日誌」是裸標題，同一種東西兩種長相。 */
+.home-changelog h2 {
+  margin: 0 0 var(--space-3);
+  padding-left: var(--space-3);
+  border-left: 4px solid var(--gold);
+  font-size: var(--fs-lg);
+}
+.log-entry {
+  padding: var(--space-3) 0;
+  border-top: 1px solid var(--border);
+}
+.log-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-2);
+}
+.log-head time {
+  color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: var(--fs-sm);
+}
+.log-stamp {
+  color: var(--gold);
+  font-size: var(--fs-xs);
+}
+.log-entry ul {
+  margin: 0;
+  padding-left: var(--space-5);
+  color: var(--muted);
+  font-size: var(--fs-md);
+}
+
+/* 篩選分組（/dice 與 /tree 共用）。
+   ⚠️ 這裡刻意不用 `<fieldset><legend>`：`<legend>` 是特殊盒子，瀏覽器一律把它排在版面
+   **之外**的自己一列，要拉回同一列只能靠 `float`；而 float 得靠祖先的 `overflow: hidden`
+   收住，那會把切換鈕的鍵盤焦點框裁掉（outline 由祖先的 overflow 裁切，實測只剩 2.94px
+   餘裕而焦點框要 4px），換行的列距也只剩手算的 line-height 可用——正是 CLAUDE.md 說
+   咬過五次的「寫死的版面偏移量」。一般的 flex 容器 ＋ gap 一次解決這三件事。
+   無障礙由標記上的 role="group" ＋ aria-label 顧，跟 fieldset/legend 等價。 */
+.filter-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+.filter-group-label {
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  /* 被擠窄時「分支」會折成上下兩個字（2026-08-22 實測手機版）。 */
+  white-space: nowrap;
+}
+
+/* --- 篩選切換鈕 ---
+   外觀是按鈕，骨子裡還是 <label> ＋ 真的 checkbox（見 dice.astro 的說明）。checkbox 用
+   絕對定位攤平成整顆鈕的大小、opacity: 0：它還在原地接點擊與鍵盤焦點，只是看不見。
+   ⚠️ 不要改成 `display: none` 或 `visibility: hidden`——那會讓它退出 Tab 順序，篩選器就
+   只剩滑鼠能用了。 */
+.chip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-3);
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--r-pill);
+  color: var(--muted);
+  font: inherit;
+  font-size: var(--fs-sm);
+  line-height: 1.8;
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+  /* ⚠️ 切換鈕自己不帶 margin：間距一律由 .filter-group 的 gap 給。早期版本用 margin-bottom
+     撐換行的列距，結果在 /tree 的工具列裡把鈕的中心往上推 2.0px，E2E 的 P（工具列共用同一
+     條中線）直接紅。 */
+  margin: 0;
+  transition:
+    color var(--t-fast) ease,
+    background-color var(--t-fast) ease,
+    border-color var(--t-fast) ease;
+}
+.chip input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+.chip:hover {
+  border-color: var(--border-strong);
+  color: var(--fg);
+}
+/* 選中：邊框與底色都走該分支的顏色，一眼看得出開著的是哪幾系。
+   底色只混 18%，不是整顆塗滿——五顆同時亮起來時，塗滿會比底下的卡片還搶眼。 */
+.chip:has(input:checked),
+.chip[data-active] {
+  border-color: var(--branch, var(--gold));
+  /* 前一行是 fallback，理由同 #site-nav。 */
+  background: var(--surface-3);
+  background: color-mix(in srgb, var(--branch, var(--gold)) 18%, var(--surface-1));
+  color: var(--fg);
+}
+/* 焦點框畫在整顆鈕上。checkbox 自己是透明的，:focus-visible 落在它身上時看不到任何東西。 */
+.chip:has(input:focus-visible),
+.chip:focus-visible {
+  outline: var(--ring);
+  outline-offset: var(--ring-offset);
+}
+/* 分支色點：文字前面一顆小圓點，讓「自然／工學／魔法…」不必靠記顏色。
+   用 background 而不是文字色：色點要在深色底上看得見，而五個分支色的對比度不一致。
+   （2026-08-26 從 content.css 搬過來：三個使用點——dice.astro、tree.astro、DiceCard.astro——
+   全部在切換鈕或卡片裡，它是元件不是內容，只是原 global.css 裡它剛好貼著 .page 那段。） */
+.branch-dot {
+  display: inline-block;
+  width: 0.6em;
+  height: 0.6em;
+  margin-right: 0.35em;
+  border-radius: 50%;
+  vertical-align: baseline;
+}
+.branch-nature { background: var(--nature); }
+.branch-engineering { background: var(--engineering); }
+.branch-magic { background: var(--magic); }
+.branch-order { background: var(--order); }
+.branch-chaos { background: var(--chaos); }
+
+/* 沒選中的色點壓暗，但不要拿掉——顏色本身就是「哪一系」的說明，關掉的時候也要看得到。 */
+.chip .branch-dot {
+  margin-right: 0;
+  opacity: 0.45;
+  transition: opacity var(--t-fast) ease;
+}
+.chip:has(input:checked) .branch-dot {
+  opacity: 1;
+}
+
+/*
+ * 退化路徑：讓原生 checkbox 現身。
+ *
+ * 切換鈕的「選中」狀態完全靠 `:has(input:checked)` ＋ 底色／邊框色表達，而底下那個真正的
+ * checkbox 是 `opacity: 0` 的。兩種環境下這套會整個失效：
+ *   - 不支援 `:has()` 的引擎：五顆鈕不管有沒有選中都長得一模一樣，焦點也看不見。
+ *   - `forced-colors: active`（Windows 高對比）：background-color 被系統覆寫、border-color
+ *     被強制成系統色，同樣分不出選中與否。
+ * 兩種情況都把 checkbox 放回正常流程——瀏覽器自己就會畫勾選框與焦點框，樣子樸素但**能用**。
+ * （tree.astro 的 `@supports not selector(:has(*))` 是同一種處理方式。）
+ */
+@supports not selector(:has(*)) {
+  .chip input {
+    position: static;
+    width: auto;
+    height: auto;
+    opacity: 1;
+  }
+}
+@media (forced-colors: active) {
+  .chip input {
+    position: static;
+    width: auto;
+    height: auto;
+    opacity: 1;
+  }
+}
+
+/* 卡片左緣的分支色條（2026-08-22）。五系色本來只活在 /tree 的畫布裡，圖鑑上 41 張卡片
+   長得一模一樣，要靠讀文字才知道是哪一系。
+   用 border-left 而不是 ::before：`.card-term` 是 `inset: 0` 的絕對定位覆蓋層，它的定位
+   基準是卡片的**內距框**，會蓋掉任何畫在內距框裡的東西——色條畫成邊框才留得住。
+   （同理，左邊框從 1px 變 3px 會讓內距框整體右移 2px，但本文與覆蓋層是一起移的，
+   兩者不會錯位，所以不需要補 padding。） */
+:is(.dice-card, .chip)[data-branch='nature'] { --branch: var(--nature); }
+:is(.dice-card, .chip)[data-branch='engineering'] { --branch: var(--engineering); }
+:is(.dice-card, .chip)[data-branch='magic'] { --branch: var(--magic); }
+:is(.dice-card, .chip)[data-branch='order'] { --branch: var(--order); }
+:is(.dice-card, .chip)[data-branch='chaos'] { --branch: var(--chaos); }
+/* 卡片裡的切換鈕比篩選列的小一階：一張卡片上要塞四顆，而它是輔助控制項不是主角。 */
+.chip-xs {
+  padding: 0 var(--space-2);
+  font-size: var(--fs-xs);
+  line-height: 1.9;
+}
+
+/* --- 遊戲介紹索引 --- */
+.guide-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr));
+  gap: var(--space-3);
+  margin-top: var(--space-5);
+}
+.guide-card h2 {
+  margin: var(--space-2) 0 var(--space-2);
+  font-size: var(--fs-base);
+  color: var(--gold);
+}
+.guide-card p {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--fs-sm);
+}
+.guide-swatch {
+  display: flex;
+  gap: 3px;
+}
+.guide-swatch span {
+  width: 1.5rem;
+  height: 0.35rem;
+  border-radius: var(--r-xs);
+}
+
+
+/* 減少動態：跨頁共用元件這一份。理由與寫法見 chrome.css 檔尾同一段。 */
+@media (prefers-reduced-motion: reduce) {
+  .home-card,
+  .guide-card,
+  .chip,
+  .chip .branch-dot {
+    transition: none;
+  }
+  .home-card:hover,
+  .guide-card:hover {
+    transform: none;
+  }
+}

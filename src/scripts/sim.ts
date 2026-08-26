@@ -5,7 +5,7 @@
 //
 // ⚠️ **不重用 src/scripts/tree-canvas.ts**：那支是 side-effect 腳本（載入即掛載），而且跟
 // /tree 的篩選器、詳情卡片擺位、高解析圖示 LOD 綁死。共用的是純函式層（renderTree、
-// Viewport、graph、cost）與 global.css 的畫布骨架。
+// Viewport、graph、cost）與 canvas.css 的畫布骨架。
 import rawData from '../generated/tree.json';
 import rawTables from '../../data/passive-upgrade-cost.json';
 import { renderTree } from '../lib/render.js';

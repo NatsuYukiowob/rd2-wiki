@@ -115,13 +115,13 @@ describe('iconRect', () => {
     expect(r).toEqual({ x: 11, y: 11, w: 78, h: 78 });
   });
 
-  // ⚠️ `iconRect` 的預設 0.78 跟 global.css 的 `.board-cell img { width: 78% }` 是配套關係
+  // ⚠️ `iconRect` 的預設 0.78 跟 board.css 的 `.board-cell img { width: 78% }` 是配套關係
   // （分享圖比例要跟螢幕上看到的一致），但兩邊各寫死同一個數字、沒有任何自動化在守。
-  // 這條直接讀 global.css 把兩邊比對起來，手法跟 tests/styles/tokens.test.ts 一樣。
-  it('預設比例與 global.css 的 .board-cell img 78% 一致，不會各自漂移', () => {
-    const css = readFileSync('src/styles/global.css', 'utf8');
+  // 這條直接讀 board.css 把兩邊比對起來，手法跟 tests/styles/tokens.test.ts 一樣。
+  it('預設比例與 board.css 的 .board-cell img 78% 一致，不會各自漂移', () => {
+    const css = readFileSync('src/styles/board.css', 'utf8');
     const m = /\.board-cell img \{[^}]*width:\s*(\d+)%/.exec(css);
-    expect(m, '在 global.css 找不到 .board-cell img 的 width 百分比').not.toBeNull();
+    expect(m, '在 board.css 找不到 .board-cell img 的 width 百分比').not.toBeNull();
     const cssRatio = Number(m![1]) / 100;
 
     const square = iconRect({ x: 0, y: 0, w: 100, h: 100 }, 100, 100);
@@ -138,7 +138,7 @@ describe('iconRect', () => {
  * （`naturalWidth` 仍 > 0）、B14 也全綠（它量的是 canvas 產出的分享圖，吃的是 `iconRect`
  * 不是 CSS）——CI 一片綠，畫面上每顆骰子的角被裁掉。
  *
- * 手法跟上面那條 78% ↔ 0.78 的綁定測試一樣：直接讀 `global.css` 把不變量釘在檔案裡。
+ * 手法跟上面那條 78% ↔ 0.78 的綁定測試一樣：直接讀 `board.css` 把不變量釘在檔案裡。
  * ⚠️ `.drag-ghost` 也在清單裡——它是第四個顯示點（拖曳時跟在指標下方的那張圖），
  * review 之前 CLAUDE.md 的清單漏了它。
  */
@@ -151,12 +151,12 @@ describe('/board 骰子圖示的 object-fit 不變量', () => {
   ] as const;
 
   it.each(DISPLAY_POINTS)('%s（%s）是 object-fit: contain，不是 cover', (selector) => {
-    const css = readFileSync('src/styles/global.css', 'utf8');
+    const css = readFileSync('src/styles/board.css', 'utf8');
     const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const re = new RegExp(`${escaped}\\s*\\{[^}]*object-fit:\\s*contain`);
     expect(
       re.test(css),
-      `global.css 的 ${selector} 不是 object-fit: contain——純骰子圖的長寬比不統一（0.847–0.935），`
+      `board.css 的 ${selector} 不是 object-fit: contain——純骰子圖的長寬比不統一（0.847–0.935），`
       + '方框裡改用 cover 會把骰子的角裁掉，而且沒有任何其他測試會說話',
     ).toBe(true);
   });

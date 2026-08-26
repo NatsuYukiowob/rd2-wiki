@@ -1,0 +1,190 @@
+/*
+ * 只針對全站導覽列，不要用裸的 `nav` 元素選擇器：骰子樹頁面還有第二個 <nav id="branch-nav">
+ * （桌機側欄的分支跳轉），裸選擇器會把這裡的樣式一起套上去。#branch-nav 在 tree.astro 覆寫了
+ * display／flex-direction／gap／padding，唯獨沒覆寫 border-bottom，於是它背景透明的盒子在
+ * 最後一顆分支按鈕底下拖出一條無主的橫線，浮在畫布上（2026-08-18 人工檢視回報）。
+ */
+#site-nav {
+  /* 沾在視窗頂端（2026-08-22）：/dice 有 41 張卡片、/guide 每頁十幾個詞條，捲到一半就
+     再也回不了導覽列。z-index 要蓋過 /tree 的 #tree-controls（5）與 /dice 的 .filters
+     （20），底下的 .nav-menu-items 才不會被那兩層穿透過來。 */
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  /* 半透明＋模糊：捲動時底下的內容從導覽列後面透出來一點，看得出來它是浮在上面的一層，
+     而不是把頁面切掉一條。不透明度留 88% 以上，文字對比才夠。 */
+  /* 前一行是 fallback：不支援 color-mix 的引擎會丟掉後一行，若沒有 fallback，沾頂的導覽列
+     會變成全透明、內容直接從它後面穿過去。 */
+  background: var(--surface-2);
+  background: color-mix(in srgb, var(--surface-2) 88%, transparent);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--border);
+}
+
+/* 導覽列的連結預設不是金色。全部都金色的時候「你在哪一頁」就沒有地方講了——金色留給
+   站名與目前所在的那一頁，其餘用一般文字色，hover 才轉金。 */
+#site-nav a {
+  position: relative;
+  color: var(--fg);
+  text-decoration: none;
+  font-weight: 600;
+  transition: color var(--t-fast) ease;
+}
+
+#site-nav a:hover {
+  color: var(--gold);
+  text-decoration: none;
+}
+
+#site-nav .brand {
+  color: var(--gold);
+}
+
+/* 導覽列的每一項都不准自己斷行。中文沒有空白，瀏覽器會在任何兩個字之間斷開——Pixel 7 寬度下
+   實測「rd2-wiki」「骰子樹」「圖鑑」各自折成兩行，沾頂的導覽列因此吃掉近兩成畫面高度
+   （2026-08-22 人工檢視發現）。
+   ⚠️ 真正讓 Pixel 7 塞得下的是底下媒體查詢裡的「手機不顯示上次更新」——E2E 的 D9 實測只有
+   那一條拿掉才會紅。這條 nowrap 是防更窄的裝置與日後變長的項目名，不要因為「拿掉也是綠的」
+   就順手刪掉。 */
+#site-nav a,
+#site-nav .nav-menu > summary {
+  white-space: nowrap;
+}
+
+#site-nav .nav-updated {
+  margin-left: auto;
+  color: var(--muted);
+}
+
+@media (max-width: 720px) {
+  #site-nav {
+    gap: var(--space-3);
+  }
+  /* 手機版塞不下「上次更新 2026-08-22」這一段（它比其他四項加起來還寬）。這個日期在首頁的
+     版本資訊列與更新日誌各有一份，導覽列只是順手顯示，不是唯一來源。斷點跟 /tree 的手機版
+     版面同一個 720px。 */
+  #site-nav .nav-updated {
+    display: none;
+  }
+}
+
+/* 窄螢幕：導覽列自己橫向捲動（Yuki 2026-08-23 指定「讓他可以左右拖動即可」）。
+   六個入口在 320px 塞不下，而 `#site-nav` 是 sticky 又不准換行（換行等於永久佔掉一條畫面）。
+   ⚠️ 捲的是**導覽列自己**，不是整份文件——`/board` 的 B13 驗的是 document 不得出現橫向
+   捲動，那條仍然成立。
+   ⚠️ `overflow-x` 一設，`overflow-y` 就會被算成 auto，而「遊戲介紹」的下拉是絕對定位掛在
+   nav 底下的，會被裁掉——所以要明確寫 `overflow-y: visible`。 */
+@media (max-width: 720px) {
+  #site-nav {
+    overflow-x: auto;
+    overflow-y: visible;
+    scrollbar-width: none;
+  }
+  #site-nav::-webkit-scrollbar {
+    display: none;
+  }
+  #site-nav > * {
+    flex: none;
+  }
+}
+
+/* 目前所在的分頁：金色字＋壓在導覽列下框線上的一條金線。
+   `bottom` 要正好等於 nav 的下內距加那 1px 框線，金線才會蓋在框線上，而不是浮在半空。 */
+/* ⚠️ 選擇器要把 `.nav-menu > summary` 一起列進來。只寫 `#site-nav [aria-current='page']`
+   的具體度是 (1,1,0)，輸給 `#site-nav .nav-menu > summary` 的 (1,1,1)——下拉的「遊戲介紹」
+   會拿到金線卻拿不到金字，又是一次「兩條規則各贏一半」（2026-08-22 review 抓到，
+   實測 computed color 仍是 --fg）。 */
+#site-nav [aria-current='page'],
+#site-nav .nav-menu > summary[aria-current='page'] {
+  color: var(--gold);
+}
+
+/* ⚠️ 一定要用 ::before。`#site-nav .nav-menu > summary::after` 已經拿 ::after 畫下拉的
+   ▾ 箭頭，而那條選擇器的具體度（id＋class＋型別）比 `#site-nav [aria-current='page']`
+   （id＋屬性）高——用 ::after 的話 content 仍是 ▾，卻吃到這裡的絕對定位，箭頭會被拉成
+   一條金色橫槓掉到導覽列外面（2026-08-22 實際發生過）。 */
+#site-nav [aria-current='page']::before {
+  content: '';
+  position: absolute;
+  right: 0;
+  bottom: calc(var(--space-3) * -1 - 1px);
+  left: 0;
+  height: 2px;
+  background: var(--gold);
+  border-radius: var(--r-pill);
+}
+
+/* --- 導覽列的下拉選單（<details>）--- */
+#site-nav .nav-menu {
+  position: relative;
+}
+#site-nav .nav-menu > summary {
+  /* list-style: none ＋ ::-webkit-details-marker：兩者都要，才能在所有瀏覽器上拿掉
+     <summary> 預設的三角形。留著的話它會跟自己畫的箭頭疊成兩個記號。 */
+  position: relative;
+  list-style: none;
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--fg);
+  user-select: none;
+  transition: color var(--t-fast) ease;
+}
+#site-nav .nav-menu > summary::-webkit-details-marker {
+  display: none;
+}
+#site-nav .nav-menu > summary::after {
+  content: '▾';
+  margin-left: 0.25em;
+  font-size: 0.8em;
+  color: var(--muted);
+}
+#site-nav .nav-menu > summary:hover {
+  color: var(--gold);
+}
+#site-nav .nav-menu-items {
+  position: absolute;
+  z-index: 30; /* 蓋過 /tree 的 #tree-controls（它是 position: fixed 的浮層） */
+  top: calc(100% + var(--space-2));
+  left: calc(var(--space-2) * -1);
+  display: flex;
+  flex-direction: column;
+  min-width: 12rem;
+  padding: var(--space-1);
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-3);
+}
+#site-nav .nav-menu-items a {
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--r-sm);
+  font-weight: 500;
+}
+#site-nav .nav-menu-items a:hover,
+#site-nav .nav-menu-items a:focus-visible {
+  background: var(--surface-3);
+  color: var(--fg);
+  text-decoration: none;
+}
+/* 下拉選單裡的目前分頁不畫底線槓（那條槓是給導覽列那一列用的），只留金色字。 */
+#site-nav .nav-menu-items [aria-current='page']::before {
+  content: none;
+}
+
+
+/* 減少動態：導覽列這一份。
+   2026-08-26 拆檔之前這些集中在舊的 `global.css` 檔尾一張總表；拆檔之後「檔尾」不再唯一，
+   總表會變成跨九個檔的遠端依賴，所以改成每個檔帶自己的一份。
+   ⚠️ 刻意不寫成 `* { transition-duration: 0.01ms !important }`——那會連 opacity 一起關掉，
+   而 /tree 的篩選淡出是靠 opacity 在**傳達資訊**（這個節點被篩掉了），不是裝飾。 */
+@media (prefers-reduced-motion: reduce) {
+  #site-nav a,
+  #site-nav .nav-menu > summary {
+    transition: none;
+  }
+}

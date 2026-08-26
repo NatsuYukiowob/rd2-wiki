@@ -172,7 +172,7 @@ export function renderTree(data: TreeData, doc: Document): SVGSVGElement {
     if (!a || !b) throw new Error(`邊端點找不到對應節點：${from} -> ${to}`);
 
     const line = doc.createElementNS(NS, 'line');
-    // 指向「可直接領、無視骰子樹前置」節點的入邊畫成虛線（樣式在 src/styles/global.css，**不是** tree.astro——後者只有 `.edge` 的基礎規則）。
+    // 指向「可直接領、無視骰子樹前置」節點的入邊畫成虛線（樣式在 src/styles/canvas.css，**不是** tree.astro——後者只有 `.edge` 的基礎規則）。
     // 只看終點：邊本身沒有屬性，是「b 這顆可以不解前置」讓通往它的每一條路都變成可選的。
     line.setAttribute('class', b.bypassPrereq ? 'edge edge-bypassable' : 'edge');
     line.setAttribute('x1', String(a.x));
