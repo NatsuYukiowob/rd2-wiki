@@ -183,7 +183,11 @@ const TYPES: Array<[string, string]> = [
   }
   #filters.animating {
     overflow: hidden;
-    transition: width var(--t-med) var(--slide-ease);
+    /* 開合走 --e-spring（2026-08-26 PR ⑥）：面板開合是「狀態真的變了」，spec §2 決策 4
+       指定的兩個 spring 使用點之一（另一個是切換鈕被勾選）。⚠️ 長度仍是 --t-med，因為
+       `src/scripts/tree-canvas.ts` 的 FILTERS_MS 讀的是它——只換曲線不換長度，JS 的收尾
+       時機不受影響。 */
+    transition: width var(--t-med) var(--e-spring);
   }
   @media (prefers-reduced-motion: reduce) {
     #filters.animating {
@@ -291,6 +295,15 @@ const TYPES: Array<[string, string]> = [
   #filters-toggle:hover {
     border-color: var(--border-strong);
   }
+  /* 按下去縮一下（2026-08-26 PR ⑥）。⚠️ #filters-toggle 縮的是**按鈕本體**，它的 ::after
+     箭頭已經有自己的 transform（展開時轉向），兩者不會互相蓋掉——一個在元素上、一個在
+     偽元素上。 */
+  :is(#filters-toggle, #filter-clear, #branch-chips button) {
+    transition: transform var(--t-press) var(--e-out);
+  }
+  :is(#filters-toggle, #filter-clear, #branch-chips button):active {
+    transform: scale(var(--p-press));
+  }
   /* 展開狀態：箭頭轉向。選擇器綁 aria-expanded，樣式與無障礙狀態不會各講各的。
      桌機的面板是往右邊長出來的，所以箭頭是左右向（▸ 收起／◂ 展開），不是上下。
      手機版是往下掉的抽屜，下面的媒體查詢換回 ▾。 */
@@ -298,7 +311,7 @@ const TYPES: Array<[string, string]> = [
     content: '▸';
     color: var(--muted);
     font-size: var(--fs-xs);
-    transition: transform var(--t-fast) ease;
+    transition: transform var(--t-press) var(--e-out);
   }
   #filters-toggle[aria-expanded='true']::after {
     transform: rotate(180deg);
@@ -314,7 +327,7 @@ const TYPES: Array<[string, string]> = [
     height: 0.5rem;
     border-radius: var(--r-pill);
     background: transparent;
-    transition: background-color var(--t-fast) ease;
+    transition: background-color var(--t-fast) var(--e-out);
   }
   #filters-toggle.active {
     border-color: var(--gold);
@@ -445,6 +458,16 @@ const TYPES: Array<[string, string]> = [
     #filters-toggle::before,
     #filters-toggle::after {
       transition: none;
+    }
+    /* ⚠️ 這兩條的選擇器要跟上面那兩條**一模一樣**（連 `:is()` 的包法都要一樣）。
+       `:is()` 的具體度等於引數裡最高的那一個——`:is(#filters-toggle, …, #branch-chips button):active`
+       是 (1,1,1)，攤開來寫的 `#filters-toggle:active` 只有 (1,1,0)，會被壓過去。
+       2026-08-26 實測踩到：reduce 之下按鈕照樣縮，是 E2E 的 D18 抓出來的。 */
+    :is(#filters-toggle, #filter-clear, #branch-chips button) {
+      transition: none;
+    }
+    :is(#filters-toggle, #filter-clear, #branch-chips button):active {
+      transform: none;
     }
   }
 </style>

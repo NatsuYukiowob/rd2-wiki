@@ -7,7 +7,7 @@
 import { test, expect } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import sharp from 'sharp';
-import { resolveColor } from './probe';
+import { resolveColor, settleEnter } from './probe';
 
 const tree = JSON.parse(
   readFileSync(new URL('../../src/generated/tree.json', import.meta.url), 'utf8'),
@@ -72,6 +72,9 @@ test('C3. 卡片裡的 #關鍵字 就地換頁：左右滑動過場、卡片高�
   const term = (await link.getAttribute('data-term'))!;
 
   // 高度是這個設計唯一的硬性要求：41 張卡片排在 CSS grid 裡，任何一張改高度都會推動整列。
+  // ⚠️ 先等進場動畫收掉再量：動畫期間卡片掛著 transform，boundingBox 會帶次像素誤差，
+  // 底下那條嚴格相等會假紅（2026-08-26 實測 368.8124694824219 vs 368.8125）。見 probe.ts。
+  await settleEnter(page);
   const box = (await card.boundingBox())!;
   const before = box.height;
   await expect(stage).toBeHidden();

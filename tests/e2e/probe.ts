@@ -15,3 +15,19 @@ export async function resolveColor(page: Page, cssVar: string): Promise<string> 
     return c;
   }, cssVar);
 }
+
+/**
+ * 等進場動畫（PR ⑥）跑完再往下量。
+ *
+ * `[data-enter]` 期間卡片掛著 `animation: rise … both`，而**帶 transform 的元素量出來的
+ * boundingBox 會有次像素誤差**——C3 斷言「翻到關鍵字頁前後卡片高度一模一樣」用的是嚴格
+ * 相等，2026-08-26 實測撞到 `368.8124694824219` vs `368.8125` 這種差 3e-5 的假紅。
+ *
+ * ⚠️ 這不是把測試放寬，是把它移到正確的時間點量：動畫進行中的幾何本來就不是這條測試
+ * 要守的東西。凡是在 /dice、/、/guide 上量卡片幾何的測試都該先呼叫它。
+ * ⚠️ 也不要改成「固定等一秒」——長度由 CSS 的 --t-slow／--p-stagger 決定，寫死就是第二份。
+ */
+export async function settleEnter(page: Page): Promise<void> {
+  await page.waitForFunction(() => !document.documentElement.hasAttribute('data-enter'),
+    undefined, { timeout: 5000 });
+}

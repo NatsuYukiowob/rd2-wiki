@@ -52,10 +52,11 @@
   border: 1px solid var(--border);
   border-radius: var(--r-md);
   box-shadow: var(--face);
+  /* transform 走 --t-press、色與影走 --t-fast，理由同 components.css 的卡片。 */
   transition:
-    border-color var(--t-fast) ease,
-    box-shadow var(--t-fast) ease,
-    transform var(--t-fast) ease;
+    border-color var(--t-fast) var(--e-out),
+    box-shadow var(--t-fast) var(--e-out),
+    transform var(--t-press) var(--e-out);
 }
 /* 頂緣 3px 的屬性色漸層——這是卡片上**唯一**的分支色（Yuki 2026-08-26 拍板拿掉左緣色條，
    兩條同色的線圍成「⌐」太吵，留上面那條就夠）。
@@ -190,7 +191,7 @@
   /* 切檔時只有透明度會變。**尺寸不動這件事不是這裡守的**，是 .stat-v 的 inline-grid 疊放
      （見下面）——41 張卡片排在 CSS grid 裡，任何一顆 pill 變寬都可能多擠出一列而把同一列的
      鄰居一起撐高，同 /tree 工具列那條「會出現／消失的東西尺寸不准變」的教訓。 */
-  transition: opacity var(--t-fast) ease;
+  transition: opacity var(--t-fast) var(--e-out);
 }
 /* ⚠️ 字距走 --ls-label（跟 .meta 同源），並且**只有這個 token 可以動**：pill 會 wrap，
    字距一改就是 pill 變寬，而卡片在 CSS grid 的同一列裡會被最寬的鄰居撐高（同下面 .stat-v
@@ -347,11 +348,21 @@
   font: inherit;
   line-height: 1;
   cursor: pointer;
+  transition:
+    background-color var(--t-fast) var(--e-out),
+    color var(--t-fast) var(--e-out),
+    transform var(--t-press) var(--e-out);
 }
 .card-term-back:hover,
 .card-term-back:focus-visible {
   background: rgb(255 255 255 / 10%);
   color: var(--fg);
+}
+/* 按下去縮一下（2026-08-26 PR ⑥）。這顆 ← 是關鍵字就地視圖唯一的返回路徑，手機上按了到
+   畫面換掉之間有 --slide-ms 的過場，中間沒有回饋會讓人以為沒按到而連按兩次。
+   ⚠️ 要寫在 :hover 那條之後，同具體度靠後到者勝。 */
+.card-term-back:active {
+  transform: scale(var(--p-press));
 }
 .card-term-title {
   margin: 0;
@@ -378,6 +389,12 @@
     transition: none;
   }
   .dice-card:hover {
+    transform: none;
+  }
+  .card-term-back {
+    transition: none;
+  }
+  .card-term-back:active {
     transform: none;
   }
 }

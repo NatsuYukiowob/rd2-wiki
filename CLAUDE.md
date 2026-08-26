@@ -295,7 +295,7 @@ npm run compare -- <beforeURL> <afterURL>  # computed-style 逐元素比對，�
 
 ## 設計系統
 
-`:root` 有七組 token，全部定義在 **`src/styles/tokens.css`**，**新增樣式一律用它們**：
+`:root` 有八組 token，全部定義在 **`src/styles/tokens.css`**，**新增樣式一律用它們**：
 ⚠️ **token 定義只准留在 `tokens.css`，不要寫到別的檔**——`tests/styles/tokens.test.ts`「每個
 `var(--x)` 都真的定義得出來」那條拿 `tokens.css` 當唯一來源，正則是 `^\s{2}(--…)`（只認縮排
 兩格、不綁 `:root` 區塊，故意不合併九個檔一起掃），寫到別處會讓那條檢查對那個 token 失效。
@@ -311,7 +311,8 @@ npm run compare -- <beforeURL> <afterURL>  # computed-style 逐元素比對，�
 | 圓角 | `--r-xs/sm/md/lg/pill` | 3/4/5/7/999px（2026-08-26 整體收小一階） |
 | 字級 | `--fs-xs/sm/md/base/lg/xl/2xl/3xl` | 0.75→2.4rem（2026-08-26 拉開對比，見下） |
 | 表面 | `--surface-1/2/3`、`--border-strong` | 見下 |
-| 陰影與節奏 | `--shadow-1/2/3`、`--t-fast/med`、`--ring` | `--shadow-3` 給浮在畫布上的東西 |
+| 陰影 | `--shadow-1/2/3`、`--ring` | `--shadow-3` 給浮在畫布上的東西 |
+| 動效 | `--t-fast/press/med/slow`、`--e-out/in-out/spring`、`--p-lift/press/stagger/stagger-max/glow` | 見下 |
 | 面的質感 | `--hair`、`--face`／`--face-lift`／`--face-float`、`--p-lift` | 見下 |
 | 排印 | `--font`、`--font-num`、`--ls-label` | 見下 |
 
@@ -350,13 +351,42 @@ npm run compare -- <beforeURL> <afterURL>  # computed-style 逐元素比對，�
   `.stat-pill .stat-k`）。⚠️ 不要往內文或 1rem 的整句中文擴——中文加字距會把行內的詞界抹平，
   整行變成等距字塊（`#detail .meta` 因此刻意只掛 `--font-num`、不掛字距）。
 - **焦點框全站只有一條** `:focus-visible { outline: var(--ring) }`。元件只在需要**額外**回饋時才補。
-- **動畫長度一律用 `cssMs()` 從 CSS 讀**，JS 不寫第二份。
-- **減少動態的規則每個檔自帶一份**（`chrome.css`／`components.css`／`dice.css`／`detail.css`
-  各一個 `@media (prefers-reduced-motion: reduce)`；`/tree` 另有兩個區塊收在
+- **每一條 `transition` 都要指名 token 曲線**（`--e-out` hover／按壓／光暈／進場；`--e-in-out`
+  兩端都要停穩的位移；`--e-spring` **只給狀態切換**——目前只有切換鈕被勾選與 `/tree` 篩選面板
+  開合兩處）。裸的 `ease` 由 `tokens.test.ts` 的「過場曲線」擋住。
+  ⚠️ `--t-med`／`--slide-ms` **不准動**：`tree-canvas.ts` 的 `cssMs()` 讀它們當
+  `CENTER_MS`／`FILTERS_MS`／`SLIDE_MS`。只換曲線不換長度是安全的。
+- **按下去要有回饋**：`transform: scale(var(--p-press))`，`transform` 的過場長度走 `--t-press`。
+  ⚠️ **不要在 `:active` 裡寫 `transition-duration: var(--t-press)`**——那是單值，會把同一份
+  清單裡每個屬性的長度一起覆寫掉（切換鈕的 spring 就是這樣被關掉的）。
+  ⚠️ 停用的按鈕要 `:not(:disabled)`。
+- **進場動畫**：`[data-enter] :is(.home-card, .guide-card, .dice-card)` 掛 `rise`（`base.css`）。
+  `--i` 由 Astro 在建置時寫成 inline style，**夾上限的動作只在 CSS**
+  （`min(var(--i, 0), var(--p-stagger-max))`），模板不准自己 `Math.min`。
+  ⚠️ `data-enter` 由 `Base.astro` `<head>` 裡一支**同步的 `is:inline` script** 掛上、載入後由
+  頁尾那支 script 的 `setTimeout` 移除。兩端都不能省：不是 `is:inline` 就會被打包成 defer
+  （卡片先以定位狀態進 DOM）；不移除的話 `/dice` 用 `[hidden]` 篩選切回來時動畫會重播。
+  **不能改用 `animationend`**——`display: none` 的元素不派發那個事件。
+  ⚠️ **刻意不寫成伺服器端輸出的 `<html data-enter>`**：那樣沒有 JS 的環境會永遠留著它。
+  ⚠️ 那段期間 `animation-fill-mode: both` 的結束值會壓過 `:hover` 的 transform，載入後約一秒
+  內卡片 hover 不會抬起。已知且刻意接受。
+- **動畫長度一律用 `cssMs()` 從 CSS 讀**，JS 不寫第二份——實作只有一份，在
+  **`src/lib/css-ms.ts`**（`cssMs` 給時間值、`cssNumber` 給 `--p-stagger-max` 這種無單位的）。
+  ⚠️ **不可以用裸的 `parseFloat`**：Astro 的 CSS 壓縮會把 `440ms` 改寫成 `.44s`，`parseFloat`
+  拿到的是 **0.44**。而且**只在建置產物裡發生**，`astro dev` 不壓縮，本機完全看不出來。
+  2026-08-26 實際咬到：進場動畫的 `data-enter` 在 ~957ms 就被拿掉，41 張卡片裡 36 張還沒跑完。
+- **測試量卡片幾何前先呼叫 `settleEnter(page)`**（`tests/e2e/probe.ts`）。`[data-enter]` 期間
+  卡片掛著 transform，`boundingBox()` 會帶次像素誤差，而 `animation … both` 的結束值會**壓過
+  `:hover` 的 transform**——D14 的正向控制就是這樣變成「驗到動畫的填充值」而永遠通過的。
+- **減少動態的規則每個檔自帶一份**（`chrome.css`／`components.css`／`dice.css`／`detail.css`／
+  `board.css` 各一個 `@media (prefers-reduced-motion: reduce)`，`sim.astro` 也有一份；`/tree` 另有兩個區塊收在
   `src/pages/tree.astro` 自己的 `<style is:global>` 裡——`#filters.animating`（篩選面板寬度
   過場）與 `#filters-toggle`（三條）各一個），刻意不寫成
   `*{transition-duration:0.01ms!important}`：那會連 opacity 一起關掉，而 `/tree` 的篩選淡出是靠
   opacity 在**傳達資訊**，不是裝飾。
+  ⚠️ **reduce 的覆寫選擇器要跟被覆寫的那一條長得一模一樣**，`:is()` 的包法也要一樣：
+  `:is()` 的具體度等於它引數裡最高的那一個，攤開來寫會比包起來寫低一階而輸掉。
+  2026-08-26 實測踩過（`/board` 與 `/tree` 的按壓在 reduce 之下照樣縮，E2E 的 D18 抓到）。
   ⚠️ **`tokens.css` 也有一個 reduce 區塊，而且它是唯一一個改 token 而不是改元件的**：
   重新宣告 `--face-lift`，把下緣硬邊從 `calc(2px + var(--p-lift))` 壓回 2px。理由與「為什麼
   不能在元件的 reduce 區塊裡覆寫 `--p-lift`」寫在該處——**自訂屬性的 `var()` 代換是在宣告
@@ -384,7 +414,7 @@ npm run compare -- <beforeURL> <afterURL>  # computed-style 逐元素比對，�
 
 | 檔 | 放什麼 | 誰載 |
 |---|---|---|
-| `tokens.css` | `:root` 的七組 token（間距／圓角／字級／表面／陰影與節奏／面的質感／排印）——**唯一**允許定義 token 的地方 | Base |
+| `tokens.css` | `:root` 的八組 token（間距／圓角／字級／表面／陰影／面的質感／排印／動效）——**唯一**允許定義 token 的地方 | Base |
 | `base.css` | 全站重置（`*`／`html`／`body`／`main`／`footer`／`a`／`pre`）＋ `.sr-only` | Base |
 | `chrome.css` | 全站導覽列 `#site-nav`（含「遊戲介紹」下拉） | Base |
 | `content.css` | 靜態內容頁共用 `.page`（首頁／圖鑑／遊戲介紹）＋首頁訪客計數器 `#hit-counter`＋詞彙頁 `.kw-*` | Base |

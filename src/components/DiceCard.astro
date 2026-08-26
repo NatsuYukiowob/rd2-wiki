@@ -25,9 +25,14 @@ interface Props {
   upgradeCostTable: UpgradeCostTable | null;
   /** 官方基本能力值與強化數據；沒有這顆的資料就整塊不顯示（不要印一塊空面板）。 */
   stats: DiceStatEntry | null;
+  /** 這張卡片在列表裡的序號，寫成 `--i` 給進場動畫排 stagger（src/styles/base.css）。
+   *  ⚠️ 名字刻意不叫 `index`——那個已經被上面的 GlossaryIndex 佔走了，兩個都叫 index
+   *  會是「同一個名字兩件事」。⚠️ **不要在這裡夾上限**：夾的動作在 CSS
+   *  （`min(var(--i), var(--p-stagger-max))`），寫在這裡就是同一個上限散成兩份。 */
+  enterIndex: number;
 }
 
-const { node, gameId, index, whitelist, glossary, upgradeCostTable, stats } = Astro.props;
+const { node, gameId, index, whitelist, glossary, upgradeCostTable, stats, enterIndex } = Astro.props;
 
 const desc = renderStaticText(node.description, whitelist, glossary, index);
 const awakening = node.awakening ? renderStaticText(node.awakening, whitelist, glossary, index) : null;
@@ -41,7 +46,7 @@ const maxUpgrade = upgradeTableApplies(upgradeCostTable, node)
 const modeName = `stat-mode-${node.id}`;
 ---
 
-<article class="dice-card" id={`n${node.id}`} data-branch={node.branch} data-type={node.type}>
+<article class="dice-card" id={`n${node.id}`} data-branch={node.branch} data-type={node.type} style={`--i:${enterIndex}`}>
   <!-- 卡片本文是「第 0 層」。關鍵字的就地視圖會蓋在它上面，換頁時它跟著往左退、淡出，
        跟 /tree 詳情面板的過場同一種動作——所以它必須是一個可以整塊 transform 的元素，
        不能是一堆散落在 .dice-card 底下的兄弟節點。 -->

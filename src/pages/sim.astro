@@ -157,11 +157,19 @@ const optional = [...ctx.optional]
     background: var(--surface-1);
     border: 1px solid var(--border-strong);
     border-radius: var(--r-sm);
-    transition: background var(--t-fast);
+    transition:
+      background var(--t-fast) var(--e-out),
+      transform var(--t-press) var(--e-out);
   }
 
   #sim-toolbar button:hover:not(:disabled) {
     background: var(--surface-3);
+  }
+
+  /* 按下去縮一下（2026-08-26 PR ⑥）。⚠️ `:not(:disabled)`：模擬器的按鈕會在跑不動的時候
+     停用，按不動的東西不該有按下去的回饋。 */
+  #sim-toolbar button:not(:disabled):active {
+    transform: scale(var(--p-press));
   }
 
   #sim-toolbar button:disabled {
@@ -629,6 +637,22 @@ const optional = [...ctx.optional]
        <main> 是 flex: 1，footer 變高只會讓畫布跟著縮，不會把捲軸叫回來。 */
     body:has(#canvas-host) footer {
       padding-bottom: calc(var(--space-4) + var(--sim-panel-h, 42dvh));
+    }
+  }
+
+  /* 減少動態：模擬器這一份。理由與寫法見 chrome.css 檔尾同一段。
+     ⚠️ 這一頁 2026-08-26 之前沒有這一段（它只有一條沒有曲線的 background 過場）；
+     PR ⑥ 給按鈕加上按壓回饋之後才需要。 */
+  @media (prefers-reduced-motion: reduce) {
+    #sim-toolbar button {
+      transition: none;
+    }
+    /* ⚠️ 選擇器要跟上面那條**一模一樣**，`:not(:disabled)` 也要帶上：
+       `#sim-toolbar button:not(:disabled):active` 是 (1,2,1)，少了 `:not()` 只有 (1,1,1)，
+       會被壓過去。2026-08-26 實測踩到——reduce 之下按鈕照樣縮，是 code review 抓出來的，
+       而 D18 當時沒有把 /sim 列進去、D14 只驗 transition-duration 不驗 transform。 */
+    #sim-toolbar button:not(:disabled):active {
+      transform: none;
     }
   }
 </style>

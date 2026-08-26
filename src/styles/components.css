@@ -14,10 +14,13 @@
   box-shadow: var(--face);
   color: var(--fg);
   text-decoration: none;
+  /* transform 走 --t-press、色與影走 --t-fast（2026-08-26 PR ⑥）：位移是「這東西在動」，
+     要比顏色變化更即時。⚠️ 不要改成在 :active 裡寫 `transition-duration: var(--t-press)`
+     ——那是**單值**，會把同一份清單裡每一個屬性的長度一起覆寫掉。 */
   transition:
-    border-color var(--t-fast) ease,
-    box-shadow var(--t-fast) ease,
-    transform var(--t-fast) ease;
+    border-color var(--t-fast) var(--e-out),
+    box-shadow var(--t-fast) var(--e-out),
+    transform var(--t-press) var(--e-out);
 }
 :is(.home-card, .guide-card):hover,
 :is(.home-card, .guide-card):focus-visible {
@@ -25,6 +28,17 @@
   box-shadow: var(--face-lift);
   transform: translateY(calc(-1 * var(--p-lift)));
   text-decoration: none;
+}
+/* 按下去的回饋（2026-08-26 PR ⑥）。這張 PR 之前全站**一條 :active 規則都沒有**——桌機還有
+   hover 可以講「我碰到了」，手機從按下去到頁面換掉之間完全沒有任何回應。
+   ⚠️ 具體度要贏 :hover：`:is(...):active` 跟 `:is(...):hover` 同具體度，靠寫在後面取勝。
+   移到這條規則前面的話手指按住時仍然是 hover 的樣子（手機的 :hover 會黏住），等於沒做。
+   ⚠️ transform 要**同時**寫抬升與縮放，不能只寫 scale：後者會整個蓋掉 hover 的
+   translateY，卡片按下去會先掉回原位再縮，看起來像抖了一下。
+   影子收回 --face（跟靜止同一階）：抬起來的東西被按下去，影子要跟著收，不然是「浮著又被壓扁」。 */
+:is(.home-card, .guide-card):active {
+  box-shadow: var(--face);
+  transform: translateY(calc(-1 * var(--p-lift))) scale(var(--p-press));
 }
 .home-card h2 {
   margin: 0 0 var(--space-2);
@@ -120,11 +134,20 @@
      撐換行的列距，結果在 /tree 的工具列裡把鈕的中心往上推 2.0px，E2E 的 P（工具列共用同一
      條中線）直接紅。 */
   margin: 0;
+  /* 曲線按**觸發它的是哪一種狀態**分兩組，不是按屬性隨手分（2026-08-26 PR ⑥）：
+       color／border-color 是 :hover 會改的 → --e-out，快、不回彈。
+       background-color／box-shadow **只有被勾選才會改**（:hover 那條規則沒碰這兩個，
+       翻上去看得到）→ --e-spring，走 --t-med。
+     這是 spec §2 決策 4「--e-spring 只給狀態切換」唯一能落地的寫法：一顆鈕上兩種觸發共用
+     一份 transition，只能靠屬性把它們分開。⚠️ 哪天給 .chip:hover 加上 background 或
+     box-shadow，hover 就會跟著回彈——要嘛別加，要嘛那時候再想怎麼拆。
+     ⚠️ 回彈需要時間才讀得出來，--e-spring 配 --t-fast（90ms）會看起來只是普通的漸變。 */
   transition:
-    color var(--t-fast) ease,
-    background-color var(--t-fast) ease,
-    box-shadow var(--t-fast) ease,
-    border-color var(--t-fast) ease;
+    color var(--t-fast) var(--e-out),
+    border-color var(--t-fast) var(--e-out),
+    transform var(--t-press) var(--e-out),
+    background-color var(--t-med) var(--e-spring),
+    box-shadow var(--t-med) var(--e-spring);
 }
 .chip input {
   position: absolute;
@@ -152,7 +175,17 @@
      邊框那一圈才是被強調的東西——往外發光的話它會跟隔壁那顆的光暈糊在一起。
      前一行同樣是 color-mix 的 fallback：不支援的引擎退回一層中性內陰影，不會變成沒有。 */
   box-shadow: inset 0 0 11px rgb(255 255 255 / 6%);
-  box-shadow: inset 0 0 11px color-mix(in srgb, var(--branch, var(--gold)) 22%, transparent);
+  box-shadow: inset 0 0 11px color-mix(in srgb, var(--branch, var(--gold)) calc(var(--p-glow) * 100%), transparent);
+}
+/* 按下去縮一下。切換鈕是這一頁最常被戳的東西，而它「有沒有生效」是靠底色變化——
+   底色的過場走 --e-spring／--t-med（見上），200ms 對「我按到了嗎」來說太慢，這條補上
+   80ms 就到位的即時回饋（transform 的長度在上面那份清單裡就是 --t-press）。
+   ⚠️ 寫在 :hover 與 :has(input:checked) **兩條之後**：三條同具體度，靠後到者勝。
+   ⚠️ **不要在這裡寫 `transition-duration: var(--t-press)`**：那個單值會把同一份清單裡的
+   background-color 與 box-shadow 一起壓成 80ms，而按下切換鈕的那一刻 :active 與 :checked
+   是同時發生的——回彈曲線就在它唯一該出現的互動上被關掉了。 */
+.chip:active {
+  transform: scale(var(--p-press));
 }
 /* 焦點框畫在整顆鈕上。checkbox 自己是透明的，:focus-visible 落在它身上時看不到任何東西。 */
 .chip:has(input:focus-visible),
@@ -182,7 +215,7 @@
 .chip .branch-dot {
   margin-right: 0;
   opacity: 0.45;
-  transition: opacity var(--t-fast) ease;
+  transition: opacity var(--t-fast) var(--e-out);
 }
 .chip:has(input:checked) .branch-dot {
   opacity: 1;
@@ -270,7 +303,10 @@
     transition: none;
   }
   .home-card:hover,
-  .guide-card:hover {
+  .guide-card:hover,
+  .home-card:active,
+  .guide-card:active,
+  .chip:active {
     transform: none;
   }
 }

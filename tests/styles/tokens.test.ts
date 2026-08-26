@@ -139,6 +139,11 @@ describe('版面級距', () => {
       '--chips-h', // src/scripts/tree-canvas.ts 量手機版底部分支列高度
       '--sim-panel-h', // src/scripts/sim.ts 量 /sim 手機版抽屜的實際高度（footer 靠它讓位）
       '--branch', // .dice-card[data-branch=…] 自己設，見 components.css 的分支色條
+      // 進場動畫的序號，由 Astro 在建置時寫成每張卡片的 inline style（index.astro／
+      // guide/index.astro／DiceCard.astro）。⚠️ base.css 引用它時**一定要帶預設值**
+      // （`var(--i, 0)`）：漏掉 --i 的卡片會讓整條 animation-delay 變成 invalid，
+      // 那張卡片的 both 填充跟著失效，畫面上是「有一張卡片沒有淡入」——沒有任何東西會報錯。
+      '--i',
     ]);
 
     const missing = new Set<string>();
@@ -172,7 +177,10 @@ describe('版面級距', () => {
     const defined = [...tokens.matchAll(/^\s{2}(--[a-z0-9-]+):\s*([^;]+);/gm)]
       .map(m => ({ name: m[1]!, value: m[2]!.trim() }));
 
-    const LADDERS = ['--r-', '--fs-', '--space-', '--shadow-'];
+    // 2026-08-26 PR ⑥ 補上 --t-（節奏）與 --e-（曲線）：三條曲線撞值等於「兩個名字同一條
+    // 貝茲」，而 --e-spring 與 --e-out 撞在一起時 spec §2 決策 4（spring 只給狀態切換）
+    // 就靜靜失效了，畫面上看起來只是「全部都不回彈」。
+    const LADDERS = ['--r-', '--fs-', '--space-', '--shadow-', '--t-', '--e-'];
     const dupes: string[] = [];
     for (const prefix of LADDERS) {
       const group = defined.filter(t => t.name.startsWith(prefix));
@@ -327,5 +335,97 @@ describe('自架字型（Archivo）', () => {
     // 跟同一句話裡其他中文長得不一樣。
     expect(split(fontNum!).slice(1), '--font-num 後面接的不是 --font 的完整清單，中文會掉到瀏覽器預設')
       .toEqual(split(font!));
+  });
+});
+
+/**
+ * 過場曲線一律走 token（2026-08-26 PR ⑥）。
+ *
+ * PR ⑥ 之前全站的 `transition` 都寫著裸的 `ease`（或整個省略，等於 `ease`）。`ease` 是
+ * 兩端都慢的曲線，在 90–200ms 這種短過場上起步會頓一下；三條 token 曲線各有明確用途
+ * （見 tokens.css 的 --e-out／--e-in-out／--e-spring）。這條擋的是下一次「就這一個地方
+ * 隨手寫個 ease」——那不會壞掉、不會有任何測試說話，只是那一個元件跟全站不同調。
+ */
+describe('過場曲線', () => {
+  it('每一條 transition 都指名 token 曲線，不留裸的 ease', () => {
+    const bad: string[] = [];
+    let seen = 0;
+    for (const file of FILES) {
+      const src = stripComments(readFileSync(file, 'utf8'));
+      // 跨行比對：這個 repo 的多屬性 transition 是一個屬性一行的。
+      for (const m of src.matchAll(/transition:\s*([^;{}]+);/g)) {
+        const value = m[1]!.replace(/\s+/g, ' ').trim();
+        if (value === 'none') continue;
+        seen++;
+        // 一條 transition 可以列很多個屬性，逗號切開之後每一段都要自己指名曲線。
+        for (const part of value.split(',').map(v => v.trim()).filter(Boolean)) {
+          if (!/var\(--(e-[a-z-]+|slide-ease)\)/.test(part)) bad.push(`${file}  ${part}`);
+        }
+      }
+    }
+    // 正向控制：正則過期時 seen 會變 0，底下的斷言就永遠成立。
+    expect(seen, '一條 transition 都沒掃到——正則過期了').toBeGreaterThan(8);
+    expect(bad).toEqual([]);
+  });
+});
+
+/**
+ * 進場動畫的三個常數不准散開（2026-08-26 PR ⑥）。
+ *
+ * 「夾住 stagger 上限」這件事牽到三個地方：CSS 的 `min(var(--i), var(--p-stagger-max))`、
+ * Base.astro 移除 `data-enter` 的 setTimeout、以及 tokens.css 的定義。任何一邊自己寫死
+ * 數字，畫面都還是好的——只有「最後幾張卡片還沒浮出來就被關掉動畫」這種很難察覺的症狀。
+ */
+describe('進場動畫的常數', () => {
+  const BASE_CSS = `${STYLE_DIR}/base.css`;
+  const LAYOUT = 'src/layouts/Base.astro';
+
+  it('stagger 上限只有 tokens.css 一份，CSS 與 Base.astro 都是讀它', () => {
+    const tokens = stripComments(readFileSync(TOKENS_FILE, 'utf8'));
+    expect(tokens, 'tokens.css 沒有定義 --p-stagger-max').toMatch(/^\s{2}--p-stagger-max:/m);
+
+    const base = stripComments(readFileSync(BASE_CSS, 'utf8'));
+    // ⚠️ 不是找「有沒有提到 --p-stagger-max」，是找「延遲有沒有夾」——只寫
+    // `calc(var(--i) * var(--p-stagger))` 一樣會過前一條斷言，但 /dice 最後一張要等 3.64 秒。
+    expect(base, 'base.css 的 animation-delay 沒有夾上限，/dice 第 41 張要等 3.64 秒')
+      .toMatch(/animation-delay:\s*calc\(\s*min\(\s*var\(--i[^)]*\),\s*var\(--p-stagger-max\)\s*\)/);
+
+    // ⚠️ 只比對變數名，不要把讀取函式的名字寫死成 `cssNum(`——2026-08-26 把它換成
+    // src/lib/css-ms.ts 的 cssMs/cssNumber 時這條就紅了，而它其實沒有壞。
+    // 真正要守的是「這兩個值是從 CSS 讀的、不是在 JS 裡寫死數字」，所以比對的形狀是
+    // 「某個函式呼叫帶著這個變數名」。
+    const layout = readFileSync(LAYOUT, 'utf8');
+    for (const name of ['--p-stagger-max', '--t-slow', '--p-stagger']) {
+      expect(layout, `Base.astro 移除 data-enter 的時間沒有從 CSS 讀 ${name}`)
+        .toMatch(new RegExp(`\\w+\\(\\s*'${name}'`));
+    }
+    // ⚠️ 時間類的那兩個一定要走 cssMs()：壓縮後的 CSS 是 `.44s` 不是 `440ms`，裸的
+    // parseFloat 會讀成 0.44（見 src/lib/css-ms.ts 與 E2E 的 D17c）。
+    for (const name of ['--t-slow', '--p-stagger']) {
+      expect(layout, `Base.astro 讀 ${name} 沒有走 cssMs()`).toContain(`cssMs('${name}'`);
+    }
+  });
+
+  it('base.css 引用 --i 一定要帶預設值', () => {
+    // --i 是 inline style 給的，不在 :root。少了預設值時，沒拿到 --i 的元素會讓整條
+    // animation-delay 變成 invalid at computed-value time，`both` 的填充跟著失效——
+    // 畫面上是「有一張卡片沒有淡入」，不報錯、沒有任何測試會說話。
+    const base = stripComments(readFileSync(BASE_CSS, 'utf8'));
+    const refs = [...base.matchAll(/var\(--i([^)]*)\)/g)].map(m => m[1]!.trim());
+    expect(refs.length, 'base.css 沒有引用 --i——進場 stagger 不見了').toBeGreaterThan(0);
+    for (const r of refs) {
+      expect(r, `base.css 有一處 var(--i) 沒帶預設值（寫成 var(--i, 0)）`).toMatch(/^,\s*\d+$/);
+    }
+  });
+
+  it('模板不自己夾 index——夾的動作只在 CSS', () => {
+    // 三個模板寫 --i 的地方各一個。夾在模板裡的話上限就有兩份，而且改 token 不會跟著動。
+    for (const file of ['src/pages/index.astro', 'src/pages/guide/index.astro',
+                        'src/components/DiceCard.astro']) {
+      const src = readFileSync(file, 'utf8');
+      expect(src, `${file} 沒有寫 --i，進場 stagger 會整頁同時浮出`).toContain('--i:');
+      expect(src, `${file} 在模板裡夾了上限——那件事只准在 base.css 的 min() 做`)
+        .not.toMatch(/Math\.min\([^)]*\)/);
+    }
   });
 });

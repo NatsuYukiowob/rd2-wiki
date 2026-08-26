@@ -5,7 +5,7 @@
 // 人工看圖才發現的 bug（下拉箭頭被拉成一條金槓、短頁面的 footer 停在畫面中間）——
 // 這一份就是把那類東西釘住。
 import { test, expect } from '@playwright/test';
-import { resolveColor } from './probe';
+import { resolveColor, settleEnter } from './probe';
 
 test('D1. 導覽列沾在視窗頂端，圖鑑的篩選列沾在導覽列正下方，兩者都不被卡片蓋掉', async ({ page }) => {
   await page.goto('/dice');
@@ -316,6 +316,10 @@ test('D14. 減少動態的規則拆到各檔之後沒有漏掉任何一條', asy
     { path: '/dice', selector: '.chip .branch-dot' },
     { path: '/dice', selector: '#site-nav a' },
     { path: '/dice', selector: '#site-nav .nav-menu > summary' },
+    // 2026-08-26 PR ⑥ 新增：這兩個檔在那之前**一條 transition 都沒有**，所以也沒有 reduce
+    // 區塊；按壓回饋加進去之後才需要。新元件加動效時要記得補同一件事。
+    { path: '/board', selector: '#board-tools button' },
+    { path: '/sim', selector: '#sim-toolbar button' },
     // ⚠️ #filters-toggle 本體（tree.astro:279）沒有 transition，過場在 ::after
     // （:297 transform）與 ::before（:310 background-color）兩個偽元素上。讀元素本身的話
     // 正向控制會直接紅，而且是假紅——所以這兩列指定讀虛擬元素。
@@ -356,12 +360,18 @@ test('D14. 減少動態的規則拆到各檔之後沒有漏掉任何一條', asy
   for (const c of HOVER_CASES) {
     await page.emulateMedia({ reducedMotion: null });
     await page.goto(c.path);
+    // ⚠️ 一定要等進場動畫收掉再量（2026-08-26 code review 抓到）。`[data-enter]` 期間
+    // `animation: rise … both` 的結束值會壓過 `:hover` 的 transform，讀到的是
+    // `matrix(1, 0, 0, 1, 0, 0)`——那不是字串 'none'，所以底下的**正向控制照樣通過**，
+    // 而它通過的是動畫的填充值不是 hover。把 `.dice-card:hover { transform }` 整條刪掉，
+    // 這個 case 仍然全綠。三個 path 都要等：/ 與 /guide 的卡片同樣掛著進場動畫。
+    await settleEnter(page);
     const el = page.locator(c.selector).first();
     await expect.soft(el, `${c.path} 上找不到 ${c.selector}`).toBeAttached();
     // 同上一個形狀的理由：找不到就跳過，不要讓 el.hover() 卡 30 秒把整個 test 中止掉。
     if (!(await el.count())) continue;
     // --face-lift 的下緣硬邊：`calc(2px + var(--p-lift))`，hover 時該從 2px 長到 4px。
-    // ⚠️ 一定要等過場跑完再讀（--t-fast 是 120ms），否則讀到的是 2.33px 這種中間值。
+    // ⚠️ 一定要等過場跑完再讀（--t-fast 是 90ms），否則讀到的是 2.33px 這種中間值。
     const edge = (shadow: string) =>
       shadow.match(/rgba?\([^)]*\)\s+0px\s+([\d.]+)px\s+0px\s+0px(?!\s+inset)/)?.[1];
     const shadowOf = () => el.evaluate(n => getComputedStyle(n).boxShadow);
@@ -578,4 +588,179 @@ test('D16. 導覽列的「上次更新」日期走 Archivo', async ({ page, isMo
   const family = await page.locator('.nav-updated')
     .evaluate(el => getComputedStyle(el).fontFamily.split(',')[0]!.replace(/['"]/g, ''));
   expect(family, '.nav-updated 沒吃到 --font-num').toBe('Archivo');
+});
+
+/**
+ * D17. 進場動畫：staggered、夾得住上限、跑完會自己關掉、reduce 之下整組不跑。
+ *
+ * 四件事各自壞掉時畫面都還能看，所以四條都要驗：
+ *  (一) 沒夾上限 → /dice 第 41 張卡片要等 41 × 80ms ＝ 3.64 秒才浮出來（spec §2 決策 3）。
+ *  (二) `data-enter` 沒被移除 → /dice 用 `[hidden]` 篩選，卡片切回來時 animation 會**重播**。
+ *  (三) reduce 之下沒關掉 → 使用者會看到一頁慢慢補齊的空白格，比動畫本身更糟。
+ *  (四) 動畫根本沒掛上 → 上面三條全部「通過」，因為它們驗的都是「不要有」。所以每一條
+ *       都先做正向控制。
+ */
+test('D17. 卡片進場是 staggered 的，延遲夾得住上限，跑完自己關掉', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: null });
+  // ⚠️ 用 domcontentloaded 不是 load：`data-enter` 大約一秒後就被腳本移掉了，等 load
+  // （含 41 張卡片的圖）很可能已經來不及。
+  await page.goto('/dice', { waitUntil: 'domcontentloaded' });
+
+  const read = (n: number) => page.locator('.dice-card').nth(n).evaluate(el => {
+    const cs = getComputedStyle(el);
+    return { name: cs.animationName, delay: cs.animationDelay, fill: cs.animationFillMode };
+  });
+
+  // 正向控制：動畫真的掛上去了，底下三條才有意義。
+  const first = await read(0);
+  expect(first.name, '第一張卡片沒有進場動畫——底下三條都會變成「不要有」的空斷言').toBe('rise');
+  expect(first.fill, 'fill-mode 不是 both，帶延遲的卡片在延遲跑完前不會停在起點').toBe('both');
+  expect(first.delay, '第一張卡片不該有延遲').toBe('0s');
+
+  const stagger = await page.evaluate(() =>
+    parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--p-stagger')));
+  const max = await page.evaluate(() =>
+    parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--p-stagger-max')));
+  const ms = (delay: string) => Math.round(parseFloat(delay) * 1000);
+
+  expect(ms((await read(1)).delay), '第二張卡片的延遲不是一階 --p-stagger').toBe(stagger);
+  // 夾上限：第 max 張與最後一張（第 41 張）必須是同一個延遲。
+  const capped = stagger * max;
+  expect(ms((await read(max)).delay), `第 ${max} 張的延遲不是上限值`).toBe(capped);
+  expect(ms((await read(40)).delay),
+    `第 41 張的延遲沒有被夾住（上限應該是 ${capped}ms）——不夾的話它要等 ${41 * stagger}ms`)
+    .toBe(capped);
+
+  // 跑完之後 data-enter 要消失，否則 [hidden] 篩選切回來時動畫會重播。
+  await expect.poll(
+    () => page.evaluate(() => document.documentElement.hasAttribute('data-enter')),
+    { timeout: 5000, message: 'data-enter 一直沒被移除，/dice 篩選切回來時卡片會重播進場' },
+  ).toBe(false);
+  expect((await read(0)).name, 'data-enter 移掉之後卡片還掛著動畫').toBe('none');
+});
+
+/**
+ * D17c. `data-enter` 不准在動畫還沒跑完就被拿掉。
+ *
+ * D17 只驗「它最後有被拿掉」，**拿掉的時機對不對完全沒有守**。2026-08-26 code review 抓到
+ * 一個只在**建置產物**裡發生的 bug：`Base.astro` 用裸的 `parseFloat` 讀 `--t-slow`，而 Astro
+ * 的 CSS 壓縮把 `440ms` 改寫成 `.44s`——`parseFloat('.44s')` 是 **0.44**，計時器因此短了整整
+ * 一個動畫長度。實測那一格 **41 張卡片有 36 張的 rise 還沒跑完**，規則一消失它們直接跳到終點。
+ * `astro dev` 不壓縮，所以本機開發與任何靜態檢查都看不出來。
+ *
+ * ⚠️ 這條要在頁面裡逐幀取樣，不能事後 `page.evaluate` 量一次：`data-enter` 消失之後
+ * `getAnimations()` 就回空陣列，什麼都量不到了。
+ */
+test('D17c. data-enter 是在全部卡片的進場動畫跑完之後才被拿掉', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: null });
+  await page.addInitScript(() => {
+    (window as unknown as { __enterLog: unknown[] }).__enterLog = [];
+    const log = (window as unknown as { __enterLog: unknown[] }).__enterLog;
+    const t0 = performance.now();
+    const tick = () => {
+      const has = document.documentElement.hasAttribute('data-enter');
+      const rise = document.getAnimations()
+        .filter(a => (a as CSSAnimation).animationName === 'rise');
+      log.push({ t: Math.round(performance.now() - t0), has, n: rise.length,
+        unfinished: rise.filter(a => a.playState !== 'finished').length });
+      if (has || performance.now() - t0 < 3000) requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  });
+  await page.goto('/dice', { waitUntil: 'domcontentloaded' });
+  await expect.poll(
+    () => page.evaluate(() => document.documentElement.hasAttribute('data-enter')),
+    { timeout: 6000, message: 'data-enter 一直沒被移除' },
+  ).toBe(false);
+
+  type Frame = { t: number; has: boolean; n: number; unfinished: number };
+  const log = await page.evaluate(
+    () => (window as unknown as { __enterLog: Frame[] }).__enterLog,
+  ) as Frame[];
+  const held = log.filter(f => f.has);
+  // 正向控制：真的取樣到「動畫還掛著」的畫面，而且卡片數是 41——取樣器沒跑或選擇器過期時
+  // 底下那條會是「空陣列的最後一筆」而永遠通過。
+  expect(held.length, '一格都沒取樣到 data-enter 還在的狀態，這條斷言等於沒守')
+    .toBeGreaterThan(3);
+  const last = held[held.length - 1]!;
+  expect(last.n, `取樣到的 rise 動畫只有 ${last.n} 個，不是 41 張卡片`).toBe(41);
+  expect(last.unfinished,
+    `data-enter 在 ${last.t}ms 被拿掉，但那一刻還有 ${last.unfinished} 張卡片的進場動畫沒跑完，`
+    + '它們會直接跳到終點。八成是 Base.astro 沒用 cssMs() 讀長度（壓縮後的 CSS 是 .44s 不是 440ms）')
+    .toBe(0);
+});
+
+test('D17b. 減少動態：進場整組不跑，而且卡片是看得見的', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.goto('/dice', { waitUntil: 'domcontentloaded' });
+  const s = await page.locator('.dice-card').nth(20).evaluate(el => {
+    const cs = getComputedStyle(el);
+    return { name: cs.animationName, opacity: cs.opacity };
+  });
+  // 關動畫的寫法若是「長度歸零」而不是 `animation: none`，`both` 仍然成立，帶延遲的卡片會
+  // 停在 opacity: 0，使用者看到的是一頁慢慢補齊的空白格。**攔住那個寫法的是這一條**
+  // （animation-duration: 0s 之下 animationName 仍然是 rise，2026-08-26 反例實跑確認）。
+  expect(s.name, 'reduce 之下進場動畫沒關掉').toBe('none');
+  // 底下這條是結果面的保險，不是上面那條的替代品：它驗的是「使用者真的看得到卡片」。
+  // ⚠️ 老實說今天它抓不到任何上面那條抓不到的東西——opacity: 0 只存在於 keyframes 裡，
+  // 動畫一關就不可能留下。留著是因為「reduce 之下整頁不准是空白」這個性質值得有一條寫死的
+  // 斷言，將來起點若改成寫在元素上（**不要那樣做**，見 base.css 的說明）它就是唯一的防線。
+  expect(s.opacity, 'reduce 之下卡片停在透明').toBe('1');
+});
+
+/**
+ * D18. 按下去要有回饋（2026-08-26 PR ⑥）。這張 PR 之前全站**一條 :active 規則都沒有**，
+ * 手機上從按下去到頁面反應之間完全沒有任何回應。
+ *
+ * ⚠️ 卡片是 `<a>`，在原地放開會觸發 click 導航掉、元素就不見了——所以放開前一定要先把
+ * 游標移開（實測過：不移開的話讀「放開後」那一步會在 locator timeout 掛掉）。
+ */
+test('D18. 按住時縮一下，放開回原狀；reduce 之下整組關掉', async ({ page }) => {
+  const CASES = [
+    { path: '/', selector: '.home-card' },
+    { path: '/dice', selector: '.chip' },
+    { path: '/board', selector: '#board-tools button' },
+    { path: '/tree', selector: '#filters-toggle' },
+    // ⚠️ /sim 一定要列進來：它的 reduce 覆寫 2026-08-26 少了 `:not(:disabled)`，具體度
+    // 輸給正常那條、按壓在 reduce 之下照樣縮，而當時 D18 沒有涵蓋這一頁、D14 涵蓋了卻只
+    // 驗 transition-duration 不驗 transform——兩條加起來還是漏。
+    { path: '/sim', selector: '#sim-toolbar button:not(:disabled)' },
+  ] as const;
+
+  const pressed = async (selector: string) => {
+    const el = page.locator(selector).first();
+    await el.scrollIntoViewIfNeeded();
+    const box = (await el.boundingBox())!;
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    // 等過場跑完再讀：--t-press 是 80ms，按下去立刻讀會讀到中途的 0.99x。
+    await page.waitForTimeout(200);
+    const held = await el.evaluate(n => getComputedStyle(n).transform);
+    await page.mouse.move(2, 2);
+    await page.mouse.up();
+    await page.waitForTimeout(200);
+    return { held, released: await el.evaluate(n => getComputedStyle(n).transform) };
+  };
+
+  const scaleOf = (transform: string) => {
+    const m = transform.match(/^matrix\(([\d.]+),/);
+    return m ? parseFloat(m[1]!) : null;
+  };
+
+  for (const c of CASES) {
+    await page.emulateMedia({ reducedMotion: null });
+    await page.goto(c.path);
+    // ⚠️ 等進場動畫收掉再測：那段期間 animation 的 both 填充會壓過 :active 的 transform。
+    await expect.poll(() => page.evaluate(() => !document.documentElement.hasAttribute('data-enter')),
+      { timeout: 5000 }).toBe(true);
+
+    const normal = await pressed(c.selector);
+    expect.soft(scaleOf(normal.held), `${c.path} 的 ${c.selector} 按住時沒有縮`).toBeLessThan(1);
+    expect.soft(normal.released, `${c.path} 的 ${c.selector} 放開後沒有回原狀`).toBe('none');
+
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await page.goto(c.path);
+    const reduced = await pressed(c.selector);
+    expect.soft(reduced.held, `reduce 之下 ${c.path} 的 ${c.selector} 按住時仍然會縮`).toBe('none');
+  }
 });

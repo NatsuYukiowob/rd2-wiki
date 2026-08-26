@@ -3,6 +3,7 @@
 // 節點互動（詳情面板、搜尋、篩選……後續任務）會接著在這支腳本上擴充。
 import rawData from '../generated/tree.json';
 import { renderTree } from '../lib/render.js';
+import { cssMs } from '../lib/css-ms.js';
 import {
   DESKTOP_ICON_TARGET_PX,
   MOBILE_ICON_TARGET_PX,
@@ -29,19 +30,7 @@ const data = rawData as unknown as TreeData;
 // ?node=」反查該節點所屬分支，純資料處理、不依賴任何 DOM，提前宣告沒有副作用。
 const byId = new Map(data.nodes.map(n => [n.id, n]));
 
-/**
- * 從 :root 讀一個時間類的 CSS 自訂屬性，換算成毫秒。
- *
- * 動畫長度只能有一個來源：CSS 負責過場，JS 只負責在過場結束後把 inline style 清乾淨。
- * 兩邊各寫一份的話，改了 CSS 而忘了改 JS，收尾就會在動畫還沒跑完時發生（CLAUDE.md 有記）。
- * 取不到值（單元測試的 linkedom 沒有 getComputedStyle）時回 fallback——那條路本來就不做動畫。
- */
-function cssMs(name: string, fallback: number): number {
-  if (typeof getComputedStyle !== 'function' || typeof document === 'undefined') return fallback;
-  const raw = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
-  const ms = raw.endsWith('ms') ? parseFloat(raw) : raw.endsWith('s') ? parseFloat(raw) * 1000 : NaN;
-  return Number.isFinite(ms) && ms > 0 ? ms : fallback;
-}
+// 動畫長度：cssMs() 的實作與注意事項在 src/lib/css-ms.ts（全站共用一份）。
 
 // 導覽列高度：實作與說明在 src/lib/nav-height.ts（全站共用，見那裡的註解）。
 updateNavHeight();
