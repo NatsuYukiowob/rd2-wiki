@@ -134,3 +134,50 @@ pre {
   white-space: nowrap;
   border: 0;
 }
+
+/* ==========================================================================
+   進場動畫（2026-08-26 PR ⑥）
+   --------------------------------------------------------------------------
+   卡片列表載入時由上往下依序浮出。`--i` 是卡片在列表裡的序號，由 Astro 在建置時寫成
+   inline style；夾住上限的動作在**這裡**做，不在模板裡（見 tokens.css 的 --p-stagger-max）。
+
+   ⚠️ `@keyframes` 是全域的，放哪個檔都一樣有效——所以刻意收在 base.css 這個「全域層」，
+   不要在 components.css 與 dice.css 各寫一份。三種卡片共用同一段動畫。
+
+   ⚠️ 整段掛在 `[data-enter]` 底下，而那個屬性由 Base.astro `<head>` 裡一支 `is:inline` 的
+   腳本掛上、載入後約一秒由另一支腳本移除。兩端都不能省：
+     - `<head>` 裡同步掛（不是伺服器端輸出的 `<html data-enter>`）：沒有 JS 的環境就完全
+       不跑進場動畫，屬性也不會永遠留著。細節見 Base.astro 該處。
+     - 事後移除：`/dice` 的篩選用 `[hidden]`（display: none），切回來時 animation 會**重播**。
+       ⚠️ 不能改用 `animationend` 收尾——`display: none` 的元素不派發那個事件，41 張卡片裡
+       只要有一張被篩掉就永遠等不到。
+   ⚠️ 這段期間 `animation-fill-mode: both` 的結束值會壓過 `:hover` 的 transform，所以載入後
+   約一秒內卡片 hover 不會抬起來。這是已知且刻意接受的——比起為它加一層 class 開關，
+   一秒的視窗換一份更少的狀態機划算。
+
+   ⚠️ 起點的 `opacity: 0` **只存在於 keyframes 裡**，不寫成元素的靜態樣式：CSS 若整份載不到，
+   卡片是正常可見的，不是一片空白。 */
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+[data-enter] :is(.home-card, .guide-card, .dice-card) {
+  animation: rise var(--t-slow) var(--e-out) both;
+  animation-delay: calc(min(var(--i, 0), var(--p-stagger-max)) * var(--p-stagger));
+}
+
+/* 減少動態：進場整組關掉。
+   ⚠️ 用 `animation: none` 而不是把長度歸零——長度歸零時 `both` 仍然成立，帶延遲的卡片會在
+   延遲跑完之前維持在起點（opacity: 0），使用者會看到一頁慢慢補齊的空白格。 */
+@media (prefers-reduced-motion: reduce) {
+  [data-enter] :is(.home-card, .guide-card, .dice-card) {
+    animation: none;
+  }
+}

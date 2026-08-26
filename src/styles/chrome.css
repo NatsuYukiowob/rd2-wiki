@@ -38,7 +38,7 @@
   color: var(--fg);
   text-decoration: none;
   font-weight: 600;
-  transition: color var(--t-fast) ease;
+  transition: color var(--t-fast) var(--e-out);
 }
 
 #site-nav a:hover {
@@ -146,7 +146,7 @@
   font-weight: 600;
   color: var(--fg);
   user-select: none;
-  transition: color var(--t-fast) ease;
+  transition: color var(--t-fast) var(--e-out);
 }
 #site-nav .nav-menu > summary::-webkit-details-marker {
   display: none;

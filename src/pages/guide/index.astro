@@ -32,8 +32,8 @@ const pages = GUIDE_PAGES.map(page => ({
     </p>
 
     <div class="guide-cards">
-      {pages.map(page => (
-        <a class="guide-card" href={`/guide/${page.slug}`}>
+      {pages.map((page, i) => (
+        <a class="guide-card" href={`/guide/${page.slug}`} style={`--i:${i}`}>
           <span class="guide-swatch" aria-hidden="true">
             {page.colors.map(c => <span style={`background:${c}`}></span>)}
           </span>

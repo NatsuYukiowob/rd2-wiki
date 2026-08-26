@@ -65,6 +65,23 @@ const imageUrl = new URL('/favicon.png', Astro.site).href;
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!--
+      data-enter：進場動畫的總開關，規則在 src/styles/base.css。
+      ⚠️ 三件事綁在一起，動其中一件之前先讀完：
+      (1) 必須是 `is:inline` 而且留在這裡（head、任何卡片之前）。Astro 的一般 script 會被
+          打包成 type=module，也就是 defer——要等整份 HTML 解析完才跑，卡片會先以「已經
+          定位」的樣子進 DOM，之後才被套上起點。同步的 inline script 在解析到卡片之前就
+          已經把屬性掛好了（建置產物確認過：它排在 title 之前，第一張卡片之前）。
+      (2) 不要改回伺服器端輸出的 html 屬性：那樣沒有 JS 的環境會永遠留著它，動畫會一直掛在
+          卡片上。2026-08-26 實測那會咬到 E2E 的 C11（javaScriptEnabled: false 之下
+          Playwright 的 actionability 一直判定元素 not stable，30 秒逾時）。由腳本掛的話，
+          沒有 JS ＝ 完全沒有進場動畫，順帶也不會有「/dice 用 [hidden] 篩選、切回來時動畫
+          重播」的問題。
+      (3) 拿掉它的 setTimeout 在頁尾那支 script 裡，理由寫在那裡。
+    -->
+    <script is:inline>
+      document.documentElement.setAttribute('data-enter', '');
+    </script>
     <title>{SITE_NAME} | {title}</title>
     <!--
       canonical：告訴搜尋引擎「這一頁的正規網址是哪一個」。同一份內容被多個網址打得到時
@@ -158,6 +175,23 @@ const imageUrl = new URL('/favicon.png', Astro.site).href;
       // /tree 有。/tree 會由 tree-canvas.ts 再裝一次，兩者寫同一個值、互不干擾。
       import { installNavHeight } from '../lib/nav-height.js';
       installNavHeight();
+
+      // 進場動畫跑完就把 data-enter 拿掉，否則 /dice 用 [hidden] 篩選、卡片切回來時
+      // animation 會重播（display: none 的元素重新顯示時動畫會從頭跑）。
+      // ⚠️ 不能改用 animationend 收尾：display: none 的元素不派發那個事件，41 張卡片裡只要
+      // 有一張正被篩掉就永遠等不到最後一張。
+      // ⚠️ 長度一律從 CSS 讀，不要在這裡寫第二份數字（CLAUDE.md 的規則）。三個值都要讀：
+      // 動畫本身 + 最大延遲階數 × 每階，最後再加一點餘裕。
+      // ⚠️ **一定要用 cssMs() 不是裸的 parseFloat**：Astro 的 CSS 壓縮會把 `440ms` 改寫成
+      // `.44s`，parseFloat 會拿到 0.44 而不是 440，於是 data-enter 在 ~957ms 就被拿掉、
+      // 41 張卡片裡 36 張的動畫還沒跑完就被切斷（2026-08-26 code review 抓到，實測過）。
+      // 這件事**只在建置產物裡發生**，astro dev 不壓縮，本機開發完全看不出來。
+      // ⚠️ --p-stagger-max 是無單位的純數字，要走 cssNumber() 不是 cssMs()。
+      import { cssMs, cssNumber } from '../lib/css-ms.js';
+      window.setTimeout(
+        () => document.documentElement.removeAttribute('data-enter'),
+        cssMs('--t-slow', 440) + cssNumber('--p-stagger-max', 8) * cssMs('--p-stagger', 80) + 100,
+      );
 
       // <details> 唯一缺的兩件事：點到選單外面、以及按 Esc，都要收起來。
       // 沒有這兩條的話，選單一開就只能再點一次 summary 才關得掉——在手機上等於擋住半頁。

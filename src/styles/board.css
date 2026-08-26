@@ -181,6 +181,18 @@
 #board-export-img { max-width: 100%; border-radius: var(--r-md); }
 .board-hint { color: var(--muted); font-size: var(--fs-sm); }
 
+/* 按下去縮一下（2026-08-26 PR ⑥）。/board 是全站最需要這個的一頁——它整頁都是點與拖，
+   而手機上沒有 hover 可以講「我碰到了」。
+   ⚠️ **刻意不含 `.board-cell`**：格子的主要互動是拖曳，而 `:active` 在整段拖曳期間都成立，
+   格子會從按下的那一刻一路縮著直到放開。抓起來的回饋由 .dragging 那一路負責，不是這裡。
+   ⚠️ `.pips-row button:disabled` 也要排除：按不動的東西不該有按下去的回饋。 */
+:is(#board-tools button, #picker-close, .picker-dice, .pips-row button) {
+  transition: transform var(--t-press) var(--e-out);
+}
+:is(#board-tools button, #picker-close, .picker-dice, .pips-row button):not(:disabled):active {
+  transform: scale(var(--p-press));
+}
+
 /* 拖曳影像。⚠️ pointer-events: none 是必要的：落點判定用 elementFromPoint，
    影像跟在指標下方，能接事件的話就永遠只抓得到影像自己。 */
 .drag-ghost {
@@ -263,3 +275,18 @@
   }
 }
 
+/* 減少動態：骰盤這一份。理由與寫法見 chrome.css 檔尾同一段。
+   ⚠️ 這個檔 2026-08-26 之前**沒有這一段**，因為它一條 transition 都沒有；PR ⑥ 給按鈕加上
+   按壓回饋之後才需要。新增元件時記得同一件事：動效與「怎麼關掉它」要放在同一個檔。 */
+@media (prefers-reduced-motion: reduce) {
+  /* ⚠️ 選擇器要跟上面那兩條**一模一樣**，包含 `:is()` 的包法與 `:not(:disabled)`。
+     `:is()` 的具體度等於它引數裡最高的那一個——`:is(#board-tools button, …):not(:disabled):active`
+     是 (1,2,1)，而攤開來寫的 `#board-tools button:active` 只有 (1,1,1)，會被壓過去。
+     2026-08-26 實測踩到：reduce 之下按鈕照樣縮，是 E2E 的 D18 抓出來的。 */
+  :is(#board-tools button, #picker-close, .picker-dice, .pips-row button) {
+    transition: none;
+  }
+  :is(#board-tools button, #picker-close, .picker-dice, .pips-row button):not(:disabled):active {
+    transform: none;
+  }
+}

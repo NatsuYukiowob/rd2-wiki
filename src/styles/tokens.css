@@ -23,7 +23,10 @@
      easing 用 ease-out 系（尾段慢）而不是 `ease`：兩端都慢的曲線在 200–300ms 這種短動畫上
      起步會有一段「頓住」的感覺。 */
   --slide-ms: 280ms;
-  --slide-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  /* ⚠️ 這就是 --e-out，同一條曲線的第二個名字。2026-08-26 收成一份——它原本是寫死的第二份
+     `cubic-bezier(0.22, 1, 0.36, 1)`，正是這個 repo 一路在收的漂移類別（--panel、
+     render.ts 的第二份金色）。名字留著是因為它跟 --slide-ms 成對、講的是「換頁」這件事。 */
+  --slide-ease: var(--e-out);
 
   --nature: #ef625e;
   --engineering: #50b7d8;
@@ -126,16 +129,54 @@
      它們一起收進來是視覺決定，得先給 Yuki 看對照圖（2026-08-26 code review 提出）。 */
   --face-float: inset 0 1px 0 var(--hair), var(--shadow-3);
 
-  /* 微互動的節奏。跟 --slide-ms 是兩回事：那個是換頁，這兩個是 hover／焦點這種即時回饋。 */
-  --t-fast: 120ms;
+  /* 微互動的節奏（2026-08-26 PR ⑥ 依 Yuki 在動效實驗室定的值調整）。
+     跟 --slide-ms 是兩回事：那個是換頁，這幾個是 hover／按壓／進場這種即時回饋。
+     --t-fast 120 → 90ms：hover 的回饋越快越像「這東西在回應我」，120ms 已經開始像延遲。
+     --t-press 比 --t-fast 更短：按下去的回饋要比滑過去的更即時，慢一點就變成「卡了一下」。
+     ⚠️ --t-med **不准動**：`src/scripts/tree-canvas.ts` 的 cssMs() 讀它當 CENTER_MS 與
+     FILTERS_MS，改了要連 JS 的收尾時機一起想。--slide-ms 同理（SLIDE_MS）。 */
+  --t-fast: 90ms;
+  --t-press: 80ms;
   --t-med: 200ms;
+  /* 進場動畫的長度。單獨一階是因為它跟 hover 不是同一件事：hover 要快，進場要慢到讓人
+     看得出「東西是長出來的」。 */
+  --t-slow: 440ms;
 
+  /* 曲線。三條各有明確用途，不要混用。
+     --e-out    尾段慢，起步快：hover、按壓、光暈、進場**一律**用這條。
+     --e-in-out 兩端慢：只給「從 A 移動到 B」而且兩端都要停穩的東西。
+     --e-spring 尾段回彈：**只給狀態切換**（切換鈕被勾選、篩選面板開合）——「東西真的變了」
+                才配回彈。滑鼠滑過 41 張卡片時每張都彈一下會很躁（Yuki 拍板，見 spec §2 決策 4）。 */
+  --e-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --e-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --e-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  /* 三個「動多少」的量（2026-08-26 PR ⑥ 補齊；--p-lift 是 PR ④ 就有的）。
+     單位刻意不一致是因為它們量的東西不同：抬升是長度、按壓是縮放比例、光暈是混色比例。 */
   /* hover 抬升量。原本是三個檔各自寫死的 `translateY(-2px)`（.home-card／.guide-card／
      .dice-card），收成 token 是為了讓 --face-lift 的下緣硬邊能跟著它一起長——卡片往上抬
      2px、影子的硬邊就要往下多 2px，方向感才對得上。
      ⚠️ E2E 有守：chrome.spec.ts 的「形狀二」會先斷言 hover 真的有 transform（正向控制），
      再驗 reduce 之下被關掉。把這裡改成 0 會讓那條的正向控制紅。 */
   --p-lift: 2px;
+  /* 按下去縮多少。0.985 在 200px 寬的卡片上是 3px，剛好看得出來又不會像在跳。
+     ⚠️ 不要再往下調：卡片一縮，它的圓角與邊框會跟著被縮，低於 0.97 就看得出邊框變細。 */
+  --p-press: 0.985;
+  /* 進場 stagger 的每一階，以及它的階數上限。
+     ⚠️ 兩個一定要一起看：/dice 有 41 張卡片，不夾的話最後一張要等 41 × 80ms ＝ 3.64 秒
+     （Yuki 拍板要夾，見 spec §2 決策 3）。夾在 8 之後最長延遲是 640ms。
+     ⚠️ 上限**刻意做成 token 而不是寫死在三個模板裡的 `Math.min(index, 8)`**：夾的動作在
+     CSS（`min(var(--i), var(--p-stagger-max))`，見 base.css），移除 `data-enter` 的
+     setTimeout 也要用同一個上限算總長度（Base.astro）。寫死就是同一個 8 散在四個地方。 */
+  --p-stagger: 80ms;
+  --p-stagger-max: 8;
+  /* 內發光的混色比例。切換鈕選中時用，0.20 → color-mix 的 20%。
+     ⚠️ **這是一個看得見的數值變動，不只是把既有的值收成 token**：PR ④ 寫死的是 22%，
+     Yuki 在動效實驗室定的是 0.20，這裡照後者。差 2 個百分點，肉眼幾乎分不出來，但
+     「收成 token」與「順手改了值」是兩件事，不寫下來下一個人會以為是打錯的。
+     ⚠️ 它是**無單位小數**不是百分比，因為 color-mix 要的是 `calc(var(--p-glow) * 100%)`；
+     直接寫成 20% 的話那個 calc 會變成 2000%（invalid），整條 box-shadow 靜靜失效。 */
+  --p-glow: 0.20;
 
   /* 小標籤的字距（.meta／.stat-k）。0.1em 在 12px 上是 1.2px，中文小字加了這一階之後
      字與字之間分得開，讀起來是「一排標籤」而不是一團擠在一起的小字。

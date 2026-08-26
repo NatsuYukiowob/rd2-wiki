@@ -96,10 +96,11 @@ const BRANCHES = Object.entries(BRANCH_ZH);
     </div>
 
     <div id="codex-grid" class="codex-grid">
-      {nodes.map(node => (
+      {nodes.map((node, i) => (
         <DiceCard
           node={node}
           gameId={gameIds.get(node.id)}
+          enterIndex={i}
           index={index}
           whitelist={whitelist}
           glossary={glossary}
@@ -119,6 +120,8 @@ const BRANCHES = Object.entries(BRANCH_ZH);
 </Base>
 
 <script>
+  import { cssMs } from '../lib/css-ms.js';
+
   // --- 篩選 ---
   // 勾選框 → 隱藏不符合的卡片。刻意不用 URL 狀態同步（那是 /tree 的契約，它有選取節點與
   // 前置鏈要還原）；這一頁重新整理回到全選是可以接受的。
@@ -183,13 +186,10 @@ const BRANCHES = Object.entries(BRANCH_ZH);
   /**
    * 過場長度。**從 CSS 的 --slide-ms 讀**，跟 /tree 的 tree-canvas.ts 同一個理由：JS 只負責
    * 在動畫結束後把 inline style 清乾淨，兩邊數字一旦漂開，收尾會在動畫還沒跑完就發生，
-   * 看起來像被切斷。
+   * 看起來像被切斷。實作在 src/lib/css-ms.ts（全站共用一份，`s`／`ms` 兩種單位都認得——
+   * 建置時 CSS 會被壓縮成 `.28s`，裸的 parseFloat 會讀成 0.28）。
    */
-  const SLIDE_MS = (() => {
-    const raw = getComputedStyle(document.documentElement).getPropertyValue('--slide-ms').trim();
-    const ms = raw.endsWith('ms') ? parseFloat(raw) : raw.endsWith('s') ? parseFloat(raw) * 1000 : NaN;
-    return Number.isFinite(ms) && ms > 0 ? ms : 280;
-  })();
+  const SLIDE_MS = cssMs('--slide-ms', 280);
 
   /** 使用者要求減少動態時直接瞬間切換。CSS 那邊也關掉了 transition，這裡是同一個決定的另一半。 */
   const canAnimate = () =>
