@@ -295,7 +295,7 @@ npm run compare -- <beforeURL> <afterURL>  # computed-style 逐元素比對，�
 
 ## 設計系統
 
-`:root` 有五組 token，全部定義在 **`src/styles/tokens.css`**，**新增樣式一律用它們**：
+`:root` 有六組 token，全部定義在 **`src/styles/tokens.css`**，**新增樣式一律用它們**：
 ⚠️ **token 定義只准留在 `tokens.css`，不要寫到別的檔**——`tests/styles/tokens.test.ts`「每個
 `var(--x)` 都真的定義得出來」那條拿 `tokens.css` 當唯一來源，正則是 `^\s{2}(--…)`（只認縮排
 兩格、不綁 `:root` 區塊，故意不合併九個檔一起掃），寫到別處會讓那條檢查對那個 token 失效。
@@ -308,14 +308,22 @@ npm run compare -- <beforeURL> <afterURL>  # computed-style 逐元素比對，�
 | 組 | token | 說明 |
 |---|---|---|
 | 間距 | `--space-h/1..7` | 4px 網格（`--space-h` 是唯一半階 2px） |
-| 圓角 | `--r-xs/sm/md/lg/pill` | 4/6/10/14/999px |
+| 圓角 | `--r-xs/sm/md/lg/pill` | 3/4/5/7/999px（2026-08-26 整體收小一階） |
 | 字級 | `--fs-xs/sm/md/base/lg/xl/2xl/3xl` | `--fs-base` 是 1rem |
 | 表面 | `--surface-1/2/3`、`--border-strong` | 見下 |
 | 陰影與節奏 | `--shadow-1/2/3`、`--t-fast/med`、`--ring` | `--shadow-3` 給浮在畫布上的東西 |
+| 面的質感 | `--hair`、`--face`／`--face-lift`／`--face-float`、`--p-lift` | 見下 |
 
 - **表面分層**：靜態頁的面 → `--surface-1`；浮在畫布上的 chrome（`#toolbar`、`#detail`、
   `#branch-chips`、下拉選單、`/dice` 的篩選列）→ `--surface-2`；hover／選中的填色 → `--surface-3`。
   舊的 `--panel` 已刪除——一個東西兩個名字正是要收掉的漂移來源。
+- **面的質感用 `--face-*`，不要在元件裡自己疊 box-shadow**（2026-08-26 PR ④）。三個是同一個
+  配方的三個狀態：`--face` 靜止（上緣 `--hair` 高光 ＋ 下緣硬邊 ＋ `--shadow-2`）、`--face-lift`
+  hover（硬邊跟著 `--p-lift` 長）、`--face-float` 浮在畫布上的面（**不要下緣硬邊**——硬邊在講
+  「它坐在某個平面上」，而 `#detail`／下拉選單沒有坐在任何東西上）。抄散到元件檔就是四份會漂
+  的複本，跟 `--panel`、`render.ts` 的第二份金色同一族。
+- **hover 抬升一律 `var(--p-lift)`**，不要再寫死 `translateY(-2px)`：`--face-lift` 的下緣硬邊
+  是用 `calc(2px + var(--p-lift))` 跟著它算的，寫死就對不上。
 - **焦點框全站只有一條** `:focus-visible { outline: var(--ring) }`。元件只在需要**額外**回饋時才補。
 - **動畫長度一律用 `cssMs()` 從 CSS 讀**，JS 不寫第二份。
 - **減少動態的規則每個檔自帶一份**（`chrome.css`／`components.css`／`dice.css`／`detail.css`
@@ -324,11 +332,18 @@ npm run compare -- <beforeURL> <afterURL>  # computed-style 逐元素比對，�
   過場）與 `#filters-toggle`（三條）各一個），刻意不寫成
   `*{transition-duration:0.01ms!important}`：那會連 opacity 一起關掉，而 `/tree` 的篩選淡出是靠
   opacity 在**傳達資訊**，不是裝飾。
+  ⚠️ **`tokens.css` 也有一個 reduce 區塊，而且它是唯一一個改 token 而不是改元件的**：
+  重新宣告 `--face-lift`，把下緣硬邊從 `calc(2px + var(--p-lift))` 壓回 2px。理由與「為什麼
+  不能在元件的 reduce 區塊裡覆寫 `--p-lift`」寫在該處——**自訂屬性的 `var()` 代換是在宣告
+  它的那個元素上算完再繼承的**，在子元素上改來源變數影響不到已經算完的那一份。
 - ⚠️ **`:has()` 與 `color-mix()` 都要有退化路徑。** 切換鈕的「選中」完全靠 `:has(input:checked)`
   ＋底色而真正的 checkbox 是 `opacity: 0`——不支援 `:has()` 的引擎或 `forced-colors: active` 下，
   五顆鈕長得一模一樣、焦點也看不見。`color-mix()` 一律在前面補一行純色 fallback。
 - **守門**：`tests/styles/tokens.test.ts` 掃裸的 px／rem（例外寫在檔案裡的 `ALLOWED` 並附理由），
-  並確認每個 `var(--x)` 都在 `:root` 定義得出來（打錯的名字不會報錯，只會安靜掉回預設值）。
+  確認每個 `var(--x)` 都在 `:root` 定義得出來（打錯的名字不會報錯，只會安靜掉回預設值），
+  並確認**級距內沒有兩個 token 撞值**（`--r-*`／`--fs-*`／`--space-*`／`--shadow-*`）——
+  同一個值兩個名字時改哪一個都只有一半的地方會跟上，2026-08-26 收小圓角時 `--r-sm` 差點
+  撞上 `--r-xs`。
   ⚠️ **掃描名單全部自動列舉**（2026-08-26 拆檔後）：`.css` 用 `readdirSync(src/styles)`；
   `.astro` 用 `readdirSync({ recursive: true })` 掃 `src/pages`（含 `guide/` 子目錄）與
   `src/components`，挑出內容含 `<style` 的檔案，不是寫死幾個檔名。並自帶一條**反例斷言**：
@@ -344,7 +359,7 @@ npm run compare -- <beforeURL> <afterURL>  # computed-style 逐元素比對，�
 
 | 檔 | 放什麼 | 誰載 |
 |---|---|---|
-| `tokens.css` | `:root` 的五組 token（間距／圓角／字級／表面／陰影與節奏）——**唯一**允許定義 token 的地方 | Base |
+| `tokens.css` | `:root` 的六組 token（間距／圓角／字級／表面／陰影與節奏／面的質感）——**唯一**允許定義 token 的地方 | Base |
 | `base.css` | 全站重置（`*`／`html`／`body`／`main`／`footer`／`a`／`pre`）＋ `.sr-only` | Base |
 | `chrome.css` | 全站導覽列 `#site-nav`（含「遊戲介紹」下拉） | Base |
 | `content.css` | 靜態內容頁共用 `.page`（首頁／圖鑑／遊戲介紹）＋首頁訪客計數器 `#hit-counter`＋詞彙頁 `.kw-*` | Base |

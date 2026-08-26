@@ -59,11 +59,16 @@
   --space-6: 2rem;
   --space-7: 3rem;
 
-  /* 圓角：越大的面用越大的半徑，小徽章不要跟卡片同一個值。 */
-  --r-xs: 4px;
-  --r-sm: 6px;
-  --r-md: 10px;
-  --r-lg: 14px;
+  /* 圓角：越大的面用越大的半徑，小徽章不要跟卡片同一個值。
+     2026-08-26 整體收小一階（`6/10/14` → `4/5/7`）：舊值在深色底上把每一張卡片都圓成
+     一顆藥丸，元件之間分不出「面」與「徽章」。
+     ⚠️ `--r-xs` 跟著從 4px 降到 3px，理由不是視覺是**避免撞值**：`--r-sm` 收到 4px 之後
+     它會跟 `--r-xs` 一模一樣，變成同一個值兩個名字——那正是這個 repo 一路在收掉的漂移
+     來源（舊的 `--panel` 就是這樣拆掉的）。`--r-pill` 不動。 */
+  --r-xs: 3px;
+  --r-sm: 4px;
+  --r-md: 5px;
+  --r-lg: 7px;
   --r-pill: 999px;
 
   /* 字級：--fs-base 是 1rem，往下三階給輔助資訊、往上四階給標題。 */
@@ -96,9 +101,36 @@
   --shadow-2: 0 4px 14px rgb(0 0 0 / 35%);
   --shadow-3: 0 10px 30px rgb(0 0 0 / 50%);
 
+  /* 面的質感（2026-08-26）。--hair 是上緣那條 1px 高光——深色 UI 靠它讓一個面看起來是
+     「往前凸」而不是「一塊比較亮的底色」。
+     ⚠️ 三個 --face-* **必須收在這裡、不准在元件裡各抄一份**：它們是同一個配方的三個狀態，
+     抄散到 components/dice/detail 三個檔之後，改高光就得改三個地方而且不會有任何東西提醒
+     你漏了一個。這是這一輪一路在收的漂移類別（--panel、render.ts 的金色、board-export 的
+     fallback 都是同一族）。
+     疊放順序有意義：inset 高光在最上、下緣硬邊次之、外圈柔影在最外。 */
+  --hair: rgb(255 255 255 / 7%);
+  --face: inset 0 1px 0 var(--hair), 0 2px 0 rgb(0 0 0 / 35%), var(--shadow-2);
+  --face-lift: inset 0 1px 0 var(--hair), 0 calc(2px + var(--p-lift)) 0 rgb(0 0 0 / 35%), var(--shadow-3);
+  /* 浮在畫布上的面（詳情面板、下拉選單）不要下緣硬邊：硬邊在講「它坐在某個平面上」，
+     而這兩個東西沒有坐在任何東西上。
+     ⚠️ **這一輪只換了兩個**：`#detail`（detail.css）與 `#site-nav .nav-menu-items`
+     （chrome.css）。同一族但**還停在裸 --shadow-* 的**有四個，各自的值本來就不一致，
+     不是這張 PR 弄出來的：`#toolbar`（tree.astro，--shadow-2）、`/tree` 手機版篩選抽屜
+     （tree.astro，--shadow-3）、`/board` 的面板（board.css，--shadow-3）、`/dice` 的篩選列
+     （dice.css，--shadow-1）。**調 --face-float 的時候記得那四個不會跟著動**——要不要把
+     它們一起收進來是視覺決定，得先給 Yuki 看對照圖（2026-08-26 code review 提出）。 */
+  --face-float: inset 0 1px 0 var(--hair), var(--shadow-3);
+
   /* 微互動的節奏。跟 --slide-ms 是兩回事：那個是換頁，這兩個是 hover／焦點這種即時回饋。 */
   --t-fast: 120ms;
   --t-med: 200ms;
+
+  /* hover 抬升量。原本是三個檔各自寫死的 `translateY(-2px)`（.home-card／.guide-card／
+     .dice-card），收成 token 是為了讓 --face-lift 的下緣硬邊能跟著它一起長——卡片往上抬
+     2px、影子的硬邊就要往下多 2px，方向感才對得上。
+     ⚠️ E2E 有守：chrome.spec.ts 的「形狀二」會先斷言 hover 真的有 transform（正向控制），
+     再驗 reduce 之下被關掉。把這裡改成 0 會讓那條的正向控制紅。 */
+  --p-lift: 2px;
 
   /* 全站唯一的鍵盤焦點框，見底下的 :focus-visible 規則。 */
   --ring: 2px solid var(--gold);
@@ -106,4 +138,24 @@
 
   /* 字型只用系統堆疊，不自架字型檔（CJK 字型體積過大）。 */
   --font: 'Noto Sans TC', 'Microsoft JhengHei', sans-serif;
+}
+
+/* 減少動態：把 --face-lift 的下緣硬邊壓回跟 --face 同一階。
+ *
+ * 起因（2026-08-26 code review）：`components.css`／`dice.css` 的 reduce 區塊只關掉
+ * `transform`，硬邊仍然是 `calc(2px + var(--p-lift))` = 4px——卡片不動、影子卻往下掉 2px，
+ * 影子脫離了它應該在追的那個元素。
+ *
+ * ⚠️ **為什麼改在這裡而不是在元件的 reduce 區塊裡寫 `--p-lift: 0px`**：那樣沒有用，實測
+ * 過。自訂屬性的 `var()` 代換是在**宣告它的那個元素**上算完再往下繼承的——`--face-lift`
+ * 宣告在 `:root`，它的值早就把 `--p-lift: 2px` 烤進去了，之後在 `.home-card:hover` 上改
+ * `--p-lift` 影響不到已經算完的 `--face-lift`。要改就得改 `:root` 這一份。
+ *
+ * 好處是元件的 reduce 區塊一行都不用動，將來任何一個用 --face-lift 的地方都自動跟著平掉。
+ * 外圈柔影仍然升到 --shadow-3，所以 hover 的回饋不會整個消失。
+ * 守門：`tests/e2e/chrome.spec.ts` 的 D7b（reduce 之下硬邊不准比靜止時大）。 */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --face-lift: inset 0 1px 0 var(--hair), 0 2px 0 rgb(0 0 0 / 35%), var(--shadow-3);
+  }
 }

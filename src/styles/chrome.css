@@ -23,7 +23,12 @@
   background: color-mix(in srgb, var(--surface-2) 88%, transparent);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
+  /* 底線走 --gold 35%，不是 --border：導覽列是全站唯一一條橫貫畫面的線，用中性邊框色
+     時它只是「內容到這裡為止」，換成暗金之後它才是站台自己的一條邊。35% 是上限——
+     再高就會跟 .brand 與 [aria-current] 的金色搶，那兩個才是要被讀到的東西。
+     前一行是 fallback，理由同上面 background 那一對。 */
   border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid color-mix(in srgb, var(--gold) 35%, transparent);
 }
 
 /* 導覽列的連結預設不是金色。全部都金色的時候「你在哪一頁」就沒有地方講了——金色留給
@@ -158,7 +163,8 @@
   background: var(--surface-2);
   border: 1px solid var(--border-strong);
   border-radius: var(--r-md);
-  box-shadow: var(--shadow-3);
+  /* 跟 #detail 同一種東西（浮在內容上的面），用同一個配方。 */
+  box-shadow: var(--face-float);
 }
 #site-nav .nav-menu-items a {
   padding: var(--space-2) var(--space-3);

@@ -11,7 +11,7 @@
   background: var(--surface-1);
   border: 1px solid var(--border);
   border-radius: var(--r-md);
-  box-shadow: var(--shadow-1);
+  box-shadow: var(--face);
   color: var(--fg);
   text-decoration: none;
   transition:
@@ -22,8 +22,8 @@
 :is(.home-card, .guide-card):hover,
 :is(.home-card, .guide-card):focus-visible {
   border-color: var(--gold);
-  box-shadow: var(--shadow-2);
-  transform: translateY(-2px);
+  box-shadow: var(--face-lift);
+  transform: translateY(calc(-1 * var(--p-lift)));
   text-decoration: none;
 }
 .home-card h2 {
@@ -123,6 +123,7 @@
   transition:
     color var(--t-fast) ease,
     background-color var(--t-fast) ease,
+    box-shadow var(--t-fast) ease,
     border-color var(--t-fast) ease;
 }
 .chip input {
@@ -147,6 +148,11 @@
   background: var(--surface-3);
   background: color-mix(in srgb, var(--branch, var(--gold)) 18%, var(--surface-1));
   color: var(--fg);
+  /* 內發光：底色只混 18%（見上），單靠它在五顆同時亮起時分不出誰開著。光暈往內收，
+     邊框那一圈才是被強調的東西——往外發光的話它會跟隔壁那顆的光暈糊在一起。
+     前一行同樣是 color-mix 的 fallback：不支援的引擎退回一層中性內陰影，不會變成沒有。 */
+  box-shadow: inset 0 0 11px rgb(255 255 255 / 6%);
+  box-shadow: inset 0 0 11px color-mix(in srgb, var(--branch, var(--gold)) 22%, transparent);
 }
 /* 焦點框畫在整顆鈕上。checkbox 自己是透明的，:focus-visible 落在它身上時看不到任何東西。 */
 .chip:has(input:focus-visible),
@@ -210,12 +216,11 @@
   }
 }
 
-/* 卡片左緣的分支色條（2026-08-22）。五系色本來只活在 /tree 的畫布裡，圖鑑上 41 張卡片
-   長得一模一樣，要靠讀文字才知道是哪一系。
-   用 border-left 而不是 ::before：`.card-term` 是 `inset: 0` 的絕對定位覆蓋層，它的定位
-   基準是卡片的**內距框**，會蓋掉任何畫在內距框裡的東西——色條畫成邊框才留得住。
-   （同理，左邊框從 1px 變 3px 會讓內距框整體右移 2px，但本文與覆蓋層是一起移的，
-   兩者不會錯位，所以不需要補 padding。） */
+/* 卡片的分支色（2026-08-22 起，2026-08-26 改到頂緣）。五系色本來只活在 /tree 的畫布裡，
+   圖鑑上 41 張卡片長得一模一樣，要靠讀文字才知道是哪一系。
+   ⚠️ 現在畫在 `.dice-card::after`（頂緣 3px 漸層），**不是 border-left**——左緣那條
+   2026-08-26 拿掉了。`.card-term` 是 `inset: 0` 的絕對定位覆蓋層，會蓋掉任何畫在內距框裡
+   的東西，所以 `::after` 靠 `z-index: 2` 贏過它（見 dice.css 該處，E2E C12 守）。 */
 :is(.dice-card, .chip)[data-branch='nature'] { --branch: var(--nature); }
 :is(.dice-card, .chip)[data-branch='engineering'] { --branch: var(--engineering); }
 :is(.dice-card, .chip)[data-branch='magic'] { --branch: var(--magic); }

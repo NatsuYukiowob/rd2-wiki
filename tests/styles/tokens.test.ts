@@ -130,7 +130,7 @@ describe('版面級距', () => {
     // ⚠️ 只讀 tokens.css，不要把九個檔合併起來當來源。下面那條正則是 `^\s{2}(--…):`，
     // 只認縮排兩格、不綁 :root 區塊——合併之後任何元件規則裡縮排兩格的自訂屬性
     // 都會被誤認成「:root 有定義」，這條規則就廢了。
-    const tokens = readFileSync(TOKENS_FILE, 'utf8');
+    const tokens = stripComments(readFileSync(TOKENS_FILE, 'utf8'));
     const defined = new Set([...tokens.matchAll(/^\s{2}(--[a-z0-9-]+):/gm)].map(m => m[1]!));
 
     // 不在 :root、由執行期寫入或由元件自己設的變數，各自的來源寫在旁邊。
@@ -149,6 +149,43 @@ describe('版面級距', () => {
       }
     }
     expect([...missing].sort()).toEqual([]);
+  });
+
+  /**
+   * 同一個級距裡不准有兩個 token 撞值。
+   *
+   * 起因：PR ④ 把 `--r-sm` 從 6px 收到 4px，而 `--r-xs` 本來就是 4px——兩個名字一個值。
+   * 那不是排版問題是**漂移來源**：之後有人要調「小徽章的圓角」時，兩個名字看起來都對，
+   * 改哪一個都會有一半的地方沒跟上，而且沒有任何東西會說話。這個 repo 已經為了同一件事
+   * 收掉過 `--panel`（一個面兩個名字）、`render.ts` 的第二份金色、`board-export.ts` 的
+   * 六條 fallback。
+   *
+   * 只掃「級距」——一串刻意排成階梯的 token。顏色不在名單裡：`--surface-0` 跟 `--bg`
+   * 將來真的可能刻意同值（見 tokens.css 裡 --surface-0 的說明）。
+   */
+  it('級距內不准有兩個 token 撞值', () => {
+    // ⚠️ 一定要先 stripComments：底下的正則只認「縮排兩格的 --name:」，而這個檔的註解
+    // 經常引用 token 名與舊值（`--r-sm` 收小那段就是），縮排剛好兩格的那一行會被當成
+    // 一筆定義，變成永遠修不好的假紅。同檔上面那條掃裸數值的測試早就這麼做了。
+    // （2026-08-26 code review 抓到；同一個檔的另外兩處讀 tokens.css 也一併補上。）
+    const tokens = stripComments(readFileSync(TOKENS_FILE, 'utf8'));
+    const defined = [...tokens.matchAll(/^\s{2}(--[a-z0-9-]+):\s*([^;]+);/gm)]
+      .map(m => ({ name: m[1]!, value: m[2]!.trim() }));
+
+    const LADDERS = ['--r-', '--fs-', '--space-', '--shadow-'];
+    const dupes: string[] = [];
+    for (const prefix of LADDERS) {
+      const group = defined.filter(t => t.name.startsWith(prefix));
+      // 正向控制：級距不存在（改名／打錯前綴）時這條會紅，而不是安靜地掃了 0 個 token。
+      expect(group.length, `級距 ${prefix}* 一個 token 都沒掃到——前綴過期了`).toBeGreaterThan(2);
+      const seen = new Map<string, string>();
+      for (const { name, value } of group) {
+        const prev = seen.get(value);
+        if (prev) dupes.push(`${prefix}*: ${prev} 與 ${name} 同為 ${value}`);
+        else seen.set(value, name);
+      }
+    }
+    expect(dupes).toEqual([]);
   });
 });
 
@@ -212,7 +249,7 @@ describe('import 順序＝層疊順序', () => {
  */
 describe('board-export 的色票 fallback', () => {
   it('六條 fallback 跟 tokens.css 的值一字不差', () => {
-    const tokens = readFileSync(TOKENS_FILE, 'utf8');
+    const tokens = stripComments(readFileSync(TOKENS_FILE, 'utf8'));
     // 只認縮排兩格的自訂屬性宣告，跟上面那條 var() 解析測試同一套規則。
     const defined = new Map(
       [...tokens.matchAll(/^\s{2}(--[a-z0-9-]+):\s*([^;]+);/gm)].map(m => [m[1]!, m[2]!.trim()]),
