@@ -1128,12 +1128,12 @@ function applyFilter(): void {
     svg.querySelector(`g.node[data-id="${n.id}"]`)?.classList.toggle('filtered-out', !isMatch(n.id));
   }
   // 邊也要跟著篩選淡出（上一輪審查 Minor，task-17 補漏）：一條邊如果兩端節點都被篩掉，
-  // 套用同一套 .filtered-out class 讓它一起淡出（樣式見 global.css 的
+  // 套用同一套 .filtered-out class 讓它一起淡出（樣式見 canvas.css 的
   // `#tree .edge.filtered-out` 規則）。這裡刻意用「兩端都被篩掉」而不是「任一端被篩掉」
   // ——一條邊只要還連著一個可見節點，使用者就還看得到、也還關心它的另一端在哪裡，不該
   // 跟著淡出。前置鏈上的邊即使兩端都被篩掉也不受影響：下面如果目前有選取節點會呼叫
   // select()，幫前置鏈上的邊補上 .in-chain，靠 CSS 的 !important 疊加規則蓋過這裡設的
-  // opacity（見 global.css 的說明），這裡不用另外排除前置鏈上的邊。
+  // opacity（見 canvas.css 的說明），這裡不用另外排除前置鏈上的邊。
   for (const [from, to] of data.edges) {
     const bothFiltered = !isMatch(from) && !isMatch(to);
     svg
@@ -1142,7 +1142,7 @@ function applyFilter(): void {
   }
   // 中央樞紐不是節點、拿不到上面那個逐節點掛的 .filtered-out，但畫面上它跟節點一樣佔位置：
   // 只要有任何節點被篩掉（＝使用者正在縮小注意範圍），樞紐就該一起淡下去，否則它會變成
-  // 全畫面唯一還亮著的東西（樣式見 global.css 的 `#tree .tree-center.filtered-out`）。
+  // 全畫面唯一還亮著的東西（樣式見 canvas.css 的 `#tree .tree-center.filtered-out`）。
   const matchCount = [...matched.values()].filter(Boolean).length;
   svg.querySelector('g.tree-center')?.classList.toggle('filtered-out', matchCount < data.nodes.length);
 

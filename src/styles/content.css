@@ -1,0 +1,155 @@
+/*
+ * 首頁訪客計數器（S2：金色等寬數字）。
+ *
+ * 只用既有變數，不新增 CSS 變數也不新增字型檔——--gold 已經是全站唯一的強調色
+ * （連結、前置鏈高亮都是它），等寬字型堆疊 code/pre 早就定義過。
+ *
+ * ⚠️ 失敗時用 visibility 而不是 display: none。display: none 會把已經佔好位的區塊
+ * 收掉、footer 往上跳，而「失敗」是 astro dev、E2E、以及 deploy job 補上 checkout 之前
+ * 的線上環境的預設狀態——等於幾乎每次載入都會位移一下。保留高度，成功與失敗兩條路徑
+ * 版面才一致。
+ */
+#hit-counter {
+  margin-top: var(--space-6);
+  padding-top: var(--space-5);
+  border-top: 1px solid var(--border);
+  text-align: center;
+  font-size: var(--fs-md);
+  color: var(--muted);
+}
+
+#hit-counter[hidden] {
+  /* [hidden] 預設是 display: none，這裡蓋掉它——理由見上面。 */
+  display: block;
+  visibility: hidden;
+}
+
+#hit-number {
+  display: inline-block;
+  margin: 0 var(--space-2);
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: var(--fs-2xl);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--gold);
+  /* 等寬數字：數值變動時字寬不變，版面不會左右抽動。 */
+  font-variant-numeric: tabular-nums;
+  /* 數字回填前先把位子撐開，填進去的那一刻不會位移。 */
+  min-width: 6ch;
+}
+
+/* ==========================================================================
+   靜態內容頁（首頁／圖鑑／遊戲介紹）
+   --------------------------------------------------------------------------
+   /tree 是一張畫布，它的版面規則（#detail、#toolbar…）全部綁在自己的 id 底下。
+   下面這一段是「會捲動的一般網頁」那一路的樣式，一律掛在 .page 底下，兩邊不會互相踩到——
+   .meta／.desc／.note 這些 class 名稱在 #detail 裡已經有一份，那是刻意的：同一個東西在
+   兩處長得一樣，但作用域分開，改其中一邊不會意外動到另一邊。
+   ========================================================================== */
+
+.page {
+  padding: var(--space-6) var(--space-4) var(--space-7);
+}
+
+.page h1 {
+  margin: 0 0 var(--space-2);
+  font-size: var(--fs-3xl);
+}
+
+.page .lede {
+  max-width: 44rem;
+  margin: 0 0 var(--space-5);
+  color: var(--muted);
+}
+
+.page .note {
+  color: var(--muted);
+  font-size: var(--fs-sm);
+}
+
+.page .muted {
+  color: var(--muted);
+}
+
+/* 靜態頁的關鍵字：/tree 那邊是 <button>（點了在卡片裡換頁），這裡是連到詞條的 <a>。
+   兩邊刻意長得一樣——點虛線底線＋官方標記色——讓玩家在兩個地方認得出同一種東西。 */
+.kw-link {
+  /* 一個標記是一個詞，不准斷行。中文沒有空白，瀏覽器會在任何字之間斷開——實測
+     `#巨型尖刺` 被拆成「#尖」「刺」兩行，看起來像兩個不同的標記。 */
+  white-space: nowrap;
+  color: var(--support);
+  text-decoration: underline dotted currentcolor;
+  text-underline-offset: 0.2em;
+}
+.kw-link:hover,
+.kw-link:focus-visible {
+  text-decoration: underline solid currentcolor;
+}
+
+/* --- 關鍵字詞條（/dice 底部與 /guide/* 共用） --- */
+.kw-section {
+  margin-top: var(--space-6);
+  padding-top: var(--space-5);
+  border-top: 1px solid var(--border);
+}
+.kw-section h2 {
+  margin: 0 0 var(--space-2);
+  padding-left: var(--space-3);
+  border-left: 4px solid var(--gold);
+  font-size: var(--fs-xl);
+}
+.kw-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(20rem, 1fr));
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+}
+.kw-entry {
+  padding: var(--space-3);
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-1);
+  /* ⚠️ 這裡**不要**再補 scroll-margin-top。導覽列的偏移已經由 `html` 的
+     `scroll-padding-top` 給了，兩邊同時寫等於加兩次——實測目標卡片停在 nav 下方 74px
+     而不是預期的 12px（2026-08-22 review 抓到）。偏移只能有一個來源。 */
+}
+.kw-entry:target {
+  border-color: var(--gold);
+  box-shadow: 0 0 0 1px var(--gold);
+}
+.kw-entry h3 {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-2);
+  font-size: var(--fs-base);
+}
+.kw-code {
+  color: var(--muted);
+  font-size: var(--fs-xs);
+}
+.kw-alias {
+  color: var(--muted);
+  font-size: var(--fs-xs);
+}
+.kw-desc {
+  margin: 0;
+  font-size: var(--fs-md);
+}
+.kw-used,
+.kw-unused {
+  margin: var(--space-2) 0 0;
+  font-size: var(--fs-xs);
+}
+.kw-used {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.kw-unused {
+  color: var(--muted);
+  font-style: italic;
+}
+

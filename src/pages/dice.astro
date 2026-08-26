@@ -14,6 +14,7 @@
 // Yuki 指定，跟 /tree 的詳情面板同一種操作感）。四組關鍵字的完整清單在 /guide 底下，
 // 那裡是「攤開來瀏覽」用的；卡片上的就地視圖是「讀到一半想起來這個詞是什麼」用的。
 import Base from '../layouts/Base.astro';
+import '../styles/dice.css';
 import DiceCard from '../components/DiceCard.astro';
 import data from '../generated/tree.json';
 import keywordsRaw from '../../data/keywords.json';
@@ -81,7 +82,7 @@ const BRANCHES = Object.entries(BRANCH_ZH);
           時仍然是一個可操作的表單控制項，全部是瀏覽器免費給的。自己刻要補齊這些至少三十行，
           而且漏一項就是一個只有滑鼠能用的篩選器。
           checkbox 本身用 CSS 攤平成整顆鈕的大小、透明度 0——它還在原地接點擊與焦點，
-          只是看不見（見 global.css 的 .chip input）。
+          只是看不見（見 components.css 的 .chip input）。
         -->
         <button type="button" id="codex-all" class="chip">全部</button>
         {BRANCHES.map(([value, label]) => (

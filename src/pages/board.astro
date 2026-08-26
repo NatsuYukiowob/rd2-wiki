@@ -16,6 +16,7 @@
 // build:data 額外轉出 public/assets/board-icons/<hash>.webp（CI 規則 21 守這份對應表）。
 // 不讀 tree.json 的 `icon` 欄位：那是骰子樹節點圖（帶底板），/board 刻意要換掉的正是它。
 import Base from '../layouts/Base.astro';
+import '../styles/board.css';
 import data from '../generated/tree.json';
 import boardIconsRaw from '../../data/board-icons.json';
 import { CELLS, DECK_SIZE } from '../lib/board';
@@ -101,7 +102,7 @@ const slots = [...Array(DECK_SIZE).keys()];
 
     <!-- 工具列：按鈕文字固定不隨狀態改變，避免整條列的寬度跳動。
          「隱藏星數」用 aria-pressed 表達開關狀態，視覺上只換底色（跟 hover 共用同一色階），
-         不加會撐寬按鈕的圖示或文字——理由同一段見 global.css 的骰盤區塊。 -->
+         不加會撐寬按鈕的圖示或文字——理由同一段見 board.css 的骰盤區塊。 -->
     <div id="board-tools">
       <button type="button" id="board-clear">清空骰盤</button>
       <button type="button" id="board-export">產生分享圖</button>

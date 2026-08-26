@@ -2,7 +2,24 @@
 // 全站共用版面：導覽列、頁尾版權聲明。
 // 導覽列只放已上線的頁面。「貢獻」入口目前由 src/lib/flags.ts 的 FEATURES.contributeLink
 // 暫時關掉（頁面本身還在，只是不從導覽列曝光）。
-import '../styles/global.css';
+// ⚠️ 這五行的順序就是層疊順序，是刻意選的分層（token → 全站基底 → 導覽列 → 內容頁 → 元件），
+// 不是舊 `global.css`（2026-08-26 已拆散）原始區段順序的重現——原檔是交錯的（例如
+// `#site-nav` 的下拉區塊原本排在 `#hit-counter`／`.branch-dot` 之後，`.kw-*` 區塊原本排在
+// `.chip`／`.dice-card` 之後），拆檔時把交錯的區段各自合併進所屬的檔案，跨檔的相對順序因此
+// 必然改變。順序本身沒問題，靠的是「沒有跨檔的同具體度衝突」這個事實（已用
+// `tools/compare-computed.ts` 的 0 差異與靜態掃描雙重確認），不要調換。
+// 另外四個檔（detail／canvas／dice／board）由用得到的頁面自己 import，
+// 而且必須寫在該頁 `import Base` 那一行之後——寫在前面的話頁面級 <link> 會排到
+// Base 前面，頁面級規則如果需要蓋過 Base 級同具體度的規則，順序反了就會靜靜地輸掉。
+// （`.chip-xs` 是這個陷阱的真實案例：拆檔規劃時它一度要被分進 `dice.css`——原始
+// global.css 裡它離 `.chip` 300 多行、緊貼著骰子卡片那段——但兩者具體度相同又
+// 套在同一顆按鈕上（`class="chip chip-xs"`），勝負全看檔案順序，所以最後刻意跟
+// `.chip` 一起留在 `components.css`，不讓兩者的相對順序去賭哪個頁面先載哪個檔。）
+import '../styles/tokens.css';
+import '../styles/base.css';
+import '../styles/chrome.css';
+import '../styles/content.css';
+import '../styles/components.css';
 import data from '../generated/tree.json';
 import { FEATURES } from '../lib/flags';
 import { GUIDE_PAGES } from '../lib/glossary-groups';

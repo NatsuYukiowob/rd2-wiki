@@ -845,7 +845,7 @@ test('B10. 兩個小標與其下方內容區塊一起置中，標題與說明文
   // （量左右留白相等，容差 ≤2px）；另外還要驗小標真的對齊在它下面那一塊的正上方，
   // 不是只對到頁面中心——#deck-row 是 width: fit-content、#board-grid 是 max-width，
   // 兩種置中機制的框寬本來就不同，只驗「小標自己留白相等」測不出小標飄到另一個中線去了。
-  // ⚠️ .board-h2 在手機（觸控）版面上刻意 display:none（既有設計，見 global.css 的
+  // ⚠️ .board-h2 在手機（觸控）版面上刻意 display:none（既有設計，見 board.css 的
   // 「兩個 h2 在手機上是多餘的」註解），這時 getBoundingClientRect() 全部回 0，
   // 不是「沒有置中」——所以只在它可見時才驗。
   const h2s = await page.locator('.board-h2').all();

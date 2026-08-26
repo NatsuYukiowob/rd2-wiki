@@ -1,0 +1,262 @@
+#detail {
+  position: fixed;
+  /* var(--nav-h, 3rem)：跟 src/pages/tree.astro 的 #tree-controls 用同一個由
+     src/scripts/tree-canvas.ts 的 updateNavHeight() 量出來的 CSS 自訂屬性，理由見
+     那條規則的註解（修「#toolbar 右上角戳出 nav 下緣」bug 時一併修，兩者本來就是
+     同一個「nav 底下」的偏移量，不該各自寫死）。3rem 只當 JS 執行前的 fallback。 */
+  top: calc(var(--nav-h, 3rem) + 0.75rem);
+  /* 浮在畫布上的獨立卡片，不是貼著邊緣的側欄：右邊與上下都留 0.75rem，四邊都有框、
+     有圓角與陰影，高度只包到內容為止（撐滿時才捲動）。留白讓底下的骰子樹在卡片邊緣
+     露出來，看得出來它是疊在畫布上的一層，而不是把畫布切掉一塊。 */
+  right: 0.75rem;
+  /* 2026-08-23 兩次調整：先從 22rem 縮到 18rem（「整體縮小」），再改成**橫式兩欄**、
+     寬度放到 32rem（Yuki：「在上方還是直立長方形有點奇怪，可以改成橫的」）。
+     卡片浮在節點正上方／正下方時，直立的長方形會往上戳很高、把樹切成兩半；橫的貼著節點
+     鋪開，遮住的是一條扁帶。內距與字級維持降一級後的值。
+     ⚠️ 這幾處都只給桌機：手機版是全寬、從底部升起的抽屜，兩欄與縮小都不適用，
+     src/pages/tree.astro 的 max-width: 720px 那一段把它們還原回去。 */
+  width: 32rem;
+  max-width: calc(100% - 1.5rem);
+  max-height: calc(100vh - var(--nav-h, 3rem) - 1.5rem);
+  /* x 一定要明確設成 hidden：視圖堆疊的動畫會把滑入／滑出的那張推到內容區左右兩側，
+     靠這裡裁掉。留 `overflow: auto` 的話橫向會冒出捲軸、甚至捲得動。
+     （兩軸都是非 visible 才是合法組合——只設 overflow-x 的話 overflow-y 會被算成 auto。） */
+  overflow-x: hidden;
+  overflow-y: auto;
+  background: var(--surface-2);
+  padding: var(--space-3);
+  font-size: var(--fs-md);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-3);
+}
+#detail h2 {
+  margin-top: 0;
+}
+#detail .meta {
+  color: var(--muted);
+  margin: var(--space-1) 0;
+}
+#detail .warn {
+  color: var(--nature);
+}
+#detail .note {
+  color: var(--muted);
+  font-size: var(--fs-xs);
+}
+/* 節點視圖的兩欄版面。只有節點視圖有 .node-body——關鍵字頁與覺醒頁是單純一段解釋，
+   分欄只會讓一句話被劈成兩半。 */
+#detail .node-body {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-4);
+}
+/* 分隔線走框線不走 <hr>：<hr> 是一個佔一整列的區塊元素，並排之後它會橫跨兩欄。 */
+#detail .node-body > .chain {
+  border-left: 1px solid var(--border);
+  padding-left: var(--space-4);
+}
+/* 重置警告跨兩欄。它是最後一段、也是最長的一句，留在右欄會把卡片撐高一截。 */
+#detail .node-body > .reset-warn {
+  grid-column: 1 / -1;
+  margin-bottom: 0;
+}
+/* 兩欄之後，每一欄第一個元素的上邊界外距會讓兩欄的第一行對不齊（h3 有預設 margin-top，
+   p 沒有）。歸零讓兩欄從同一條基線開始。 */
+#detail .node-body > .col > :first-child {
+  margin-top: 0;
+}
+#detail .node-body h3 {
+  margin-bottom: var(--space-2);
+}
+#detail .cost {
+  color: var(--gold);
+  /* ⚠️ 不能再往下降：這是粗體中文（「核心」「金幣」），小字粗體中文的橫筆畫在沒有真 CJK
+     bold 字面的環境會連成一條橫線（見 CLAUDE.md）。--fs-base 是安全的下限。 */
+  font-size: var(--fs-base);
+  font-weight: 700;
+}
+/* --- 詳情面板的視圖堆疊（2026-08-20）---
+   點 `#關鍵字` 或「骰子覺醒」會在同一張卡片裡推出下一頁。平常 .stack 就是一個普通區塊
+   （高度由內容決定，positionPanel() 量得到），只有動畫進行中才變成固定高度的裁切容器。 */
+#detail .stack {
+  position: relative;
+  /* ⚠️ `overflow: hidden` 常駐，不要只掛在 .animating 上。它會建立 BFC，改變子元素邊界外距
+     的收合方式——只在動畫期間加的話，class 一掛上高度就先自己跳 12.4px（實測），
+     那一下會觸發一次多餘的 height transition，卡片在真正的動畫開始前先抖一下。
+     平常高度是 auto、內容不會溢出，常駐它沒有任何視覺代價。 */
+  overflow: hidden;
+}
+#detail .stack.animating {
+  transition: height var(--slide-ms) var(--slide-ease);
+}
+/* 換頁時 top 也要跟著動，卡片貼著節點的那一緣才不會漂。
+   ⚠️ 2026-08-23 卡片改成擺在節點上方／下方之後，這條要守的東西換了：
+   放上方時卡片下緣貼著節點，高度從 401 縮到 198 而 top 不動的話，下緣會往上跳 203px、
+   跟節點之間裂出一道縫（放下方時 top 本來就不隨高度變，這條 transition 只是無害地空轉）。
+   這條 transition **只在換頁期間掛上**：拖曳畫布時卡片是每一幀重寫 top 來跟著節點跑，
+   那時候有 transition 會整個變成拖尾。 */
+#detail.panel-sliding {
+  transition: top var(--slide-ms) var(--slide-ease);
+}
+#detail .view[hidden] {
+  display: none;
+}
+/* 換頁後焦點是用程式移進來的（見 tree-canvas.ts 的 focusView），不是使用者自己 Tab 過來的，
+   不該畫成「你選到了這個東西」的樣子。鍵盤操作的可見焦點由裡面各個按鈕自己的 :focus-visible 給。 */
+#detail .view:focus {
+  outline: none;
+}
+/* 滑動中兩張都拉離正常流程，才不會一上一下疊成兩倍高 */
+#detail .view.sliding {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+}
+#detail .view.slide-anim {
+  transition: transform var(--slide-ms) var(--slide-ease), opacity var(--slide-ms) var(--slide-ease);
+}
+
+/* 視圖頂部：返回（只有非根視圖有）／標題／關閉。
+   欄寬用 auto 不用固定的 2rem：根視圖沒有返回鍵，固定寬度會留下一條 32px 的空軌道，
+   標題比底下的內文縮排 36px，看起來就是憑空多一格空白（實測 h2 700.8 / 內文 664.8）。
+   間距也不放在 gap 上、改由按鈕自己的 margin 給——gap 一樣會在空軌道旁邊留 4px。 */
+#detail .view-head {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  margin-bottom: var(--space-2);
+}
+#detail .view-head h2 {
+  grid-column: 2;
+  margin: 0;
+  /* 同 .cost：粗體中文的下限是 --fs-base。 */
+  font-size: var(--fs-base);
+  overflow-wrap: anywhere;
+}
+#detail .view-back,
+#detail .view-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* 44px 是觸控目標的下限；比字級大一圈是刻意的，不是留白沒調好 */
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: var(--fs-lg);
+  line-height: 1;
+  cursor: pointer;
+}
+#detail .view-back {
+  grid-column: 1;
+  margin-right: var(--space-1);
+}
+#detail .view-close {
+  grid-column: 3;
+  margin-left: var(--space-1);
+}
+#detail .view-back:hover,
+#detail .view-close:hover,
+#detail .view-back:focus-visible,
+#detail .view-close:focus-visible {
+  background: rgb(255 255 255 / 10%);
+  color: var(--fg);
+}
+
+/* 關鍵字：描述裡一律用遊戲的標記色標出來，而且**永遠可以點**（點了推出解釋那一頁）。
+   它是 <button>，所以要先把瀏覽器預設的按鈕外觀整個抹掉，才能長得像句子裡的一個詞。 */
+#detail .kw {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  /* 預設色只在 meta.glossary 查不到那個詞時才用得到——查得到時 NodeDetail.ts 會用
+     遊戲內該標記的底色蓋掉（inline style），同色代表同一類機制。 */
+  color: var(--support);
+  cursor: pointer;
+  text-decoration: underline dotted currentcolor;
+  text-underline-offset: 0.2em;
+}
+#detail .kw:hover,
+#detail .kw:focus-visible {
+  text-decoration: underline solid currentcolor;
+}
+
+/* 詞彙頁底部的「搜尋 #X」：這是這一頁唯一的動作，給它按鈕的樣子（不是連結） */
+#detail .kw-search {
+  margin-top: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--fg);
+  font: inherit;
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
+#detail .kw-search:hover,
+#detail .kw-search:focus-visible {
+  background: rgb(255 255 255 / 10%);
+}
+
+/* 練滿累計花費：跟「等級上限」同一組資訊，但它是錢，用成本色跟 meta 區分開。 */
+#detail .upgrade {
+  margin: var(--space-1) 0 0;
+  color: var(--gold);
+  font-size: var(--fs-sm);
+}
+#detail .upgrade .cond {
+  display: inline-block;      /* 連同 nowrap：不要讓「含解鎖那一次」斷在中間 */
+  margin-left: var(--space-2);
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  white-space: nowrap;
+}
+
+/* 骰子覺醒：節點頁上只留一列入口，內容在自己那一頁。整列可點，不是只有文字可點——
+   小螢幕上「要剛好戳到那三個字」是最容易失手的互動。 */
+#detail .awakening-link {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  margin: var(--space-3) 0 0;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--support);
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--fg);
+  font: inherit;
+  font-size: var(--fs-sm);
+  text-align: left;
+  cursor: pointer;
+}
+#detail .awakening-link:hover,
+#detail .awakening-link:focus-visible {
+  background: rgb(255 255 255 / 6%);
+}
+#detail .awakening-link .cond {
+  color: var(--muted);
+  font-size: var(--fs-xs);
+}
+#detail .awakening-link .chev {
+  margin-left: auto;
+  color: var(--muted);
+}
+
+
+/* 減少動態：詳情面板這一份。理由與寫法見 chrome.css 檔尾同一段。 */
+@media (prefers-reduced-motion: reduce) {
+  #detail .view.slide-anim,
+  #detail .stack.animating,
+  #detail.panel-sliding {
+    transition: none;
+  }
+}

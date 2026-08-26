@@ -449,7 +449,7 @@ if (grid && deckRow && picker && pickerClose && live) {
    *
    * ⚠️ 按鈕文字固定不變（不要「隱藏星數」↔「顯示星數」互換），否則工具列寬度會跳動
    * ——CLAUDE.md「工具列的尺寸不准隨狀態改變」那段記過同一個問題。用 `aria-pressed`
-   * 表達狀態，視覺只換底色（見 global.css），不加尺寸會變的指示元素。
+   * 表達狀態，視覺只換底色（見 board.css），不加尺寸會變的指示元素。
    *
    * ⚠️ 用 `visibility: hidden` 而不是 `display: none`——後者會讓 `.board-cell` 內部重排
    * （`place-items: center` 的骰子圖示會因為少了 `.cell-pips` 佔位而輕微移動）。

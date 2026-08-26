@@ -258,3 +258,152 @@ test('D13. 窄螢幕：導覽列自己橫向捲動，不換行也不把整份文
   expect(menu.y + menu.height, '下拉選單被導覽列的 overflow 裁掉了').toBeGreaterThan(nav.y + nav.height);
   await expect(page.locator('#site-nav .nav-menu-items a').first()).toBeVisible();
 });
+
+test('D14. 減少動態的規則拆到各檔之後沒有漏掉任何一條', async ({ page }) => {
+  // 2026-08-26 把舊的 `global.css` 檔尾那張 reduce 總表拆散到四個檔之後補的。
+  // 拆散之前只有 .dice-card 與 .dice-card .slide-anim 兩條有 E2E 在守（D7）。這裡要接住
+  // 剩下的每一條「選擇器＋宣告」，拆錯檔會靜默失效——沒有任何東西會說話。
+  // 2026-08-26 code review 加註：初版只挑了 6 條，.dice-card:hover／.home-card:hover／
+  // .guide-card:hover 三條 transform 與 #detail 整份三條完全零守備，跟這條測試自己的註解
+  // 「防拆錯檔靜默失效」自相矛盾——現在補齊。三種形狀分開處理，別硬套同一套斷言：
+  //   (1) 平常就有 transition 的元素／偽元素，直接讀 computed transitionDuration。
+  //   (2) 只有 :hover 才生效的 transform，要先真的觸發 hover 再讀（實測 el.hover() 在
+  //       desktop／mobile 兩個 project 都能正確觸發 :hover 並在 reduce 之下變回 none，
+  //       不必額外跳過任何一邊）。
+  //   (3) #detail 底下的過場：不驅動真的換頁動畫（脆），改用跟 D7 同款的合成探針——塞一個
+  //       帶目標 class 的 div 進 #detail 量完就丟掉。#detail 平常帶 hidden 屬性，但
+  //       transitionDuration 這種不依賴版面的 computed 值即使在 display:none 下也讀得到
+  //       （已用獨立腳本驗證過，讀到的是 CSS 宣告的值不是 0）。
+  //   (4) #filters.animating（篩選面板寬度過場，tree.astro:188）：同一套合成探針，但這條
+  //       過場的宣告直接掛在 #filters 本體上（不像 #detail 那三條要塞子元素），所以探針
+  //       改成直接在既有的 #filters 上切 class 量、量完立刻拿掉。
+  // 全部用 expect.soft：多個檔案同時壞掉時要一次看到全部，不要卡在陣列裡第一個失敗的案例
+  // 就中止（Step 9 反例控制撞過：預期紅在 .chip，實際卡在陣列排更前面的 .home-card）。
+  // 2026-08-26 code review 二輪加註：#filters.animating（tree.astro:188）不在被拆散的那張
+  // 總表裡，是 tree.astro 自己既有的獨立區塊，但 D14 的標題是「沒有漏掉任何一條」——
+  // 留一個已知缺口在裡面就是這條測試自己在防的假守門，補上形狀 (4)。
+
+  // --- 形狀一：直接讀元素／偽元素的 transitionDuration ---
+  const SIMPLE_CASES = [
+    { path: '/', selector: '.home-card' },
+    { path: '/guide', selector: '.guide-card' },
+    { path: '/dice', selector: '.chip' },
+    { path: '/dice', selector: '.chip .branch-dot' },
+    { path: '/dice', selector: '#site-nav a' },
+    { path: '/dice', selector: '#site-nav .nav-menu > summary' },
+    // ⚠️ #filters-toggle 本體（tree.astro:279）沒有 transition，過場在 ::after
+    // （:297 transform）與 ::before（:310 background-color）兩個偽元素上。讀元素本身的話
+    // 正向控制會直接紅，而且是假紅——所以這兩列指定讀虛擬元素。
+    { path: '/tree', selector: '#filters-toggle', pseudo: '::after' },
+    { path: '/tree', selector: '#filters-toggle', pseudo: '::before' },
+  ] as const;
+  for (const c of SIMPLE_CASES) {
+    const pseudo = 'pseudo' in c ? c.pseudo : null;
+    await page.emulateMedia({ reducedMotion: null });
+    await page.goto(c.path);
+    const el = page.locator(c.selector).first();
+    await expect.soft(el, `${c.path} 上找不到 ${c.selector}`).toBeAttached();
+    // ⚠️ 2026-08-26 code review 抓到：上面那條 expect.soft 選擇器不匹配時只記一筆，不會中止；
+    // 但緊接著的 el.evaluate() 是無條件跑的，選擇器一旦真的落空，它會在 30 秒 locator timeout
+    // 之後拋出並中止整個 test——其餘案例全部不會跑，剛好打掉這條測試自己的註解講的
+    // 「expect.soft 是為了多個檔案同時壞掉時一次看到全部」。找不到就跳過這個 case，不要硬跑。
+    if (!(await el.count())) continue;
+    const read = (p: string | null) =>
+      el.evaluate((n, pp) => getComputedStyle(n, pp).transitionDuration, p);
+    const selector = c.selector + (pseudo ?? '');
+    const path = c.path;
+    // 正向控制：這個元素平常真的有過場，下面那條斷言才有意義。
+    const normal = await read(pseudo);
+    expect.soft(normal, `${selector} 平常就沒有過場，這條斷言等於沒守`).not.toBe('0s');
+
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    const reduced = await read(pseudo);
+    expect.soft(reduced.split(',').map(v => v.trim()).every(v => v === '0s'),
+      `${path} 的 ${selector} 在 reduce 之下過場沒有被關掉（讀到 ${reduced}）`).toBe(true);
+  }
+
+  // --- 形狀二：只有 :hover 才生效的 transform，要真的觸發 hover 才量得到 ---
+  const HOVER_CASES = [
+    { path: '/dice', selector: '.dice-card' },
+    { path: '/', selector: '.home-card' },
+    { path: '/guide', selector: '.guide-card' },
+  ] as const;
+  for (const c of HOVER_CASES) {
+    await page.emulateMedia({ reducedMotion: null });
+    await page.goto(c.path);
+    const el = page.locator(c.selector).first();
+    await expect.soft(el, `${c.path} 上找不到 ${c.selector}`).toBeAttached();
+    // 同上一個形狀的理由：找不到就跳過，不要讓 el.hover() 卡 30 秒把整個 test 中止掉。
+    if (!(await el.count())) continue;
+    await el.hover();
+    const normal = await el.evaluate(n => getComputedStyle(n).transform);
+    // 正向控制：hover 之後真的有 transform，下面那條斷言才有意義。
+    expect.soft(normal, `${c.selector}:hover 平常沒有 transform，這條斷言等於沒守`).not.toBe('none');
+
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await el.hover();
+    const reduced = await el.evaluate(n => getComputedStyle(n).transform);
+    expect.soft(reduced,
+      `${c.path} 的 ${c.selector}:hover 在 reduce 之下 transform 沒有被關掉（讀到 ${reduced}）`).toBe('none');
+  }
+
+  // --- 形狀三：#detail 系列，合成探針量，不驅動真的換頁動畫 ---
+  await page.emulateMedia({ reducedMotion: null });
+  await page.goto('/tree');
+  // ⚠️ 2026-08-26 code review 抓到同一族問題：probeDetail() 內部用 `getElementById('detail')!`
+  // 非空斷言，`#detail` 一旦被改名，evaluate() 裡就是對 null 呼叫 .classList 而直接拋錯——
+  // 比形狀一／二更糟：連 expect.soft 都沒有，會立刻中止整個 test，形狀四（#filters.animating）
+  // 也不會跑到。這裡先用 locator 軟性確認 #detail 存在，不存在就跳過整組 DETAIL_CASES。
+  const detailAttached = await page.locator('#detail').count();
+  await expect.soft(detailAttached > 0, '/tree 上找不到 #detail').toBeTruthy();
+  const probeDetail = (which: 'view' | 'stack' | 'panel') => page.evaluate((w) => {
+    const detail = document.getElementById('detail')!;
+    if (w === 'panel') {
+      detail.classList.add('panel-sliding');
+      const out = getComputedStyle(detail).transitionDuration;
+      detail.classList.remove('panel-sliding');
+      return out;
+    }
+    const el = document.createElement('div');
+    el.className = w === 'view' ? 'view slide-anim' : 'stack animating';
+    detail.appendChild(el);
+    const out = getComputedStyle(el).transitionDuration;
+    el.remove();
+    return out;
+  }, which);
+
+  const DETAIL_CASES = [
+    { selector: '#detail .view.slide-anim', which: 'view' },
+    { selector: '#detail .stack.animating', which: 'stack' },
+    { selector: '#detail.panel-sliding', which: 'panel' },
+  ] as const;
+  for (const c of DETAIL_CASES) {
+    if (!detailAttached) continue;
+    await page.emulateMedia({ reducedMotion: null });
+    const normal = await probeDetail(c.which);
+    expect.soft(normal, `${c.selector} 平常就沒有過場，這條斷言等於沒守`).not.toBe('0s');
+
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    const reduced = await probeDetail(c.which);
+    expect.soft(reduced.split(',').map(v => v.trim()).every(v => v === '0s'),
+      `/tree 的 ${c.selector} 在 reduce 之下過場沒有被關掉（讀到 ${reduced}）`).toBe(true);
+  }
+
+  // --- 形狀四：#filters.animating，過場宣告直接掛在本體上，探針不必另外塞子元素 ---
+  const probeFilters = () => page.evaluate(() => {
+    const filters = document.getElementById('filters')!;
+    filters.classList.add('animating');
+    const out = getComputedStyle(filters).transitionDuration;
+    filters.classList.remove('animating');
+    return out;
+  });
+
+  await page.emulateMedia({ reducedMotion: null });
+  const filtersNormal = await probeFilters();
+  expect.soft(filtersNormal, '#filters.animating 平常就沒有過場，這條斷言等於沒守').not.toBe('0s');
+
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  const filtersReduced = await probeFilters();
+  expect.soft(filtersReduced.split(',').map(v => v.trim()).every(v => v === '0s'),
+    `/tree 的 #filters.animating 在 reduce 之下過場沒有被關掉（讀到 ${filtersReduced}）`).toBe(true);
+});

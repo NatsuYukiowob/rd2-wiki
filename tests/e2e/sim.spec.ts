@@ -329,7 +329,7 @@ test('S14. 匯出把規劃寫進剪貼簿', async ({ page, context }) => {
 
 test('S15. 鍵盤焦點在「可取得」「已選取」的節點上也看得見', async ({ page }) => {
   await openSim(page);
-  // 狀態色是掛在 .icon 的 filter 上，具體度 (1,4,0) 會壓過 global.css 的
+  // 狀態色是掛在 .icon 的 filter 上，具體度 (1,4,0) 會壓過 canvas.css 的
   // `.node:focus .icon { filter: url(#focus-ring) }` (0,3,0)，而 `.node:focus` 已經
   // outline:none——沒有補丁規則的話，Tab 到這兩種節點時畫面完全沒有變化。
   for (const id of [READY, WITH_KIDS, '5201']) {

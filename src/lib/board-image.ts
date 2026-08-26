@@ -67,7 +67,7 @@ export function deckRect(slot: number): Rect {
  * 圖片的真實尺寸，寧可在型別層面就過不了，也不要悄悄退回「當它是正方形」的舊行為。
  *
  * 預設 `ratio` 是 0.78，跟畫面上的 `.board-cell img` 一致（`tests/lib/board-image.test.ts`
- * 有一條讀 `global.css` 比對兩邊沒有各自漂移）。
+ * 有一條讀 `board.css` 比對兩邊沒有各自漂移）。
  */
 export function iconRect(box: Rect, imgW: number, imgH: number, ratio = 0.78): Rect {
   const innerW = box.w * ratio;

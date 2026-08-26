@@ -14,7 +14,7 @@ describe('renderTree', () => {
     expect(svg.querySelectorAll('g.node')).toHaveLength(239);
     expect(svg.querySelectorAll('line.edge')).toHaveLength(248);
   });
-  // 指向「可直接領」節點的那條邊畫成虛線（CSS 在 src/styles/global.css）。標記的是**邊**不是節點：
+  // 指向「可直接領」節點的那條邊畫成虛線（CSS 在 src/styles/canvas.css）。標記的是**邊**不是節點：
   // 玩家要看懂的是「這條前置可以不走」，而節點外框虛線會跟 in-chain 金色光暈與焦點框疊在一起。
   it('只有指向 bypassPrereq 節點的入邊帶 .edge-bypassable', () => {
     const dashed = [...svg.querySelectorAll('line.edge-bypassable')]
