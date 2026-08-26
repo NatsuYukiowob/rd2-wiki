@@ -163,9 +163,15 @@
   color: var(--fg);
 }
 /* 選中：邊框與底色都走該分支的顏色，一眼看得出開著的是哪幾系。
-   底色只混 18%，不是整顆塗滿——五顆同時亮起來時，塗滿會比底下的卡片還搶眼。 */
+   底色只混 18%，不是整顆塗滿——五顆同時亮起來時，塗滿會比底下的卡片還搶眼。
+
+   三種「開著」共用同一組樣式：包 checkbox 的 label（`:has(input:checked)`）、
+   「全部」那種動作鈕（`[data-active]`）、以及 `aria-pressed` 的切換鈕（/tactic 的「合作模式」）。
+   ⚠️ 少了第三個的話，切換鈕按下去只有 `:hover` 的邊框變化，放開滑鼠就完全看不出它開著
+   ——而那顆鈕決定整頁顯示哪一段文字（2026-08-26 截圖才看出來，測試全綠）。 */
 .chip:has(input:checked),
-.chip[data-active] {
+.chip[data-active],
+.chip[aria-pressed='true'] {
   border-color: var(--branch, var(--gold));
   /* 前一行是 fallback，理由同 #site-nav。 */
   background: var(--surface-3);
@@ -273,6 +279,12 @@
   gap: var(--space-3);
   margin-top: var(--space-5);
 }
+/* 卡片數少於一列裝得下的軌道數時用這個（目前是索引頁的「遊戲內容」兩張）。
+   ⚠️ 差別只在 auto-fit ↔ auto-fill：前者會把空軌道**收掉**，兩張卡片於是撐滿整列，
+   比正上方那排寬一截；後者保留空軌道，兩邊同寬。四張以上的網格兩者結果相同。 */
+.guide-cards.is-content {
+  grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr));
+}
 .guide-card h2 {
   margin: var(--space-2) 0 var(--space-2);
   font-size: var(--fs-base);
@@ -283,6 +295,13 @@
   color: var(--muted);
   font-size: var(--fs-sm);
 }
+/* 索引頁上第二區塊的小標（「遊戲內容」）。⚠️ 不要拿 `.page h1` 那組級距——它跟 `<h1>` 之間
+   只隔一個網格，用 --fs-2xl 會變成兩個一樣大的標題互相打架。 */
+.guide-h2 {
+  margin: var(--space-7) 0 var(--space-2);
+  font-size: var(--fs-xl);
+}
+
 .guide-swatch {
   display: flex;
   gap: 3px;
@@ -308,5 +327,44 @@
   .guide-card:active,
   .chip:active {
     transform: none;
+  }
+}
+
+/* --- 沾頂篩選列（/dice 圖鑑、/tactic 戰術共用） ---
+   2026-08-26 從 dice.css 搬過來：第二頁要用同一條列時，複製一份出去就會漂移
+   （規則 7 與 21 那份複製品漂到「不驗 PNG、孤兒檔嚴重度相反」才被抓到，是同一族）。
+   `.chip` 本來就在這個檔，篩選列跟它待在一起也比較好找。 */
+.filters {
+  /* 沾在導覽列底下（2026-08-22）：底下是 41 張卡片的網格，篩選列一捲就不見的話，
+     改條件得整頁捲回去。z-index 只要蓋過卡片內的 .card-term（1）即可，導覽列是 40。
+     `top` 一定要吃實測的 --nav-h，不要再寫死一個 3rem——這個 repo 的固定版面偏移量
+     已經咬過四次（見 tree.astro #tree-controls 的註解）。 */
+  position: sticky;
+  top: var(--nav-h, 3rem);
+  z-index: 20;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3) var(--space-5);
+  margin: 0 0 var(--space-5);
+  padding: var(--space-3) var(--space-4);
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-1);
+}
+.filter-count {
+  margin: 0 0 0 auto;
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  /* 等寬數字：篩選時數字每幀在變，字寬不固定的話整條列會左右抽動。 */
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 720px) {
+  /* 窄畫面下切換鈕已經佔滿兩列，計數再被 `margin-left: auto` 推到最右邊就會自己獨佔第三列、
+     跟切換鈕之間空出一大塊。讓它接在切換鈕後面就好。 */
+  .filter-count {
+    margin-left: 0;
   }
 }

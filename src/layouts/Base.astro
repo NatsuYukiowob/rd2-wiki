@@ -45,7 +45,14 @@ const { title, noIndex = false } = Astro.props;
  */
 const path = Astro.url.pathname.replace(/\/+$/, '') || '/';
 const isCurrent = (href: string) => path === href || (href !== '/' && path.startsWith(href + '/'));
-const guideCurrent = isCurrent('/guide');
+/**
+ * 「遊戲介紹」下拉本身要不要標 `aria-current`。
+ *
+ * ⚠️ 判準是「下拉裡**任何一頁**」，不是只有 `/guide`：2026-08-26 把 `/tactic` 與 `/boss`
+ * 收進這個下拉之後，只看 `/guide` 的話，站在戰術頁時導覽列上零提示——下拉是收起來的，
+ * 裡面那條 `aria-current` 使用者根本看不到。
+ */
+const guideCurrent = ['/guide', '/tactic', '/boss'].some(href => isCurrent(href));
 
 /**
  * 分頁標題的站名前綴。格式是「站名 | 分頁名」，站名在前（2026-08-22 定案）。
@@ -152,6 +159,12 @@ const imageUrl = new URL('/favicon.png', Astro.site).href;
               {page.title}
             </a>
           ))}
+          <!-- 戰術與 Boss 收在這個下拉裡（Yuki 2026-08-26 指定）：它們跟上面幾頁一樣是
+               「遊戲有什麼」的說明，不是站台的互動工具（骰子樹／圖鑑／骰盤／模擬器）。
+               ⚠️ 放進來就要一起改上面那個 `guideCurrent`，否則站在 /tactic 時整個下拉不會亮起來，
+               使用者在導覽列上看不出自己在哪一區。 -->
+          <a href="/tactic" aria-current={isCurrent('/tactic') ? 'page' : undefined}>戰術</a>
+          <a href="/boss" aria-current={isCurrent('/boss') ? 'page' : undefined}>Boss</a>
         </div>
       </details>
       {FEATURES.contributeLink && (

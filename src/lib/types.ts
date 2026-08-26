@@ -274,3 +274,56 @@ export interface DiceStatEntry {
 
 /** `data/dice-stats.json`：以 gameId 為鍵。刻意不進 tree.json，見該檔的說明。 */
 export type DiceStatsTable = Record<string, DiceStatEntry>;
+
+/** 戰術的階段（官方資料表「階段」欄）。`選項` 是 69 號「選擇由我決定」底下的三個子選項。 */
+export type TacticStage = '前期' | '中期' | '後期' | '選項';
+/**
+ * 戰術的適用模式（官方資料表「適用模式」欄）。
+ *
+ * ⚠️ **只有兩個值**：資料表第三個值 `未啟用`（遊戲沒開放）的 16 條刻意不落地，
+ * 見 `data/tactics.json` 的說明。所以「`對戰` ⟺ 沒有 `coop`」是一條不變量，規則 24 守它。
+ */
+export type TacticMode = '對戰' | '對戰／合作';
+
+/**
+ * 一條戰術（`data/tactics.json` 的一筆）。
+ *
+ * 不是骰子樹的節點：不花錢解鎖、沒有前置、不參與成本計算，所以**不進 `data/dice-tree.svg`
+ * 也不進 tree.json**（塞進去會同時弄壞 239／248 的節點邊數與全樹解鎖成本）。
+ */
+export interface Tactic {
+  /** 官方編號。子選項是 `69-1`／`69-2`／`69-3`——**含 `-` ⟺ `stage === '選項'`**，規則 24 守。 */
+  id: string;
+  /** 官方名稱。子選項在資料表裡帶 `↳ ` 前綴，落地時已去掉——那是版面，不是名字。 */
+  name: string;
+  stage: TacticStage;
+  mode: TacticMode;
+  /** 對戰模式的效果全文。 */
+  versus: string;
+  /** 合作模式的效果全文；`mode === '對戰'` 的 11 條沒有這一欄。⚠️ 47 條裡有 32 條與 `versus` 逐字相同（官方就是這樣寫的），不要因為「重複」把它省掉——省掉就得在渲染端猜。 */
+  coop?: string;
+  /** 官方資料表的「內部ID」欄，玩家拿本站對照官方表的鍵。同 `TreeNode.gameId` 的角色。 */
+  gameId: string;
+  /** `data/tactic-icons/` 底下來源 PNG 的內容 sha256 前 12 碼。 */
+  icon: string;
+  /**
+   * 上游資料本身的問題，站台照樣呈現但標記出來讓它可被查詢。
+   *
+   * `upstream-icon`：62 炸彈狂的「圖示檔名」欄被上游寫成 `UpgradeSPMinusPer.png`
+   * （那是 2 研究加速的圖，而它自己的內部ID 是 `BombDiceSpawnOnMerge`），素材裡沒有
+   * 炸彈狂專屬圖。Yuki 2026-08-26 裁決照上游用，畫面上不標。
+   */
+  dataIssue?: 'upstream-icon';
+}
+
+/** 一個 Boss（`data/boss.json` 的一筆）。同 `Tactic`，不是節點。 */
+export interface Boss {
+  id: string;
+  name: string;
+  /** 效果全文。⚠️ 含 `#關鍵字` 標記（蛇王的 `#一般怪物`），要走 `renderStaticText()`，規則 25 守它落在白名單內。 */
+  effect: string;
+  /** 官方資料表的「內部ID」欄（`snake`／`royal`…）。 */
+  gameId: string;
+  /** `data/boss-icons/` 底下來源 PNG 的內容 sha256 前 12 碼。 */
+  icon: string;
+}

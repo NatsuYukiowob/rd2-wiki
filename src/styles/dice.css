@@ -1,38 +1,5 @@
 /* --- 圖鑑 --- */
-.filters {
-  /* 沾在導覽列底下（2026-08-22）：底下是 41 張卡片的網格，篩選列一捲就不見的話，
-     改條件得整頁捲回去。z-index 只要蓋過卡片內的 .card-term（1）即可，導覽列是 40。
-     `top` 一定要吃實測的 --nav-h，不要再寫死一個 3rem——這個 repo 的固定版面偏移量
-     已經咬過四次（見 tree.astro #tree-controls 的註解）。 */
-  position: sticky;
-  top: var(--nav-h, 3rem);
-  z-index: 20;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-3) var(--space-5);
-  margin: 0 0 var(--space-5);
-  padding: var(--space-3) var(--space-4);
-  background: var(--surface-2);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--r-md);
-  box-shadow: var(--shadow-1);
-}
-.filter-count {
-  margin: 0 0 0 auto;
-  color: var(--muted);
-  font-size: var(--fs-sm);
-  /* 等寬數字：篩選時數字每幀在變，字寬不固定的話整條列會左右抽動。 */
-  font-variant-numeric: tabular-nums;
-}
-
-@media (max-width: 720px) {
-  /* 窄畫面下切換鈕已經佔滿兩列，計數再被 `margin-left: auto` 推到最右邊就會自己獨佔第三列、
-     跟切換鈕之間空出一大塊。讓它接在切換鈕後面就好。 */
-  .filter-count {
-    margin-left: 0;
-  }
-}
+/* 篩選列 `.filters`／`.filter-count` 已移到 components.css：/dice 與 /tactic 兩頁共用。 */
 
 .codex-grid {
   display: grid;

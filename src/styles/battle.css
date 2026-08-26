@@ -1,0 +1,158 @@
+/* --- 戰術（/tactic）與 Boss（/boss）--- */
+/*
+ * 兩頁共用一個檔：版面是同一種「圖左、文右、一行一條」的橫列清單，差別只有右側印幾個欄位。
+ * 分成 tactic.css 與 boss.css 的話，兩份會各自漂移（這個 repo 已經為此吃過兩次虧：
+ * `--panel` 一個東西兩個名字、規則 7 與 21 的兩份目錄掃描）。
+ *
+ * ⚠️ **為什麼是橫列不是卡片網格**（Yuki 2026-08-26 指定）：效果文字最短 12 字、最長 55 字，
+ * 排進 `.codex-grid` 那種等寬網格會讓同一列的卡片高度參差；橫列讓長文字自己往下長，
+ * 不影響任何鄰居。副作用是圖只能小張——這一頁的重點是文字，可以接受。
+ */
+
+.battle-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.battle-item {
+  display: grid;
+  /* 圖示欄固定寬，文字欄吃剩下的：`auto 1fr` 會讓圖示欄的寬度跟著圖片的內在尺寸走，
+     而這批來源圖的長寬比不統一（戰術多為 176×206、Boss 約 128×128），欄寬會逐列跳動。
+     寬度用既有 token 疊出來（4.5rem），不新增一個只有這一頁用得到的尺寸 token。 */
+  grid-template-columns: calc(var(--space-7) + var(--space-5)) 1fr;
+  gap: var(--space-3);
+  align-items: start;
+  padding: var(--space-3);
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  box-shadow: var(--face);
+  transition:
+    border-color var(--t-fast) var(--e-out),
+    box-shadow var(--t-fast) var(--e-out);
+}
+
+.battle-item[hidden] {
+  /* ⚠️ 必要，不是保險。`display: grid` 會壓過 `[hidden]` 的預設 `display: none`
+     ——少了這條，篩選時「隱藏」的那幾條照樣留在畫面上，而計數卻已經扣掉它們
+     （`.dice-card[hidden]` 為同一個理由存在）。 */
+  display: none;
+}
+
+.battle-item:hover {
+  border-color: var(--border-strong);
+  box-shadow: var(--face-lift);
+}
+
+/* 子選項（69-1／69-2／69-3）縮排掛在母條目底下。用 margin-inline-start 而不是把它們塞進
+   母條目的 <li>：篩選是逐條顯示／隱藏的，巢狀之後「母條目被篩掉、子選項還在」就沒有位置可去。 */
+.battle-item[data-sub] {
+  margin-inline-start: var(--space-5);
+}
+
+.battle-icon {
+  /* ⚠️ 一定要 contain。來源圖長寬比不統一（實測戰術 176×206 與 164×166 兩種都有），
+     cover 會把圖裁角——跟 /board 那四個顯示點同一條不變量，理由寫在 board.css。 */
+  display: block;
+  width: 100%;
+  height: auto;
+  object-fit: contain;
+}
+
+.battle-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-2);
+  margin: 0 0 var(--space-1);
+}
+
+/* 子選項的從屬記號。⚠️ **編號與內部ID 刻意不顯示**（Yuki 2026-08-26）：那兩個是拿本站對
+   官方資料表用的，玩家在遊戲裡看不到。資料檔仍然留著 `id` 與 `gameId`——`id` 是錨點與規則 24
+   的鍵，`gameId` 是日後對新版資料表的唯一可靠 join key，兩個都不能因為畫面不印就刪掉。 */
+.battle-sub-mark {
+  color: var(--muted);
+}
+
+.battle-name {
+  margin: 0;
+  font-size: var(--fs-lg);
+}
+
+.battle-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin-inline-start: auto;
+}
+
+.battle-tag {
+  padding: var(--space-h) var(--space-2);
+  background: var(--surface-0);
+  border-radius: var(--r-pill);
+  color: var(--muted);
+  /* ⚠️ --fs-xs 是 12px，這個尺寸的中文不准加 font-weight: 600（橫筆畫會連成一條線，
+     看起來像被劃掉）——dice.css 的 .awakening-head 記著同一個實測。 */
+  font-size: var(--fs-xs);
+  letter-spacing: var(--ls-label);
+  white-space: nowrap;
+}
+
+.battle-text {
+  margin: 0;
+}
+
+/* 合作模式的效果。⚠️ 兩段都在 HTML 裡（沒有 JS 時看得到對戰那一段），切換只換顯示哪一段
+   ——這一頁存在的理由就是「文字進得了 HTML」，用 JS 換 textContent 等於把另一半藏起來。 */
+.battle-text[data-mode='coop'] {
+  display: none;
+}
+
+.battle-page[data-mode='coop'] .battle-text[data-mode='versus'] {
+  display: none;
+}
+
+.battle-page[data-mode='coop'] .battle-text[data-mode='coop'] {
+  display: block;
+}
+
+/* 關鍵字的就地展開。⚠️ 刻意**不是** /dice 那套滑入式視圖堆疊：全站的戰術與 Boss 文字裡
+   只有一個 `#` 標記（Boss 蛇王的 #一般怪物，2026-08-26 實測），為它移植那 230 行的堆疊、
+   焦點還原與過場收尾，就是把一份最容易寫壞的機制複製成第二份去守一個詞。
+   這裡只做「把解釋插在同一段話下面」，沒有 JS 時 `.kw-link` 就是一條正常的連結。 */
+.battle-term {
+  margin: var(--space-1) 0 0;
+  padding: var(--space-2);
+  background: var(--surface-0);
+  border-radius: var(--r-sm);
+  font-size: var(--fs-sm);
+  color: var(--muted);
+}
+
+.battle-empty {
+  margin: var(--space-5) 0;
+  color: var(--muted);
+}
+
+@media (max-width: 720px) {
+  .battle-item[data-sub] {
+    /* 手機上縮排會把本來就很窄的文字欄再吃掉一截；子選項靠 `↳` 前綴仍看得出從屬關係。 */
+    margin-inline-start: var(--space-2);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* ⚠️ 覆寫的選擇器要跟被覆寫那一條長得一模一樣，否則具體度不同會輸掉（2026-08-26 實測，
+     /board 與 /tree 的按壓就是這樣在 reduce 之下照樣縮的）。 */
+  .battle-item {
+    transition: none;
+  }
+
+  .battle-item:hover {
+    box-shadow: var(--face);
+  }
+}

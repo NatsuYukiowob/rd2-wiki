@@ -236,6 +236,25 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
     );
   }
 
+  // 戰術與 Boss 的圖：跟 /board 的純骰子圖同一種平行路徑，差別只有「雜湊寫在哪裡」——
+  // board-icons 是一份 {id: hash} 的對應表，這兩份的雜湊直接寫在紀錄的 icon 欄裡
+  // （見 tools/validate.ts 的 checkIconedRecordList()）。同樣不進 tree.json：
+  // /tactic 與 /boss 是靜態頁，建置期直接讀 data/，不吃那 20 KB gzip 預算。
+  //
+  // 轉檔重用 buildBoardIcon()：兩批來源同樣尺寸與長寬比都不統一（戰術多為 176×206、
+  // Boss 約 128×128），同樣是給普通 <img> 用而不是 SVG <pattern>，所以同樣**不套
+  // withGutter()**。要是哪天需要不同的轉檔參數，是在那支函式加參數，不是複製第三份。
+  for (const [file, dir, out] of [
+    ['data/tactics.json', 'data/tactic-icons', 'public/assets/tactic-icons'],
+    ['data/boss.json', 'data/boss-icons', 'public/assets/boss-icons'],
+  ] as const) {
+    const records: { icon: string }[] = JSON.parse(readFileSync(file, 'utf8'));
+    mkdirSync(out, { recursive: true });
+    for (const hash of new Set(records.map(r => r.icon))) {
+      writeFileSync(`${out}/${hash}.webp`, await buildBoardIcon(readFileSync(`${dir}/${hash}.png`)));
+    }
+  }
+
   const data = buildTreeData(svgText, { keywords, nodeText, unlockExceptions, upgradeCostTable, spriteIndex: index, spriteSize: size });
   const json = JSON.stringify(data);
   writeFileSync('src/generated/tree.json', json);

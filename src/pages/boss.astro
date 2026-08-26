@@ -1,0 +1,105 @@
+---
+// Boss 一覽。官方資料表的「Boss」分頁，10 條全開。
+//
+// 跟 /tactic 是同一種東西（不是骰子樹的節點、自己一份資料檔 ＋ 一條平行的圖示資產路徑，
+// 規則 25 守），版面也共用 battle.css。分成兩頁而不是併成一頁：兩邊的欄位不一樣
+// （戰術有階段／適用模式／雙效果，Boss 只有單一效果），併在同一頁會出現一半欄位是空的。
+//
+// ⚠️ 蛇王的效果文字裡有一個 `#一般怪物`——那是這個 repo 既有的 `#關鍵字` 標記，
+// **不是上游漏填的佔位符**（2026-08-26 一度誤判過）。全站的戰術與 Boss 文字裡只有這一個標記，
+// 規則 25(k) 守它落在 data/keywords.json 的白名單內。
+import Base from '../layouts/Base.astro';
+import '../styles/battle.css';
+import bossRaw from '../../data/boss.json';
+import keywordsRaw from '../../data/keywords.json';
+import treeData from '../generated/tree.json';
+import { buildGlossary, displayGlossary } from '../lib/glossary-groups';
+import { renderStaticText } from '../lib/static-markup';
+import { extractKeywords } from '../lib/keywords';
+import type { Boss, GlossaryRecord, TreeData } from '../lib/types';
+
+const bosses = bossRaw as Boss[];
+const keywords = keywordsRaw as Record<string, GlossaryRecord>;
+const tree = treeData as unknown as TreeData;
+const index = buildGlossary(keywords, tree.nodes);
+const glossary = displayGlossary(keywords);
+const whitelist = Object.keys(keywords);
+
+/**
+ * 每個 Boss 的效果文字用到的關鍵字解釋，建置期就算好。
+ *
+ * ⚠️ 這裡**刻意不是** /dice 那套滑入式視圖堆疊（`.card-term` ＋ dice.astro 那 230 行的
+ * push／pop／slide／焦點還原）。全站的戰術與 Boss 文字裡總共只有一個 `#` 標記，而它的解釋是
+ * 「最基本的怪物」六個字、裡面沒有巢狀標記——為它把最容易寫壞的那段互動複製成第二份，
+ * 換來的是零收益與一份會漂移的複本（規則 7 與 21 的教訓）。
+ * 這一頁只做「把解釋插在同一段話下面」，沒有 JS 時 `.kw-link` 就是一條指向詞條頁的正常連結。
+ */
+const termsOf = (text: string) =>
+  extractKeywords(text, whitelist).map(term => ({
+    term,
+    // 顏色查 index.byTerm 不查 displayGlossary()：後者不含別名，別名會變成沒有官方色的標記
+    // （2026-08-22 code review 在 /dice 抓到同一件事）。
+    color: index.byTerm.get(term)?.color ?? '',
+    desc: index.byTerm.get(term)?.desc ?? '',
+  }));
+---
+
+<Base title="Boss">
+  <section class="page battle-page">
+    <h1>Boss</h1>
+    <p class="lede">
+      對戰與合作模式中會出現的 {bosses.length} 種 Boss，以及各自的技能效果。
+    </p>
+
+    <ul class="battle-list">
+      {bosses.map(b => (
+        <li class="battle-item" id={`b${b.id}`}>
+          <img
+            class="battle-icon"
+            src={`/assets/boss-icons/${b.icon}.webp`}
+            alt=""
+            loading="lazy"
+            decoding="async"
+          />
+          <div>
+            <div class="battle-head">
+              <h2 class="battle-name">{b.name}</h2>
+            </div>
+            <p class="battle-text" set:html={renderStaticText(b.effect, whitelist, glossary, index)} />
+            {termsOf(b.effect).map(t => (
+              /* 就地展開的解釋。⚠️ hidden 而不是 display:none 由腳本切換——這段是伺服器輸出的
+                 真文字，沒有 JS 時它就跟著卡片一起顯示（多一行解釋不會壞事），有 JS 時才收起來
+                 等使用者點。收起的動作寫在下面的 script 裡，不寫在 HTML 上。 */
+              <p class="battle-term" data-term={t.term}>
+                <span style={`color:${t.color}`}>#{t.term}</span>
+                　{t.desc}
+              </p>
+            ))}
+          </div>
+        </li>
+      ))}
+    </ul>
+  </section>
+</Base>
+
+<script>
+  // 關鍵字的就地展開：預設收起，點 `#關鍵字` 就展開同一張卡片底下那一段解釋。
+  //
+  // 收起的動作由腳本做而不是寫在 HTML 上——沒有 JS 時解釋就一直顯示著，比「點了沒反應」好。
+  // 事件用委派掛在清單上，卡片數量再多也只有一個監聽器。
+  const terms = [...document.querySelectorAll<HTMLElement>('.battle-term')];
+  for (const el of terms) el.hidden = true;
+
+  document.addEventListener('click', event => {
+    const link = (event.target as HTMLElement | null)?.closest<HTMLAnchorElement>('.kw-link[data-term]');
+    if (!link) return;
+    const item = link.closest('.battle-item');
+    const term = link.dataset.term;
+    const panel = item?.querySelector<HTMLElement>(`.battle-term[data-term="${CSS.escape(term ?? '')}"]`);
+    // 找不到對應那一段就讓瀏覽器照常跳到詞條頁——那條連結本來就是有效的，
+    // 攔下來卻什麼都不做才是壞掉（沒有 JS 的環境走的正是那條路）。
+    if (!panel) return;
+    event.preventDefault();
+    panel.hidden = !panel.hidden;
+  });
+</script>

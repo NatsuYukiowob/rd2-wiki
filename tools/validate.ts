@@ -132,6 +132,167 @@ function checkHashNamedIconDir(
   }
   return scan;
 }
+/**
+ * 掃一份「一筆一個 id、每筆自帶一張圖示雜湊」的資料檔——`data/tactics.json` 與
+ * `data/boss.json` 共用（規則 24 與規則 25）。
+ *
+ * 這兩份是**第三、第四條資產路徑**：正本管線（規則 7）只處理 SVG 引用到的圖示，`/board`
+ * 的純骰子圖（規則 21）另立一條，而戰術與 Boss 根本不是骰子樹的節點——它們不花錢解鎖、
+ * 沒有前置、不進成本計算，所以連 `nodes.json` 那一側都沒有。少了這條規則，「漏一欄」
+ * 「圖檔不存在」「兩條戰術指到同一張圖」「id 撞號」「`#標記` 打錯字」全部會安靜地通過 CI。
+ *
+ * ⚠️ **`data/board-icons.json` 是 `{id: hash}` 的對應表，這兩份不是**：戰術與 Boss 的資料
+ * 本來就是我們自己的，沒有「要對到 SVG 裡的節點 id」這個約束，所以雜湊直接寫進紀錄的
+ * `icon` 欄，一筆一個地方改，不必兩個檔案一起維護。
+ *
+ * 子規則編號跟規則 7／21 **刻意對齊**：(b) 檔名≠內容雜湊、(c) PNG 結構與解析度、
+ * (d) 孤兒檔（只警告）——那三條由 `checkHashNamedIconDir()` 產生，同一件事在四條規則裡是
+ * 同一個字母。這裡自己產的是 (a) 最外層形狀、(e) 每筆的欄位、(f) 指向的圖不存在、
+ * (g) 兩筆共用同一張圖、(h) id 格式與撞號、(k) `#標記` 不在白名單。
+ *
+ * 回傳 `records` 給呼叫端做各自的語意檢查（規則 24 的階段／模式），**只含通過 (e) 的那些**
+ * ——把結構壞掉的也交出去，呼叫端每一條語意檢查都得再判一次 `typeof`，而那正是漂移的起點。
+ */
+function checkIconedRecordList(
+  raw: unknown,
+  opts: {
+    rule: string;
+    file: string;
+    iconsDir: string;
+    idPattern: RegExp;
+    /** 每一筆允許出現的欄位（含選填）；不在裡面的就是未知欄位。 */
+    knownKeys: readonly string[];
+    /** 每一筆都必須是非空字串的欄位。 */
+    requiredText: readonly string[];
+    /**
+     * 選填、但**只要出現就必須是非空字串**的欄位。
+     *
+     * ⚠️ 這不是潔癖，是 2026-08-26 code review 抓到的真漏洞：`coop` 原本只擋空字串，
+     * 寫成 `null`／`123`／`["x"]` 全部零錯誤通過——而頁面端 `t.coop ? '1' : undefined`
+     * 對 `null` 是 falsy，那條戰術在合作模式下**整條消失**，正是 (j) 號稱要擋的失敗。
+     * 同 `unlock-exceptions.json` 需要規則 18 驗 `unlockPaid` 型別的理由。
+     */
+    optionalText?: readonly string[];
+    /** 要掃 `#關鍵字` 標記的欄位（選填欄位缺席時跳過）。 */
+    markupKeys: readonly string[];
+    /** `data/keywords.json` 的全部鍵，同規則 8 的白名單。 */
+    whitelist: string[];
+  },
+): { records: Record<string, unknown>[]; errors: string[]; warnings: string[] } {
+  const errors: string[] = [];
+  const warnings: string[] = [];
+  const push = (m: string) => errors.push(m);
+
+  // (a) 最外層。跟規則 21 驗 board-icons.json 的最外層同一個理由：整份被寫成物件或字串時，
+  // 底下每一條檢查都會拿到空集合而「安靜地全過」。
+  if (!Array.isArray(raw)) {
+    push(`${opts.rule}(a): ${opts.file} 的最外層必須是陣列`);
+    return { records: [], errors, warnings };
+  }
+  if (raw.length === 0) {
+    push(`${opts.rule}(a): ${opts.file} 是空陣列`);
+    return { records: [], errors, warnings };
+  }
+
+  // (e) 每一筆的結構與欄位型別。這份檔案是社群 PR 直接改的，而頁面讀它時只有一個 `as`
+  // ＝執行期零檢查（規則 18／21(e)／23 都是為了同一個理由才存在）。
+  const known = new Set(opts.knownKeys);
+  const records: Record<string, unknown>[] = [];
+  for (let i = 0; i < raw.length; i++) {
+    const rec = raw[i];
+    // 訊息一律指得出「第幾筆」——這份檔案沒有鍵，只說「某一筆壞了」等於要人自己數。
+    const at = `${opts.file} 第 ${i + 1} 筆`;
+    if (!isPlainObject(rec)) { push(`${opts.rule}(e): ${at}必須是物件`); continue; }
+    const label = typeof rec.id === 'string' && rec.id.length > 0 ? `${at}（id ${rec.id}）` : at;
+    let ok = true;
+    for (const key of opts.requiredText) {
+      if (typeof rec[key] !== 'string' || (rec[key] as string).length === 0) {
+        push(`${opts.rule}(e): ${label} 的 ${key} 必須是非空字串`);
+        ok = false;
+      } else if ((rec[key] as string).length > MAX_TEXT_LENGTH) {
+        push(`${opts.rule}(e): ${label} 的 ${key} 超過 ${MAX_TEXT_LENGTH} 字`);
+        ok = false;
+      }
+    }
+    for (const key of opts.optionalText ?? []) {
+      if (rec[key] === undefined) continue;
+      if (typeof rec[key] !== 'string' || (rec[key] as string).length === 0) {
+        push(`${opts.rule}(e): ${label} 的 ${key} 若存在就必須是非空字串（不用時整個欄位省略），目前是 ${JSON.stringify(rec[key])}`);
+        ok = false;
+      } else if ((rec[key] as string).length > MAX_TEXT_LENGTH) {
+        push(`${opts.rule}(e): ${label} 的 ${key} 超過 ${MAX_TEXT_LENGTH} 字`);
+        ok = false;
+      }
+    }
+    for (const key of Object.keys(rec)) {
+      // 未知欄位是錯不是潔癖：把 `coop` 打成 `co-op` 時，(e) 的必填檢查完全沉默
+      // （它是選填的），畫面上「這條戰術合作模式沒有另一種效果」跟真的沒有一模一樣。
+      if (!known.has(key)) { push(`${opts.rule}(e): ${label} 有未知欄位 ${JSON.stringify(key)}`); ok = false; }
+    }
+    // icon 的值必須是 12 碼小寫 hex。少了這條，值會被原封不動拿去組路徑（規則 21(e) 的
+    // 實測：`{"icon": {"hash":"x"}}` 讓路徑變成 `[object Object].webp`）。
+    if (typeof rec.icon !== 'string' || !/^[0-9a-f]{12}$/.test(rec.icon)) {
+      push(`${opts.rule}(e): ${label} 的 icon ${JSON.stringify(rec.icon)} 不是 12 碼小寫 hex 的圖示雜湊`);
+      ok = false;
+    }
+    if (ok) records.push(rec);
+  }
+
+  // (h) id 的格式與撞號。撞號時後面每一條檢查看起來都正常（兩筆都在、圖都在），
+  // 畫面上是同一個編號出現兩次。
+  const seen = new Map<string, number>();
+  for (let i = 0; i < records.length; i++) {
+    const id = records[i]!.id as string;
+    if (!opts.idPattern.test(id)) push(`${opts.rule}(h): ${opts.file} 的 id ${JSON.stringify(id)} 不符 ${opts.idPattern.source}`);
+    const first = seen.get(id);
+    if (first !== undefined) push(`${opts.rule}(h): ${opts.file} 的 id ${id} 重複（第 ${first + 1} 筆與第 ${i + 1} 筆）`);
+    else seen.set(id, i);
+  }
+
+  // (b)(c)(d) 目錄本身，與規則 7／21 共用（見 checkHashNamedIconDir 的說明）。
+  const scan = checkHashNamedIconDir(opts.iconsDir, new Set(records.map(r => r.icon as string)), {
+    rule: opts.rule,
+    minLongestEdge: MIN_ICON_LONGEST_EDGE,
+  });
+  scan.errors.forEach(push);
+  scan.warnings.forEach(m => warnings.push(m));
+
+  // (f) 每一筆指向的圖都要真的在目錄裡。訊息印**實際讀取的路徑**而不是寫死的常數
+  // ——測試會把圖複製到暫存目錄再驗，寫死等於指著一個好端端在那裡的檔案說它不存在
+  // （規則 21(f) 記過同一件事，而且當時測試還一邊傳 tmpDir 一邊斷言寫死路徑）。
+  for (const rec of records) {
+    const hash = rec.icon as string;
+    if (!scan.hashes.has(hash)) push(`${opts.rule}(f): ${opts.file} 的 ${rec.id} 指向的圖 ${join(opts.iconsDir, `${hash}.png`)} 不存在`);
+  }
+
+  // (g) 兩筆不准指向同一張圖。最常見的成因是「複製上一筆、忘了換成新加進來的那張」，
+  // 而那時 (d)(f) 全部沉默：檔案存在、目錄裡也沒有多出來的孤兒檔（新圖從頭到尾沒被加
+  // 進去過），畫面上就是兩條長得一模一樣的卡片。
+  const idsByHash = new Map<string, string[]>();
+  for (const rec of records) {
+    const hash = rec.icon as string;
+    idsByHash.set(hash, [...(idsByHash.get(hash) ?? []), rec.id as string]);
+  }
+  for (const [hash, ids] of idsByHash) {
+    if (ids.length > 1) push(`${opts.rule}(g): ${opts.file} 的 ${ids.join('、')} 指向同一張圖 ${hash}.png`);
+  }
+
+  // (k) 效果文字裡的 `#標記` 必須落在 data/keywords.json 的白名單內——跟規則 8 對節點文案
+  // 做的是同一件事。⚠️ 這條不是可有可無的：`renderStaticText()` 對比不到白名單的標記會
+  // 原樣吐出一個裸的 `#`，而那在畫面上跟「上游漏填的佔位符」長得一模一樣（Boss 蛇王的
+  // `召喚#一般怪物` 就一度被當成佔位符）。
+  for (const rec of records) {
+    for (const key of opts.markupKeys) {
+      const text = rec[key];
+      if (typeof text !== 'string') continue;
+      try { extractKeywords(text, opts.whitelist); }
+      catch (e) { push(`${opts.rule}(k): ${opts.file} 的 ${rec.id} 的 ${key} ${(e as Error).message}`); }
+    }
+  }
+
+  return { records, errors, warnings };
+}
+
 export interface ValidateOpts {
   /**
    * `data/keywords.json` 的內容。key ＝不含 `#` 的詞（規則 8 的白名單），值是玩家看得到的解釋。
@@ -222,6 +383,20 @@ export interface ValidateOpts {
    * 沒有這份資料時傳 `null`，規則 23 只警告——`/dice` 的數值區跟著整塊不顯示，站台照常運作。
    */
   diceStats: unknown;
+
+  /**
+   * `data/tactics.json` 的內容。型別刻意用 `unknown`（同 `boardIcons`／`diceStats`）：
+   * 這份是社群 PR 直接改的，宣告成已驗過的型別等於在型別層面假設它一定合法，
+   * 而規則 24 要擋的正是不合法的那些。沒有這份資料時傳 `null`，規則 24 只警告
+   * ——`/tactic` 那一頁跟著整頁不建，站台其餘部分照常運作。
+   */
+  tactics: unknown;
+  /** `data/tactic-icons/` 所在目錄；規則 24 讀此目錄比對雜湊並列出孤兒檔。 */
+  tacticIconsDir: string;
+  /** `data/boss.json` 的內容。同 `tactics`，沒有時傳 `null`。 */
+  boss: unknown;
+  /** `data/boss-icons/` 所在目錄。 */
+  bossIconsDir: string;
 }
 
 export interface ValidateResult {
@@ -1079,6 +1254,98 @@ export function validate(svgText: string, opts: ValidateOpts): ValidateResult {
     }
   }
 
+  // 規則 24：戰術（`data/tactics.json` ＋ `data/tactic-icons/`）。
+  //
+  // 58 條「已啟用」的戰術。⚠️ 官方資料表有 74 條，另外 16 條標「未啟用」（資料表有、遊戲
+  // 沒開）刻意不落地——Yuki 2026-08-26 裁決。因此「`mode === '對戰'` ⟺ 沒有 `coop`」在
+  // 這份檔案裡是一條真的不變量（(j) 守它）；把未啟用那批加回來會同時打破它。
+  //
+  // 子規則：(a)(e)(f)(g)(h)(k) 與 (b)(c)(d) 見 checkIconedRecordList()；
+  // 這裡自己加的是 (i) 子選項語意與 (j) 模式與合作效果的等價。
+  if (opts.tactics === null) {
+    warn('規則 24: 沒有提供 data/tactics.json，戰術未檢查');
+  } else {
+    const scan = checkIconedRecordList(opts.tactics, {
+      rule: '規則 24',
+      file: 'data/tactics.json',
+      iconsDir: opts.tacticIconsDir,
+      // 子選項是 `69-1`；母編號本身不帶前導零，`06` 這種寫法在畫面上會排在錯的位置。
+      idPattern: /^[1-9]\d*(-[1-9]\d*)?$/,
+      knownKeys: ['id', 'name', 'stage', 'mode', 'versus', 'coop', 'gameId', 'icon', 'dataIssue'],
+      requiredText: ['id', 'name', 'stage', 'mode', 'versus', 'gameId'],
+      optionalText: ['coop'],
+      markupKeys: ['versus', 'coop'],
+      whitelist,
+    });
+    scan.errors.forEach(push);
+    scan.warnings.forEach(warn);
+
+    const STAGES = new Set(['前期', '中期', '後期', '選項']);
+    const MODES = new Set(['對戰', '對戰／合作']);
+    const ids = new Set(scan.records.map(r => r.id as string));
+    for (const rec of scan.records) {
+      const id = rec.id as string;
+      const stage = rec.stage as string;
+      const mode = rec.mode as string;
+      if (!STAGES.has(stage)) push(`規則 24(e): data/tactics.json 的 ${id} 的 stage ${JSON.stringify(stage)} 不是四個階段之一`);
+      // ⚠️ `未啟用` 要指名道姓地擋。它是官方資料表真有的第三個值，複製一筆未啟用的資料
+      // 進來時「不是合法模式」這種泛用訊息會讓人以為是打錯字，而真正的答案是「這一批
+      // 刻意不收」——那件事只寫在註解與 CLAUDE.md 裡，錯誤訊息得自己說出來。
+      else if (mode === '未啟用') push(`規則 24(e): data/tactics.json 的 ${id} 的 mode 是「未啟用」——未啟用的戰術刻意不落地（Yuki 2026-08-26 裁決），整筆移除，不要改成別的模式`);
+      else if (!MODES.has(mode)) push(`規則 24(e): data/tactics.json 的 ${id} 的 mode ${JSON.stringify(mode)} 不是合法的適用模式`);
+
+      // (i) 子選項語意：id 含 `-` ⟺ stage 是「選項」，而且母條目要在。
+      // 兩邊各自看都很正常——一條 stage 寫成「前期」的 `69-2` 會被排到前期那一群裡，
+      // 跟它的母條目「選擇由我決定」分家，而畫面上那只是「多一條前期戰術」。
+      const dash = id.includes('-');
+      if (dash !== (stage === '選項')) {
+        push(dash
+          ? `規則 24(i): data/tactics.json 的 ${id} 是子選項（id 含 -），stage 必須是「選項」，目前是 ${JSON.stringify(stage)}`
+          : `規則 24(i): data/tactics.json 的 ${id} 的 stage 是「選項」，但 id 不是「母編號-序號」的子選項形式`);
+      }
+      if (dash) {
+        const parent = id.slice(0, id.indexOf('-'));
+        if (!ids.has(parent)) push(`規則 24(i): data/tactics.json 的子選項 ${id} 找不到母條目 ${parent}`);
+      }
+
+      // (j) 「純對戰」與「有合作效果」必須互為表裡。⚠️ 兩個方向都要問：漏抓「對戰卻有
+      // coop」的話，那條戰術在合作模式下會冒出一段官方沒有的文字；漏抓「對戰／合作卻沒
+      // coop」的話，它在合作模式下整條消失，而畫面上跟「這條本來就只有對戰」一模一樣。
+      // ⚠️ 用 `!== undefined` 而不是 truthiness：`coop: null`／`coop: 0` 這種值在
+      // (e) 已經被 optionalText 擋掉了，但這裡若寫成 `if (rec.coop)`，(e) 哪天放寬時
+      // 這條會跟著默默失效——兩條規則不要互相依賴對方的嚴格度。
+      const hasCoop = rec.coop !== undefined;
+      if (mode === '對戰' && hasCoop) push(`規則 24(j): data/tactics.json 的 ${id} 的 mode 是「對戰」卻有 coop`);
+      if (mode === '對戰／合作' && !hasCoop) push(`規則 24(j): data/tactics.json 的 ${id} 的 mode 是「對戰／合作」卻沒有 coop`);
+
+      if (rec.dataIssue !== undefined && rec.dataIssue !== 'upstream-icon') {
+        push(`規則 24(e): data/tactics.json 的 ${id} 的 dataIssue ${JSON.stringify(rec.dataIssue)} 不是已知的標記`);
+      }
+    }
+  }
+
+  // 規則 25：Boss（`data/boss.json` ＋ `data/boss-icons/`）。
+  //
+  // 跟規則 24 是同一種資料檔，差別只有欄位與 id 形狀，所以檢查全部走
+  // checkIconedRecordList()——這裡刻意不再多寫任何一條，複製第二份出去就一定漂移
+  // （規則 7 與 21 曾經是兩份，漂移的結果寫在 checkHashNamedIconDir() 的說明裡）。
+  if (opts.boss === null) {
+    warn('規則 25: 沒有提供 data/boss.json，Boss 未檢查');
+  } else {
+    const scan = checkIconedRecordList(opts.boss, {
+      rule: '規則 25',
+      file: 'data/boss.json',
+      iconsDir: opts.bossIconsDir,
+      idPattern: /^[1-9]\d*$/,
+      knownKeys: ['id', 'name', 'effect', 'gameId', 'icon'],
+      requiredText: ['id', 'name', 'effect', 'gameId'],
+      markupKeys: ['effect'],
+      whitelist,
+    });
+    scan.errors.forEach(push);
+    scan.warnings.forEach(warn);
+  }
+
   return { errors, warnings };
 }
 
@@ -1129,6 +1396,10 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
     boardIconsDir: 'data/board-icons',
     passiveUpgradeCost: readDataFile('data/passive-upgrade-cost.json', true),
     diceStats: readDataFile('data/dice-stats.json', true),
+    tactics: readDataFile('data/tactics.json', true),
+    tacticIconsDir: 'data/tactic-icons',
+    boss: readDataFile('data/boss.json', true),
+    bossIconsDir: 'data/boss-icons',
   };
 
   // 有資料檔讀不到時就停在這裡：接下來每一條規則都會拿著一份空殼在猜，噴出來的幾百條錯誤

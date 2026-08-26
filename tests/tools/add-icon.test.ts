@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, writeFileSync, readFileSync, existsSync } from 
 import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { addIcon, addBoardIcon } from '../../tools/add-icon';
+import { addIcon, addBoardIcon, addRecordIcon } from '../../tools/add-icon';
 
 /** 產生一張只有簽章 + IHDR chunk 的最小合法 PNG，足以通過 `readPngSize` 的結構性檢查。 */
 function makeMinimalPng(width: number, height: number): Buffer {
@@ -155,5 +155,76 @@ describe('addBoardIcon', () => {
     expect(() => addBoardIcon(tiny, '1002', { boardIconsDir: iconsDir, mapPath })).toThrow(/96px/);
     expect(() => addBoardIcon(notPng, '1002', { boardIconsDir: iconsDir, mapPath })).toThrow(/不是有效的 PNG/);
     expect(readFileSync(mapPath, 'utf8')).toBe('{\n  "1001": "aaaaaaaaaaaa"\n}\n');
+  });
+});
+
+describe('addRecordIcon', () => {
+  /** 一份最小的 data/tactics.json 替身：兩筆，第一筆已經有圖、第二筆還沒。 */
+  const setup = () => {
+    const srcDir = mkdtempSync(join(tmpdir(), 'rd2-rec-src-'));
+    const iconsDir = mkdtempSync(join(tmpdir(), 'rd2-rec-icons-'));
+    const dataDir = mkdtempSync(join(tmpdir(), 'rd2-rec-data-'));
+    const dataPath = join(dataDir, 'tactics.json');
+    writeFileSync(dataPath, `${JSON.stringify([
+      { id: '6', name: '召喚精英', icon: '000000000000' },
+      { id: '69-1', name: '豐饒開始' },
+    ], null, 2)}\n`);
+    return { srcDir, iconsDir, dataPath };
+  };
+
+  it('把圖複製進目錄，並在同一次呼叫裡把那一筆的 icon 指過去', () => {
+    const { srcDir, iconsDir, dataPath } = setup();
+    const png = makeMinimalPng(176, 206);
+    const src = join(srcDir, 'x.png');
+    writeFileSync(src, png);
+    const hash = createHash('sha256').update(png).digest('hex').slice(0, 12);
+
+    const result = addRecordIcon(src, '69-1', { iconsDir, dataPath });
+
+    expect(result.hash).toBe(hash);
+    expect(existsSync(join(iconsDir, `${hash}.png`))).toBe(true);
+    expect(JSON.parse(readFileSync(dataPath, 'utf8'))[1].icon).toBe(hash);
+    // 先前沒填過，所以沒有舊雜湊可回報。
+    expect(result.previousHash).toBeNull();
+  });
+
+  it('換圖時回報原本那筆的雜湊（舊檔可能就此變孤兒）', () => {
+    const { srcDir, iconsDir, dataPath } = setup();
+    const src = join(srcDir, 'x.png');
+    writeFileSync(src, makeMinimalPng(176, 206));
+    const result = addRecordIcon(src, '6', { iconsDir, dataPath });
+    expect(result.previousHash).toBe('000000000000');
+  });
+
+  it('寫回時維持陣列原順序（順序就是畫面上的顯示順序，重排等於一份看不出改哪筆的 diff）', () => {
+    const { srcDir, iconsDir, dataPath } = setup();
+    const src = join(srcDir, 'x.png');
+    writeFileSync(src, makeMinimalPng(176, 206));
+    addRecordIcon(src, '69-1', { iconsDir, dataPath });
+    const text = readFileSync(dataPath, 'utf8');
+    expect(JSON.parse(text).map((r: { id: string }) => r.id)).toEqual(['6', '69-1']);
+    expect(text.endsWith('}\n]\n')).toBe(true);
+  });
+
+  it('找不到那個 id 時直接拒絕，而且圖一個位元組都還沒被寫進目錄', () => {
+    // ⚠️ 失敗順序是重點：先寫圖再找 id 的話，打錯編號會在目錄裡留下一張沒人引用的孤兒圖，
+    // 而使用者只看到一句「找不到」，不會知道還要回頭刪檔。
+    const { srcDir, iconsDir, dataPath } = setup();
+    const png = makeMinimalPng(176, 206);
+    const src = join(srcDir, 'x.png');
+    writeFileSync(src, png);
+    const hash = createHash('sha256').update(png).digest('hex').slice(0, 12);
+
+    expect(() => addRecordIcon(src, '999', { iconsDir, dataPath })).toThrow(/沒有 id 為 "999" 的紀錄/);
+    expect(existsSync(join(iconsDir, `${hash}.png`))).toBe(false);
+  });
+
+  it('沿用 addIcon 的圖檔檢查，來源不合格時資料檔不會被動到', () => {
+    const { srcDir, iconsDir, dataPath } = setup();
+    const src = join(srcDir, 'tiny.png');
+    writeFileSync(src, makeMinimalPng(48, 48));
+    const before = readFileSync(dataPath, 'utf8');
+    expect(() => addRecordIcon(src, '69-1', { iconsDir, dataPath })).toThrow(/小於最低要求 96px/);
+    expect(readFileSync(dataPath, 'utf8')).toBe(before);
   });
 });
