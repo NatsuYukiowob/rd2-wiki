@@ -34,9 +34,16 @@
 #detail h2 {
   margin-top: 0;
 }
+/* 跟 .dice-card .meta 同名、刻意分作用域（見 content.css 開頭），但**不是同一種排版**：
+   卡片上那個是 --fs-xs 的小標籤，這裡是 1rem 的副標題整句（「自然 · 攻擊型 · 解鎖：…」）。
+   ⚠️ 所以這裡**不掛 --ls-label**：0.1em 是照 12px 的小標籤調的，加在 16px 的整句中文上
+   會把詞界抹平，整行變成等距字塊。**也不要降成 --fs-sm 把它變成小標籤**——Yuki 2026-08-26
+   看過對照圖後拍板維持現狀，它就是副標題，不是標籤。
+   --font-num 照掛：這一行裡的解鎖花費是數字。 */
 #detail .meta {
   color: var(--muted);
   margin: var(--space-1) 0;
+  font-family: var(--font-num);
 }
 #detail .warn {
   color: var(--nature);

@@ -1,3 +1,37 @@
+/* Archivo（拉丁 subset，2026-08-26）。只給 --font-num 那幾個「數字與代號」的位置用，
+ * 掛法與注意事項見 tokens.css 的 --font-num，來源與重製指令見 public/fonts/README.md。
+ *
+ * 這是**可變字體**，wght 軸已經裁到 500–700，所以 `font-weight: 500` 三個字重共用同一個
+ * 檔——`font-weight: 500 700` 這個範圍寫法就是在告訴瀏覽器這件事。⚠️ 不要拆成三條
+ * @font-face 各指一個字重：那會讓瀏覽器把同一個檔當成三個不同的字型資源。
+ *
+ * ⚠️ 路徑走 `/fonts/`，不是 `/assets/fonts/`——`public/assets/` 整個在 .gitignore 裡
+ * （那是 build:data 的產出目錄），字型放進去不會進版控，CI 與 Cloudflare 上會 404。
+ *
+ * ⚠️ wght 軸下限是 500，所以掛著 --font-num 又沒寫 font-weight 的位置（.meta／.game-id／
+ * .nav-updated，都是繼承來的 400）會被字型匹配夾到 500。**這是刻意的，不要為了「講清楚」
+ * 去補一行 `font-weight: 500`**：那一行會連帶把同一句話裡退回 --font 的中文也加粗，而
+ * 12px 的粗體中文橫筆畫會糊成一條線（見 dice.css 的 .awakening-head）。
+ *
+ * font-display: swap ＋ **刻意不做 preload**：字型只有 14.7KB 且同源，但掛著它的元素在
+ * 部分頁面／視窗下全部是 display:none（手機版的 .nav-updated），preload 會在那些頁面白拿
+ * 一個沒人用的請求（手機版的 /guide、/board、/changelog、/about、/sim、首頁全部沒有
+ * --font-num 的可見文字）。
+ *
+ * ⚠️ swap 的代價已經量過（2026-08-26 code review 提出，實測回應）：擋掉 woff2 與正常載入
+ * 兩種狀態下比 /dice 的版面——**41 張卡片的高度一張都沒變**，桌機頁總高完全相同、手機差 2px；
+ * 真正會動的是 `.stat-pill` 寬度（最多 +3.2px，不足以讓 `.stat-pills` 重新換行）與導覽列
+ * 日期的寬度（150.3 → 157.0px，而它右緣釘死，只是文字往左長）。review 擔心的「pill 變寬 →
+ * 同一列鄰居被撐高」沒有發生。
+ * 換 `font-display: optional` 可以把這點位移歸零，代價是**測試會變不穩**：optional 只給
+ * 瀏覽器約 100ms，CI 上冷啟動的 serve 有機會錯過，D15／D16 就會偶發紅。權衡之後留 swap。 */
+@font-face {
+  font-family: 'Archivo';
+  font-style: normal;
+  font-weight: 500 700;
+  font-display: swap;
+  src: url('/fonts/archivo-latin-500-700.woff2') format('woff2');
+}
 
 * {
   box-sizing: border-box;
@@ -64,9 +98,20 @@ footer {
   text-align: center;
 }
 
+/* 標題的個性來自字重與字距，不靠拉丁 display face（Archivo 沒有中文字，拿它排標題只會讓
+   標題裡的數字跳出來）。真正把層級拉開的是 tokens.css 那條放大過的字級級距。
+   ⚠️ `font-weight: 700` **今天不改變任何像素**：瀏覽器的 UA 樣式表本來就給 h1–h6
+   `font-weight: bold`（＝700），這個 repo 也沒有任何規則把標題設成別的值（2026-08-26
+   實測 computed，改前改後都是 700）。留著是因為底下的 letter-spacing 是**配 700 調的**，
+   兩個值放在同一條規則裡才是完整的一份配方；看到「拿掉也一樣」就刪，字距就沒有依據了。
+   letter-spacing 0.02em：字面本來就胖，不撐開一點會擠。
+   ⚠️ 這個字距是**給標題的**，不要往下擴到內文：中文內文加字距會讓行內的詞界消失，
+   整行變成等距的字塊。小標籤那一路（.meta／.stat-k）用的是 --ls-label，見 tokens.css。 */
 h1,
 h2,
 h3 {
+  font-weight: 700;
+  letter-spacing: 0.02em;
   line-height: 1.3;
 }
 

@@ -295,7 +295,7 @@ npm run compare -- <beforeURL> <afterURL>  # computed-style 逐元素比對，�
 
 ## 設計系統
 
-`:root` 有六組 token，全部定義在 **`src/styles/tokens.css`**，**新增樣式一律用它們**：
+`:root` 有七組 token，全部定義在 **`src/styles/tokens.css`**，**新增樣式一律用它們**：
 ⚠️ **token 定義只准留在 `tokens.css`，不要寫到別的檔**——`tests/styles/tokens.test.ts`「每個
 `var(--x)` 都真的定義得出來」那條拿 `tokens.css` 當唯一來源，正則是 `^\s{2}(--…)`（只認縮排
 兩格、不綁 `:root` 區塊，故意不合併九個檔一起掃），寫到別處會讓那條檢查對那個 token 失效。
@@ -309,10 +309,11 @@ npm run compare -- <beforeURL> <afterURL>  # computed-style 逐元素比對，�
 |---|---|---|
 | 間距 | `--space-h/1..7` | 4px 網格（`--space-h` 是唯一半階 2px） |
 | 圓角 | `--r-xs/sm/md/lg/pill` | 3/4/5/7/999px（2026-08-26 整體收小一階） |
-| 字級 | `--fs-xs/sm/md/base/lg/xl/2xl/3xl` | `--fs-base` 是 1rem |
+| 字級 | `--fs-xs/sm/md/base/lg/xl/2xl/3xl` | 0.75→2.4rem（2026-08-26 拉開對比，見下） |
 | 表面 | `--surface-1/2/3`、`--border-strong` | 見下 |
 | 陰影與節奏 | `--shadow-1/2/3`、`--t-fast/med`、`--ring` | `--shadow-3` 給浮在畫布上的東西 |
 | 面的質感 | `--hair`、`--face`／`--face-lift`／`--face-float`、`--p-lift` | 見下 |
+| 排印 | `--font`、`--font-num`、`--ls-label` | 見下 |
 
 - **表面分層**：靜態頁的面 → `--surface-1`；浮在畫布上的 chrome（`#toolbar`、`#detail`、
   `#branch-chips`、下拉選單、`/dice` 的篩選列）→ `--surface-2`；hover／選中的填色 → `--surface-3`。
@@ -324,6 +325,30 @@ npm run compare -- <beforeURL> <afterURL>  # computed-style 逐元素比對，�
   的複本，跟 `--panel`、`render.ts` 的第二份金色同一族。
 - **hover 抬升一律 `var(--p-lift)`**，不要再寫死 `translateY(-2px)`：`--face-lift` 的下緣硬邊
   是用 `calc(2px + var(--p-lift))` 跟著它算的，寫死就對不上。
+- **字級級距 2026-08-26 拉到 3.2 倍**（0.75 / 0.84 / 0.92 / 1 / 1.2 / 1.45 / 1.85 / 2.4rem）。
+  舊的 0.78→1.9 只有 2.4 倍，八階擠在一起，標題與輔助文字得靠顏色和粗細去分。
+  ⚠️ `--fs-xs` 現在是 **12px**，那個尺寸的中文**一律不准再加 `font-weight: 600`**——橫筆畫會
+  連成一條線，看起來像被劃掉（`dice.css` 的 `.awakening-head` 記著這個實測）。粗體中文最小 `--fs-sm`。
+- **標題（`h1/h2/h3`）的個性來自 `font-weight: 700` ＋ `letter-spacing: 0.02em`**，規則在
+  `base.css`，⚠️ 不要用拉丁 display face 排標題（Archivo 沒有中文字，只會讓標題裡的數字跳出來）。
+- **數字與代號用 `--font-num`（自架的 Archivo 拉丁 subset，14.7KB）**：`.meta`／`.stat-v`／
+  `.game-id`／`.nav-updated`。字型檔在 `public/fonts/`，來源與重製指令在該處的 `README.md`。
+  ⚠️ 三個容易踩的點：(一) `--font-num` 後面**必須**原封不動接上 `--font` 的全部成員，Archivo
+  沒有中文字，只寫 `Archivo, sans-serif` 會讓同一句話裡的中文掉到瀏覽器預設；(二) 路徑走
+  `/fonts/` 不是 `/assets/fonts/`——`public/assets/` 整個在 `.gitignore`（build:data 的產出
+  目錄），放進去 CI 與線上會 404；(三) `.game-id` 是 `<code>`，`base.css` 的 `code, pre` 會把它
+  搶去 `ui-monospace`，那個位置的 `font-family` **一定要明寫**。
+  ⚠️ wght 軸只保留 500–700，所以沒寫 `font-weight` 的位置會被字型匹配夾到 500。**刻意不補
+  `font-weight: 500`**：那會連帶把同一句話裡退回 `--font` 的中文也加粗，12px 的粗體中文會糊。
+  ⚠️ **重跑 subset 有兩個靜靜出錯的地方**（2026-08-26 都踩過）：`--unicodes` 加了上游沒有的
+  碼位不會報錯（`U+2192` 就是這樣進了 README 卻沒進字型），`--layout-features` 留空會把
+  `kern`／`tnum` 一起砍掉。守門：`tokens.test.ts` 驗體積 ≤30KB，E2E 的 **D15b** 用 CDP 的
+  `CSS.getPlatformFontsForNode` 驗純拉丁節點只用到一種字型。
+  ⚠️ **`tabular-nums` 不等於「數字等寬」**：Chromium 把字形前進寬度四捨五入到整數像素，
+  16px 下 Archivo 的數字仍是 9px／10px 兩種。不要拿「換一天寬度不變」寫註解或斷言。
+- **小標籤的字距走 `--ls-label`（0.1em）**，只給 `--fs-xs` 級的標籤用（`.dice-card .meta`、
+  `.stat-pill .stat-k`）。⚠️ 不要往內文或 1rem 的整句中文擴——中文加字距會把行內的詞界抹平，
+  整行變成等距字塊（`#detail .meta` 因此刻意只掛 `--font-num`、不掛字距）。
 - **焦點框全站只有一條** `:focus-visible { outline: var(--ring) }`。元件只在需要**額外**回饋時才補。
 - **動畫長度一律用 `cssMs()` 從 CSS 讀**，JS 不寫第二份。
 - **減少動態的規則每個檔自帶一份**（`chrome.css`／`components.css`／`dice.css`／`detail.css`
@@ -359,7 +384,7 @@ npm run compare -- <beforeURL> <afterURL>  # computed-style 逐元素比對，�
 
 | 檔 | 放什麼 | 誰載 |
 |---|---|---|
-| `tokens.css` | `:root` 的六組 token（間距／圓角／字級／表面／陰影與節奏／面的質感）——**唯一**允許定義 token 的地方 | Base |
+| `tokens.css` | `:root` 的七組 token（間距／圓角／字級／表面／陰影與節奏／面的質感／排印）——**唯一**允許定義 token 的地方 | Base |
 | `base.css` | 全站重置（`*`／`html`／`body`／`main`／`footer`／`a`／`pre`）＋ `.sr-only` | Base |
 | `chrome.css` | 全站導覽列 `#site-nav`（含「遊戲介紹」下拉） | Base |
 | `content.css` | 靜態內容頁共用 `.page`（首頁／圖鑑／遊戲介紹）＋首頁訪客計數器 `#hit-counter`＋詞彙頁 `.kw-*` | Base |

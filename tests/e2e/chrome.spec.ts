@@ -115,13 +115,28 @@ test('D5. 鍵盤 Tab 過去的元素一定有焦點框（全站共用的那一�
   expect(parseFloat(ring!.width), '焦點框寬度是 0').toBeGreaterThan(0);
 });
 
+/**
+ * ⚠️ 這條 2026-08-26 從 `test.skip(scrollable, …)` 改成「自己指定一個夠高的視窗 ＋ 硬斷言」。
+ *
+ * 舊寫法在 mobile 專案上**從一開始就沒驗到任何東西**：Pixel 7 的視窗高 839，而 /guide 在
+ * 那個寬度下 scrollHeight 是 1076——條件成立，整條直接跳過，list reporter 上只是一行灰字。
+ * desktop 那邊更驚險：/guide 的 scrollHeight 剛好 720、視窗也剛好 720，餘裕是 **0**，任何
+ * 讓 /guide 多長一行的改動都會讓它跟著靜靜跳過，而不是紅。
+ *
+ * 換句話說，一條「內容不滿一屏」的測試，它的前提條件是自己不能控制的頁面高度——那不是
+ * 條件式跳過，那是假綠。現在把視窗高度寫死成 1600，前提就由測試自己保證；哪天 /guide 真的
+ * 長到 1600 以上，會**紅在下面那句 expect**（附說明），而不是消失。
+ */
 test('D6. 內容不滿一屏時 footer 沉到視窗底部，不會停在畫面中間', async ({ page }) => {
+  const VH = 1600;
+  await page.setViewportSize({ width: page.viewportSize()!.width, height: VH });
   await page.goto('/guide');
-  const vh = page.viewportSize()!.height;
-  const scrollable = await page.evaluate(() => document.documentElement.scrollHeight > window.innerHeight + 1);
-  test.skip(scrollable, '這個視窗尺寸下 /guide 已經捲得動，沒有「內容不滿一屏」可驗');
+  const sh = await page.evaluate(() => document.documentElement.scrollHeight);
+  expect(sh, `/guide 在 ${VH}px 高的視窗下已經捲得動（scrollHeight=${sh}），`
+    + '這條測試需要一個「內容不滿一屏」的頁面——把上面的 VH 加大，不要改回 test.skip')
+    .toBeLessThanOrEqual(VH + 1);
   const foot = (await page.locator('footer').boundingBox())!;
-  expect(Math.abs(foot.y + foot.height - vh), 'footer 沒有沉到視窗底部').toBeLessThan(2);
+  expect(Math.abs(foot.y + foot.height - VH), 'footer 沒有沉到視窗底部').toBeLessThan(2);
 });
 
 test('D7. 卡片換頁的過場時間吃 --slide-ms；使用者要求減少動態時整組關掉', async ({ page }) => {
@@ -436,4 +451,131 @@ test('D14. 減少動態的規則拆到各檔之後沒有漏掉任何一條', asy
   const filtersReduced = await probeFilters();
   expect.soft(filtersReduced.split(',').map(v => v.trim()).every(v => v === '0s'),
     `/tree 的 #filters.animating 在 reduce 之下過場沒有被關掉（讀到 ${filtersReduced}）`).toBe(true);
+});
+
+/**
+ * D15. 自架的 Archivo 真的載進來、也真的掛在該掛的四個位置上（2026-08-26 PR ⑤）。
+ *
+ * 這條同時守三種「宣告了但沒生效」——三種都不會讓任何既有測試說話：
+ *  (一) **檔案 404**：`public/assets/` 整個在 .gitignore（那是 build:data 的產出目錄），
+ *       字型放進去在本機看得到、CI 與線上是 404。@font-face 找不到檔不會報錯，只會靜靜
+ *       退回系統字型。所以這裡攔的是 woff2 的**回應狀態碼**，不是「有沒有發出請求」。
+ *  (二) **選擇器沒吃到**：`.game-id` 是 <code>，base.css 的 `code, pre` 會把它拉去
+ *       ui-monospace——實作時就踩到了，computed 是 ui-monospace 而不是 Archivo。
+ *  (三) **字型檔在、名字也對，但裡面沒有要用的字符**：computed fontFamily 只是把 CSS 的
+ *       字串照抄回來，字型檔壞掉、subset 砍掉數字，它照樣回「Archivo」。這一種靠底下的
+ *       寬度探針攔。
+ *
+ * ⚠️ 寬度探針的基準線**一定要是一個不存在的字型名**，不能拿 --font 的成員當基準。
+ * 第一版寫成「Archivo 對上 'Noto Sans TC', sans-serif」，反例（把字型 subset 成沒有數字）
+ * **照樣綠**：Archivo 缺字時那串數字是逐字退回瀏覽器預設字型，而基準線量的是 Noto Sans TC，
+ * 兩者本來就不同寬，差值永遠 > 1。改成不存在的字型名之後，兩邊在「Archivo 沒有數字」時
+ * 會落在同一個預設字型上，差值變 0，反例才會紅（2026-08-26 兩個方向都實跑過）。
+ */
+test('D15. 自架的 Archivo 載得到，而且掛在數字與代號那四個位置上', async ({ page }) => {
+  const fontResponses: string[] = [];
+  page.on('response', r => {
+    if (r.url().includes('.woff2')) fontResponses.push(`${r.status()} ${r.url().split('/').pop()}`);
+  });
+  await page.goto('/dice');
+  await page.evaluate(() => document.fonts.ready);
+
+  expect(fontResponses, 'Archivo 的 woff2 沒有被下載，或不是 200（檢查 public/fonts/ 的路徑）')
+    .toEqual(['200 archivo-latin-500-700.woff2']);
+
+  const r = await page.evaluate(() => {
+    const family = (sel: string) => {
+      const el = document.querySelector(sel);
+      return el ? getComputedStyle(el).fontFamily.split(',')[0]!.replace(/['"]/g, '') : `${sel} 不存在`;
+    };
+    // 同一串數字量兩次：一次指名 Archivo、一次指名一個**不存在**的字型名。後者一定落在
+    // 瀏覽器預設字型上；Archivo 真的帶著這些字符時，前者不會落在同一個地方，兩者寬度不同。
+    const width = (stack: string) => {
+      const s = document.createElement('span');
+      s.textContent = '1234567890';
+      s.style.cssText = `position:absolute;visibility:hidden;font:600 40px ${stack}`;
+      document.body.appendChild(s);
+      const w = s.getBoundingClientRect().width;
+      s.remove();
+      return w;
+    };
+    return {
+      loaded: document.fonts.check('600 16px Archivo'),
+      families: {
+        gameId: family('.game-id'),
+        statV: family('.stat-v'),
+        meta: family('.dice-card .meta'),
+      },
+      wArchivo: width("Archivo"),
+      wMissing: width("__this_font_does_not_exist__"),
+    };
+  });
+
+  expect(r.loaded, 'document.fonts 說 Archivo 沒有可用').toBe(true);
+  expect(r.families, '有位置沒吃到 --font-num（.game-id 特別容易被 base.css 的 `code` 搶走）')
+    .toEqual({ gameId: 'Archivo', statV: 'Archivo', meta: 'Archivo' });
+  expect(Math.abs(r.wArchivo - r.wMissing),
+    `指名 Archivo 與指名一個不存在的字型量到一樣寬（${r.wArchivo}px），代表那串數字並沒有`
+    + '用 Archivo 畫出來——字型檔壞了，或 subset 把數字砍掉了（見 public/fonts/README.md '
+    + '的 --unicodes）').toBeGreaterThan(1);
+});
+
+/**
+ * D15b. subset **真的蓋得住畫面上那些字**——問瀏覽器實際用了哪些字型來畫，不是問 CSS 寫了什麼。
+ *
+ * 為什麼需要這一條：`pyftsubset` 對「來源字型沒有的碼位」是靜靜跳過的，`--layout-features`
+ * 給錯也是靜靜生效。2026-08-26 這張 PR 一次踩到兩個——`--unicodes` 裡的 `U+2192` 上游根本
+ * 沒有、`--layout-features=''` 把 kern 與 tnum 全砍了——而當時所有測試都是綠的。
+ * 缺字時瀏覽器是**逐字**退回系統字型，畫面上看起來只是那一個字寬度不太對，沒有任何既有斷言
+ * 會說話。`CSS.getPlatformFontsForNode` 是唯一能問到「這個節點實際用了幾種字型、各畫了幾個
+ * 字形」的地方。
+ *
+ * ⚠️ 只挑**純拉丁**的節點驗。`.meta`／`.nav-updated` 是中英混排，中文本來就會退回系統字型，
+ * 那裡回兩種字型是正確行為（而且退到哪一個隨作業系統變，CI 上是 WenQuanYi、Yuki 的 Windows
+ * 上是別的，不能斷言名字）。
+ */
+test('D15b. Archivo 蓋得住純拉丁的節點，沒有任何一個字偷偷退回系統字型', async ({ page, browserName }) => {
+  test.skip(browserName !== 'chromium', 'CSS.getPlatformFontsForNode 是 CDP，只有 Chromium 有');
+  await page.goto('/dice');
+  await page.evaluate(() => document.fonts.ready);
+
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send('DOM.enable');
+  await cdp.send('CSS.enable');
+  const { root } = await cdp.send('DOM.getDocument');
+
+  // `.game-id` 是 `D000`、`.stat-v` 的基礎檔是純數字——兩個都不含任何中文。
+  for (const selector of ['.game-id', '.stat-v > [data-m="base"]']) {
+    const { nodeId } = await cdp.send('DOM.querySelector', { nodeId: root.nodeId, selector });
+    expect(nodeId, `找不到 ${selector}`).toBeTruthy();
+    const { fonts } = await cdp.send('CSS.getPlatformFontsForNode', { nodeId });
+    const names = fonts.map(f => `${f.familyName}×${f.glyphCount}`).join(' + ');
+    expect(fonts, `${selector} 用了不只一種字型（${names}）——有字符不在 subset 裡，`
+      + '被逐字退回系統字型了。檢查 public/fonts/README.md 的 --unicodes').toHaveLength(1);
+    // familyName 是實例名（'Archivo SemiBold'），不是 CSS 裡寫的那個字串，所以只比前綴。
+    expect(fonts[0]!.familyName, `${selector} 畫出來的不是 Archivo，而是 ${fonts[0]!.familyName}`)
+      .toMatch(/^Archivo/);
+    expect(fonts[0]!.isCustomFont, `${selector} 用的是系統裝的 Archivo，不是我們自架的那個檔`).toBe(true);
+    expect(fonts[0]!.glyphCount, `${selector} 一個字形都沒畫`).toBeGreaterThan(0);
+  }
+});
+
+/**
+ * D16. `.nav-updated` 的日期也走 Archivo——它在**手機版是 display:none**，所以要單獨驗，
+ * 而且要在桌機專案上驗才有意義（mobile 專案跑到這裡會直接跳過，見底下的 skip 說明）。
+ *
+ * ⚠️ 這裡**刻意不驗 `font-variant-numeric`**。第一版斷言 computed 的 `fontVariantNumeric`
+ * 是 `'tabular-nums'`——那只是把 CSS 的字串抄回來，字型做不做得到跟它無關，是一句同語反覆
+ * （2026-08-26 code review 抓到）。而「換一天寬度不變」這個**真正想守的性質，實測是不成立的**：
+ * Chromium 把字形前進寬度四捨五入到整數像素，16px 下 Archivo 的數字仍然是 9px／10px 兩種，
+ * `2026-08-23` 90px、`1111-11-11` 84px，開不開 tabular-nums 都一樣。既然斷言不了，就不要
+ * 留一條看起來有在守、其實什麼都沒守的斷言。理由與量測寫在 chrome.css 該處。
+ */
+test('D16. 導覽列的「上次更新」日期走 Archivo', async ({ page, isMobile }) => {
+  test.skip(isMobile, '手機版刻意把 .nav-updated 收掉（chrome.css 的 720px 媒體查詢），沒有東西可量');
+  await page.goto('/');
+  await page.evaluate(() => document.fonts.ready);
+  const family = await page.locator('.nav-updated')
+    .evaluate(el => getComputedStyle(el).fontFamily.split(',')[0]!.replace(/['"]/g, ''));
+  expect(family, '.nav-updated 沒吃到 --font-num').toBe('Archivo');
 });
