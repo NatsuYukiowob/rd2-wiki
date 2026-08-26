@@ -6,6 +6,7 @@
 // `request.get()` 而不是 `page.goto()`：後者拿到的是 JS 跑完之後的 DOM，驗不到這件事。
 import { test, expect } from '@playwright/test';
 import { readFileSync } from 'node:fs';
+import sharp from 'sharp';
 import { resolveColor } from './probe';
 
 const tree = JSON.parse(
@@ -416,4 +417,58 @@ test('C11. 沒有 JS 時檔位照樣切得動（整塊是純 CSS）', async ({ b
   await card.locator('.stat-modes input[value="lv15dice7"]').check();
   await expect(card.locator('.stat-pill').first()).toHaveText(/攻擊力\s*2850/, { useInnerText: true });
   await ctx.close();
+});
+
+test('C12. 卡片頂緣的分支色線：真的畫得出來，翻到關鍵字頁也不會被蓋掉', async ({ page }) => {
+  // 那條線是 `.dice-card::after`（PR ④）。偽元素在 DOM 裡沒有節點，`toBeVisible()` 之類
+  // 的斷言一條都用不上——只有量像素會說話。
+  //
+  // ⚠️ 第二段（翻到關鍵字頁之後再量一次）才是這條測試存在的理由：`.card-term` 是
+  // `inset: 0; z-index: 1` 的覆蓋層，::after 少了 `z-index: 2` 就會被它整條蓋掉。而那個
+  // 失效模式**只在翻頁之後**才看得到，卡片正面完全正常，其餘 11 條 /dice 測試一條都不會紅。
+  await page.goto('/dice');
+
+  // 挑一張「有 #關鍵字 可以翻頁」而且掛了分支的卡片，分支色從它自己的屬性讀，不要寫死。
+  const card = page.locator('.dice-card[data-branch]').filter({ has: page.locator('a.kw-link') }).first();
+  await card.scrollIntoViewIfNeeded();
+  const branch = await card.getAttribute('data-branch');
+  const [r0, g0, b0] = (await resolveColor(page, `--${branch}`))
+    .match(/\d+/g)!.slice(0, 3).map(Number) as [number, number, number];
+
+  const box = (await card.boundingBox())!;
+  // 取樣範圍只取左上角一小塊：漸層在 70% 處就透明了，右半邊本來就該是卡片底色。
+  // 高度 8 CSS px 蓋得住 1px 上邊框 ＋ 3px 色線，還留了餘裕給裝置像素的四捨五入。
+  //
+  // ⚠️ x 從 box.x + 12 起算，避開左上角的圓角與 1px 邊框。這個偏移原本是為了避開
+  // `border-left: 3px solid var(--branch)`（跟頂緣同色，從 box.x 起算會量到它，把 ::after
+  // 整條刪掉也照樣綠——反例沒紅才抓到）。那條左緣色線 2026-08-26 已經拿掉，偏移留著只是
+  // 避開圓角；**不要因為理由變了就把它改回 box.x**，圓角那幾格是卡片底色。
+  const clip = { x: box.x + 12, y: box.y, width: 48, height: 8 };
+  const near = async () => {
+    const { data, info } = await sharp(await page.screenshot({ clip })).raw()
+      .toBuffer({ resolveWithObject: true });
+    let best = 999;
+    for (let i = 0; i < data.length; i += info.channels) {
+      const d = Math.abs(data[i]! - r0) + Math.abs(data[i + 1]! - g0) + Math.abs(data[i + 2]! - b0);
+      if (d < best) best = d;
+    }
+    return best;
+  };
+
+  // 正向控制：沒有這一段，下面那條在「根本沒畫那條線」時也會綠（兩次都找不到，但只斷言
+  // 第二次的話就看不出差別）。門檻 40 是三個通道的曼哈頓距離，容得下反鋸齒與漸層起點的
+  // 一點點混色，但容不下「整條線不存在」（那裡會是 --surface-1，距離 200 以上）。
+  const before = await near();
+  expect(before, `卡片正面就找不到 --${branch} 的頂緣色線，這條測試等於沒守`).toBeLessThan(40);
+
+  // 翻到 #關鍵字 的就地視圖，等過場停下來再量。
+  await card.locator('a.kw-link').first().click();
+  await expect(card.locator('.card-term-view[data-active]')).toBeVisible();
+  await page.waitForTimeout(400); // --slide-ms 是 280ms
+  const after = await near();
+  expect(after, `翻到關鍵字頁之後頂緣色線被 .card-term 蓋掉了（::after 的 z-index 沒贏）`)
+    .toBeLessThan(40);
+
+  // 它橫跨整張卡片的頂緣，不能吃掉底下的點擊。
+  expect(await card.evaluate(el => getComputedStyle(el, '::after').pointerEvents)).toBe('none');
 });

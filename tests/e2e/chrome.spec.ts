@@ -75,17 +75,27 @@ test('D3. 目前分頁標 aria-current，而且沒有把下拉選單的 ▾ 箭�
   expect(pseudo.beforeBg).toBe(await resolveColor(page, '--gold'));
 });
 
-test('D4. 骰子卡左緣是所屬分支的顏色，五系各驗一張', async ({ page }) => {
+test('D4. 骰子卡頂緣是所屬分支的顏色，五系各驗一張', async ({ page }) => {
+  // 2026-08-26 之前這條量的是 `border-left`；分支色條那時改到頂緣的 `.dice-card::after`
+  // （Yuki 拍板拿掉左緣那條），所以這裡改量偽元素的漸層。
+  // ⚠️ 順便守「左緣不准再長回來」：兩條同色的線圍成「⌐」正是被拿掉的東西，只驗頂緣的話
+  // 有人把 border-left 加回去這條照樣綠。
   await page.goto('/dice');
   for (const branch of ['nature', 'engineering', 'magic', 'order', 'chaos']) {
     const card = page.locator(`.dice-card[data-branch="${branch}"]`).first();
     await expect(card, `${branch} 沒有任何骰子卡`).toHaveCount(1);
     const style = await card.evaluate(el => ({
-      color: getComputedStyle(el).borderLeftColor,
-      width: getComputedStyle(el).borderLeftWidth,
+      top: getComputedStyle(el, '::after').backgroundImage,
+      topH: getComputedStyle(el, '::after').height,
+      leftW: getComputedStyle(el).borderLeftWidth,
+      leftColor: getComputedStyle(el).borderLeftColor,
     }));
-    expect(style.color, `${branch} 的左緣不是分支色`).toBe(await resolveColor(page, `--${branch}`));
-    expect(style.width).toBe('3px');
+    const expected = await resolveColor(page, `--${branch}`);
+    expect(style.top, `${branch} 的頂緣色線不是分支色（讀到 ${style.top}）`).toContain(expected);
+    expect(style.topH, `${branch} 的頂緣色線沒有高度`).toBe('3px');
+    expect(style.leftW, '左緣的分支色條長回來了（2026-08-26 拿掉的）').toBe('1px');
+    expect(style.leftColor, '左緣的分支色條長回來了（2026-08-26 拿掉的）')
+      .toBe(await resolveColor(page, '--border'));
   }
 });
 
@@ -335,16 +345,36 @@ test('D14. 減少動態的規則拆到各檔之後沒有漏掉任何一條', asy
     await expect.soft(el, `${c.path} 上找不到 ${c.selector}`).toBeAttached();
     // 同上一個形狀的理由：找不到就跳過，不要讓 el.hover() 卡 30 秒把整個 test 中止掉。
     if (!(await el.count())) continue;
+    // --face-lift 的下緣硬邊：`calc(2px + var(--p-lift))`，hover 時該從 2px 長到 4px。
+    // ⚠️ 一定要等過場跑完再讀（--t-fast 是 120ms），否則讀到的是 2.33px 這種中間值。
+    const edge = (shadow: string) =>
+      shadow.match(/rgba?\([^)]*\)\s+0px\s+([\d.]+)px\s+0px\s+0px(?!\s+inset)/)?.[1];
+    const shadowOf = () => el.evaluate(n => getComputedStyle(n).boxShadow);
+    const restEdge = edge(await shadowOf());
+
     await el.hover();
     const normal = await el.evaluate(n => getComputedStyle(n).transform);
     // 正向控制：hover 之後真的有 transform，下面那條斷言才有意義。
     expect.soft(normal, `${c.selector}:hover 平常沒有 transform，這條斷言等於沒守`).not.toBe('none');
+    await page.waitForTimeout(200);
+    const hoverEdge = edge(await shadowOf());
+    // 正向控制：硬邊平常真的會跟著 hover 長大，下面那條斷言才有意義。
+    expect.soft(hoverEdge, `${c.selector}:hover 的下緣硬邊沒有跟著長大（都是 ${restEdge}px），`
+      + '下面那條 reduce 斷言等於沒守').not.toBe(restEdge);
 
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await el.hover();
     const reduced = await el.evaluate(n => getComputedStyle(n).transform);
     expect.soft(reduced,
       `${c.path} 的 ${c.selector}:hover 在 reduce 之下 transform 沒有被關掉（讀到 ${reduced}）`).toBe('none');
+    // 2026-08-26 code review 追加：transform 關掉還不夠。硬邊沒一起壓平的話，卡片不動而
+    // 影子往下掉 2px——影子脫離了它應該在追的那個元素。修法在 tokens.css 的
+    // `@media (prefers-reduced-motion: reduce) :root` 重新宣告 --face-lift；**不能**寫在
+    // 元件的 reduce 區塊裡覆寫 --p-lift（自訂屬性在宣告它的元素上就代換完了，實測無效）。
+    await page.waitForTimeout(200);
+    expect.soft(edge(await shadowOf()),
+      `${c.path} 的 ${c.selector}:hover 在 reduce 之下下緣硬邊仍然跟著長大（靜止 ${restEdge}px），`
+      + '卡片不動而影子往下掉').toBe(restEdge);
   }
 
   // --- 形狀三：#detail 系列，合成探針量，不驅動真的換頁動畫 ---

@@ -28,7 +28,8 @@
   font-size: var(--fs-md);
   border: 1px solid var(--border-strong);
   border-radius: var(--r-md);
-  box-shadow: var(--shadow-3);
+  /* --face-float 而不是 --face：面板浮在畫布上，沒有坐在任何平面上，下緣硬邊會說謊。 */
+  box-shadow: var(--face-float);
 }
 #detail h2 {
   margin-top: 0;
