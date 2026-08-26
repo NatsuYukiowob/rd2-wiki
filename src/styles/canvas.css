@@ -237,10 +237,11 @@ main:has(#canvas-host) {
 /* 以下樣式作用在 tree-canvas.ts 用 DOM API 動態產生的節點／邊上，
    Astro 的 scoped CSS 只會標記本檔案模板裡「寫死」的元素，動態產生的 SVG 碰不到，
    所以這裡一律用 is:global。 */
-/* 邊的顏色、粗細與端點畫法都取自遊戲原圖的 `.edge` 規則（stroke:#a89ad3、寬 3.2、
-   round 端點、opacity .9），讓站台跟原圖看起來是同一張圖。 */
+/* 邊的顏色、粗細與端點畫法都取自遊戲原圖的 `.edge` 規則（--edge、寬 3.2、round 端點、
+   opacity .9），讓站台跟原圖看起來是同一張圖。色值收在 tokens.css 的 --edge——這裡與底下
+   的 .tree-center-link 原本各寫死一次同一個 #a89ad3。 */
 .edge {
-  stroke: #a89ad3;
+  stroke: var(--edge);
   stroke-width: 3.2;
   stroke-linecap: round;
   opacity: 0.9;
@@ -287,7 +288,7 @@ main:has(#canvas-host) {
 /* 樞紐放射線：原圖用的是跟 .edge 同色、同粗，但不透明度更高（.96 vs .9）——差別只在
    「更實一點」，不是更粗。這裡照抄，不自己另外設計一組。 */
 .tree-center-link {
-  stroke: #a89ad3;
+  stroke: var(--edge);
   stroke-width: 3.2;
   stroke-linecap: round;
   opacity: 0.96;
@@ -342,6 +343,14 @@ main:has(#canvas-host) {
    自己的 x/y/width/height 就是節點的顯示範圍，框它才貼合按鈕本身。 */
 .node:focus {
   outline: none;
+}
+/* 金邊的顏色。⚠️ 這條的正本在這裡、不在 `render.ts` 建那個濾鏡的地方：`flood-color` 寫成
+   presentation attribute 的話它就是全站第二份 `#ffd66f`，改了 `--gold` 之後焦點框會安靜地
+   留在舊色，而所有測試照樣綠（2026-08-26 code review 抓到，跟 board-export.ts 的 fallback
+   同一族）。`feFlood` 沒有 `flood-color` 時預設是黑色——在深色畫布上等於焦點框消失，
+   所以 E2E 的 H（掃金邊像素）就是這條的守門員。 */
+#focus-ring feFlood {
+  flood-color: var(--gold);
 }
 /* 外框是一圈貼著圖示輪廓的金邊，由 #focus-ring 濾鏡產生（定義見 src/lib/render.ts）：
    圓形節點得到圓環、圓角方塊得到圓角框。CSS 的 outline 做不到——它畫的永遠是矩形邊界框。

@@ -102,7 +102,10 @@ export function renderTree(data: TreeData, doc: Document): SVGSVGElement {
   focusFilter.setAttribute('height', '140%');
   focusFilter.innerHTML =
     '<feMorphology operator="dilate" radius="2" in="SourceAlpha" result="thick"/>' +
-    '<feFlood flood-color="#ffd66f" result="gold"/>' +
+    // flood-color 刻意留空，由 canvas.css 的 `#focus-ring feFlood` 設成 var(--gold)。
+    // 寫死 `#ffd66f` 的話這裡是全站第二份金色，改了 --gold 之後焦點框會安靜地留在舊色，
+    // 而所有測試照樣綠——跟 board-export.ts 的 fallback 同一族（2026-08-26 code review）。
+    '<feFlood result="gold"/>' +
     '<feComposite in="gold" in2="thick" operator="in" result="ring"/>' +
     '<feMerge><feMergeNode in="ring"/><feMergeNode in="SourceGraphic"/></feMerge>';
   defs.appendChild(focusFilter);

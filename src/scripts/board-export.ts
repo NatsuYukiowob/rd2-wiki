@@ -34,11 +34,11 @@ function cssVar(name: string, fallback: string): string {
 
 function palette() {
   return {
-    bg: cssVar('--bg', '#2f2942'),
-    surface: cssVar('--surface-1', '#322b4b'),
-    border: cssVar('--border', '#443c63'),
-    fg: cssVar('--fg', '#f7f3ff'),
-    muted: cssVar('--muted', '#aaa4c1'),
+    bg: cssVar('--bg', '#17161a'),
+    surface: cssVar('--surface-1', '#26252b'),
+    border: cssVar('--border', '#3f3e49'),
+    fg: cssVar('--fg', '#f3f1f6'),
+    muted: cssVar('--muted', '#a5a2ae'),
     gold: cssVar('--gold', '#ffd66f'),
   };
 }

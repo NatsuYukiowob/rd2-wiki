@@ -14,12 +14,12 @@
 </p>
 
 <p align="center">
-  <a href="https://rd2-wiki.pages.dev/tree/"><img src="https://img.shields.io/badge/%E9%96%8B%E5%95%9F%E9%AA%B0%E5%AD%90%E6%A8%B9-rd2--wiki.pages.dev-ffd66f?style=for-the-badge&labelColor=2f2942" alt="開啟骰子樹" /></a>
+  <a href="https://rd2-wiki.pages.dev/tree/"><img src="https://img.shields.io/badge/%E9%96%8B%E5%95%9F%E9%AA%B0%E5%AD%90%E6%A8%B9-rd2--wiki.pages.dev-ffd66f?style=for-the-badge&labelColor=17161a" alt="開啟骰子樹" /></a>
 </p>
 
 <p align="center">
-  <a href="./LICENSE"><img src="https://img.shields.io/badge/%E7%A8%8B%E5%BC%8F%E7%A2%BC-MIT-8b7bd8?style=flat&labelColor=2f2942" alt="程式碼採 MIT 授權" /></a>
-  <a href="./data/NOTICE.md"><img src="https://img.shields.io/badge/%E9%81%8A%E6%88%B2%E7%B4%A0%E6%9D%90-111%20Percent%20Inc.-e979a5?style=flat&labelColor=2f2942" alt="遊戲素材著作權屬 111 Percent Inc." /></a>
+  <a href="./LICENSE"><img src="https://img.shields.io/badge/%E7%A8%8B%E5%BC%8F%E7%A2%BC-MIT-8b7bd8?style=flat&labelColor=17161a" alt="程式碼採 MIT 授權" /></a>
+  <a href="./data/NOTICE.md"><img src="https://img.shields.io/badge/%E9%81%8A%E6%88%B2%E7%B4%A0%E6%9D%90-111%20Percent%20Inc.-e979a5?style=flat&labelColor=17161a" alt="遊戲素材著作權屬 111 Percent Inc." /></a>
 </p>
 
 > [!WARNING]
@@ -36,7 +36,7 @@ rd2-wiki 把整棵樹攤平在同一張畫布上：**點一個節點，它在樹
 並直接算出這條路總共要花多少核心與金幣。** 解鎖之前就能比較路線，不必先花了才發現走錯邊。
 
 <p align="center">
-  <img width="100%" src="./.github/media/screenshot-tree.webp" alt="骰子樹畫布：選取節點後前置鏈高亮，右側詳情面板顯示累計成本" />
+  <img width="100%" src="./.github/media/screenshot-tree.webp" alt="骰子樹畫布：選取節點後前置鏈高亮，節點下方的詳情卡片顯示累計成本" />
 </p>
 
 ## 能做什麼
