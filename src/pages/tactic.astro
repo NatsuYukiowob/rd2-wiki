@@ -1,0 +1,209 @@
+---
+// 戰術一覽。
+//
+// 官方資料表的「戰術」分頁，**58 條已啟用**的一頁全開。⚠️ 資料表其實有 74 條，另外 16 條標
+// 「未啟用」（資料表有、遊戲沒開）刻意不落地，Yuki 2026-08-26 裁決；判準與後果寫在
+// tools/validate.ts 的規則 24 與 data/tactics.json 的說明。
+//
+// **戰術不是骰子樹的節點**：不花錢解鎖、沒有前置、不參與成本計算，所以它既不在
+// data/dice-tree.svg 也不在 data/nodes.json 裡，而是自己一份 data/tactics.json
+// ＋ 一條平行的圖示資產路徑 data/tactic-icons/（規則 24 守）。塞進正本會同時弄壞
+// 239／248 的節點邊數與全樹解鎖成本。
+//
+// 這一頁跟 /dice 一樣是靜態頁，**建置期直接讀 data/，不進 tree.json**——那份的 gzip
+// 只剩約 1.5 KB 餘裕（tests/tools/build-data.test.ts 有 20 KB 硬斷言）。
+import Base from '../layouts/Base.astro';
+import '../styles/battle.css';
+import tacticsRaw from '../../data/tactics.json';
+import keywordsRaw from '../../data/keywords.json';
+import treeData from '../generated/tree.json';
+import { buildGlossary, displayGlossary } from '../lib/glossary-groups';
+import { renderStaticText } from '../lib/static-markup';
+import type { GlossaryRecord, Tactic, TreeData } from '../lib/types';
+
+const tactics = tacticsRaw as Tactic[];
+const keywords = keywordsRaw as Record<string, GlossaryRecord>;
+const tree = treeData as unknown as TreeData;
+const index = buildGlossary(keywords, tree.nodes);
+const glossary = displayGlossary(keywords);
+const whitelist = Object.keys(keywords);
+
+// 階段的顯示順序是遊戲自己的節奏（前期→中期→後期），「選項」是 69 號那三個子選項自成一類，
+// 排最後。⚠️ 不要改成 `[...new Set(t.stage)]` 之類從資料推導的順序——那會讓順序取決於
+// 資料檔裡第一次出現的位置，加一條新戰術就可能整排篩選鈕換位。
+const STAGES = ['前期', '中期', '後期', '選項'] as const;
+// 合作模式下看得到的條數＝有 coop 的那些。規則 24(j) 保證它等於 mode === '對戰／合作' 的條數，
+// 這裡仍然照 coop 欄位數，因為畫面上真正決定顯不顯示的就是它。
+const coopCount = tactics.filter(t => t.coop).length;
+---
+
+<Base title="戰術">
+  <section class="page battle-page" id="tactic-page" data-mode="versus">
+    <h1>戰術</h1>
+    <p class="lede">對戰與合作模式中的戰術效果。</p>
+
+    <div class="filters" id="tactic-filters">
+      <div role="group" aria-label="依階段篩選">
+        <!-- 切換鈕跟 /dice 用同一個 .chip：外觀是按鈕、骨子裡是 <label> 包真的 checkbox，
+             鍵盤、螢幕閱讀器的「已勾選」、沒有 JS 時仍是可操作的表單控制項全是免費的。 -->
+        <button type="button" id="tactic-all" class="chip">全部</button>
+        {STAGES.map(stage => (
+          <label class="chip">
+            <input type="checkbox" name="stage" value={stage} checked />
+            {stage}
+          </label>
+        ))}
+      </div>
+
+      <div role="group" aria-label="切換模式">
+        <!--
+          ⚠️ 這顆鈕的文字是**目前正在看的模式**，不是「按下去會變成什麼」（Yuki 2026-08-26 指定）。
+          CLAUDE.md 記過「切換鈕文字固定不變」，理由是文字互換會讓沾頂的工具列寬度跳動——
+          這裡兩個字串都是四個中文字（對戰模式／合作模式），寬度不變，所以那條理由不成立。
+          ⚠️ 換文字時 `aria-label` 要一起換：它是無障礙名稱，只換可見文字的話螢幕閱讀器
+          會一直念同一句。`aria-pressed` 仍然表達「合作模式開著沒有」，也是 .chip 亮起來的依據。
+        -->
+        <button
+          type="button"
+          id="tactic-coop"
+          class="chip"
+          aria-pressed="false"
+          aria-label="目前顯示對戰模式，按下切換到合作模式"
+        >對戰模式</button>
+      </div>
+
+      <p class="filter-count" aria-live="polite">
+        顯示 <span id="tactic-count">{tactics.length}</span> / {tactics.length}
+      </p>
+    </div>
+
+    <ul class="battle-list" id="tactic-list">
+      {tactics.map(t => (
+        <li
+          class="battle-item"
+          id={`t${t.id}`}
+          data-id={t.id}
+          data-stage={t.stage}
+          data-coop={t.coop ? '1' : undefined}
+          data-sub={t.id.includes('-') ? '' : undefined}
+          data-parent={t.id.includes('-') ? t.id.slice(0, t.id.indexOf('-')) : undefined}
+        >
+          <img
+            class="battle-icon"
+            src={`/assets/tactic-icons/${t.icon}.webp`}
+            alt=""
+            loading="lazy"
+            decoding="async"
+          />
+          <div>
+            <div class="battle-head">
+              {/*
+                子選項（69-1～69-3）的從屬記號。⚠️ 這裡**不印編號也不印內部ID**
+                （Yuki 2026-08-26：那兩個是我們對官方資料表用的，玩家在遊戲裡看不到）。
+                箭頭 aria-hidden：它是版面記號，唸出「↳」對讀屏沒有意義——從屬關係由
+                下面那個「選項」階段標籤承擔，那是玩家與讀屏都拿得到的資訊。
+              */}
+              {t.id.includes('-') && <span class="battle-sub-mark" aria-hidden="true">↳</span>}
+              <h2 class="battle-name">{t.name}</h2>
+              <span class="battle-meta">
+                <span class="battle-tag">{t.stage}</span>
+                <span class="battle-tag">{t.mode}</span>
+              </span>
+            </div>
+            <!--
+              兩段效果都輸出進 HTML，切換只換顯示哪一段（CSS 的 [data-mode]）。用 JS 換
+              textContent 的話合作那一段永遠進不了 HTML——而「文字進得了 HTML」正是這一頁
+              存在的理由（/dice 的數值面板為同一個理由做成純 CSS）。
+              set:html 的來源是建置期自己渲染、已逐字逃逸過的字串（見 src/lib/markup.ts）。
+            -->
+            <p class="battle-text" data-mode="versus" set:html={renderStaticText(t.versus, whitelist, glossary, index)} />
+            {t.coop && (
+              <p class="battle-text" data-mode="coop" set:html={renderStaticText(t.coop, whitelist, glossary, index)} />
+            )}
+          </div>
+        </li>
+      ))}
+    </ul>
+
+    <p class="battle-empty" id="tactic-empty" hidden>目前的篩選條件沒有符合的戰術。</p>
+
+    <p class="note">
+      合作模式只有 {coopCount} 條可用，其餘 {tactics.length - coopCount} 條是對戰專用。
+    </p>
+  </section>
+</Base>
+
+<script>
+  // 篩選（階段）與模式切換。兩者都只改 DOM 屬性，不重建任何節點——效果文字是伺服器輸出的，
+  // 重建等於把它從 HTML 搬到 JS 裡。
+  //
+  // 刻意不做 URL 狀態同步（那是 /tree 的契約，它有選取節點與前置鏈要還原）；
+  // 這一頁重新整理回到「全部階段 ＋ 對戰模式」是可以接受的。
+  const page = document.getElementById('tactic-page');
+  const filters = document.getElementById('tactic-filters');
+  const list = document.getElementById('tactic-list');
+  const count = document.getElementById('tactic-count');
+  const empty = document.getElementById('tactic-empty');
+  const all = document.getElementById('tactic-all');
+  const coopBtn = document.getElementById('tactic-coop');
+
+  if (page && filters && list && count && empty) {
+    const boxes = [...filters.querySelectorAll<HTMLInputElement>('input[name=stage]')];
+    const items = [...list.querySelectorAll<HTMLElement>('.battle-item')];
+
+    const apply = () => {
+      // 一個維度全不勾＝該維度不篩（等同全勾）。全部取消勾選後畫面一片空白是最容易踩到、
+      // 又最像壞掉的狀態——跟 /dice 的 picked() 同一個判準。
+      const on = boxes.filter(b => b.checked).map(b => b.value);
+      const stages = on.length === 0 ? null : new Set(on);
+      const coopOnly = coopBtn?.getAttribute('aria-pressed') === 'true';
+
+      // 第一輪：每一條照自己的條件判斷。
+      const visible = new Set<string>();
+      for (const item of items) {
+        const ok =
+          (!stages || stages.has(item.dataset.stage ?? '')) &&
+          // 合作模式下，只有對戰能用的那 11 條整條不顯示——不是顯示一段空白的效果。
+          (!coopOnly || item.dataset.coop === '1');
+        item.hidden = !ok;
+        if (ok) visible.add(item.dataset.id ?? '');
+      }
+
+      // 第二輪：⚠️ **母條目被篩掉時，子選項也要跟著收掉**（2026-08-26 code review 抓到）。
+      // 69-1～69-3 是「選擇由我決定」的三個選項，它們的階段是「選項」而母條目是「前期」
+      // ——只勾「選項」的話，畫面上會出現三條縮排、掛著一個 `↳` 卻找不到母條目的孤兒
+      // （編號拿掉之後更看不出它們屬於誰）。
+      let shown = 0;
+      for (const item of items) {
+        const parent = item.dataset.parent;
+        if (!item.hidden && parent !== undefined && !visible.has(parent)) item.hidden = true;
+        if (!item.hidden) shown++;
+      }
+      count.textContent = String(shown);
+      // 篩到零筆時要說話。畫面一片空白跟「頁面壞了」在使用者眼裡沒有差別。
+      empty.hidden = shown > 0;
+      all?.toggleAttribute('data-active', boxes.every(b => b.checked) || boxes.every(b => !b.checked));
+    };
+
+    filters.addEventListener('change', apply);
+    // 「全部」是動作不是狀態（按下去＝全開），所以是 <button> 而不是第五個 checkbox。
+    all?.addEventListener('click', () => {
+      for (const box of boxes) box.checked = true;
+      apply();
+    });
+    coopBtn?.addEventListener('click', () => {
+      const next = coopBtn.getAttribute('aria-pressed') !== 'true';
+      coopBtn.setAttribute('aria-pressed', String(next));
+      // 文字＝目前正在看的模式（見上面的說明）。⚠️ 三件事要一起換，少一件就會互相矛盾：
+      // 可見文字、aria-label（無障礙名稱）、以及 .battle-page 的 data-mode（決定顯示哪一段）。
+      coopBtn.textContent = next ? '合作模式' : '對戰模式';
+      coopBtn.setAttribute(
+        'aria-label',
+        next ? '目前顯示合作模式，按下切換回對戰模式' : '目前顯示對戰模式，按下切換到合作模式',
+      );
+      page.dataset.mode = next ? 'coop' : 'versus';
+      apply();
+    });
+    apply();
+  }
+</script>

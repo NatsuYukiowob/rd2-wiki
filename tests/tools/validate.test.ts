@@ -21,9 +21,14 @@ const boardIcons: Record<string, string> = JSON.parse(readFileSync('data/board-i
 const boardIconsDir = 'data/board-icons';
 const passiveUpgradeCost: unknown = JSON.parse(readFileSync('data/passive-upgrade-cost.json', 'utf8'));
 const diceStats: unknown = JSON.parse(readFileSync('data/dice-stats.json', 'utf8'));
+const tactics: unknown = JSON.parse(readFileSync('data/tactics.json', 'utf8'));
+const tacticIconsDir = 'data/tactic-icons';
+const boss: unknown = JSON.parse(readFileSync('data/boss.json', 'utf8'));
+const bossIconsDir = 'data/boss-icons';
 const opts = {
   keywords, nodeText, upgradeCostTable, maxLevelOfficial, unlockExceptions, changelog, iconsDir, dataDir,
   boardIcons, boardIconsDir, passiveUpgradeCost, diceStats,
+  tactics, tacticIconsDir, boss, bossIconsDir,
 };
 
 /** 換掉升級費用表、其餘照舊。深拷貝理由同 patch()。 */
@@ -172,7 +177,7 @@ describe('validate', () => {
     for (const f of readdirSync(iconsDir)) writeFileSync(join(tinyDir, f), readFileSync(join(iconsDir, f)));
     // 48x31 的縮圖：建置期會把它放大四倍，成品是一團糊，過去什麼規則都沒擋
     writeFileSync(join(tinyDir, 'tree-center.png'), TINY_PNG);
-    const result = validate(svg, { keywords, nodeText, upgradeCostTable, maxLevelOfficial, unlockExceptions, changelog, iconsDir, dataDir: tinyDir, boardIcons, boardIconsDir, passiveUpgradeCost, diceStats });
+    const result = validate(svg, { ...opts, dataDir: tinyDir });
     expect(result.errors.some(e => /規則 10.*小於顯示尺寸的兩倍/.test(e))).toBe(true);
   });
 
@@ -222,7 +227,7 @@ describe('validate', () => {
     // 錯誤，不影響本測試只關心的「不可達」斷言。
     const tmpIconsDir = mkdtempSync(join(tmpdir(), 'rd2-wiki-icons-'));
     writeFileSync(join(tmpIconsDir, '000000000000.png'), Buffer.from('not-a-real-png'));
-    const result = validate(wip, { keywords, nodeText: wipText, upgradeCostTable, maxLevelOfficial, unlockExceptions, changelog, iconsDir: tmpIconsDir, dataDir, boardIcons, boardIconsDir, passiveUpgradeCost, diceStats });
+    const result = validate(wip, { ...opts, nodeText: wipText, iconsDir: tmpIconsDir });
     expect(result.errors.some(e => /不可達/.test(e))).toBe(false);
     expect(result.warnings.some(w => /規則 6\(c\)/.test(w) && w.includes('1099'))).toBe(true);
   });
@@ -563,14 +568,14 @@ describe('validate', () => {
     const realBuf = readFileSync(join(iconsDir, realFile));
     const wrongHash = realFile === '000000000000.png' ? '111111111111' : '000000000000';
     writeFileSync(join(tmpIconsDir, `${wrongHash}.png`), realBuf);
-    const result = validate(svg, { keywords, nodeText, upgradeCostTable, maxLevelOfficial, unlockExceptions, changelog, iconsDir: tmpIconsDir, dataDir, boardIcons, boardIconsDir, passiveUpgradeCost, diceStats });
+    const result = validate(svg, { ...opts, iconsDir: tmpIconsDir });
     expect(result.errors.some(e => /規則 7\(b\)/.test(e) && /sha256/.test(e))).toBe(true);
   });
 
   it('規則 7(c)：非 PNG 檔會被擋', () => {
     const tmpIconsDir = mkdtempSync(join(tmpdir(), 'rd2-wiki-icons-'));
     writeFileSync(join(tmpIconsDir, '222222222222.png'), Buffer.from('this is not a png file at all'));
-    const result = validate(svg, { keywords, nodeText, upgradeCostTable, maxLevelOfficial, unlockExceptions, changelog, iconsDir: tmpIconsDir, dataDir, boardIcons, boardIconsDir, passiveUpgradeCost, diceStats });
+    const result = validate(svg, { ...opts, iconsDir: tmpIconsDir });
     expect(result.errors.some(e => /規則 7\(c\)/.test(e) && /不是有效的 PNG/.test(e))).toBe(true);
   });
 
@@ -580,7 +585,7 @@ describe('validate', () => {
     const tinyPng = makeMinimalPng(10, 10);
     const tinyHash = createHash('sha256').update(tinyPng).digest('hex').slice(0, 12);
     writeFileSync(join(tmpIconsDir, `${tinyHash}.png`), tinyPng);
-    const result = validate(svg, { keywords, nodeText, upgradeCostTable, maxLevelOfficial, unlockExceptions, changelog, iconsDir: tmpIconsDir, dataDir, boardIcons, boardIconsDir, passiveUpgradeCost, diceStats });
+    const result = validate(svg, { ...opts, iconsDir: tmpIconsDir });
     expect(result.errors.some(e => /規則 7\(c\)/.test(e) && /小於最低要求 96px/.test(e))).toBe(true);
   });
 
@@ -592,7 +597,7 @@ describe('validate', () => {
     const orphanBuf = makeMinimalPng(100, 100);
     const orphanHash = createHash('sha256').update(orphanBuf).digest('hex').slice(0, 12);
     writeFileSync(join(tmpIconsDir, `${orphanHash}.png`), orphanBuf);
-    const result = validate(svg, { keywords, nodeText, upgradeCostTable, maxLevelOfficial, unlockExceptions, changelog, iconsDir: tmpIconsDir, dataDir, boardIcons, boardIconsDir, passiveUpgradeCost, diceStats });
+    const result = validate(svg, { ...opts, iconsDir: tmpIconsDir });
     expect(result.errors).toEqual([]);
     expect(result.warnings.some(w => /規則 7\(d\)/.test(w) && w.includes(orphanHash))).toBe(true);
   });
@@ -1146,5 +1151,261 @@ describe('規則 23：骰子基本能力值', () => {
     const errors = validate(svg, { ...opts, nodeText: nodeTextMinusOne }).errors;
     expect(errors.some(e => /規則 19/.test(e) && e.includes('1001'))).toBe(true);
     expect(errors.filter(e => /規則 23/.test(e))).toEqual([]);
+  });
+});
+
+// 規則 24／25：戰術與 Boss。跟 data/icons/ 與 data/board-icons/ 是第三、第四條平行的資產
+// 路徑——這兩批東西根本不是骰子樹的節點，正本管線與規則 19 對它們完全視而不見。
+// 底下每一條各是一種「壞掉但看不出來」的寫法，改壞前 CI 全綠。
+
+describe('規則 24：戰術', () => {
+  /** 正本那 58 筆的深拷貝，給「只改一個地方」的破壞測試用。 */
+  const rows = () => structuredClone(tactics) as Record<string, unknown>[];
+  /** 把正本那 58 張戰術圖複製到暫存目錄，讓每條測試各自破壞自己那份。 */
+  const copyIcons = () => {
+    const dir = mkdtempSync(join(tmpdir(), 'rd2-tactic-icons-'));
+    for (const f of readdirSync(tacticIconsDir)) writeFileSync(join(dir, f), readFileSync(join(tacticIconsDir, f)));
+    return dir;
+  };
+  const withTactics = (over: unknown) => ({ ...opts, tactics: over });
+
+  it('沒有提供 data/tactics.json 時只警告、不擋 PR', () => {
+    const result = validate(svg, withTactics(null));
+    expect(result.errors).toEqual([]);
+    expect(result.warnings.some(w => /規則 24: 沒有提供 data\/tactics\.json/.test(w))).toBe(true);
+  });
+
+  it('最外層不是陣列會被擋（否則底下每條檢查都拿到空集合、安靜地全過）', () => {
+    const result = validate(svg, withTactics({ '1': { name: 'x' } }));
+    expect(result.errors.some(e => /規則 24\(a\).*最外層必須是陣列/.test(e))).toBe(true);
+  });
+
+  it('空陣列會被擋', () => {
+    const result = validate(svg, withTactics([]));
+    expect(result.errors.some(e => /規則 24\(a\).*空陣列/.test(e))).toBe(true);
+  });
+
+  it('必填欄位缺一個會被擋，而且訊息指得出是第幾筆', () => {
+    const data = rows();
+    delete data[0]!.versus;
+    const result = validate(svg, withTactics(data));
+    expect(result.errors.some(e => /規則 24\(e\).*第 1 筆.*versus 必須是非空字串/.test(e))).toBe(true);
+  });
+
+  it('欄位名打錯（coop → co-op）會被未知欄位擋下', () => {
+    // ⚠️ 這條是 (j) 的補完不是潔癖：`coop` 是選填的，打錯名字時必填檢查完全沉默，
+    // 畫面上「這條戰術合作模式沒有另一種效果」跟真的沒有一模一樣。
+    const data = rows();
+    const i = data.findIndex(t => t.coop !== undefined);
+    data[i]!['co-op'] = data[i]!.coop;
+    delete data[i]!.coop;
+    const result = validate(svg, withTactics(data));
+    expect(result.errors.some(e => /規則 24\(e\).*未知欄位 "co-op"/.test(e))).toBe(true);
+  });
+
+  it('icon 不是 12 碼小寫 hex 會被擋（擋路徑穿越與 [object Object].webp）', () => {
+    const data = rows();
+    data[0]!.icon = '../../data/nodes';
+    const result = validate(svg, withTactics(data));
+    expect(result.errors.some(e => /規則 24\(e\).*不是 12 碼小寫 hex/.test(e))).toBe(true);
+  });
+
+  it('id 重複會被擋（後面每條檢查都正常，畫面上是同一個編號出現兩次）', () => {
+    const data = rows();
+    data[1]!.id = data[0]!.id;
+    const result = validate(svg, withTactics(data));
+    expect(result.errors.some(e => /規則 24\(h\).*id .* 重複/.test(e))).toBe(true);
+  });
+
+  it('id 帶前導零會被擋（畫面上會排在錯的位置）', () => {
+    const data = rows();
+    data[0]!.id = '06';
+    const result = validate(svg, withTactics(data));
+    expect(result.errors.some(e => /規則 24\(h\).*id "06" 不符/.test(e))).toBe(true);
+  });
+
+  it('指向的圖不存在會被擋，且訊息指的是實際讀取的目錄', () => {
+    const tmpDir = mkdtempSync(join(tmpdir(), 'rd2-tactic-icons-'));
+    const first = (tactics as { id: string; icon: string }[])[0]!;
+    const result = validate(svg, { ...opts, tacticIconsDir: tmpDir });
+    // ⚠️ 刻意斷言 tmpDir 而不是 `data/tactic-icons/`：訊息寫死正本路徑的話，等於指著一個
+    // 檔案好端端在那裡的路徑說它不存在（規則 21(f) 為同一件事踩過，連測試都一起說了謊）。
+    expect(result.errors).toContain(`規則 24(f): data/tactics.json 的 ${first.id} 指向的圖 ${join(tmpDir, `${first.icon}.png`)} 不存在`);
+    expect(result.errors.every(e => !/規則 24.*不存在.*data\/tactic-icons\//.test(e))).toBe(true);
+  });
+
+  it('兩筆指向同一張圖會被擋（複製上一筆忘了換圖時，(d)(f) 全部沉默）', () => {
+    const data = rows();
+    data[1]!.icon = data[0]!.icon;
+    const result = validate(svg, withTactics(data));
+    expect(result.errors.some(e => /規則 24\(g\).*指向同一張圖/.test(e))).toBe(true);
+  });
+
+  it('圖檔內容 sha256 與檔名不符會被擋（跟規則 7(b)／21(b) 同一個判準）', () => {
+    const tmpDir = copyIcons();
+    const first = (tactics as { icon: string }[])[0]!;
+    writeFileSync(join(tmpDir, `${first.icon}.png`), makeMinimalPng(120, 140));
+    const result = validate(svg, { ...opts, tacticIconsDir: tmpDir });
+    expect(result.errors.some(e => new RegExp(`規則 24\\(b\\).*${join(tmpDir, `${first.icon}.png`)}.*sha256`).test(e))).toBe(true);
+  });
+
+  it('放進來的不是有效 PNG 會被擋（否則要等 npm run build 由 sharp 噴出不含編號的錯）', () => {
+    const tmpDir = copyIcons();
+    const buf = Buffer.from('totally not a png');
+    const hash = createHash('sha256').update(buf).digest('hex').slice(0, 12);
+    // 用內容自己的雜湊命名，(b) 無話可說——沒有 (c) 的話這裡是零錯誤。
+    writeFileSync(join(tmpDir, `${hash}.png`), buf);
+    const data = rows();
+    data[0]!.icon = hash;
+    const result = validate(svg, { ...opts, tactics: data, tacticIconsDir: tmpDir });
+    expect(result.errors.some(e => /規則 24\(c\).*不是有效的 PNG/.test(e))).toBe(true);
+  });
+
+  it('解析度過低的 PNG 會被擋（清單上就是一張糊掉的圖）', () => {
+    const tmpDir = copyIcons();
+    const buf = makeMinimalPng(8, 8);
+    const hash = createHash('sha256').update(buf).digest('hex').slice(0, 12);
+    writeFileSync(join(tmpDir, `${hash}.png`), buf);
+    const data = rows();
+    data[0]!.icon = hash;
+    const result = validate(svg, { ...opts, tactics: data, tacticIconsDir: tmpDir });
+    expect(result.errors.some(e => /規則 24\(c\).*小於最低要求 96px/.test(e))).toBe(true);
+  });
+
+  it('沒人引用的孤兒圖只警告、不擋 PR（換圖忘了刪舊檔不該擋下整個 PR）', () => {
+    const tmpDir = copyIcons();
+    const buf = makeMinimalPng(120, 140);
+    const hash = createHash('sha256').update(buf).digest('hex').slice(0, 12);
+    writeFileSync(join(tmpDir, `${hash}.png`), buf);
+    const result = validate(svg, { ...opts, tacticIconsDir: tmpDir });
+    expect(result.errors.filter(e => /規則 24/.test(e))).toEqual([]);
+    expect(result.warnings.some(w => /規則 24\(d\).*未被任何節點引用/.test(w))).toBe(true);
+  });
+
+  it('stage 不是四個階段之一會被擋', () => {
+    const data = rows();
+    data[0]!.stage = '初期';
+    const result = validate(svg, withTactics(data));
+    expect(result.errors.some(e => /規則 24\(e\).*stage "初期" 不是四個階段之一/.test(e))).toBe(true);
+  });
+
+  it('把「未啟用」那一批貼回來時，訊息要說出「刻意不落地」而不是「不是合法模式」', () => {
+    // ⚠️ 泛用訊息會讓下一個人以為是打錯字，而真正的答案是「這 16 條刻意不收」——
+    // 那件事只寫在註解與 CLAUDE.md 裡，錯誤訊息得自己說出來。
+    const data = rows();
+    data[0]!.mode = '未啟用';
+    delete data[0]!.coop;
+    const result = validate(svg, withTactics(data));
+    expect(result.errors.some(e => /規則 24\(e\).*刻意不落地.*整筆移除/.test(e))).toBe(true);
+  });
+
+  it('子選項的 stage 被改成別的階段會被擋（它會跟母條目分家，而畫面上只是多一條前期戰術）', () => {
+    const data = rows();
+    const i = data.findIndex(t => String(t.id).includes('-'));
+    data[i]!.stage = '前期';
+    const result = validate(svg, withTactics(data));
+    expect(result.errors.some(e => /規則 24\(i\).*是子選項.*stage 必須是「選項」/.test(e))).toBe(true);
+  });
+
+  it('子選項找不到母條目會被擋', () => {
+    const data = rows().filter(t => t.id !== '69');
+    const result = validate(svg, withTactics(data));
+    expect(result.errors.some(e => /規則 24\(i\).*子選項 69-1 找不到母條目 69/.test(e))).toBe(true);
+  });
+
+  it('mode 是「對戰」卻有 coop 會被擋（合作模式下會冒出一段官方沒有的文字）', () => {
+    const data = rows();
+    const i = data.findIndex(t => t.mode === '對戰');
+    data[i]!.coop = '這段官方沒有';
+    const result = validate(svg, withTactics(data));
+    expect(result.errors.some(e => /規則 24\(j\).*「對戰」卻有 coop/.test(e))).toBe(true);
+  });
+
+  it('mode 是「對戰／合作」卻沒有 coop 會被擋（它在合作模式下會整條消失）', () => {
+    const data = rows();
+    const i = data.findIndex(t => t.mode === '對戰／合作');
+    delete data[i]!.coop;
+    const result = validate(svg, withTactics(data));
+    expect(result.errors.some(e => /規則 24\(j\).*「對戰／合作」卻沒有 coop/.test(e))).toBe(true);
+  });
+
+  // ⚠️ 這一組守的是 2026-08-26 code review 抓到的真漏洞：`coop` 原本只擋空字串，
+  // 寫成 null／數字／陣列全部零錯誤通過——而頁面端 `t.coop ? '1' : undefined` 對 null 是
+  // falsy，那條戰術在合作模式下**整條消失**，正是 (j) 號稱要擋的失敗。
+  it.each([['空字串', ''], ['null', null], ['數字', 123], ['陣列', ['x']]])(
+    'coop 寫成 %s 會被擋（選填欄位只要出現就必須是非空字串）',
+    (_label, bad) => {
+      const data = rows();
+      const i = data.findIndex(t => t.mode === '對戰／合作');
+      data[i]!.coop = bad;
+      const result = validate(svg, withTactics(data));
+      expect(result.errors.some(e => /規則 24\(e\).*coop 若存在就必須是非空字串/.test(e))).toBe(true);
+    },
+  );
+
+  it('dataIssue 寫成沒見過的值會被擋', () => {
+    const data = rows();
+    data[0]!.dataIssue = 'placeholder';
+    const result = validate(svg, withTactics(data));
+    expect(result.errors.some(e => /規則 24\(e\).*dataIssue "placeholder" 不是已知的標記/.test(e))).toBe(true);
+  });
+
+  it('效果文字裡的 # 標記比不到白名單會被擋（否則畫面上是一個裸的 #）', () => {
+    const data = rows();
+    data[0]!.versus = '遊戲開始時，召喚#不存在的關鍵字';
+    const result = validate(svg, withTactics(data));
+    expect(result.errors.some(e => /規則 24\(k\).*# 標記比不到白名單/.test(e))).toBe(true);
+  });
+});
+
+describe('規則 25：Boss', () => {
+  const rows = () => structuredClone(boss) as Record<string, unknown>[];
+  const withBoss = (over: unknown) => ({ ...opts, boss: over });
+
+  it('沒有提供 data/boss.json 時只警告、不擋 PR', () => {
+    const result = validate(svg, withBoss(null));
+    expect(result.errors).toEqual([]);
+    expect(result.warnings.some(w => /規則 25: 沒有提供 data\/boss\.json/.test(w))).toBe(true);
+  });
+
+  it('最外層不是陣列會被擋', () => {
+    const result = validate(svg, withBoss({}));
+    expect(result.errors.some(e => /規則 25\(a\).*最外層必須是陣列/.test(e))).toBe(true);
+  });
+
+  it('蛇王效果裡的 #一般怪物 若比不到白名單會被擋', () => {
+    // ⚠️ 這條守的是一件曾經誤判過的事：`召喚#一般怪物` 的 `#` 是這個 repo 的關鍵字標記，
+    // **不是上游漏填的佔位符**。比不到白名單時 renderStaticText 會原樣吐出一個裸的 `#`，
+    // 而那在畫面上跟「上游漏填」長得一模一樣——只有這條規則分得出來。
+    const data = rows();
+    data[0]!.effect = '使用技能時，召喚#這個詞不在白名單';
+    const result = validate(svg, withBoss(data));
+    expect(result.errors.some(e => /規則 25\(k\).*# 標記比不到白名單/.test(e))).toBe(true);
+  });
+
+  it('兩個 Boss 指向同一張圖會被擋', () => {
+    const data = rows();
+    data[1]!.icon = data[0]!.icon;
+    const result = validate(svg, withBoss(data));
+    expect(result.errors.some(e => /規則 25\(g\).*指向同一張圖/.test(e))).toBe(true);
+  });
+
+  it('圖檔檢查與規則 7／21／24 是同一支函式（放非 PNG 進去一樣被擋）', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'rd2-boss-icons-'));
+    for (const f of readdirSync(bossIconsDir)) writeFileSync(join(dir, f), readFileSync(join(bossIconsDir, f)));
+    const buf = Buffer.from('not a png');
+    const hash = createHash('sha256').update(buf).digest('hex').slice(0, 12);
+    writeFileSync(join(dir, `${hash}.png`), buf);
+    const data = rows();
+    data[0]!.icon = hash;
+    const result = validate(svg, { ...opts, boss: data, bossIconsDir: dir });
+    expect(result.errors.some(e => /規則 25\(c\).*不是有效的 PNG/.test(e))).toBe(true);
+  });
+
+  it('必填欄位缺一個會被擋', () => {
+    const data = rows();
+    delete data[0]!.effect;
+    const result = validate(svg, withBoss(data));
+    expect(result.errors.some(e => /規則 25\(e\).*effect 必須是非空字串/.test(e))).toBe(true);
   });
 });

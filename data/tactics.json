@@ -1,0 +1,572 @@
+[
+  {
+    "id": "6",
+    "name": "召喚精英",
+    "stage": "前期",
+    "mode": "對戰",
+    "versus": "遊戲開始時，召喚1個3骰點骰子",
+    "gameId": "InitialSpawnDice",
+    "icon": "9e3fe1404526"
+  },
+  {
+    "id": "7",
+    "name": "小丑登場",
+    "stage": "中期",
+    "mode": "對戰／合作",
+    "versus": "持續60秒，合成時50%機率出現小丑",
+    "coop": "持續100秒，合成時50%機率出現小丑",
+    "gameId": "SpawnJoker",
+    "icon": "3be6c046b975"
+  },
+  {
+    "id": "9",
+    "name": "合成代價",
+    "stage": "中期",
+    "mode": "對戰／合作",
+    "versus": "合成時25%機率額外召喚1骰點骰子",
+    "coop": "合成時25%機率額外召喚1骰點骰子",
+    "gameId": "AddtionalSpawn",
+    "icon": "7894be44ea20"
+  },
+  {
+    "id": "10",
+    "name": "幸運合成",
+    "stage": "中期",
+    "mode": "對戰／合作",
+    "versus": "合成時10%機率骰點+1",
+    "coop": "合成時10%機率骰點+1",
+    "gameId": "LuckyMerge",
+    "icon": "1cfaca4a5956"
+  },
+  {
+    "id": "11",
+    "name": "狂戰士",
+    "stage": "中期",
+    "mode": "對戰／合作",
+    "versus": "配置於左側第1列時，傷害大幅增加",
+    "coop": "配置於左側第1列時，傷害大幅增加",
+    "gameId": "BoardLeftAtkUp",
+    "icon": "6048f8098d7d"
+  },
+  {
+    "id": "12",
+    "name": "王位",
+    "stage": "中期",
+    "mode": "對戰／合作",
+    "versus": "配置於中央時，攻擊速度與傷害大幅增加",
+    "coop": "配置於中央時，攻擊速度與傷害大幅增加",
+    "gameId": "BoardMidCtrBuff",
+    "icon": "cd4f0f7d3759"
+  },
+  {
+    "id": "14",
+    "name": "投票表決",
+    "stage": "前期",
+    "mode": "對戰／合作",
+    "versus": "50秒後，將1個持有數量最多的類型骰子進行骰點+1升級",
+    "coop": "將1個持有數量最多的類型骰子進行骰點+1升級",
+    "gameId": "MostDiceLevelUp",
+    "icon": "ab6ed8ec8a71"
+  },
+  {
+    "id": "16",
+    "name": "忍者秘技",
+    "stage": "中期",
+    "mode": "對戰",
+    "versus": "持續55秒，50%機率觸發暗殺",
+    "gameId": "MergeAssassinate",
+    "icon": "1523028e44c3"
+  },
+  {
+    "id": "17",
+    "name": "骰點監控",
+    "stage": "中期",
+    "mode": "對戰／合作",
+    "versus": "40秒後，使一個骰點最高的骰子骰點-1",
+    "coop": "60秒後，使一個骰點最高的骰子骰點-1",
+    "gameId": "RandomEyeDownAfterWave",
+    "icon": "04c33fe80db5"
+  },
+  {
+    "id": "18",
+    "name": "大變革",
+    "stage": "中期",
+    "mode": "對戰／合作",
+    "versus": "立即調整骰盤上骰子位置",
+    "coop": "立即調整骰盤上骰子位置",
+    "gameId": "DiceShuffle",
+    "icon": "64ec51c33e40"
+  },
+  {
+    "id": "19",
+    "name": "水鬼",
+    "stage": "後期",
+    "mode": "對戰／合作",
+    "versus": "擊殺首領時，摧毀3個骰子",
+    "coop": "擊殺首領時，摧毀3個骰子",
+    "gameId": "BossKillDiceDestroy",
+    "icon": "f72b323cf42b"
+  },
+  {
+    "id": "20",
+    "name": "重新分配",
+    "stage": "中期",
+    "mode": "對戰／合作",
+    "versus": "立即將最高與最低骰點骰子的骰點互換",
+    "coop": "立即將最高與最低骰點骰子的骰點互換",
+    "gameId": "HighestLowestEyeSwap",
+    "icon": "8f7339b73112"
+  },
+  {
+    "id": "21",
+    "name": "勢力戰",
+    "stage": "中期",
+    "mode": "對戰",
+    "versus": "立即將骰盤骰子種類統一為2種",
+    "gameId": "RandomTypeChange",
+    "icon": "2d3ead6e2225"
+  },
+  {
+    "id": "22",
+    "name": "頂樓",
+    "stage": "中期",
+    "mode": "對戰",
+    "versus": "立即將上方第1列變更為相同骰子",
+    "gameId": "TopRowDiceChange",
+    "icon": "3a2cf9fc205b"
+  },
+  {
+    "id": "23",
+    "name": "蛇怪",
+    "stage": "後期",
+    "mode": "對戰",
+    "versus": "首領怪物登場時，額外登場1個",
+    "gameId": "BossWaveDoubleSpawn",
+    "icon": "47931551ed78"
+  },
+  {
+    "id": "24",
+    "name": "和平主義者",
+    "stage": "後期",
+    "mode": "對戰",
+    "versus": "每30秒，骰盤上自身隨機3格無法攻擊",
+    "gameId": "RandomDiceNoAttack",
+    "icon": "964f97b39008"
+  },
+  {
+    "id": "25",
+    "name": "靈魂傳遞",
+    "stage": "後期",
+    "mode": "對戰／合作",
+    "versus": "30秒後，隨機摧毀1個骰子，將骰點傳遞給其他骰子",
+    "coop": "70秒後，隨機摧毀1個骰子，將骰點傳遞給其他骰子",
+    "gameId": "WaveDiceDestroySpread",
+    "icon": "286fc4152167"
+  },
+  {
+    "id": "26",
+    "name": "大亨",
+    "stage": "後期",
+    "mode": "對戰／合作",
+    "versus": "首領登場時，7個巨大怪物一同出現",
+    "coop": "首領登場時，7個巨大怪物一同出現",
+    "gameId": "BigMonsterWithBoss",
+    "icon": "f381747130eb"
+  },
+  {
+    "id": "27",
+    "name": "迅速",
+    "stage": "後期",
+    "mode": "對戰／合作",
+    "versus": "怪物移動速度增加2倍",
+    "coop": "怪物移動速度增加2倍",
+    "gameId": "WaveMinionSpeedDouble",
+    "icon": "347d7d315a2a"
+  },
+  {
+    "id": "28",
+    "name": "恢復魔術",
+    "stage": "後期",
+    "mode": "對戰／合作",
+    "versus": "透過按鈕召喚骰子或合成時，首領生命值恢復",
+    "coop": "透過按鈕召喚骰子或合成時，首領生命值恢復",
+    "gameId": "BossWaveMergeSpawnHeal",
+    "icon": "0f399b6ea75c"
+  },
+  {
+    "id": "29",
+    "name": "虛擬貨幣",
+    "stage": "後期",
+    "mode": "對戰／合作",
+    "versus": "獲得SP+10000，30秒後SP重置為0",
+    "coop": "獲得SP+10000，100秒後SP重置為0",
+    "gameId": "InitialSP10000ThenReset",
+    "icon": "07e77aff59f0"
+  },
+  {
+    "id": "30",
+    "name": "加速踏板",
+    "stage": "中期",
+    "mode": "對戰／合作",
+    "versus": "合成時，持續3秒攻擊速度+50%",
+    "coop": "合成時，持續3秒攻擊速度+50%",
+    "gameId": "MergeAtkSpeedUp",
+    "icon": "59e02f9b34f7"
+  },
+  {
+    "id": "31",
+    "name": "儲備資金",
+    "stage": "前期",
+    "mode": "對戰／合作",
+    "versus": "40秒後，獲得目前持有的相當SP",
+    "coop": "60秒後，獲得目前持有的相當SP",
+    "gameId": "WaveEndSPGain",
+    "icon": "18543add26f4"
+  },
+  {
+    "id": "32",
+    "name": "突破極限",
+    "stage": "前期",
+    "mode": "對戰／合作",
+    "versus": "50秒後，骰點最高的骰子骰點+1",
+    "coop": "70秒後，骰點最高的骰子骰點+1",
+    "gameId": "WaveEndHighestEyeUp",
+    "icon": "1a3c51c24351"
+  },
+  {
+    "id": "33",
+    "name": "緊急增援",
+    "stage": "前期",
+    "mode": "對戰／合作",
+    "versus": "30秒後，於空格填滿1骰點骰子",
+    "coop": "60秒後，於空格填滿1骰點骰子",
+    "gameId": "WaveEndFillEmptySlots",
+    "icon": "b3f319c8da54"
+  },
+  {
+    "id": "34",
+    "name": "賓果",
+    "stage": "前期",
+    "mode": "對戰／合作",
+    "versus": "55秒後，若用相同骰子填滿橫排與直排，該骰子骰點+1",
+    "coop": "100秒後，若用相同骰子填滿橫排與直排，該骰子骰點+1",
+    "gameId": "WaveEndSameLineEyeUp",
+    "icon": "cf1d891c114b"
+  },
+  {
+    "id": "35",
+    "name": "節流",
+    "stage": "前期",
+    "mode": "對戰／合作",
+    "versus": "當骰盤上骰子低於4個以下時，怪物擊殺SP獲得量+75%",
+    "coop": "當骰盤上骰子低於4個以下時，怪物擊殺SP獲得量+75%",
+    "gameId": "FieldDiceCountSPUp",
+    "icon": "5d5ba7c377b8"
+  },
+  {
+    "id": "36",
+    "name": "禁止挑食",
+    "stage": "前期",
+    "mode": "對戰／合作",
+    "versus": "於骰盤召喚5個不同的1骰點骰子時，整體強化+1",
+    "coop": "於骰盤召喚5個不同的1骰點骰子時，整體強化+1",
+    "gameId": "OneEyeSummonPowerUp",
+    "icon": "a6fd4faadcca"
+  },
+  {
+    "id": "37",
+    "name": "鐵支",
+    "stage": "前期",
+    "mode": "對戰／合作",
+    "versus": "持有4個相同的2骰點骰子，該骰子骰點+1",
+    "coop": "持有4個相同的2骰點骰子，該骰子骰點+1",
+    "gameId": "TwoEyeDiceCollectUpgrade",
+    "icon": "08193b69ea3b"
+  },
+  {
+    "id": "38",
+    "name": "復活！",
+    "stage": "中期",
+    "mode": "對戰／合作",
+    "versus": "生命值低於20時召喚奇蹟之石；所有怪物暴斃，所有骰子變換後骰點+1",
+    "coop": "生命值低於20時召喚奇蹟之石；所有怪物暴斃，所有骰子變換後骰點+1",
+    "gameId": "LastStand",
+    "icon": "08e709403314"
+  },
+  {
+    "id": "39",
+    "name": "萃取魔力",
+    "stage": "前期",
+    "mode": "對戰／合作",
+    "versus": "於骰盤隨機格子召喚3個SP礦石；於該礦石範圍內合成時獲得SP",
+    "coop": "於骰盤隨機格子召喚3個SP礦石；於該礦石範圍內合成時獲得SP",
+    "gameId": "SpawnSPGemstones",
+    "icon": "30b27817d866"
+  },
+  {
+    "id": "40",
+    "name": "等價交換",
+    "stage": "前期",
+    "mode": "對戰",
+    "versus": "於粉碎機合成骰子時，對方骰子骰點減少",
+    "gameId": "SpawnAltar",
+    "icon": "30c94e1820af"
+  },
+  {
+    "id": "41",
+    "name": "地雷派對",
+    "stage": "中期",
+    "mode": "對戰／合作",
+    "versus": "持續40秒透過召喚按鈕召喚時，於骰盤後方安裝地雷",
+    "coop": "持續40秒透過召喚按鈕召喚時，於骰盤後方安裝地雷",
+    "gameId": "WaveSummonMineInstall",
+    "icon": "1a66f59dd611"
+  },
+  {
+    "id": "42",
+    "name": "巨大陷害",
+    "stage": "中期",
+    "mode": "對戰",
+    "versus": "持續55秒，合成時50%機率傳送巨大怪物",
+    "gameId": "MergeBigMonsterOpp",
+    "icon": "c1251f44ec3a"
+  },
+  {
+    "id": "43",
+    "name": "跳樓大拍賣",
+    "stage": "中期",
+    "mode": "對戰／合作",
+    "versus": "持續50秒透過召喚按鈕召喚時，召喚費用減少10",
+    "coop": "持續50秒透過召喚按鈕召喚時，召喚費用減少10",
+    "gameId": "SpawnCostReductionThisRound",
+    "icon": "c539ed3a8f67"
+  },
+  {
+    "id": "44",
+    "name": "兒童不宜",
+    "stage": "前期",
+    "mode": "對戰／合作",
+    "versus": "30秒後，若骰盤上無1骰點，使隨機骰子骰點+2",
+    "coop": "90秒後，若骰盤上無1骰點，使隨機骰子骰點+2",
+    "gameId": "WaveEndNoOneEyeRandomEyeUp2",
+    "icon": "b4eb3ef281ab"
+  },
+  {
+    "id": "45",
+    "name": "絕妙時機",
+    "stage": "中期",
+    "mode": "對戰／合作",
+    "versus": "持續40秒，若於正確時機召喚，將出現2骰點骰子",
+    "coop": "持續70秒，若於正確時機召喚，將出現2骰點骰子",
+    "gameId": "TimingGaugeSummonTwoEyeDice",
+    "icon": "d148d4d4f7a3"
+  },
+  {
+    "id": "46",
+    "name": "恐怖合成",
+    "stage": "中期",
+    "mode": "對戰",
+    "versus": "合成時，所有怪物僵硬",
+    "gameId": "MergeStunAllMinions",
+    "icon": "c2b7101f179c"
+  },
+  {
+    "id": "47",
+    "name": "回饋",
+    "stage": "中期",
+    "mode": "對戰／合作",
+    "versus": "50秒後，退還使用的所有召喚SP",
+    "coop": "60秒後，退還使用的所有召喚SP",
+    "gameId": "WaveEndReturnConsumedSpawnSP",
+    "icon": "48ab8e766613"
+  },
+  {
+    "id": "48",
+    "name": "捐血",
+    "stage": "中期",
+    "mode": "對戰／合作",
+    "versus": "持續40秒，消耗20生命值獲得大量SP",
+    "coop": "持續90秒，消耗20生命值獲得大量SP",
+    "gameId": "HPConsumeForSP",
+    "icon": "ebd800ebd179"
+  },
+  {
+    "id": "49",
+    "name": "祭品",
+    "stage": "中期",
+    "mode": "對戰／合作",
+    "versus": "40秒後，摧毀3個最低骰點骰子，複製自身骰盤最高骰點的1個骰子",
+    "coop": "40秒後，摧毀3個最低骰點骰子，複製自身骰盤最高骰點的1個骰子",
+    "gameId": "WaveEndDestroyLowestHighest",
+    "icon": "0e5a2ef4a22c"
+  },
+  {
+    "id": "50",
+    "name": "極簡主義",
+    "stage": "前期",
+    "mode": "對戰／合作",
+    "versus": "若骰子比對方少，SP獲得量增加",
+    "coop": "若骰子比對方少，SP獲得量增加",
+    "gameId": "BoardMoreEmptySlotsSPGain",
+    "icon": "b190ca6f09ed"
+  },
+  {
+    "id": "51",
+    "name": "點擊遊戲",
+    "stage": "前期",
+    "mode": "對戰／合作",
+    "versus": "當召喚費用不足時，點擊召喚按鈕可獲得1 SP紅利",
+    "coop": "當召喚費用不足時，點擊召喚按鈕可獲得1 SP紅利",
+    "gameId": "SpawnCostZeroGainSP",
+    "icon": "d71d64c1ccec"
+  },
+  {
+    "id": "52",
+    "name": "充滿電",
+    "stage": "前期",
+    "mode": "對戰",
+    "versus": "填滿骰盤的最後一個空格時，位於上下左右的骰子骰點+1",
+    "gameId": "LastEmptySlotAdjacentLevelUp",
+    "icon": "6d223d221a5b"
+  },
+  {
+    "id": "53",
+    "name": "炸彈魔",
+    "stage": "前期",
+    "mode": "對戰／合作",
+    "versus": "炸彈骰子登場！合成時，使除了首領以外的所有怪物暴斃",
+    "coop": "炸彈骰子登場！合成時，使除了首領以外的所有怪物暴斃",
+    "gameId": "BombDiceKillAllMinions",
+    "icon": "d2e400756407"
+  },
+  {
+    "id": "54",
+    "name": "角落守護者",
+    "stage": "前期",
+    "mode": "對戰／合作",
+    "versus": "於4個角落格子配置相同骰子時，該骰子的子彈傷害提升",
+    "coop": "於4個角落格子配置相同骰子時，該骰子的子彈傷害提升",
+    "gameId": "CornerGuardian",
+    "icon": "a1fe61aa4e32"
+  },
+  {
+    "id": "55",
+    "name": "挖掘專家",
+    "stage": "前期",
+    "mode": "對戰／合作",
+    "versus": "位於挖掘格子的骰子，每秒按照骰點獲得SP",
+    "coop": "位於挖掘格子的骰子，每秒按照骰點獲得SP",
+    "gameId": "DefenderEyeSPGain",
+    "icon": "e1b0d7cba728"
+  },
+  {
+    "id": "56",
+    "name": "怪物暴走",
+    "stage": "前期",
+    "mode": "對戰",
+    "versus": "怪物速度2倍、生命值減少50%",
+    "gameId": "GameMinionSpeedDoubleHpHalf",
+    "icon": "c66306afa97b"
+  },
+  {
+    "id": "57",
+    "name": "SP賭注！",
+    "stage": "中期",
+    "mode": "對戰／合作",
+    "versus": "持續50秒使用SP投注骰子；5/6骰點2倍、7骰點3倍！（1/2/3骰點為失敗）",
+    "coop": "持續100秒使用SP投注骰子；5/6骰點2倍、7骰點3倍！（1/2/3骰點為失敗）",
+    "gameId": "WaveGamble",
+    "icon": "d5111eab0607"
+  },
+  {
+    "id": "62",
+    "name": "炸彈狂",
+    "stage": "中期",
+    "mode": "對戰／合作",
+    "versus": "持續40秒合成時，20%機率產生炸彈骰子",
+    "coop": "持續100秒合成時，20%機率產生炸彈骰子",
+    "gameId": "BombDiceSpawnOnMerge",
+    "icon": "3205984e94bc",
+    "dataIssue": "upstream-icon"
+  },
+  {
+    "id": "64",
+    "name": "海嘯警報",
+    "stage": "前期",
+    "mode": "對戰／合作",
+    "versus": "當生命值低於50時，發動海嘯（僅限1次）",
+    "coop": "當生命值低於50時，發動海嘯（僅限1次）",
+    "gameId": "HPBelow50OneTimeHeal",
+    "icon": "af63d7595de8"
+  },
+  {
+    "id": "67",
+    "name": "輸送帶",
+    "stage": "前期",
+    "mode": "對戰／合作",
+    "versus": "產生大幅提升攻擊速度與傷害的增益格子；每次按下召喚按鈕，增益移動一格",
+    "coop": "產生大幅提升攻擊速度與傷害的增益格子；每次按下召喚按鈕，增益移動一格",
+    "gameId": "BoardSummonButtonBuffMove",
+    "icon": "f5bce2475703"
+  },
+  {
+    "id": "68",
+    "name": "撲克時間",
+    "stage": "前期",
+    "mode": "對戰／合作",
+    "versus": "根據骰盤第一排的骰點組合使傷害增加",
+    "coop": "根據骰盤第一排的骰點組合使傷害增加",
+    "gameId": "BoardFirstColumnBestHandAtkUp",
+    "icon": "6b225ab91d1c"
+  },
+  {
+    "id": "69",
+    "name": "選擇由我決定",
+    "stage": "前期",
+    "mode": "對戰／合作",
+    "versus": "於3個戰術效果中選擇1個",
+    "coop": "於3個戰術效果中選擇1個",
+    "gameId": "AugmentSystem",
+    "icon": "9ae1419ddcf8"
+  },
+  {
+    "id": "69-1",
+    "name": "豐饒開始",
+    "stage": "選項",
+    "mode": "對戰／合作",
+    "versus": "立即獲得1000 SP",
+    "coop": "立即獲得1000 SP",
+    "gameId": "varA_P01DP02DA01",
+    "icon": "56324e783903"
+  },
+  {
+    "id": "69-2",
+    "name": "炸彈支援",
+    "stage": "選項",
+    "mode": "對戰／合作",
+    "versus": "持有2個炸彈骰子開始遊戲",
+    "coop": "持有2個炸彈骰子開始遊戲",
+    "gameId": "varA_P02DP01DA01",
+    "icon": "1f7343ac9f46"
+  },
+  {
+    "id": "69-3",
+    "name": "獲得骰子",
+    "stage": "選項",
+    "mode": "對戰／合作",
+    "versus": "選擇時獲得1~4骰點的隨機骰子",
+    "coop": "選擇時獲得1~4骰點的隨機骰子",
+    "gameId": "varA_P01DP01DA01",
+    "icon": "0fb0095b19cb"
+  },
+  {
+    "id": "71",
+    "name": "骰子福利",
+    "stage": "中期",
+    "mode": "對戰／合作",
+    "versus": "立即使1個最低骰點的骰子骰點+2",
+    "coop": "立即使1個最低骰點的骰子骰點+2",
+    "gameId": "WaveStartLowestEyeUp2",
+    "icon": "133e24603303"
+  }
+]

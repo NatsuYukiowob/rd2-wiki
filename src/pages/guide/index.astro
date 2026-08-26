@@ -5,7 +5,9 @@ import Base from '../../layouts/Base.astro';
 import data from '../../generated/tree.json';
 import keywordsRaw from '../../../data/keywords.json';
 import { buildGlossary, GROUPS, GUIDE_PAGES } from '../../lib/glossary-groups';
-import type { GlossaryRecord, TreeData } from '../../lib/types';
+import tacticsRaw from '../../../data/tactics.json';
+import bossRaw from '../../../data/boss.json';
+import type { Boss, GlossaryRecord, Tactic, TreeData } from '../../lib/types';
 
 const tree = data as unknown as TreeData;
 const keywords = keywordsRaw as Record<string, GlossaryRecord>;
@@ -14,6 +16,11 @@ const index = buildGlossary(keywords, tree.nodes);
 // ⚠️ 不能寫 `index.byTerm.size`：那份表為了讓別名也查得到本尊，會把 2 個別名（播種、傳送）
 // 也指到同一筆詞條上，數出來是 64 而不是 62 條解釋。
 const termCount = new Set(index.byTerm.values()).size;
+
+// 條數當場算，不寫死在文案裡：這個 repo 記過「文件裡不要寫會隨改動漂移的數字」，
+// 而首頁 banner 就是為此說過謊一次。
+const tacticCount = (tacticsRaw as Tactic[]).length;
+const bossCount = (bossRaw as Boss[]).length;
 
 const pages = GUIDE_PAGES.map(page => ({
   ...page,
@@ -42,6 +49,29 @@ const pages = GUIDE_PAGES.map(page => ({
           <p class="note">{page.count} 條 →</p>
         </a>
       ))}
+    </div>
+
+    <!-- 第二區塊：戰術與 Boss。刻意跟上面那四張分開，而不是塞進同一個網格——上面那段 lede
+         講的是「帶 # 的關鍵字標記」，這兩頁不是標記，`.guide-swatch` 那條官方色票對它們
+         也沒有意義（它在說「同色＝同一類機制」）。 -->
+    <h2 class="guide-h2">遊戲內容</h2>
+    <p class="note">不是關鍵字詞彙，是對戰與合作模式裡會遇到的東西。</p>
+
+    <!-- ⚠️ `--i` 要**接續**上面那個網格的序號，不要從 0 重來：那是進場動畫的 stagger 索引，
+         重來會讓這兩張跟畫面上方好幾百 px 外的前兩張同時飛進來（2026-08-26 code review 抓到）。
+         ⚠️ `is-content` 把軌道換成 `auto-fill`：`auto-fit` 會把空軌道收掉、讓兩張卡片撐滿整列，
+         結果它們比正上方那排明顯寬一截。`auto-fill` 保留空軌道，兩張就跟上面同寬。 -->
+    <div class="guide-cards is-content">
+      <a class="guide-card" href="/tactic" style={`--i:${pages.length}`}>
+        <h2>戰術</h2>
+        <p>對戰與合作模式中的戰術效果，可依階段篩選，也能切換看合作模式的版本。</p>
+        <p class="note">{tacticCount} 條 →</p>
+      </a>
+      <a class="guide-card" href="/boss" style={`--i:${pages.length + 1}`}>
+        <h2>Boss</h2>
+        <p>對戰與合作模式中會出現的 Boss，以及各自的技能效果。</p>
+        <p class="note">{bossCount} 種 →</p>
+      </a>
     </div>
   </section>
 </Base>

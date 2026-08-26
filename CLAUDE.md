@@ -31,8 +31,12 @@
 - **`data/nodes.json`**——全部**文案**：`name` `label` `type` `category?` `gameId` `cost`
   `maxLevel` `description` `awakening?`。
 - 外加 `data/icons/`（238 張 PNG，檔名＝內容 sha256 前 12 碼）、`data/tree-center.png`、
-  `data/board-icons/`（41 張純骰子圖，見 `/board`）。由社群發 PR 維護，**CI 是唯一防線**
+  `data/board-icons/`（41 張純骰子圖，見 `/board`）、`data/tactic-icons/`（58 張，見 `/tactic`）、
+  `data/boss-icons/`（10 張，見 `/boss`）。由社群發 PR 維護，**CI 是唯一防線**
   （維護者不可能逐行 review SVG 的 diff）。
+  ⚠️ **四條資產路徑彼此獨立**：`data/icons/` 由正本 SVG 引用（規則 7）、`board-icons` 另有一份
+  `{節點 id: hash}` 對應表（規則 21），戰術與 Boss 的雜湊則直接寫在各自資料檔那一筆的 `icon` 欄
+  （規則 24／25）——那兩份資料不對應任何節點，沒有「要對到 SVG 裡的 id」這個約束。
 
 **為什麼拆**：`<title>` 曾是 `name` ＋ `description` 的完整副本（23.5 KB），文案佔正本 48.6%。
 拆完之後改一句描述＝JSON 一行 diff，而不是一行 500 字元、rect/image/text 混在一起的 `<g>`。
@@ -65,11 +69,11 @@
 ## 指令
 
 ```bash
-npm run validate    # 資料驗證（規則 0–22，CI 守門員）
+npm run validate    # 資料驗證（規則 0–25，CI 守門員）
 npm run typecheck   # tsc --noEmit（含 noUnusedLocals）
 npm run normalize   # 攤平圖層/matrix/相對路徑、清掉 <text> 與註解（送 PR 前必跑）
 npm run preview     # 把標籤注回幾何，產出 data/dice-tree.preview.svg（不進版控）
-npm run add-icon    # 新增圖示，自動用內容雜湊命名
+npm run add-icon    # 新增圖示，自動用內容雜湊命名（--board／--tactic／--boss 各指向另一條資產路徑）
 npm run render-nodes -- <遊戲原圖路徑>  # 用 Chromium 重畫全部節點圖示（遊戲改版才跑）
 npm run split -- <遊戲原圖路徑>         # 從原圖切出正本與圖示（重建整份資料時才用）
 npm run build:data  # 產出 src/generated/tree.json + public/assets/
@@ -96,6 +100,8 @@ npm run compare -- <beforeURL> <afterURL>  # computed-style 逐元素比對，�
 | 可升級節點 | 84 ＝ 50 級符文 43 ＋ `4303` ＋ 玩家被動／支援 40 | 其餘 155 個 `maxLevel` 是 1 |
 | 升級 tier ↔ 節點 | 6 個 tier 對 40 個節點，**雙向零殘餘** | `data/passive-upgrade-cost.json`，規則 22 |
 | 骰子數值 ↔ 節點 | 41 顆骰子雙向零殘餘；帶四個檔位的項目 **97 個**＝官方強化分頁的列數 | `data/dice-stats.json`，規則 23 ＋ `tests/data/dice-stats.test.ts` |
+| 戰術 | **58 條**（官方 74 條 − 未啟用 16 條）；階段 23／24／8／3；`mode === '對戰'` 的 11 條 ⟺ 沒有 `coop` | `data/tactics.json`，規則 24 |
+| Boss | **10 條**，圖示雙向零殘餘 | `data/boss.json`，規則 25 |
 | 初始就可解鎖的節點 | 11 個（前置只有起始骰子） | `/sim` 的測試挑節點時要從這裡挑 |
 | 畫布 viewBox | `0 0 2000 1700` | |
 | 效能預算（硬斷言） | `tree.json` gzip ≤ 20KB（目前 18.5KB）／sprite ≤ 400KB（目前 130KB） | |
@@ -196,6 +202,24 @@ npm run compare -- <beforeURL> <afterURL>  # computed-style 逐元素比對，�
      省略的話那一項會被判成「固定值」，而它其實會隨 SP 強化改變。
      ⚠️ **這件事刻意不用 CI 警告記錄**——validate 的黃金樣本斷言 warnings 必須為零，一條永遠不會
      消失的警告會讓那個基線失效。改用 `tests/data/dice-stats.test.ts` 逐格釘住，上游補了值就會紅。
+- **`data/tactics.json`（58 條）與 `data/boss.json`（10 條）**＝`/tactic` 與 `/boss` 兩頁的全部
+  內容，由**規則 24／25** 守。來源是官方資料表 v1.0.3-v2 的 `戰術`（sheet8）與 `Boss`（sheet9）
+  兩個分頁，圖來自素材包的 `戰術/`／`Boss/`（檔名與分頁的「圖示檔名」欄一對一，Boss 10/10、
+  啟用戰術 58/58 全中）。三件匯入時做過的裁決，重新產生這兩份檔案時要照做：
+  1. **只收「已啟用」的 58 條**（Yuki 2026-08-26）。官方 74 條裡有 16 條標「未啟用」——資料表有、
+     遊戲沒開。因此「`mode === '對戰'` ⟺ 沒有 `coop`」在這份檔案裡才是真的不變量（規則 24(j)），
+     把未啟用那批加回來會同時打破它（那 16 條的合作效果全是空的）。順帶：`59 情侶` 與
+     `70 死神格子` 這兩條**沒有圖示檔名也沒有圖**，剛好都在未啟用名單裡。
+  2. **`62 炸彈狂` 照上游用 `UpgradeSPMinusPer.png`**——那是 `2 研究加速` 的圖，上游把「圖示檔名」
+     欄寫錯了（它自己的內部ID 是 `BombDiceSpawnOnMerge`），而素材裡沒有炸彈狂專屬圖。
+     資料檔標 `dataIssue: 'upstream-icon'` 讓它可被查詢，畫面上不標。⚠️ 這個檔名在官方表裡是
+     **撞號**的，只因為研究加速是未啟用才沒撞進站台——哪天那 16 條要收，規則 24(g) 會先擋下來。
+  3. **Boss `1 蛇王` 的 `召喚#一般怪物` 是關鍵字標記，不是上游漏填的佔位符**（2026-08-26 誤判過
+     一次）。`一般怪物` 就在 `data/keywords.json` 裡。⚠️ **全站的戰術與 Boss 文字裡只有這一個
+     `#` 標記**——所以 `/boss` 的就地展開刻意做成「把解釋插在同一段話下面」，沒有移植 `/dice` 那套
+     滑入式視圖堆疊：為一個詞把最容易寫壞的那段互動複製成第二份，只會多一份會漂移的複本。
+  ⚠️ 兩份都**不進 tree.json**（同 `dice-stats.json` 的理由），所以規則 24／25 是它們唯一的防線。
+
 - **`data/changelog.json`＝站台更新日誌**（首頁顯示最新 3 筆），由**規則 20** 守。它是全站唯一
   沒有自動來源的內容，而「忘了寫」在畫面上跟「這次沒更新」長得一模一樣。規則 20 檢查的是
   **最新一筆帶 `data` 區塊的條目**而不是 `entries[0]`——純站台功能的條目排在最前面卻沒有資料版本
@@ -259,6 +283,8 @@ npm run compare -- <beforeURL> <afterURL>  # computed-style 逐元素比對，�
 | 20 | changelog 的結構，以及最新一筆資料條目與正本版本欄位一致。擋的不是「日誌寫錯」，是**「資料改了、日誌沒改」** |
 | 21 | `/board` 純骰子圖：(a) 骰子漏一筆對應 (b)(c)(d) 目錄本身 (e) 值必須是 12 碼小寫 hex（擋路徑穿越與 `[object Object].png`） (f) 指向的檔不存在 (g) **兩筆指到同一張圖** (h) 對應表自己留著一筆不是（或已不是）骰子的 id |
 | 22 | 玩家被動升級費用表：6 個 tier 的形狀與區間連續性、`(maxLevel, unlockGold)` 不得撞號、**每個可升級的共通節點都對得到 tier、每個 tier 也都對得到節點**、`special` 的鍵是節點 id 且不與 tier 重疊 |
+| 24 | `data/tactics.json`：(a) 最外層是非空陣列／(b)(c)(d) 圖示目錄本身／(e) 每筆欄位型別、未知欄位、`stage`／`mode` 的合法值、`dataIssue`／(f) 指向的圖不存在／(g) 兩筆指到同一張圖／(h) 編號格式與撞號／(i) **子選項語意**（id 含 `-` ⟺ `stage === '選項'`，且母條目要在）／(j) **`mode === '對戰'` ⟺ 沒有 `coop`**（兩個方向都要問：漏抓一邊會讓合作模式冒出官方沒有的文字，漏抓另一邊會讓那條戰術在合作模式下整條消失）／(k) `#標記` 要在白名單。⚠️ `mode` 是 `未啟用` 時**指名道姓地擋**——那是官方資料表真有的第三個值，泛用訊息會讓人以為是打錯字 |
+| 25 | `data/boss.json`：與規則 24 同一支 `checkIconedRecordList()`，只有欄位與 id 形狀不同。⚠️ 這裡**刻意一條額外檢查都沒寫**——複製第二份出去就一定漂移 |
 | 23 | `data/dice-stats.json`：(a) 骰子漏一筆／(b) 表自己的孤兒 entry／(c) `name` 與正本節點不符／(d) entry 結構／(e) stat 欄位型別（含 `diceGrowth`／`spGrowth`，空字串不放行——`growthNote()` 用 `??`，`""` 會印成「骰點：／強化：…」）／(f) 同一顆骰子的 `label` 撞號／(g) 四個檔位的值要嘛全有要嘛全無／(h) 未知欄位。⚠️ 以 **gameId** 為鍵，規則 19 抓不到它的殘餘。⚠️ **(h) 是 (g) 的補完不是潔癖**：三個檔位鍵**全部**打錯時 (g) 完全沉默，那一項被判成固定值，畫面上跟「它本來就不會變」一模一樣。⚠️ (b) 的「找不到節點」那一半要先讓路給規則 19／規則 1，否則 `nodes.json` 漏一筆文案會多噴假錯誤 |
 
 ⚠️ **幾何規則吃 `nodes`，文案規則吃 `withText`**。`withText` 是「兩邊都在、結構又合法」的過濾集合；
@@ -266,8 +292,9 @@ npm run compare -- <beforeURL> <afterURL>  # computed-style 逐元素比對，�
 一筆文案 → 55 條錯誤，54 條是規則 5／6／10／18 在說「從根不可達」，唯一說對的規則 19 被埋在裡面）。
 文案規則＝1／3／4／8／9／14／15／16／17，其餘全部走 `nodes`。
 
-⚠️ **(b)(c)(d)「掃一個雜湊命名的圖示目錄」規則 7 與 21 共用 `checkHashNamedIconDir()`，
-只有一份實作**。要加檢查就加在那裡，不要為第二個目錄複製第二份出去——上一份複製品漂到
+⚠️ **(b)(c)(d)「掃一個雜湊命名的圖示目錄」規則 7／21／24／25 共用 `checkHashNamedIconDir()`，
+只有一份實作**（規則 24 與 25 再往上共用一層 `checkIconedRecordList()`，那層管的是
+「一筆一個 id、雜湊寫在紀錄 `icon` 欄」這種資料檔的 (a)(e)(f)(g)(h)(k)）。要加檢查就加在那裡，不要為第二個目錄複製第二份出去——上一份複製品漂到
 「不驗 PNG、孤兒檔嚴重度相反、逐 entry 重複讀檔」才被抓到。孤兒檔一律只警告：那只是 repo
 裡多一個沒人引用的 PNG，擋下來會連「換圖忘了刪舊檔」一起擋。
 
@@ -407,9 +434,10 @@ npm run compare -- <beforeURL> <afterURL>  # computed-style 逐元素比對，�
   拿同一個 `readdirSync` 運算式跟自己比，恆真，已修正）。
   `tests/e2e/chrome.spec.ts` 的 D1–D12 守沾頂、`--nav-h`、`aria-current`、焦點框、footer 沉底、過場時間。
 
-### 九個 CSS 檔
+### 十個 CSS 檔
 
-`src/styles/global.css`（2029 行）2026-08-26 拆成九個按作用域劃分的檔案，畫面零變化
+`src/styles/global.css`（2029 行）2026-08-26 拆成九個按作用域劃分的檔案（同日 `/tactic`
+與 `/boss` 上線時加上 `battle.css`，共十個），畫面零變化
 （`tools/compare-computed.ts` 驗過，見「指令」一節）。新樣式要放哪個檔，先查這張表：
 
 | 檔 | 放什麼 | 誰載 |
@@ -418,11 +446,12 @@ npm run compare -- <beforeURL> <afterURL>  # computed-style 逐元素比對，�
 | `base.css` | 全站重置（`*`／`html`／`body`／`main`／`footer`／`a`／`pre`）＋ `.sr-only` | Base |
 | `chrome.css` | 全站導覽列 `#site-nav`（含「遊戲介紹」下拉） | Base |
 | `content.css` | 靜態內容頁共用 `.page`（首頁／圖鑑／遊戲介紹）＋首頁訪客計數器 `#hit-counter`＋詞彙頁 `.kw-*` | Base |
-| `components.css` | 跨頁共用元件：篩選切換鈕 `.chip`、`--branch` 供應者（`:is(.dice-card, .chip)[data-branch=…]`）、分支色點 `.branch-dot`、首頁卡片、遊戲介紹索引卡 | Base |
+| `components.css` | 跨頁共用元件：篩選切換鈕 `.chip`、**沾頂篩選列 `.filters`／`.filter-count`**、`--branch` 供應者（`:is(.dice-card, .chip)[data-branch=…]`）、分支色點 `.branch-dot`、首頁卡片、遊戲介紹索引卡 | Base |
 | `detail.css` | `/tree` 詳情面板 `#detail`（含視圖堆疊換頁動畫） | `/tree` |
 | `canvas.css` | 畫布本體：`#canvas-host`／`#tree`／`#viewport`、節點與邊 `.node`／`.edge`、中央樞紐 `.tree-center*` | `/tree`、`/sim` |
 | `dice.css` | `/dice` 圖鑑：卡片網格 `.codex-grid`、`.dice-card` 本體、關鍵字卡片 `.card-term*`、數值面板 `.dice-stats`、篩選列 `.filters` | `/dice` |
 | `board.css` | `/board` 骰盤編輯器：`.board-*`／`#board-*`、組合列 `#deck-row`／`.deck-*`、選骰面板 `#dice-picker`／`.picker-*` | `/board` |
+| `battle.css` | `/tactic` 與 `/boss` 共用的橫列清單：`.battle-*` | `/tactic`、`/boss` |
 
 ⚠️ **`#toolbar`／`#filters`／`#branch-nav`／`#branch-chips`（`/tree` 工具列與篩選面板）不在
 `canvas.css` 裡**，它們留在 `src/pages/tree.astro` 自己的 `<style is:global>` 區塊——那個區塊
@@ -438,6 +467,9 @@ npm run compare -- <beforeURL> <afterURL>  # computed-style 逐元素比對，�
 - **兩個容易分錯的分派**：`--branch` 供應者留在 `components.css` 不進 `dice.css`——它是
   `.chip[data-branch]` 的唯一來源，而 `.chip` 用在 `/tree` 的篩選面板；`.chip-xs` 同理留在
   `components.css`，它跟 `.chip` 具體度相同 (0,1,0)，只靠檔案順序排在後面才贏。
+- ⚠️ **`.filters` 2026-08-26 從 `dice.css` 搬到 `components.css`**（`/tactic` 也用它）。找沾頂
+  篩選列的樣式要去 `components.css`，不是 `dice.css`。搬動用 `npm run compare` 驗過：`/dice` 的
+  `<main>` 位元組完全相同，computed style 零差異（只剩進場動畫在飛行中的取樣雜訊）。
 
 ### 版面的硬規則
 
@@ -675,6 +707,51 @@ PNG，檔名＝內容 sha256 前 12 碼，`addIcon()` 直接重用）＋ `data/b
 
 `src/scripts/board.ts` 的 `diceMeta` 是從 `#dice-picker` 的 `<img src>` 讀回來的，所以拖曳、骰盤格、
 分享圖三處畫面全部自動跟著換，不必維護第二份路徑。
+
+### `/tactic` 戰術與 `/boss`
+
+官方資料表 `戰術`（58 條已啟用）與 `Boss`（10 條）兩個分頁的內容。**兩者都不是骰子樹的節點**
+（不花錢解鎖、沒有前置、不進成本計算），資料與圖示各走一條平行路徑，見上面「幾份沒有自動來源
+的資料」與規則 24／25。跟 `/dice` 一樣是靜態頁、建置期直接讀 `data/`，`tree.json` 一個位元組
+都不會變（2026-08-26 實測 sha256 與 main 相同）。
+
+- **兩頁的入口收在「遊戲介紹」下拉裡，不在導覽列頂層**（Yuki 2026-08-26 指定）：它們跟下拉裡
+  其他幾頁一樣是「遊戲有什麼」的說明，不是站台的互動工具（骰子樹／圖鑑／骰盤／模擬器）。
+  ⚠️ **`Base.astro` 的 `guideCurrent` 要涵蓋下拉裡的每一頁**，不能只看 `/guide`——下拉預設是
+  收起來的，站在 `/tactic` 時只有裡面那條 `aria-current`，導覽列上等於零提示。B6 兩邊都守。
+- **版面是橫列清單不是卡片網格**（Yuki 2026-08-26 指定）：效果文字最短 12 字、最長 55 字，
+  排進等寬網格會讓同一列的卡片高度參差；橫列讓長文字自己往下長，不影響鄰居。
+- ⚠️ **編號與內部ID 一律不顯示在畫面上**（Yuki 2026-08-26）：那兩個是拿本站對官方資料表用的，
+  玩家在遊戲裡看不到。**但資料檔要留著**——`id` 是錨點（`#t69-1`）與規則 24 的鍵，`gameId` 是
+  日後對新版資料表唯一可靠的 join key，兩個都不能因為畫面不印就刪掉。子選項的從屬關係改由
+  縮排 ＋ 一個 `aria-hidden` 的 `↳` ＋「選項」階段標籤承擔。E2E 的 **T1b** 量的是
+  `main` 的 `innerText`（不是原始 HTML——`id="t6"` 這種屬性留著是對的），反例驗過會紅。
+- ⚠️ **模式切換鈕的文字是「目前正在看的模式」，不是「按下去會變成什麼」**（Yuki 2026-08-26
+  指定）。這是 CLAUDE.md 那條「切換鈕文字固定不變」的**例外**——那條的理由是文字互換會讓沾頂
+  的工具列寬度跳動，而這裡兩個字串都是四個中文字（對戰模式／合作模式），寬度不變。
+  ⚠️ **換文字時 `aria-label` 要一起換**：它是無障礙名稱，只換可見文字的話螢幕閱讀器會一直念
+  同一句。可見文字／`aria-label`／`data-mode` 三件事要同時換，少一件就是畫面與讀屏各說各話，
+  而兩邊都不會報錯。T5 三件都驗。
+- **對戰／合作兩段文字都輸出進 HTML，切換只換顯示哪一段**（CSS 的 `[data-mode]`）。用 JS 換
+  `textContent` 的話合作那一段永遠進不了 HTML——而「文字進得了 HTML」正是這兩頁存在的理由，
+  跟 `/dice` 的數值面板做成純 CSS 是同一個判準。
+  ⚠️ **驗這一塊不要用 `toHaveText`**：`textContent` 會把 `display: none` 的另一段一起讀進來
+  （`dice.css` 的數值面板為此吃過虧）。E2E 的 T5 量的是**可見性**與**可見條數**。
+- ⚠️ **`.battle-item[hidden]` 那條 `display: none` 是必要的不是保險**：`.battle-item` 本身是
+  `display: grid`，會壓過 `[hidden]` 的預設值——少了它，篩選時「隱藏」的那幾條照樣在畫面上，
+  而計數已經扣掉它們（`.dice-card[hidden]` 為同一個理由存在）。
+- ⚠️ **子選項的顯示要跟著母條目**：69「選擇由我決定」是前期，它底下三個子選項的階段是
+  「選項」——只勾「選項」的話，畫面上會出現三條縮排、掛著 `↳` 卻找不到母條目的孤兒
+  （編號拿掉之後更看不出它們屬於誰）。`apply()` 因此是**兩輪**：先各自判斷，再把
+  「母條目不在畫面上」的子選項收掉。T6b 守，反例驗過會紅。
+- `#tactic-empty`（篩到零筆的提示）**只有一條路徑走得到**：把三個非「選項」階段全部取消勾選
+  ——那時三個子選項也會被上面那條規則收掉，整頁真的是 0 筆。T6b 順帶驗這一段。
+- **兩頁的圖示來源長寬比不統一**（戰術 176×206 與 164×166 都有、Boss 約 128×128），所以
+  `.battle-icon` 一律 `object-fit: contain`——跟 `/board` 那四個顯示點是同一條不變量，
+  改成 `cover` 會 CI 全綠而畫面上圖被裁角。B5 守。
+- ⚠️ **驗「圖載得到」不要用 `naturalWidth`**：這些 `<img>` 是 `loading="lazy"`，畫面外的幾十張
+  本來就還沒開始載，量到的是捲軸位置不是圖存不存在（第一版就這樣紅在「29 張載不到」）。
+  B5 改成逐個網址發請求。
 
 ### `/sim` 骰子樹模擬器
 
