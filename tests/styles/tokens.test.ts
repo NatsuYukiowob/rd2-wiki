@@ -197,3 +197,40 @@ describe('import 順序＝層疊順序', () => {
     }
   });
 });
+
+/**
+ * `board-export.ts` 的色票 fallback 不准跟 `tokens.css` 漂移（2026-08-26，PR ③ 補的）。
+ *
+ * `/board` 的分享圖是 canvas 畫的，顏色走 `cssVar('--bg', '#…')`：**執行期讀得到 token 時
+ * 用 token，讀不到才用第二個參數**。所以 fallback 寫錯不會讓任何東西壞掉——分享圖在瀏覽器
+ * 裡永遠是對的，只有在 `getComputedStyle` 不存在的環境（單元測試、SSR、未來某個 worker）
+ * 才會露出舊配色。這正是「改了 token 卻沒人發現另一份色票沒跟上」的標準形狀：PR ③ 換掉
+ * 九個 token 值時，這六條就是靠這條測試被抓出來的。
+ *
+ * ⚠️ 反例驗證（2026-08-26 實跑）：把 board-export.ts 的 `--bg` fallback 改回 `#2f2942`，
+ * 這條立刻紅並指出 `--bg fallback #2f2942 ≠ tokens.css 的 #17161a`。
+ */
+describe('board-export 的色票 fallback', () => {
+  it('六條 fallback 跟 tokens.css 的值一字不差', () => {
+    const tokens = readFileSync(TOKENS_FILE, 'utf8');
+    // 只認縮排兩格的自訂屬性宣告，跟上面那條 var() 解析測試同一套規則。
+    const defined = new Map(
+      [...tokens.matchAll(/^\s{2}(--[a-z0-9-]+):\s*([^;]+);/gm)].map(m => [m[1]!, m[2]!.trim()]),
+    );
+
+    const src = readFileSync('src/scripts/board-export.ts', 'utf8');
+    const pairs = [...src.matchAll(/cssVar\('(--[a-z0-9-]+)',\s*'([^']+)'\)/g)]
+      .map(m => ({ token: m[1]!, fallback: m[2]! }));
+
+    // 先確認真的抓到了：正則寫壞會讓 pairs 變空陣列，然後底下的迴圈一次都不跑、測試全綠。
+    // 數量寫死也守另一個方向：多一條 cssVar() 沒被納入時同樣會紅（2026-08-26 code review
+    // 抓到原本的訊息只講「正則過期」，把「新增了呼叫點」那半邊的成因指錯了）。
+    expect(pairs.length, 'board-export.ts 的 cssVar(…) 呼叫數不是 6——正則過期，或新增／刪除了呼叫點').toBe(6);
+
+    for (const { token, fallback } of pairs) {
+      expect(defined.has(token), `tokens.css 沒有定義 ${token}`).toBe(true);
+      expect(fallback, `${token} fallback ${fallback} ≠ tokens.css 的 ${defined.get(token)}`)
+        .toBe(defined.get(token));
+    }
+  });
+});
