@@ -36,8 +36,12 @@ describe('buildTreeData', () => {
   it('meta.roots 為五顆起手骰', () => {
     expect(data.meta.roots.sort()).toEqual(['1001', '2001', '3001', '4008', '5002']);
   });
-  it('全樹解鎖成本符合實測值', () => {
-    expect(data.meta.totalUnlockCost).toEqual({ core: 1772, gold: 6662000 });
+  // 這是「正本成本總和」的釘子（CLAUDE.md：meta.totalUnlockCost 是 SVG 成本總和，不排除解鎖例外），
+  // 不是遊戲裡量到的數字。正本的任何一顆 cost 一動這裡就要跟著動——
+  // 2026-09-02 PR #61 依 1.0.3 客戶端解包表改了 4307／4407／5304／5403／5404 五顆符文的解鎖成本：
+  // 核心 +70、金幣 +244,000（1772／6,662,000 → 1842／6,906,000）。
+  it('全樹解鎖成本總和釘住正本（成本一動這裡就要跟著動）', () => {
+    expect(data.meta.totalUnlockCost).toEqual({ core: 1842, gold: 6906000 });
   });
   it('玩家被動的等級上限來自 title', () => {
     const n = data.nodes.find(x => x.id === '1101')!;
