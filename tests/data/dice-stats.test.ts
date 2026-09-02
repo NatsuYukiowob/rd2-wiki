@@ -28,7 +28,9 @@ describe('data/dice-stats.json', () => {
   // 或哪天又多空一格，這條就會紅，有人會回頭看一眼。
   // ⚠️ 不用 CI 警告來做這件事——validate 的黃金樣本斷言 warnings 必須為零，一條永遠不會消失
   // 的警告會讓那個基線失效（每支 PR 都帶著它，久了就沒人看警告了）。
-  it('只有 D208 原子旋轉速度的 Lv.15 兩檔是官方未填值的「待實測」', () => {
+  // 2026-09-02（PR #61）：原本唯一的兩格（D208 原子旋轉速度的 Lv.15 兩檔）依 1.0.3 客戶端
+  // 解包表補上了值（7s／4.6s，成長在骰點軸），清單現在是空的。釘子留著——上游再空一格就會紅。
+  it('目前沒有任何一格是官方未填值的「待實測」（D208 的兩格已於 PR #61 補上）', () => {
     const pending: string[] = [];
     for (const [gameId, entry] of Object.entries(table)) {
       for (const s of entry.stats) {
@@ -37,7 +39,7 @@ describe('data/dice-stats.json', () => {
         }
       }
     }
-    expect(pending.sort()).toEqual(['D208/原子旋轉速度/lv15', 'D208/原子旋轉速度/lv15dice7']);
+    expect(pending.sort()).toEqual([]);
   });
 
   // 官方「骰子基本能力值」分頁的備註欄混了兩種東西，**不可以整欄照抄**：6 條在解釋遊戲機制
