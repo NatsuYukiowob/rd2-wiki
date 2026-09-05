@@ -29,7 +29,15 @@ export type Shape = 'rect' | 'diamond' | 'circle' | 'hex';
 export type UnlockVia = 'cost' | 'quest' | 'default' | 'achievement';
 export type GrowthUnit = '%' | 's' | 'count' | 'x' | '';
 
-export interface Cost { core: number; gold: number }
+/**
+ * 一筆花費。三種貨幣，`solar` 是 v1.1.0 太陽骰子帶進來的第三種（遊戲 GoodsType `CORE_SOLAR`，
+ * 顯示名「太陽核心」）。
+ *
+ * ⚠️ **三個欄位都是必填**，缺席不當成 0：`Cost` 是算出來的東西（加總、差額、上限比對），
+ * 讓其中一個欄位可以是 undefined 等於讓每個加法都得先寫一次 `?? 0`，而漏寫的那一處會安靜
+ * 地把整筆總額變成 NaN。「缺席視為 0」只發生在**讀 JSON 那一層**（見 LevelCost.solar）。
+ */
+export interface Cost { core: number; gold: number; solar: number }
 export interface Growth { base: number; perLevel: number; unit: GrowthUnit }
 export interface ParsedCost { cost: Cost }
 
@@ -71,6 +79,19 @@ export interface TreeNode {
    * 那條邊會畫成虛線（見 render.ts）。只在為真時才寫進 tree.json。
    */
   bypassPrereq?: true;
+  /**
+   * 「某個祖先要先練到某等級」才解得開這一顆（客戶端 `DiceTreeNodeTable` 的
+   * `NeedNode`／`NeedNodeRank`）。鍵是祖先節點 id，值是它要達到的等級。
+   *
+   * 骰子樹的邊只表達得出「那顆要先解開」，表達不出「而且要練到 Lv.50」——太陽骰子（`1501`）
+   * 除了 `1301`／`1401` 兩條入邊之外，還要求 `1201` 子彈傷害%增加練滿 50 級。圖結構不必改
+   * （`1201` 本來就是那兩顆的前置），新的是這個等級門檻。
+   *
+   * ⚠️ **只在有值的節點上放這個欄位**，而且只收 rank ≥ 2 的條目：rank 1 就是「解鎖」，邊已經
+   * 說過了。240 顆節點各掛一個空物件會吃掉 tree.json 僅存的 gzip 餘裕（同 `wip`／`category`
+   * 的作法）。資料正本是 `data/prereq-ranks.json`，規則 26 守它。
+   */
+  prereqRanks?: Record<string, number>;
   maxLevel: number;
   prereqMode: null;
   upgradeCost: null;
@@ -146,11 +167,18 @@ export function isGlossaryAlias(r: GlossaryRecord): r is GlossaryAlias {
  */
 export interface UpgradeCostTable {
   appliesTo: { type: NodeType; maxLevel: number };
-  levels: { level: number; gold: number; core: number }[];
+  levels: { level: number; gold: number; core: number; solar?: number }[];
 }
 
-/** 一張逐級升級表的一列。`level 1` 是解鎖那一次，算升級追加花費時一律跳過（見 upgradeExtraCost）。 */
-export interface LevelCost { level: number; gold: number; core: number }
+/**
+ * 一張逐級升級表的一列。`level 1` 是解鎖那一次，算升級追加花費時一律跳過（見 upgradeExtraCost）。
+ *
+ * ⚠️ `solar` 是**選填**的，這是它跟 `Cost` 唯一不同的地方：這個形狀直接對應社群維護的兩份
+ * JSON（`data/upgrade-cost.json`／`data/passive-upgrade-cost.json`），而那兩份既有的幾百列
+ * 一個 solar 欄位都沒有。要求必填等於逼一次無關的全檔改寫，所以缺席一律當 0（`?? 0`），
+ * 由讀取端在算成 `Cost` 的那一步補上。
+ */
+export interface LevelCost { level: number; gold: number; core: number; solar?: number }
 
 /**
  * 官方升級費用表的一個區間：`from`~`to` 每一級都花 `gold`，而 `core` **只在 `from` 那一級收一次**。
@@ -158,6 +186,10 @@ export interface LevelCost { level: number; gold: number; core: number }
  * 這是官方表格自己的寫法——它只列 `Lv.5→6`／`Lv.10→11` 這些跨區間的格子（例如 `16000+6`），
  * 並在表頭註明「等級5以後未說明之等級費用以前一級所需金幣資源相同」。照逐級展開存進 JSON 的話，
  * 那 100 級的 tier F 要寫 99 列，而且沒有任何地方看得出「這一段是同一個區間」。
+ *
+ * ⚠️ **刻意沒有 solar 欄位**：太陽核心只出現在太陽骰子與它的符文上，那是骰子分支的東西，
+ * 而 tier 制只服務玩家被動與支援。留一個永遠是 0 的欄位在這裡，只會讓下一個人以為它有用。
+ * `expandTier()` 產出的每一列因此固定帶 `solar: 0`。
  */
 export interface UpgradeBand { from: number; to: number; gold: number; core: number }
 
@@ -178,6 +210,22 @@ export interface PassiveUpgradeCost {
   tiers: Record<string, UpgradeTier>;
   /** 鍵是節點 id。官方表格單獨列出來、套不進任何 tier 的節點（目前只有 `4303`）。 */
   special: Record<string, { maxLevel: number; levels: LevelCost[] }>;
+}
+
+/**
+ * `data/prereq-ranks.json`：「某個祖先要先練到某等級」的解鎖條件。
+ *
+ * ⚠️ **這份資料沒有自動來源**（同 `unlock-exceptions.json`）：它抄自客戶端 `DiceTreeNodeTable`
+ * 的 `NeedNode`／`NeedNodeRank`，而正本 SVG 與 `nodes.json` 都沒有欄位放得下它。`build-data`
+ * 讀它時只有一個 `as` 斷言＝執行期零檢查，所以規則 26 是它唯一的防線。
+ *
+ * `ranks` 的外層鍵是「被擋住的節點」，內層鍵是它的祖先、值是那個祖先要達到的等級。
+ * **只收 rank ≥ 2 的條目**：rank 1 就是「解鎖」，骰子樹的邊已經表達過那件事。
+ */
+export interface PrereqRanks {
+  note: string;
+  source: string;
+  ranks: Record<string, Record<string, number>>;
 }
 
 /**
@@ -316,6 +364,15 @@ export interface Tactic {
   dataIssue?: 'upstream-icon';
 }
 
+/**
+ * Boss 的難度（客戶端 `MinionTable` 的兩張表）。
+ *
+ * ⚠️ **只有兩個值**：一般模式 10 隻、合作困難模式 11 隻（困難多出「雷昂」，它沒有一般版）。
+ * 兩批在客戶端是同一張表的兩段，內部ID 靠 `_hard` 後綴區分——但那是 join key 不是難度來源，
+ * 難度要自己一欄，否則「靠 gameId 結尾判斷」這種推導哪天上游改了命名就整批分錯組。
+ */
+export type BossDifficulty = '一般' | '困難';
+
 /** 一個 Boss（`data/boss.json` 的一筆）。同 `Tactic`，不是節點。 */
 export interface Boss {
   id: string;
@@ -326,4 +383,6 @@ export interface Boss {
   gameId: string;
   /** `data/boss-icons/` 底下來源 PNG 的內容 sha256 前 12 碼。 */
   icon: string;
+  /** 出現在哪個難度；`/boss` 靠它分成兩組，規則 25 守它只有兩個合法值。 */
+  difficulty: BossDifficulty;
 }

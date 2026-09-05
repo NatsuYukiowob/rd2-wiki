@@ -38,12 +38,12 @@ const boardIcons = JSON.parse(
 ) as Record<string, string>;
 const boardIconSrc = (id: string): string => `/assets/board-icons/${boardIcons[id]}.webp`;
 
-test('B0. 骰盤頁的骨架：15 格、5 個組合槽、41 顆可挑選的骰子', async ({ page }) => {
+test('B0. 骰盤頁的骨架：15 格、5 個組合槽、42 顆可挑選的骰子', async ({ page }) => {
   await page.goto('/board');
   await expect(page.locator('#board-grid .board-cell')).toHaveCount(15);
   await expect(page.locator('#deck-row .deck-slot')).toHaveCount(5);
-  await expect(page.locator('#dice-picker .picker-dice')).toHaveCount(41);
-  expect(dice).toHaveLength(41);
+  await expect(page.locator('#dice-picker .picker-dice')).toHaveCount(dice.length);
+  expect(dice).toHaveLength(42);
 
   // 正面證明這三個選擇器抓得到東西——B0b 的「不存在」斷言全靠它們沒打錯字。
   await expect(page.locator('#deck-row .pips-row')).toHaveCount(5);
@@ -90,7 +90,7 @@ test('B0c. 導覽列有「骰盤」入口且在本頁標成目前分頁', async 
   await expect(link).toHaveAttribute('aria-current', 'page');
 });
 
-test('B0d. 41 顆骰子的挑選圖示都指向純骰子圖，而且每一張都真的載得到', async ({ page }) => {
+test('B0d. 42 顆骰子的挑選圖示都指向純骰子圖，而且每一張都真的載得到', async ({ page }) => {
   // 換掉節點圖示（帶底板）之後這是第一道防線：src 對得上正則不代表圖真的存在——路徑打錯
   // 一個字或 build:data 漏轉一張，畫面上就是一個 41 分之一的破圖，naturalWidth 會是 0。
   await page.goto('/board');
@@ -100,10 +100,10 @@ test('B0d. 41 顆骰子的挑選圖示都指向純骰子圖，而且每一張都
   await expect(page.locator('#dice-picker')).toBeVisible();
 
   const imgs = page.locator('#dice-picker .picker-dice img');
-  await expect(imgs).toHaveCount(41);
+  await expect(imgs).toHaveCount(dice.length);
 
   const srcs = await imgs.evaluateAll(els => els.map(el => el.getAttribute('src')));
-  expect(srcs).toHaveLength(41);
+  expect(srcs).toHaveLength(42);
   for (const src of srcs) {
     expect(src, `${src} 沒有指向 /board 專用的純骰子圖路徑`).toMatch(/^\/assets\/board-icons\/[0-9a-f]{12}\.webp$/);
   }

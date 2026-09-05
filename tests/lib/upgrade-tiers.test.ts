@@ -35,7 +35,7 @@ const RUNE_TABLE: UpgradeCostTable = {
 };
 
 const node = (over: Partial<TreeNode>) => ({
-  id: 'x', type: 'passive', maxLevel: 10, unlockCost: { core: 0, gold: 12000 }, unlockVia: 'cost',
+  id: 'x', type: 'passive', maxLevel: 10, unlockCost: { core: 0, gold: 12000, solar: 0 }, unlockVia: 'cost',
   ...over,
 } as TreeNode);
 
@@ -43,11 +43,11 @@ describe('expandTier', () => {
   it('把 band 展開成逐級表，核心只落在區間第一級', () => {
     const rows = expandTier(TIER_A);
     expect(rows).toHaveLength(9); // Lv.2 ~ Lv.10
-    expect(rows[0]).toEqual({ level: 2, gold: 8000, core: 0 });
-    expect(rows[3]).toEqual({ level: 5, gold: 8000, core: 0 });
-    expect(rows[4]).toEqual({ level: 6, gold: 16000, core: 6 });
-    expect(rows[5]).toEqual({ level: 7, gold: 16000, core: 0 });
-    expect(rows[8]).toEqual({ level: 10, gold: 16000, core: 0 });
+    expect(rows[0]).toEqual({ level: 2, gold: 8000, core: 0, solar: 0 });
+    expect(rows[3]).toEqual({ level: 5, gold: 8000, core: 0, solar: 0 });
+    expect(rows[4]).toEqual({ level: 6, gold: 16000, core: 6, solar: 0 });
+    expect(rows[5]).toEqual({ level: 7, gold: 16000, core: 0, solar: 0 });
+    expect(rows[8]).toEqual({ level: 10, gold: 16000, core: 0, solar: 0 });
   });
 
   // 這張表是社群改得到的 JSON，band 少一段的話展開結果會在中間缺級，而「缺級」在畫面上
@@ -69,11 +69,11 @@ describe('expandTier', () => {
 
 describe('tierKeyOf', () => {
   it('用 (maxLevel, 解鎖金幣) 找 tier', () => {
-    expect(tierKeyOf(node({ maxLevel: 10, unlockCost: { core: 0, gold: 12000 } }), TABLES)).toBe('A');
+    expect(tierKeyOf(node({ maxLevel: 10, unlockCost: { core: 0, gold: 12000, solar: 0 } }), TABLES)).toBe('A');
   });
 
   it('對不到任何 tier 時回 null', () => {
-    expect(tierKeyOf(node({ maxLevel: 20, unlockCost: { core: 0, gold: 3000 } }), TABLES)).toBeNull();
+    expect(tierKeyOf(node({ maxLevel: 20, unlockCost: { core: 0, gold: 3000, solar: 0 } }), TABLES)).toBeNull();
   });
 
   // tier 表只描述玩家被動與支援。一顆剛好也是 (10, 12000) 的骰子符文套上去會算出一個
@@ -104,8 +104,8 @@ describe('levelTableFor', () => {
   });
 
   it('玩家被動走 tier 表', () => {
-    const t = levelTableFor(node({ maxLevel: 10, unlockCost: { core: 0, gold: 12000 } }), TABLES, RUNE_TABLE);
-    expect(t?.[0]).toEqual({ level: 2, gold: 8000, core: 0 });
+    const t = levelTableFor(node({ maxLevel: 10, unlockCost: { core: 0, gold: 12000, solar: 0 } }), TABLES, RUNE_TABLE);
+    expect(t?.[0]).toEqual({ level: 2, gold: 8000, core: 0, solar: 0 });
   });
 
   it('不可升級的節點回 null', () => {
@@ -123,19 +123,33 @@ describe('upgradeExtraCost', () => {
   const rows: LevelCost[] = expandTier(TIER_A);
 
   it('Lv.1 不花錢', () => {
-    expect(upgradeExtraCost(rows, 1)).toEqual({ core: 0, gold: 0 });
+    expect(upgradeExtraCost(rows, 1)).toEqual({ core: 0, gold: 0, solar: 0 });
   });
 
   it('累加 Lv.2 到目標等級', () => {
-    expect(upgradeExtraCost(rows, 5)).toEqual({ core: 0, gold: 32000 });
-    expect(upgradeExtraCost(rows, 6)).toEqual({ core: 6, gold: 48000 });
-    expect(upgradeExtraCost(rows, 10)).toEqual({ core: 6, gold: 112000 });
+    expect(upgradeExtraCost(rows, 5)).toEqual({ core: 0, gold: 32000, solar: 0 });
+    expect(upgradeExtraCost(rows, 6)).toEqual({ core: 6, gold: 48000, solar: 0 });
+    expect(upgradeExtraCost(rows, 10)).toEqual({ core: 6, gold: 112000, solar: 0 });
   });
 
   // 符文表自己帶著 level 1（＝解鎖那一次，金額與節點的 unlockCost 相同）。
   // 不跳過它的話每顆符文的解鎖費用會被算兩次。
   it('表格自帶 level 1 時跳過它', () => {
-    expect(upgradeExtraCost(RUNE_TABLE.levels, 3)).toEqual({ core: 0, gold: 1600 });
+    expect(upgradeExtraCost(RUNE_TABLE.levels, 3)).toEqual({ core: 0, gold: 1600, solar: 0 });
+  });
+
+  // 太陽核心（v1.1.0）走 special 表：太陽強化的 2–50 級費用逐級不同，官方單獨列表。
+  // ⚠️ 累加兩級以上才驗得到「有加總」，只驗一級的話直接指派也會綠。
+  it('special 表帶 solar 時照樣逐級累加', () => {
+    const solarRows: LevelCost[] = [
+      { level: 2, gold: 100000, core: 0, solar: 200 },
+      { level: 3, gold: 150000, core: 0, solar: 300 },
+      // 缺席的 solar 當 0——兩份費用表 JSON 的既有列都沒有這個欄位
+      { level: 4, gold: 200000, core: 0 },
+    ];
+    expect(upgradeExtraCost(solarRows, 2)).toEqual({ core: 0, gold: 100000, solar: 200 });
+    expect(upgradeExtraCost(solarRows, 3)).toEqual({ core: 0, gold: 250000, solar: 500 });
+    expect(upgradeExtraCost(solarRows, 4)).toEqual({ core: 0, gold: 450000, solar: 500 });
   });
 
   it('目標等級超出表格範圍時回 null', () => {

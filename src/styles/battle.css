@@ -18,6 +18,28 @@
   list-style: none;
 }
 
+/* /boss 的難度分組標題（一般／困難）。/tactic 沒有分組，它的分群是靠篩選器做的。
+   ⚠️ 這個 h2 出現之後 /boss 的 Boss 名稱降成 h3；`.battle-name` 兩頁共用同一條規則，
+   所以名稱的字級不會因為標籤換了而跟著變（那正是用 class 而不是選 h2/h3 的理由）。 */
+.battle-group-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-2);
+  /* 上緣跟前一組拉開一整階，下緣只留一小段——標題要黏在它管的那份清單上，
+     不然兩組之間看起來像三個等距的區塊，分不出標題屬於上面還是下面。 */
+  margin: var(--space-6) 0 var(--space-3);
+  font-size: var(--fs-xl);
+}
+
+.battle-group-note {
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  /* 標題本身是 700（base.css 給 h1–h3 的），附註跟著繼承就會變成兩個一樣重的東西並排。 */
+  font-weight: 400;
+  letter-spacing: normal;
+}
+
 .battle-item {
   display: grid;
   /* 圖示欄固定寬，文字欄吃剩下的：`auto 1fr` 會讓圖示欄的寬度跟著圖片的內在尺寸走，

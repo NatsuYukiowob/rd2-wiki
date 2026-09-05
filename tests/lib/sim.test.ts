@@ -1,9 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import {
-  buildSimContext, initialSimState, ownedIds, isAvailable, missingParents,
+  buildSimContext, initialSimState, ownedIds, isAvailable, missingParents, missingPrereqRanks,
   unlockNode, removeNode, setNodeLevel, setInitialDice, pathTo, unlockMany,
-  simTotals, maxSelectableLevel, summarizeAbilities, exceedsLimit, edgeWasUsed, edgeIsLinked,
+  simTotals, maxSelectableLevel, minSelectableLevel, summarizeAbilities, exceedsLimit,
+  edgeWasUsed, edgeIsLinked,
 } from '../../src/lib/sim';
 import type { Edge, PassiveUpgradeCost, TreeData, TreeNode } from '../../src/lib/types';
 
@@ -14,7 +15,7 @@ const realData = JSON.parse(readFileSync('src/generated/tree.json', 'utf8')) as 
 const n = (id: string, over: Partial<TreeNode> = {}): TreeNode => ({
   id, branch: 'nature', element: 'nature', type: 'passive', name: `n${id}`, label: id,
   shape: 'circle', size: [1, 1], x: 0, y: 0,
-  unlockCost: { core: 1, gold: 1000 }, unlockVia: 'cost',
+  unlockCost: { core: 1, gold: 1000, solar: 0 }, unlockVia: 'cost',
   maxLevel: 1, prereqMode: null, upgradeCost: null, description: '',
   keywords: [], growth: null, dataIssue: null, icon: 'x', ...over,
 } as TreeNode);
@@ -25,12 +26,12 @@ const fakeData = {
   nodes: [
     // default 的那 5 顆在真實資料裡都是骰子；設成 passive 的話「初始狀態沒有任何能力」那條
     // 測試會被自己的假圖推翻。
-    n('A', { type: 'dice', unlockVia: 'default', unlockCost: { core: 5, gold: 0 } }),
+    n('A', { type: 'dice', unlockVia: 'default', unlockCost: { core: 5, gold: 0, solar: 0 } }),
     n('B'), n('C'), n('D'),
-    n('E', { type: 'dice', unlockVia: 'achievement', bypassPrereq: true, unlockCost: { core: 8, gold: 0 } }),
+    n('E', { type: 'dice', unlockVia: 'achievement', bypassPrereq: true, unlockCost: { core: 8, gold: 0, solar: 0 } }),
     n('F'),
     // 可升級的玩家被動：maxLevel 10 ＋ 解鎖金幣 12000 ＝ tier A
-    n('G', { maxLevel: 10, unlockCost: { core: 0, gold: 12000 }, growth: { base: 10, perLevel: 2, unit: '%' } }),
+    n('G', { maxLevel: 10, unlockCost: { core: 0, gold: 12000, solar: 0 }, growth: { base: 10, perLevel: 2, unit: '%' } }),
   ],
   edges,
 } as unknown as TreeData;
@@ -67,15 +68,15 @@ describe('初始狀態', () => {
   });
 
   it('總資源是 0（default 節點玩家沒付過那筆錢）', () => {
-    expect(simTotals(s0, ctx).total).toEqual({ core: 0, gold: 0 });
+    expect(simTotals(s0, ctx).total).toEqual({ core: 0, gold: 0, solar: 0 });
   });
 
-  it('真實資料：初始狀態 5 顆已取得、234 顆未取得、資源 0', () => {
+  it('真實資料：初始狀態 5 顆已取得、236 顆未取得、資源 0', () => {
     const real = buildSimContext(realData, realTables);
     const s = initialSimState(real);
     expect(ownedIds(s, real).size).toBe(5);
-    expect(realData.nodes.length - ownedIds(s, real).size).toBe(234);
-    expect(simTotals(s, real).total).toEqual({ core: 0, gold: 0 });
+    expect(realData.nodes.length - ownedIds(s, real).size).toBe(236);
+    expect(simTotals(s, real).total).toEqual({ core: 0, gold: 0, solar: 0 });
   });
 });
 
@@ -91,7 +92,7 @@ describe('解鎖與取消', () => {
   it('解鎖會把成本加進總資源', () => {
     const s = unlockNode(s0, ctx, 'B')!;
     expect(ownedIds(s, ctx).has('B')).toBe(true);
-    expect(simTotals(s, ctx).total).toEqual({ core: 1, gold: 1000 });
+    expect(simTotals(s, ctx).total).toEqual({ core: 1, gold: 1000, solar: 0 });
   });
 
   it('前置沒齊的節點解不開', () => {
@@ -108,10 +109,10 @@ describe('解鎖與取消', () => {
     let s = unlockNode(s0, ctx, 'B')!;
     s = unlockNode(s, ctx, 'C')!;
     s = unlockNode(s, ctx, 'D')!;
-    expect(simTotals(s, ctx).total).toEqual({ core: 3, gold: 3000 });
+    expect(simTotals(s, ctx).total).toEqual({ core: 3, gold: 3000, solar: 0 });
     const after = removeNode(s, ctx, 'B')!;
     expect([...ownedIds(after, ctx)].sort()).toEqual(['A', 'C']);
-    expect(simTotals(after, ctx).total).toEqual({ core: 1, gold: 1000 });
+    expect(simTotals(after, ctx).total).toEqual({ core: 1, gold: 1000, solar: 0 });
   });
 
   it('取消時連帶清掉被取消節點的等級', () => {
@@ -140,7 +141,7 @@ describe('初始骰子勾選', () => {
   it('勾了就取得，而且不花錢', () => {
     const s = setInitialDice(s0, ctx, 'E', true)!;
     expect(ownedIds(s, ctx).has('E')).toBe(true);
-    expect(simTotals(s, ctx).total).toEqual({ core: 0, gold: 0 });
+    expect(simTotals(s, ctx).total).toEqual({ core: 0, gold: 0, solar: 0 });
   });
 
   it('勾掉會連帶取消依賴它的節點', () => {
@@ -176,10 +177,10 @@ describe('一鍵點亮到這裡', () => {
   });
 
   it('unlockMany 一次解完並累加成本', () => {
-    const { need } = pathTo('D', s0, ctx);
-    const s = unlockMany(s0, ctx, need);
+    const plan = pathTo('D', s0, ctx);
+    const s = unlockMany(s0, ctx, plan);
     expect([...ownedIds(s, ctx)].sort()).toEqual(['A', 'B', 'C', 'D']);
-    expect(simTotals(s, ctx).total).toEqual({ core: 3, gold: 3000 });
+    expect(simTotals(s, ctx).total).toEqual({ core: 3, gold: 3000, solar: 0 });
   });
 
   // 這是 /tree 已經在算的同一件事，兩邊算出不同答案就代表其中一邊錯了。
@@ -189,10 +190,10 @@ describe('一鍵點亮到這裡', () => {
     // 5201 的鏈**同時**經過 5006 與 5008（兩顆都是可直接領的），兩顆都勾起來才走得通。
     // 只勾一顆會拿到 blocked: ['5006']——那是 pathTo 正確地拒絕做半套。
     const withInitial = setInitialDice(setInitialDice(s0r, real, '5008', true)!, real, '5006', true)!;
-    const { need, blocked } = pathTo('5201', withInitial, real);
-    expect(blocked).toEqual([]);
-    const s = unlockMany(withInitial, real, need);
-    expect(simTotals(s, real).unlock).toEqual({ core: 42, gold: 20000 });
+    const plan = pathTo('5201', withInitial, real);
+    expect(plan.blocked).toEqual([]);
+    const s = unlockMany(withInitial, real, plan);
+    expect(simTotals(s, real).unlock).toEqual({ core: 42, gold: 20000, solar: 0 });
   });
 });
 
@@ -220,23 +221,22 @@ describe('等級與升級費用', () => {
     let s = unlockNode(s0, ctx, 'G')!;
     s = setNodeLevel(s, ctx, 'G', 6)!;
     const t = simTotals(s, ctx);
-    expect(t.unlock).toEqual({ core: 0, gold: 12000 });
-    expect(t.upgrade).toEqual({ core: 6, gold: 48000 });
-    expect(t.total).toEqual({ core: 6, gold: 60000 });
+    expect(t.unlock).toEqual({ core: 0, gold: 12000, solar: 0 });
+    expect(t.upgrade).toEqual({ core: 6, gold: 48000, solar: 0 });
+    expect(t.total).toEqual({ core: 6, gold: 60000, solar: 0 });
   });
 
   it('解鎖時等級預設是 1，不花升級費用', () => {
     const s = unlockNode(s0, ctx, 'G')!;
     expect(s.levels.get('G')).toBe(1);
-    expect(simTotals(s, ctx).upgrade).toEqual({ core: 0, gold: 0 });
+    expect(simTotals(s, ctx).upgrade).toEqual({ core: 0, gold: 0, solar: 0 });
   });
 
   // 符文表自己帶著 level 1（金額＝符文的解鎖金幣），不跳過的話每顆符文的解鎖費用會被算兩次。
   it('真實資料：一顆 50 級符文練到 Lv.2 只多花第 2 級那筆', () => {
     const real = buildSimContext(realData, realTables);
     const rune = realData.nodes.find(x => x.type === 'rune' && x.maxLevel === 50)!;
-    const { need } = pathTo(rune.id, initialSimState(real), real);
-    let s = unlockMany(initialSimState(real), real, need);
+    let s = unlockMany(initialSimState(real), real, pathTo(rune.id, initialSimState(real), real));
     const before = simTotals(s, real);
     s = setNodeLevel(s, real, rune.id, 2)!;
     const after = simTotals(s, real);
@@ -245,35 +245,134 @@ describe('等級與升級費用', () => {
   });
 });
 
+// 太陽骰子（1501）的解鎖條件除了 1301／1401 兩條入邊，還要求 1201 子彈傷害%增加練滿
+// Lv.50（客戶端 DiceTreeNodeTable 的 NeedNode／NeedNodeRank）。圖結構沒有改——1201 本來
+// 就是那兩顆的前置——新的是這個等級門檻。
+describe('前置節點的等級條件', () => {
+  const real = buildSimContext(realData, realTables);
+  const s0 = initialSimState(real);
+  /** 1301／1401 都解開了，但 1201 還停在 Lv.1 的狀態。 */
+  const parentsReady = (() => {
+    let s = unlockMany(s0, real, pathTo('1301', s0, real));
+    return unlockMany(s, real, pathTo('1401', s, real));
+  })();
+
+  it('前置都解開了但等級不夠時仍然不可取得，而且說得出缺什麼', () => {
+    expect(real.byId.get('1501')!.prereqRanks).toEqual({ '1201': 50 });
+    expect(ownedIds(parentsReady, real).has('1201')).toBe(true);
+    expect(parentsReady.levels.get('1201')).toBe(1);
+    // 「還缺前置」這句在這裡是錯的：三顆前置全在手上。
+    expect(missingParents('1501', parentsReady, real)).toEqual([]);
+    expect(isAvailable('1501', parentsReady, real)).toBe(false);
+    expect(missingPrereqRanks('1501', parentsReady, real)).toEqual([
+      { id: '1201', name: '子彈傷害%增加', rank: 50, level: 1, owned: true },
+    ]);
+    // 練滿之後才可取得
+    const maxed = setNodeLevel(parentsReady, real, '1201', 50)!;
+    expect(missingPrereqRanks('1501', maxed, real)).toEqual([]);
+    expect(isAvailable('1501', maxed, real)).toBe(true);
+    expect(unlockNode(parentsReady, real, '1501')).toBeNull();
+  });
+
+  // 一鍵點亮不做半套（同「鏈上有沒勾的初始骰子時一顆都不解」那條）：計畫裡少了那段升級的話，
+  // 玩家會花掉 13 萬金幣、1501 卻仍然點不開。
+  it('一鍵點亮把「1201 練到 Lv.50」納入計畫，套用後等級真的是 50', () => {
+    const plan = pathTo('1501', s0, real);
+    expect(plan.blocked).toEqual([]);
+    expect(plan.need).toContain('1501');
+    expect(plan.levels).toEqual([{ id: '1201', level: 50 }]);
+    const s = unlockMany(s0, real, plan);
+    expect(ownedIds(s, real).has('1501')).toBe(true);
+    expect(s.levels.get('1201')).toBe(50);
+    // 解鎖：1201 金幣 2,000 ＋ 1301 核心 10／金幣 10,000 ＋ 1401 核心 20／金幣 20,000
+    //       ＋ 1501 金幣 100,000／太陽核心 2,000
+    // 升級：1201 Lv.1 → Lv.50 追加＝金幣 463,700 ／核心 99
+    const t = simTotals(s, real);
+    expect(t.unlock).toEqual({ core: 30, gold: 132000, solar: 2000 });
+    expect(t.upgrade).toEqual({ core: 99, gold: 463700, solar: 0 });
+    expect(t.total).toEqual({ core: 129, gold: 595700, solar: 2000 });
+  });
+
+  // 遊戲裡做不到「把 1201 降回 49 級但保留太陽骰子」，模擬器也不該做得到。
+  it('已取得 1501 之後 1201 不能降到 Lv.50 以下', () => {
+    const s = unlockMany(s0, real, pathTo('1501', s0, real));
+    const rune = real.byId.get('1201')!;
+    expect(minSelectableLevel(rune, s, real)).toBe(50);
+    expect(setNodeLevel(s, real, '1201', 49)).toBeNull();
+    expect(setNodeLevel(s, real, '1201', 50)!.levels.get('1201')).toBe(50);
+    // 取消 1501 之後就自由了（連帶取消由 removeNode 的 cascade 負責）
+    const without = removeNode(s, real, '1501')!;
+    expect(minSelectableLevel(rune, without, real)).toBe(1);
+    expect(setNodeLevel(without, real, '1201', 1)!.levels.get('1201')).toBe(1);
+  });
+
+  // 沒有等級條件的節點下限恆為 1——這個機制不可以外溢到其餘 240 顆節點上。
+  it('沒有人要求的節點下限是 1', () => {
+    const s = unlockMany(s0, real, pathTo('1501', s0, real));
+    expect(minSelectableLevel(real.byId.get('1601')!, s, real)).toBe(1);
+  });
+
+  // 能力彙總只收 passive／support，1201 是符文、1501 是骰子，兩者都不進去。
+  it('能力彙總不受影響', () => {
+    const s = unlockMany(s0, real, pathTo('1501', s0, real));
+    const names = summarizeAbilities(s, real).flatMap(g => g.entries.map(e => e.name));
+    expect(names).not.toContain('子彈傷害%增加');
+    expect(names).not.toContain('太陽骰子');
+  });
+});
+
 describe('資源上限', () => {
   it('沒設定上限時不擋', () => {
-    expect(exceedsLimit({ core: 999, gold: 999 }, { core: null, gold: null })).toEqual([]);
+    expect(exceedsLimit({ core: 999, gold: 999, solar: 999 }, { core: null, gold: null, solar: null })).toEqual([]);
   });
 
   it('超出時回報是哪一種、差多少', () => {
-    const over = exceedsLimit({ core: 10, gold: 5000 }, { core: 8, gold: null });
+    const over = exceedsLimit({ core: 10, gold: 5000, solar: 0 }, { core: 8, gold: null, solar: null });
     expect(over).toHaveLength(1);
     expect(over[0]).toMatch(/核心.*10.*8/);
   });
 
   it('剛好等於上限不算超出', () => {
-    expect(exceedsLimit({ core: 8, gold: 100 }, { core: 8, gold: 100 })).toEqual([]);
+    expect(exceedsLimit({ core: 8, gold: 100, solar: 50 }, { core: 8, gold: 100, solar: 50 })).toEqual([]);
+  });
+
+  // 太陽核心（v1.1.0）走的是跟核心／金幣同一條路徑。漏掉它的話玩家設了上限卻照樣買得下去，
+  // 而畫面上沒有任何地方說話——這是這一頁最貴的一種沉默。
+  it('太陽核心超出時也會被擋，訊息指名是哪一種貨幣', () => {
+    const over = exceedsLimit({ core: 0, gold: 0, solar: 2500 }, { core: null, gold: null, solar: 2000 });
+    expect(over).toHaveLength(1);
+    expect(over[0]).toMatch(/太陽核心.*2,500.*2,000/);
+  });
+
+  it('太陽核心也只擋會變貴的方向', () => {
+    // 從 3,000 降到 2,500（仍超過上限 2,000）＝在往好的方向走，不擋
+    expect(exceedsLimit(
+      { core: 0, gold: 0, solar: 2500 },
+      { core: null, gold: null, solar: 2000 },
+      { core: 0, gold: 0, solar: 3000 },
+    )).toEqual([]);
+    // 從 2,100 漲到 2,500 ＝變更貴，擋
+    expect(exceedsLimit(
+      { core: 0, gold: 0, solar: 2500 },
+      { core: null, gold: null, solar: 2000 },
+      { core: 0, gold: 0, solar: 2100 },
+    )).toHaveLength(1);
   });
 
   // ⚠️ 玩家的實際用法是「先規劃、事後才填上限」，所以填完之後**一定**處在超支狀態。
   // 這時若連「取消節點」「降等級」這些會讓成本下降的操作都一起擋掉，他除了 undo 或整份
   // 重置之外沒有出路——上限欄位反而把人鎖死在自己想改掉的那份規劃裡。
   it('傳入 previous 時，降成本的操作即使仍超上限也不算超出', () => {
-    expect(exceedsLimit({ core: 5, gold: 0 }, { core: 1, gold: null }, { core: 10, gold: 0 })).toEqual([]);
+    expect(exceedsLimit({ core: 5, gold: 0, solar: 0 }, { core: 1, gold: null, solar: null }, { core: 10, gold: 0, solar: 0 })).toEqual([]);
   });
 
   it('傳入 previous 時，只有「超上限而且比之前更貴」才算超出', () => {
-    expect(exceedsLimit({ core: 5, gold: 0 }, { core: 1, gold: null }, { core: 3, gold: 0 })).toHaveLength(1);
+    expect(exceedsLimit({ core: 5, gold: 0, solar: 0 }, { core: 1, gold: null, solar: null }, { core: 3, gold: 0, solar: 0 })).toHaveLength(1);
   });
 
   it('傳入 previous 時，逐幣別分開判斷', () => {
     // 核心變便宜、金幣變貴：只該擋金幣那一項
-    const over = exceedsLimit({ core: 5, gold: 900 }, { core: 1, gold: 100 }, { core: 10, gold: 200 });
+    const over = exceedsLimit({ core: 5, gold: 900, solar: 0 }, { core: 1, gold: 100, solar: null }, { core: 10, gold: 200, solar: 0 });
     expect(over).toHaveLength(1);
     expect(over[0]).toMatch(/金幣/);
   });
@@ -302,7 +401,8 @@ describe('邊的兩端在不在手上', () => {
   it('「走過」一定也是「連通」——真實資料全邊掃描', () => {
     const real = buildSimContext(realData, realTables);
     let s = initialSimState(real);
-    s = unlockMany(s, real, pathTo('5201', setInitialDice(setInitialDice(s, real, '5006', true)!, real, '5008', true)!, real).need);
+    const withInitial = setInitialDice(setInitialDice(s, real, '5006', true)!, real, '5008', true)!;
+    s = unlockMany(withInitial, real, pathTo('5201', withInitial, real));
     const broken = realData.edges.filter(([f, t]) => edgeWasUsed(f, t, s, real) && !edgeIsLinked(f, t, s, real));
     expect(broken).toEqual([]);
   });
@@ -373,8 +473,7 @@ describe('能力彙總', () => {
     const real = buildSimContext(realData, realTables);
     expect(real.globalNames.has('所有骰子傷害')).toBe(true);
     let s = initialSimState(real);
-    const { need } = pathTo('1102', s, real);
-    s = unlockMany(s, real, need);
+    s = unlockMany(s, real, pathTo('1102', s, real));
     const g = summarizeAbilities(s, real).find(x => x.group === 'global')!;
     expect(g.entries.some(e => e.name === '所有骰子傷害')).toBe(true);
   });

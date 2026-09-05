@@ -2,6 +2,11 @@
 // 再接上平移縮放（滑鼠拖曳／滾輪、雙指觸控、鍵盤）。
 // 節點互動（詳情面板、搜尋、篩選……後續任務）會接著在這支腳本上擴充。
 import rawData from '../generated/tree.json';
+// ⚠️ **這份費用表刻意不進 tree.json**（tier 是 (maxLevel, unlockCost.gold) 的純函數，見
+// PassiveUpgradeCost 的說明），所以走頁面 import 直接進 /tree 的 JS bundle，不吃那 20 KB
+// 的 gzip 預算。`/sim` 用的是同一份檔案、同一種載法。詳情面板有兩個地方需要它：
+// 「練滿 N 級累計」（1601 太陽強化的費用在 special 裡）與前置鏈的「前置練等」那一段。
+import rawTables from '../../data/passive-upgrade-cost.json';
 import { renderTree } from '../lib/render.js';
 import { cssMs } from '../lib/css-ms.js';
 import {
@@ -19,13 +24,14 @@ import { computeSelection } from '../lib/selection.js';
 import { renderDetail, nodeViewHtml, termViewHtml, awakeningViewHtml } from '../components/NodeDetail.js';
 import { matchesFilter, stateToQueryString, queryStringToState, isTypingTarget } from '../lib/filter.js';
 import { visibleNodeIds, upgradeIcons, downgradeIcons, buildIconIndex } from '../lib/hires.js';
-import type { Branch, NodeType, TreeData, TreeNode } from '../lib/types.js';
+import type { Branch, NodeType, PassiveUpgradeCost, TreeData, TreeNode } from '../lib/types.js';
 import { updateNavHeight } from '../lib/nav-height.js';
 
 // tree.json 是建置期由 tools/build-data.ts 產生、結構保證符合 TreeData；
 // 但 TS 對 JSON 匯入的型別推論會把 tuple（如 viewBox、size）寬鬆推成 number[]，
 // 與 TreeData 的字面聯集/tuple 型別對不上，因此這裡用雙重斷言而非 any。
 const data = rawData as unknown as TreeData;
+const tables = rawTables as unknown as PassiveUpgradeCost;
 // 提前建好：原本只有詳情面板那段在用，但下面「手機版初始視角」也要靠它從「網址帶的
 // ?node=」反查該節點所屬分支，純資料處理、不依賴任何 DOM，提前宣告沒有副作用。
 const byId = new Map(data.nodes.map(n => [n.id, n]));
@@ -602,7 +608,7 @@ function select(id: string | null): void {
     if (from && to && sel.chain.has(from) && sel.chain.has(to)) line.classList.add('in-chain');
   }
 
-  renderDetail(node, sel, panel, data.meta.glossary, data.meta.upgradeCostTable);
+  renderDetail(node, sel, panel, data.meta.glossary, data.meta.upgradeCostTable, tables);
   viewStack = [{ view: { kind: 'node', id }, scrollTop: 0 }];
   // ⚠️ 只有「真的換了一顆節點」才重算擺法。`applyFilter()` 每次 input 事件都會呼叫
   // `select(currentSelected)` 重畫高亮（見那裡的註解），跟著重算有兩個問題：
@@ -683,7 +689,7 @@ function sideLeastCovered(node: TreeNode, chain: Set<string>, cardH: number): 'a
  * `.filtered-out`，那是畫面狀態不是資料。
  */
 function selectionFor(id: string) {
-  const sel = computeSelection(id, data);
+  const sel = computeSelection(id, data, tables);
   sel.hiddenByFilter = [...sel.chain].filter(
     chainId => svg.querySelector(`g.node[data-id="${chainId}"]`)?.classList.contains('filtered-out'),
   ).length;
@@ -1430,7 +1436,7 @@ function viewHtml(view: DetailView): string {
   if (!node) return '';
   return view.kind === 'awakening'
     ? awakeningViewHtml(node, data.meta.glossary)
-    : nodeViewHtml(node, selectionFor(view.id), data.meta.glossary, data.meta.upgradeCostTable);
+    : nodeViewHtml(node, selectionFor(view.id), data.meta.glossary, data.meta.upgradeCostTable, tables);
 }
 
 /**

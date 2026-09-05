@@ -69,8 +69,8 @@ export function addBoardIcon(
   nodeId: string,
   opts: { boardIconsDir: string; mapPath: string },
 ): AddBoardIconResult {
-  // 跟 validate 規則 2 同一個編碼規律：首碼＝分支 1-5、次碼＝ 0-4，其後兩碼任意。
-  if (!/^[1-5][0-4]\d\d$/.test(nodeId)) throw new Error(`節點 id 不符編碼規律: ${nodeId}`);
+  // 跟 validate 規則 2 同一個編碼規律：首碼＝分支 1-5、次碼＝ 0-6，其後兩碼任意。
+  if (!/^[1-5][0-6]\d\d$/.test(nodeId)) throw new Error(`節點 id 不符編碼規律: ${nodeId}`);
 
   const result = addIcon(srcPath, opts.boardIconsDir);
 

@@ -10,7 +10,7 @@ import { extractKeywords } from '../src/lib/keywords.js';
 import { checkChangelog } from '../src/lib/changelog.js';
 import { groupOfColor } from '../src/lib/glossary-groups.js';
 import { branchOfId, categoryOfZh, elementOfStroke, typeOfZh } from '../src/lib/taxonomy.js';
-import { buildAdjacency, detectCycle, findRoots, unreachableFrom } from '../src/lib/graph.js';
+import { buildAdjacency, detectCycle, findRoots, prerequisiteChain, unreachableFrom } from '../src/lib/graph.js';
 import { readPngSize } from './lib/png.js';
 import { isGlossaryAlias } from '../src/lib/types.js';
 import { expandTier } from '../src/lib/upgrade-tiers.js';
@@ -397,6 +397,15 @@ export interface ValidateOpts {
   boss: unknown;
   /** `data/boss-icons/` 所在目錄。 */
   bossIconsDir: string;
+  /**
+   * `data/prereq-ranks.json`：「某個祖先要先練到某等級」才解得開的條件（客戶端
+   * `DiceTreeNodeTable` 的 `NeedNode`／`NeedNodeRank`）。沒有這份資料時傳 `null`，規則 26 只警告。
+   *
+   * 型別刻意用 `unknown`（同 `boardIcons`／`passiveUpgradeCost`／`diceStats`）：這份是維護者
+   * 手抄的、沒有自動來源的資料，而 `build-data.ts` 讀它時只有一個 `as` ＝執行期零檢查。
+   * 宣告成已驗過的型別等於在型別層面假設它一定合法，而規則 26 要擋的正是不合法的那些。
+   */
+  prereqRanks: unknown;
 }
 
 export interface ValidateResult {
@@ -488,12 +497,13 @@ export function validate(svgText: string, opts: ValidateOpts): ValidateResult {
   );
   const gameIdSeen = new Map<string, string>();
 
-  // 規則 2: id 唯一與編碼規律（首碼＝分支 1-5，次碼＝ 0-4，其後兩碼任意）
+  // 規則 2: id 唯一與編碼規律（首碼＝分支 1-5，次碼＝ 0-6，其後兩碼任意；1.1.0 起遊戲自己的
+  // 太陽骰子用 1501、它的符文用 1601，次碼 5／6 是上游新開的層，不是打錯）
   const seen = new Set<string>();
   for (const n of nodes) {
     if (seen.has(n.id)) push(`規則 2: 重複的 id ${n.id}`);
     seen.add(n.id);
-    if (!/^[1-5][0-4]\d\d$/.test(n.id)) push(`規則 2: id 不符編碼規律 ${n.id}`);
+    if (!/^[1-5][0-6]\d\d$/.test(n.id)) push(`規則 2: id 不符編碼規律 ${n.id}`);
   }
 
   for (const n of withText) {
@@ -609,8 +619,20 @@ export function validate(svgText: string, opts: ValidateOpts): ValidateResult {
     }
     const firstGold = levels[0]?.gold;
     const firstCore = levels[0]?.core;
+    // ⚠️ 出現在 `passive-upgrade-cost.json` 的 `special` 裡的節點要跳過。`special` 的定義就是
+    // 「套不進通用表的節點」，而這條規則做的正是「拿通用表的第 1 級去對節點的解鎖成本」——
+    // 對一顆官方單獨列表的節點問這件事，答案本來就會不一致，報出來是誤判。`levelTableFor()`
+    // 執行期也是 special 優先，兩邊同一個判準。
+    // （`special` 不限於玩家被動：4303 已經是骰子符文，而太陽強化這種自帶一張逐級表的
+    //  50 級符文正是會落在這裡的下一個例子。）
+    const rule15Special = new Set(
+      isPlainObject((opts.passiveUpgradeCost as { special?: unknown } | null | undefined)?.special)
+        ? Object.keys((opts.passiveUpgradeCost as { special: Record<string, unknown> }).special)
+        : [],
+    );
     for (const n of withText) {
       if (n.typeZh !== zhOfType(table.appliesTo?.type)) continue;
+      if (rule15Special.has(n.id)) continue;
       let unlockGold: number | null = null;
       let unlockCore: number | null = null;
       try {
@@ -1117,6 +1139,12 @@ export function validate(svgText: string, opts: ValidateOpts): ValidateResult {
         else if (!(['gold', 'core'] as const).every(f => Number.isInteger(r[f]) && (r[f] as number) >= 0)) {
           push(`規則 22: special 的 ${id} 的 Lv.${i + 2} 的 gold／core 不是非負整數：${JSON.stringify(r)}`);
         }
+        // solar（太陽核心）是**選填**的：既有的 special 表一列都沒有，缺席由 `upgradeExtraCost()`
+        // 當 0 處理。但寫了就要能算——`undefined` 與 `"2000"` 在 `+=` 之後都是 NaN，而 NaN
+        // 會沿著加總一路傳到「總資源」那一行，畫面上只會看到一個 NaN，看不出是哪一列寫壞的。
+        else if (r['solar'] !== undefined && (!Number.isInteger(r['solar']) || (r['solar'] as number) < 0)) {
+          push(`規則 22: special 的 ${id} 的 Lv.${i + 2} 的 solar 不是非負整數：${JSON.stringify(r['solar'])}`);
+        }
       });
       if (!contiguous) {
         push(`規則 22: special 的 ${id} 的 levels 必須是 Lv.2 到 Lv.${node.maxLevel} 連續，實際有 ${levels.length} 列`);
@@ -1326,9 +1354,16 @@ export function validate(svgText: string, opts: ValidateOpts): ValidateResult {
 
   // 規則 25：Boss（`data/boss.json` ＋ `data/boss-icons/`）。
   //
-  // 跟規則 24 是同一種資料檔，差別只有欄位與 id 形狀，所以檢查全部走
-  // checkIconedRecordList()——這裡刻意不再多寫任何一條，複製第二份出去就一定漂移
+  // 跟規則 24 是同一種資料檔，差別只有欄位與 id 形狀，所以通用檢查全部走
+  // checkIconedRecordList()——那一支的內容一條都不准複製第二份出來，複製就一定漂移
   // （規則 7 與 21 曾經是兩份，漂移的結果寫在 checkHashNamedIconDir() 的說明裡）。
+  //
+  // ⚠️ **這裡自己寫的只有 `difficulty` 的枚舉那一條**，界線跟規則 24 一模一樣：通用函式管
+  // 「欄位在不在、型別對不對、圖對不對得上」，**這一層管的是這份資料自己的語意**——規則 24
+  // 的 (e) 階段／模式、(i) 子選項、(j) 模式⟺合作效果都在這一層，`difficulty` 是同一類東西。
+  // 少了它，`difficulty: "普通"` 會通過每一條通用檢查（它是非空字串、不是未知欄位），然後
+  // 那一隻 Boss 在畫面上**兩組都不屬於**、安靜地整筆消失（2026-09-06 加難度分組時的新語意）。
+  // 除了這一條之外仍然一條都不要加。
   if (opts.boss === null) {
     warn('規則 25: 沒有提供 data/boss.json，Boss 未檢查');
   } else {
@@ -1337,13 +1372,100 @@ export function validate(svgText: string, opts: ValidateOpts): ValidateResult {
       file: 'data/boss.json',
       iconsDir: opts.bossIconsDir,
       idPattern: /^[1-9]\d*$/,
-      knownKeys: ['id', 'name', 'effect', 'gameId', 'icon'],
-      requiredText: ['id', 'name', 'effect', 'gameId'],
+      knownKeys: ['id', 'name', 'effect', 'gameId', 'icon', 'difficulty'],
+      requiredText: ['id', 'name', 'effect', 'gameId', 'difficulty'],
       markupKeys: ['effect'],
       whitelist,
     });
     scan.errors.forEach(push);
     scan.warnings.forEach(warn);
+
+    // 寫法比照規則 24(e) 的 STAGES：訊息指名 id，這份檔案沒有鍵，只說「某一筆的難度不合法」
+    // 等於要人自己在 21 筆裡數。
+    const DIFFICULTIES = new Set(['一般', '困難']);
+    for (const rec of scan.records) {
+      const difficulty = rec.difficulty as string;
+      if (!DIFFICULTIES.has(difficulty)) {
+        push(`規則 25(e): data/boss.json 的 ${rec.id as string} 的 difficulty ${JSON.stringify(difficulty)} 不是「一般」或「困難」`);
+      }
+    }
+  }
+
+  // 規則 26：前置節點的等級條件（`data/prereq-ranks.json`）。
+  //
+  // 骰子樹的邊只表達得出「那顆要先解開」，表達不出「而且要練到 Lv.50」——太陽骰子（1501）
+  // 的解鎖條件除了 1301／1401 兩條入邊之外，還要求 1201 子彈傷害%增加練滿 50 級（客戶端
+  // `DiceTreeNodeTable` 的 `NeedNode`／`NeedNodeRank`）。正本 SVG 與 nodes.json 都沒有欄位
+  // 放得下它，所以它跟 unlock-exceptions.json 一樣是一份**沒有自動來源**的資料，而
+  // `build-data` 讀它時只有一個 `as` ＝執行期零檢查。五種寫壞法在這條規則之前全部 CI 全綠：
+  //
+  // 1. **外層 id 打錯** → 那個條件掛在一顆不存在的節點上，1501 安靜地變回「只要兩條入邊」，
+  //    `/tree` 的前置鏈少算 46 萬金幣、`/sim` 讓玩家直接點開它。
+  // 2. **內層 id 打錯** → 條件永遠不成立，1501 從此點不開，畫面上跟「前置還沒解完」一模一樣。
+  // 3. **內層 id 不是外層節點的祖先** → 玩家被要求去練一顆跟這條鏈無關的節點，
+  //    而「一鍵點亮」會把那段升級費用拉進計畫裡（成本憑空多一段）。
+  // 4. **rank 寫 1（或不是整數）** → rank 1 就是「解鎖」，骰子樹的邊已經表達過了；
+  //    留著只是多一份會漂移的複本，而且面板會印出「需達 Lv.1」這種看不懂的話。
+  // 5. **rank 超過該前置節點的 maxLevel** → 條件永遠達不到，同第 2 種。
+  //
+  // ⚠️ 祖先關係用既有的 `prerequisiteChain()` 判，不另外寫第二份圖遍歷：兩份實作對
+  // 「多重前置」「環」的處理一旦漂開，validate 與站台就會對同一份資料給出不同的前置鏈。
+  const rawPrereqRanks = opts.prereqRanks;
+  if (rawPrereqRanks === null) {
+    warn('規則 26: 沒有提供 data/prereq-ranks.json，前置等級條件未檢查');
+  } else if (!isPlainObject(rawPrereqRanks)) {
+    push('規則 26: data/prereq-ranks.json 的最外層必須是物件（含 note／source／ranks 三個欄位）');
+  } else {
+    // 白名單而不是逐個猜錯字（同規則 18 的未知欄位那條）：`ranks` 打成 `rank` 的話整份條件
+    // 讀不到，而檔案本身仍然是合法 JSON、每一筆內容也都還在。
+    const TOP_KEYS = ['note', 'source', 'ranks'];
+    for (const key of Object.keys(rawPrereqRanks)) {
+      if (!TOP_KEYS.includes(key)) {
+        push(`規則 26: data/prereq-ranks.json 有未知的最外層欄位 ${JSON.stringify(key)}，合法欄位只有 ${TOP_KEYS.join('／')}`);
+      }
+    }
+    const rawRanks = rawPrereqRanks['ranks'];
+    if (!isPlainObject(rawRanks)) {
+      push('規則 26: data/prereq-ranks.json 的 ranks 必須是以節點 id 為鍵的物件');
+    } else {
+      const byIdRank = new Map(withText.map(n => [n.id, n]));
+      for (const [id, raw] of Object.entries(rawRanks)) {
+        const node = byIdRank.get(id);
+        if (!node) {
+          // 規則 19／規則 1 的地盤不重複報（同規則 22 special 與規則 21(h) 的判準）。
+          if (textIds.has(id) !== geomIds.has(id) || structurallyBad.has(id)) continue;
+          push(`規則 26: ranks 的 ${id} 不是（或已不是）節點 id，這筆條件是孤兒`);
+          continue;
+        }
+        if (!isPlainObject(raw)) {
+          push(`規則 26: ranks 的 ${id} 必須是以前置節點 id 為鍵的物件`);
+          continue;
+        }
+        const ancestors = prerequisiteChain(id, parents);
+        for (const [prereqId, rank] of Object.entries(raw)) {
+          // 先擋「列自己」：祖先集合含節點本身，不先問這一句的話它會安靜地通過祖先檢查。
+          if (prereqId === id) {
+            push(`規則 26: ranks 的 ${id} 把自己列成前置`);
+            continue;
+          }
+          const prereq = byIdRank.get(prereqId);
+          if (!prereq) {
+            if (textIds.has(prereqId) !== geomIds.has(prereqId) || structurallyBad.has(prereqId)) continue;
+            push(`規則 26: ranks 的 ${id} 指向不存在的前置節點 ${JSON.stringify(prereqId)}`);
+            continue;
+          }
+          if (!ancestors.has(prereqId)) {
+            push(`規則 26: ranks 的 ${id} 要求的 ${prereqId} 不是它的祖先，這個條件永遠不會出現在 ${id} 的前置鏈上`);
+            continue;
+          }
+          if (!Number.isInteger(rank) || (rank as number) < 2) {
+            push(`規則 26: ranks 的 ${id} 對 ${prereqId} 的等級 ${JSON.stringify(rank)} 不合法，必須是 ≥2 的整數（rank 1 就是「解鎖」，骰子樹的邊已經表達過了）`);
+          } else if ((rank as number) > prereq.maxLevel) {
+            push(`規則 26: ranks 的 ${id} 要求 ${prereqId} 達到 Lv.${rank}，但 ${prereqId} 的等級上限是 ${prereq.maxLevel}`);
+          }
+        }
+      }
+    }
   }
 
   return { errors, warnings };
@@ -1400,6 +1522,7 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
     tacticIconsDir: 'data/tactic-icons',
     boss: readDataFile('data/boss.json', true),
     bossIconsDir: 'data/boss-icons',
+    prereqRanks: readDataFile('data/prereq-ranks.json', true),
   };
 
   // 有資料檔讀不到時就停在這裡：接下來每一條規則都會拿著一份空殼在猜，噴出來的幾百條錯誤

@@ -25,10 +25,11 @@ const tactics: unknown = JSON.parse(readFileSync('data/tactics.json', 'utf8'));
 const tacticIconsDir = 'data/tactic-icons';
 const boss: unknown = JSON.parse(readFileSync('data/boss.json', 'utf8'));
 const bossIconsDir = 'data/boss-icons';
+const prereqRanks: unknown = JSON.parse(readFileSync('data/prereq-ranks.json', 'utf8'));
 const opts = {
   keywords, nodeText, upgradeCostTable, maxLevelOfficial, unlockExceptions, changelog, iconsDir, dataDir,
   boardIcons, boardIconsDir, passiveUpgradeCost, diceStats,
-  tactics, tacticIconsDir, boss, bossIconsDir,
+  tactics, tacticIconsDir, boss, bossIconsDir, prereqRanks,
 };
 
 /** 換掉升級費用表、其餘照舊。深拷貝理由同 patch()。 */
@@ -36,7 +37,8 @@ const withTiers = (over: unknown) => ({ ...opts, passiveUpgradeCost: over });
 /** 真實資料的深拷貝，給「只改一個地方」的破壞測試用。 */
 const tiers = () => structuredClone(passiveUpgradeCost) as {
   tiers: Record<string, { maxLevel: number; unlockGold: number; bands: { from: number; to: number; gold: number; core: number }[] }>;
-  special: Record<string, { maxLevel: number; levels: { level: number; gold: number; core: number }[] }>;
+  // solar 是選填的（見 LevelCost）：既有的 special 表一列都沒有，寫了才驗。
+  special: Record<string, { maxLevel: number; levels: { level: number; gold: number; core: number; solar?: number }[] }>;
 };
 
 /**
@@ -356,6 +358,27 @@ describe('validate', () => {
     expect(validate(svg, opts).errors.filter(e => /規則 15/.test(e))).toEqual([]);
   });
 
+  // 規則 15 拿的是**通用表**的第 1 級去對節點的解鎖成本，而 `special` 的定義就是
+  // 「套不進通用表的節點」——對一顆官方單獨列表的 50 級符文問這件事，答案本來就會不一致。
+  // v1.1.0 的太陽強化正是這種節點（50 級、解鎖 金幣 50,000／太陽核心 100、費用逐級不同），
+  // 不讓開的話它一進正本就會讓規則 15 誤報。這裡拿 1201 當替身模擬那個形狀。
+  it('規則 15：出現在 special 裡的節點跳過通用表比對', () => {
+    const withCost = patch({ '1201': { ...nodeText['1201'], cost: '金幣 50,000／太陽核心 100' } });
+    const rule15of = (o: unknown) =>
+      validate(svg, o as typeof opts).errors.filter(e => /規則 15/.test(e) && e.includes('1201'));
+
+    // 反例：沒放進 special 時，規則 15 會拿通用表 1 級的 2,000 去對它的 50,000 而報錯
+    expect(rule15of(withCost).length).toBeGreaterThan(0);
+
+    // 放進 special 之後就讓開（`levelTableFor()` 執行期也是 special 優先，兩邊同一個判準）
+    const t = tiers();
+    t.special['1201'] = {
+      maxLevel: 50,
+      levels: Array.from({ length: 49 }, (_, i) => ({ level: i + 2, gold: 100000, core: 0, solar: 200 })),
+    };
+    expect(rule15of({ ...withCost, passiveUpgradeCost: t })).toEqual([]);
+  });
+
   it('規則 17：描述被解析成別的意思時，官方滿級值是唯一會說話的東西', () => {
     // 前提斷言：這四種破壞法全都是合法的 SVG／成本／關鍵字，規則 1–16 一條都不會報。
     // 少了這行，下面的主斷言可能只是在驗「別條規則擋下來了」，規則 17 其實從沒執行過。
@@ -462,6 +485,58 @@ describe('validate', () => {
 
     expect(withExc(null)).toEqual([]);
     expect(validate(svg, opts).errors.filter(e => /規則 18/.test(e))).toEqual([]);
+  });
+
+  it('規則 26：前置等級條件的形狀、id、祖先關係與 rank 範圍寫壞都會被擋', () => {
+    const withRanks = (v: unknown) =>
+      validate(svg, { ...opts, prereqRanks: v }).errors.filter(x => /規則 26/.test(x));
+    /** 真實資料的深拷貝，給「只改一個地方」的破壞測試用（同 tiers()）。 */
+    const ranks = () => structuredClone(prereqRanks) as { ranks: Record<string, Record<string, number>> };
+
+    // (a) 最外層不是物件 → build-data 讀它時只有一個 `as`，陣列會讓 `.ranks` 變 undefined，
+    //     所有條件安靜消失。
+    expect(withRanks([]).some(e => /最外層必須是物件/.test(e))).toBe(true);
+
+    // (b) ranks 不是物件 → 同上，而且錯得更不明顯（檔案看起來還是那個形狀）。
+    expect(withRanks({ note: 'x', source: 'y', ranks: '1501' })
+      .some(e => /ranks 必須是以節點 id 為鍵的物件/.test(e))).toBe(true);
+
+    // (c) 最外層欄位名打錯 → 那份條件整個讀不到，而檔案本身合法（同規則 18 的未知欄位那條）。
+    expect(withRanks({ ...ranks(), rank: {} })
+      .some(e => /未知的最外層欄位 "rank"/.test(e))).toBe(true);
+
+    // (d) 外層 id 打錯 → 那個條件從此掛在一顆不存在的節點上，1501 安靜地變回「只要兩條入邊」。
+    expect(withRanks({ ...ranks(), ranks: { '15O1': { '1201': 50 } } })
+      .some(e => /ranks 的 15O1 不是（或已不是）節點 id/.test(e))).toBe(true);
+
+    // (e) 內層 id 打錯 → 那個條件永遠不成立，/sim 裡 1501 從此點不開，
+    //     畫面上跟「前置還沒解完」長得一模一樣。
+    expect(withRanks({ ...ranks(), ranks: { '1501': { '12O1': 50 } } })
+      .some(e => /指向不存在的前置節點 "12O1"/.test(e))).toBe(true);
+
+    // (f) 內層 id 不是外層節點的祖先 → 玩家被要求去練一顆跟這條鏈無關的節點，
+    //     而「一鍵點亮」會把它拉進計畫裡，成本憑空多一段。
+    expect(withRanks({ ...ranks(), ranks: { '1501': { '2001': 5 } } })
+      .some(e => /要求的 2001 不是它的祖先/.test(e))).toBe(true);
+
+    // (g) 列自己 → 那是一個永遠自我指涉的條件，祖先檢查看不到它（祖先集合含自己）。
+    expect(withRanks({ ...ranks(), ranks: { '1501': { '1501': 2 } } })
+      .some(e => /把自己列成前置/.test(e))).toBe(true);
+
+    // (h) rank 是 1 或不是整數 → rank 1 就是「解鎖」，骰子樹的邊已經表達過了。
+    expect(withRanks({ ...ranks(), ranks: { '1501': { '1201': 1 } } })
+      .some(e => /等級 1 不合法/.test(e))).toBe(true);
+    expect(withRanks({ ...ranks(), ranks: { '1501': { '1201': '50' } } })
+      .some(e => /等級 "50" 不合法/.test(e))).toBe(true);
+
+    // (i) rank 超過該前置節點的等級上限 → 條件永遠達不到，1501 從此點不開。
+    expect(withRanks({ ...ranks(), ranks: { '1501': { '1201': 51 } } })
+      .some(e => /達到 Lv\.51，但 1201 的等級上限是 50/.test(e))).toBe(true);
+
+    // 沒有這份資料時只警告（同 unlock-exceptions 那一族「傳 null ＝沒有這份資料」的路）。
+    expect(withRanks(null)).toEqual([]);
+    expect(validate(svg, { ...opts, prereqRanks: null }).warnings.some(w => /規則 26/.test(w))).toBe(true);
+    expect(validate(svg, opts).errors.filter(e => /規則 26/.test(e))).toEqual([]);
   });
 
   it('規則 16：管理 ID 重複／格式錯／漏填，與細分類放錯位置，都會被擋', () => {
@@ -1000,6 +1075,21 @@ describe('validate：邊與座標的守門（P2）', () => {
       expect(errors.filter(e => e.includes(passive[0]))).toEqual([]);
     });
 
+    // solar 是選填的：既有的 special 表一列都沒有，缺席由 upgradeExtraCost() 當 0 處理。
+    // 但寫了就要能算——`undefined` 與 `"2000"` 在 `+=` 之後都是 NaN，而 NaN 會沿著加總一路
+    // 傳到「總資源」那一行，畫面上只看得到一個 NaN，看不出是哪一列寫壞的。
+    it('special 的 levels 可以帶 solar，但寫壞了要擋', () => {
+      const good = tiers();
+      good.special['4303']!.levels[0]!.solar = 2000;
+      expect(validate(svg, withTiers(good)).errors.filter(e => /規則 22/.test(e))).toEqual([]);
+
+      for (const bad of [-1, 1.5, '2000', null]) {
+        const t = tiers();
+        (t.special['4303']!.levels[0] as Record<string, unknown>)['solar'] = bad;
+        expect(validate(svg, withTiers(t)).errors.some(e => /規則 22.*4303.*solar/.test(e))).toBe(true);
+      }
+    });
+
     // 兩張表同時對得到不是錯（`levelTableFor()` 明確讓 special 優先），但很可能其中一張
     // 是舊的——留一條警告，不擋 PR。
     it('special 的節點同時也對得到 tier 時只警告不擋', () => {
@@ -1407,5 +1497,16 @@ describe('規則 25：Boss', () => {
     delete data[0]!.effect;
     const result = validate(svg, withBoss(data));
     expect(result.errors.some(e => /規則 25\(e\).*effect 必須是非空字串/.test(e))).toBe(true);
+  });
+
+  it('difficulty 寫成兩個合法值以外的字串會被擋', () => {
+    // ⚠️ 這是規則 25 唯一一條「自己寫的」語意檢查（其餘全部走 checkIconedRecordList）。
+    // 它擋的失敗是通用檢查完全看不見的那一種：`普通` 是非空字串、也不是未知欄位，
+    // 每一條通用檢查都會放行，而 /boss 分成「一般」「困難」兩組渲染——這一隻兩組都不屬於，
+    // 畫面上就是**整筆安靜消失**，跟「這隻本來就沒收進來」一模一樣。
+    const data = rows();
+    data[0]!.difficulty = '普通';
+    const result = validate(svg, withBoss(data));
+    expect(result.errors.some(e => /規則 25\(e\).*的 1 的 difficulty "普通" 不是「一般」或「困難」/.test(e))).toBe(true);
   });
 });

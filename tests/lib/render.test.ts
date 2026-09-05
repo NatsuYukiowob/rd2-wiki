@@ -10,9 +10,9 @@ describe('renderTree', () => {
   const { document } = parseHTML('<html><body></body></html>');
   const svg = renderTree(data, document as unknown as Document);
 
-  it('產生 239 個節點與 248 條邊', () => {
-    expect(svg.querySelectorAll('g.node')).toHaveLength(239);
-    expect(svg.querySelectorAll('line.edge')).toHaveLength(248);
+  it('產生 241 個節點與 251 條邊', () => {
+    expect(svg.querySelectorAll('g.node')).toHaveLength(241);
+    expect(svg.querySelectorAll('line.edge')).toHaveLength(251);
   });
   // 指向「可直接領」節點的那條邊畫成虛線（CSS 在 src/styles/canvas.css）。標記的是**邊**不是節點：
   // 玩家要看懂的是「這條前置可以不走」，而節點外框虛線會跟 in-chain 金色光暈與焦點框疊在一起。
@@ -21,7 +21,7 @@ describe('renderTree', () => {
       .map(e => `${e.getAttribute('data-from')}→${e.getAttribute('data-to')}`).sort();
     expect(dashed).toEqual(['5007→5006', '5009→5008']);
     // 反向斷言：其餘 246 條不可以被順手標到，否則整棵樹會變成虛線圖
-    expect(svg.querySelectorAll('line.edge')).toHaveLength(248);
+    expect(svg.querySelectorAll('line.edge')).toHaveLength(251);
     expect(svg.querySelectorAll('line.edge-bypassable')).toHaveLength(2);
   });
   it('中央樞紐畫成獨立的 g.tree-center：放射線接到每個 links 節點、圖用 meta.center 的網址與尺寸', () => {
@@ -136,7 +136,7 @@ describe('renderTree', () => {
     expect(e.getAttribute('data-to')).toMatch(/^\d{4}$/);
   });
   it('所有節點都在單一可平移的根 g 之下', () => {
-    expect(svg.querySelectorAll('g#viewport > g.node')).toHaveLength(239);
+    expect(svg.querySelectorAll('g#viewport > g.node')).toHaveLength(241);
   });
 
   // 以下幾條是 task-18 bug 修正後補的：圖示裁切經過兩輪嘗試（巢狀 svg + viewBox → <g

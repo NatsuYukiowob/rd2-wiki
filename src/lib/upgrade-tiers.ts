@@ -27,7 +27,11 @@ export function expandTier(tier: UpgradeTier): LevelCost[] {
   for (const b of [...tier.bands].sort((x, y) => x.from - y.from)) {
     if (b.from !== expect) throw new Error(`升級區間必須連續：Lv.${expect} 之後接到的是 Lv.${b.from}`);
     if (b.to < b.from) throw new Error(`升級區間的 to 不可小於 from：${b.from}~${b.to}`);
-    for (let lv = b.from; lv <= b.to; lv++) rows.push({ level: lv, gold: b.gold, core: lv === b.from ? b.core : 0 });
+    // solar 固定 0：tier 制只服務玩家被動與支援，太陽核心是骰子分支的貨幣（見 UpgradeBand）。
+    // 明寫出來而不是省略，是為了讓「這張表確實沒有太陽核心」在產物上看得見。
+    for (let lv = b.from; lv <= b.to; lv++) {
+      rows.push({ level: lv, gold: b.gold, core: lv === b.from ? b.core : 0, solar: 0 });
+    }
     expect = b.to + 1;
   }
   if (expect !== tier.maxLevel + 1) {
@@ -90,12 +94,14 @@ export function levelTableFor(
  */
 export function upgradeExtraCost(levels: LevelCost[], toLevel: number): Cost | null {
   if (!Number.isInteger(toLevel) || toLevel < 1) return null;
-  const cost: Cost = { core: 0, gold: 0 };
+  const cost: Cost = { core: 0, gold: 0, solar: 0 };
   for (let lv = 2; lv <= toLevel; lv++) {
     const row = levels.find(r => r.level === lv);
     if (!row) return null;
     cost.core += row.core;
     cost.gold += row.gold;
+    // 缺席當 0：兩份費用表 JSON 的既有列都沒有 solar 欄位（見 LevelCost）。
+    cost.solar += row.solar ?? 0;
   }
   return cost;
 }

@@ -683,7 +683,7 @@ test('D17c. data-enter 是在全部卡片的進場動畫跑完之後才被拿掉
   expect(held.length, '一格都沒取樣到 data-enter 還在的狀態，這條斷言等於沒守')
     .toBeGreaterThan(3);
   const last = held[held.length - 1]!;
-  expect(last.n, `取樣到的 rise 動畫只有 ${last.n} 個，不是 41 張卡片`).toBe(41);
+  expect(last.n, `取樣到的 rise 動畫只有 ${last.n} 個，不是 42 張卡片`).toBe(42);
   expect(last.unfinished,
     `data-enter 在 ${last.t}ms 被拿掉，但那一刻還有 ${last.unfinished} 張卡片的進場動畫沒跑完，`
     + '它們會直接跳到終點。八成是 Base.astro 沒用 cssMs() 讀長度（壓縮後的 CSS 是 .44s 不是 440ms）')
