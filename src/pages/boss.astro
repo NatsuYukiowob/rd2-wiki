@@ -1,5 +1,5 @@
 ---
-// Boss 一覽。官方資料表的「Boss」分頁，10 條全開。
+// Boss 一覽。客戶端 `MinionTable` 的兩張表：一般模式與合作困難模式。
 //
 // 跟 /tactic 是同一種東西（不是骰子樹的節點、自己一份資料檔 ＋ 一條平行的圖示資產路徑，
 // 規則 25 守），版面也共用 battle.css。分成兩頁而不是併成一頁：兩邊的欄位不一樣
@@ -16,7 +16,7 @@ import treeData from '../generated/tree.json';
 import { buildGlossary, displayGlossary } from '../lib/glossary-groups';
 import { renderStaticText } from '../lib/static-markup';
 import { extractKeywords } from '../lib/keywords';
-import type { Boss, GlossaryRecord, TreeData } from '../lib/types';
+import type { Boss, BossDifficulty, GlossaryRecord, TreeData } from '../lib/types';
 
 const bosses = bossRaw as Boss[];
 const keywords = keywordsRaw as Record<string, GlossaryRecord>;
@@ -34,6 +34,18 @@ const whitelist = Object.keys(keywords);
  * 換來的是零收益與一份會漂移的複本（規則 7 與 21 的教訓）。
  * 這一頁只做「把解釋插在同一段話下面」，沒有 JS 時 `.kw-link` 就是一條指向詞條頁的正常連結。
  */
+/**
+ * 依難度分成兩組。⚠️ **順序寫死在這個常數裡、數量一律從資料算**——「一般 10 隻、困難 11 隻」
+ * 是會隨改版漂移的數字，寫進 lede 就等著它哪天說謊而 CI 完全擋不住（README banner 犯過一次）。
+ * 分組本身用 `difficulty` 欄而不是 `gameId.endsWith('_hard')`：後者是 join key 不是難度來源，
+ * 上游哪天改命名就整批分錯組，而畫面上「這一組多幾隻」看起來完全正常。
+ */
+const GROUPS: { difficulty: BossDifficulty; note: string }[] = [
+  { difficulty: '一般', note: '對戰與一般合作模式' },
+  { difficulty: '困難', note: '合作困難模式' },
+];
+const grouped = GROUPS.map(g => ({ ...g, items: bosses.filter(b => b.difficulty === g.difficulty) }));
+
 const termsOf = (text: string) =>
   extractKeywords(text, whitelist).map(term => ({
     term,
@@ -48,37 +60,51 @@ const termsOf = (text: string) =>
   <section class="page battle-page">
     <h1>Boss</h1>
     <p class="lede">
-      對戰與合作模式中會出現的 {bosses.length} 種 Boss，以及各自的技能效果。
+      {/* ⚠️ 兩個數字都從資料算，不要寫死——收一批新 Boss 時忘了改這一句，畫面上跟「這次沒更新」
+          長得一模一樣，而 CI 一個字都不會說。 */}
+      對戰與合作模式中會出現的 Boss，以及各自的技能效果。
+      一般 {grouped[0]!.items.length} 隻、困難 {grouped[1]!.items.length} 隻。
     </p>
 
-    <ul class="battle-list">
-      {bosses.map(b => (
-        <li class="battle-item" id={`b${b.id}`}>
-          <img
-            class="battle-icon"
-            src={`/assets/boss-icons/${b.icon}.webp`}
-            alt=""
-            loading="lazy"
-            decoding="async"
-          />
-          <div>
-            <div class="battle-head">
-              <h2 class="battle-name">{b.name}</h2>
-            </div>
-            <p class="battle-text" set:html={renderStaticText(b.effect, whitelist, glossary, index)} />
-            {termsOf(b.effect).map(t => (
-              /* 就地展開的解釋。⚠️ hidden 而不是 display:none 由腳本切換——這段是伺服器輸出的
-                 真文字，沒有 JS 時它就跟著卡片一起顯示（多一行解釋不會壞事），有 JS 時才收起來
-                 等使用者點。收起的動作寫在下面的 script 裡，不寫在 HTML 上。 */
-              <p class="battle-term" data-term={t.term}>
-                <span style={`color:${t.color}`}>#{t.term}</span>
-                　{t.desc}
-              </p>
-            ))}
-          </div>
-        </li>
-      ))}
-    </ul>
+    {grouped.map(g => (
+      <>
+        {/* 組標題。⚠️ 多了這一層之後 Boss 名稱從 h2 降成 h3——標題階層是無障礙的目錄，
+            h1 底下直接跳到兩個平行的 h2 群組、每群裡面才是條目，少降一級就會變成
+            「組標題與條目同級」，讀屏上整頁是一長串沒有分組的標題。 */}
+        <h2 class="battle-group-head">
+          {g.difficulty}
+          <span class="battle-group-note">{g.note}</span>
+        </h2>
+        <ul class="battle-list">
+          {g.items.map(b => (
+            <li class="battle-item" id={`b${b.id}`}>
+              <img
+                class="battle-icon"
+                src={`/assets/boss-icons/${b.icon}.webp`}
+                alt=""
+                loading="lazy"
+                decoding="async"
+              />
+              <div>
+                <div class="battle-head">
+                  <h3 class="battle-name">{b.name}</h3>
+                </div>
+                <p class="battle-text" set:html={renderStaticText(b.effect, whitelist, glossary, index)} />
+                {termsOf(b.effect).map(t => (
+                  /* 就地展開的解釋。⚠️ hidden 而不是 display:none 由腳本切換——這段是伺服器輸出的
+                     真文字，沒有 JS 時它就跟著卡片一起顯示（多一行解釋不會壞事），有 JS 時才收起來
+                     等使用者點。收起的動作寫在下面的 script 裡，不寫在 HTML 上。 */
+                  <p class="battle-term" data-term={t.term}>
+                    <span style={`color:${t.color}`}>#{t.term}</span>
+                    　{t.desc}
+                  </p>
+                ))}
+              </div>
+            </li>
+          ))}
+        </ul>
+      </>
+    ))}
   </section>
 </Base>
 

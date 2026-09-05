@@ -40,6 +40,14 @@ export interface SimContext {
    * 進度在分組之間跳來跳去（解一顆時歸在該系、解第二顆時突然變成全域）。
    */
   globalNames: Set<string>;
+  /**
+   * 「等級條件」的反向索引：祖先 id → 有哪些節點要求它練到幾級（`TreeNode.prereqRanks` 的轉置）。
+   *
+   * 正向那份（掛在節點身上）回答的是「我要解開這顆，得先練誰」；`minSelectableLevel()` 問的是
+   * 反過來的「我這顆已經被誰卡著、還能不能降級」。每次降級都掃一遍 241 顆節點也算得出來，
+   * 但那是一個 O(節點數) 的動作掛在滑桿的每一次 input 上。
+   */
+  rankHolders: Map<string, { id: string; rank: number }[]>;
   tables: PassiveUpgradeCost;
   runeTable: UpgradeCostTable | null;
 }
@@ -82,7 +90,17 @@ export function buildSimContext(data: TreeData, tables: PassiveUpgradeCost): Sim
   const globalNames = new Set(
     [...branchesByName].filter(([, bs]) => bs.size > 1).map(([name]) => name),
   );
-  return { byId, parents, children, free, optional, globalNames, tables, runeTable: data.meta.upgradeCostTable };
+  const rankHolders = new Map<string, { id: string; rank: number }[]>();
+  for (const x of data.nodes) {
+    for (const [prereqId, rank] of Object.entries(x.prereqRanks ?? {})) {
+      if (!rankHolders.has(prereqId)) rankHolders.set(prereqId, []);
+      rankHolders.get(prereqId)!.push({ id: x.id, rank });
+    }
+  }
+  return {
+    byId, parents, children, free, optional, globalNames, rankHolders,
+    tables, runeTable: data.meta.upgradeCostTable,
+  };
 }
 
 export function initialSimState(ctx: SimContext): SimState {
@@ -102,7 +120,10 @@ export function isAvailable(id: string, state: SimState, ctx: SimContext): boole
   if (ctx.optional.has(id)) return false;
   const owned = ownedIds(state, ctx);
   if (owned.has(id)) return false;
-  return (ctx.parents.get(id) ?? []).every(p => owned.has(p));
+  if (!(ctx.parents.get(id) ?? []).every(p => owned.has(p))) return false;
+  // 「前置都在手上」還不夠：太陽骰子另外要求 1201 練滿 Lv.50（TreeNode.prereqRanks）。
+  // 少了這一句，畫面會把一顆遊戲裡點不開的節點標成「可取得」，玩家點下去才發現扣不了款。
+  return missingPrereqRanks(id, state, ctx).length === 0;
 }
 
 export function missingParents(id: string, state: SimState, ctx: SimContext): string[] {
@@ -110,9 +131,58 @@ export function missingParents(id: string, state: SimState, ctx: SimContext): st
   return (ctx.parents.get(id) ?? []).filter(p => !owned.has(p));
 }
 
+/** 一條還沒滿足的「祖先要先練到某等級」條件。 */
+export interface RankShortfall {
+  /** 要被練起來的那顆祖先。 */
+  id: string;
+  /** 它的名稱——面板印的是名字，玩家看不懂 `1201`。 */
+  name: string;
+  /** 要達到的等級。 */
+  rank: number;
+  /** 它現在的等級（還沒取得時是 1）。 */
+  level: number;
+  /** 它取得了沒有。⚠️ 沒取得跟「取得了但等級不夠」在面板上是兩句不同的話。 */
+  owned: boolean;
+}
+
+/**
+ * 這顆節點還差哪些「祖先的等級」條件？全部滿足時回空陣列。
+ *
+ * ⚠️ 面板不可以只說「還缺前置」：太陽骰子的三顆前置全在手上、卻仍然點不開，那句話會讓玩家
+ * 對著一棵已經解完的前置鏈找不到問題出在哪。所以這裡連「差多少」都帶出去
+ *（「子彈傷害%增加需達 Lv.50（目前 Lv.12）」）。
+ */
+export function missingPrereqRanks(id: string, state: SimState, ctx: SimContext): RankShortfall[] {
+  const owned = ownedIds(state, ctx);
+  const out: RankShortfall[] = [];
+  for (const [prereqId, rank] of Object.entries(ctx.byId.get(id)?.prereqRanks ?? {})) {
+    const has = owned.has(prereqId);
+    const level = has ? (state.levels.get(prereqId) ?? 1) : 1;
+    if (has && level >= rank) continue;
+    out.push({ id: prereqId, name: ctx.byId.get(prereqId)?.name ?? prereqId, rank, level, owned: has });
+  }
+  return out.sort((a, b) => a.id.localeCompare(b.id));
+}
+
 /** 這顆節點的等級能調到多少？查不到費用表就是不能升級。 */
 export function maxSelectableLevel(node: TreeNode, ctx: SimContext): number {
   return levelTableFor(node, ctx.tables, ctx.runeTable) ? node.maxLevel : 1;
+}
+
+/**
+ * 這顆節點的等級**最低**能調到多少？沒有人卡著它時是 1。
+ *
+ * 遊戲裡沒有「把 1201 降回 49 級但保留太陽骰子」這種狀態——等級條件是解鎖時檢查、也持續成立
+ * 的。模擬器要是讓玩家降下去，那份規劃的總資源會少算一段，而它對應的是一個遊戲裡不存在的
+ * 局面。所以下限＝所有**已取得**的後續節點對它的要求裡最大的那一個。
+ */
+export function minSelectableLevel(node: TreeNode, state: SimState, ctx: SimContext): number {
+  const owned = ownedIds(state, ctx);
+  let floor = 1;
+  for (const holder of ctx.rankHolders.get(node.id) ?? []) {
+    if (owned.has(holder.id) && holder.rank > floor) floor = holder.rank;
+  }
+  return floor;
 }
 
 function withLevel(levels: ReadonlyMap<string, number>, node: TreeNode, ctx: SimContext): Map<string, number> {
@@ -132,15 +202,34 @@ export function unlockNode(state: SimState, ctx: SimContext, id: string): SimSta
   };
 }
 
-/** 一次解鎖一串節點（呼叫端負責先用 pathTo 取得拓樸序）。 */
-export function unlockMany(state: SimState, ctx: SimContext, ids: readonly string[]): SimState {
+/**
+ * 一次套用一份「一鍵點亮」計畫（`pathTo()` 的回傳值）。
+ *
+ * ⚠️ **參數刻意是整份計畫而不是一個 id 陣列**：計畫裡除了要解的節點，還有「哪幾顆要順便練到
+ * 幾級」（太陽骰子要求 1201 練滿 Lv.50）。收 `string[]` 的話，呼叫端漏傳那一段就會產生一個
+ * 「1501 已取得、1201 卻停在 Lv.1」的狀態——遊戲裡不存在，而畫面上看起來一切正常。
+ */
+export function unlockMany(
+  state: SimState,
+  ctx: SimContext,
+  plan: { need: readonly string[]; levels?: readonly { id: string; level: number }[] },
+): SimState {
   const unlocked = new Set(state.unlocked);
   const levels = new Map(state.levels);
-  for (const id of ids) {
+  for (const id of plan.need) {
     const node = ctx.byId.get(id);
     if (!node || ctx.free.has(id) || ctx.optional.has(id)) continue;
     unlocked.add(id);
     if (maxSelectableLevel(node, ctx) > 1) levels.set(id, 1);
+  }
+  // 練等排在解鎖之後：上面那一行會把新解開的節點的等級設成 1，順序反了就被蓋掉。
+  for (const { id, level } of plan.levels ?? []) {
+    const node = ctx.byId.get(id);
+    if (!node) continue;
+    const cap = maxSelectableLevel(node, ctx);
+    if (cap <= 1) continue;
+    // 夾在上限內，而且只往上調：計畫要的是「至少到這一級」，玩家原本練得更高不該被降回去。
+    levels.set(id, Math.min(Math.max(level, levels.get(id) ?? 1), cap));
   }
   return { unlocked, levels, initial: state.initial };
 }
@@ -194,33 +283,61 @@ export function setNodeLevel(state: SimState, ctx: SimContext, id: string, level
   if (!node || !ownedIds(state, ctx).has(id)) return null;
   const cap = maxSelectableLevel(node, ctx);
   if (cap <= 1 || !Number.isInteger(level) || level < 1 || level > cap) return null;
+  // 已取得的後續節點要求它至少練到某一級時，不准降到那一級以下——遊戲裡沒有
+  // 「1201 降回 49 級但太陽骰子還在」這種局面（見 minSelectableLevel）。
+  if (level < minSelectableLevel(node, state, ctx)) return null;
   const levels = new Map(state.levels);
   levels.set(id, level);
   return { unlocked: state.unlocked, levels, initial: state.initial };
 }
 
+/** 一份「一鍵點亮」計畫。⚠️ `need` 與 `levels` 要一起套用，見 unlockMany() 的說明。 */
+export interface SimPlan {
+  /** 要解的節點，拓樸序（父節點排在子節點前面）。 */
+  need: string[];
+  /** 鏈上還沒勾的可選初始骰子；非空時 `need` 與 `levels` 一律是空的（不做半套）。 */
+  blocked: string[];
+  /** 要順便練起來的節點與目標等級（太陽骰子要求 1201 練滿 Lv.50）。 */
+  levels: { id: string; level: number }[];
+}
+
 /**
  * 「一鍵點亮到這裡」要解哪些節點。
  *
- * `need` 是拓樸序（父節點排在子節點前面）；`blocked` 是鏈上還沒勾的初始骰子。
- * ⚠️ `blocked` 非空時 `need` 一律是空陣列——**不做半套**。解一半的話玩家會花掉資源、
- * 目標節點卻仍然點不開，而畫面上只會說「還缺前置」，看不出剛才那些錢是為了什麼花的。
+ * `need` 是拓樸序（父節點排在子節點前面）；`blocked` 是鏈上還沒勾的初始骰子；
+ * `levels` 是「順便要練到幾級」——太陽骰子除了兩條入邊，還要求 1201 練滿 Lv.50，那段升級
+ * **是這條路徑的一部分**，不放進計畫的話玩家會花掉 13 萬金幣、目標卻仍然點不開。
+ * ⚠️ `blocked` 非空時 `need` 與 `levels` 一律是空陣列——**不做半套**。解一半的話玩家會花掉
+ * 資源、目標節點卻仍然點不開，而畫面上只會說「還缺前置」，看不出剛才那些錢是為了什麼花的。
  */
-export function pathTo(id: string, state: SimState, ctx: SimContext): { need: string[]; blocked: string[] } {
+export function pathTo(id: string, state: SimState, ctx: SimContext): SimPlan {
   const owned = ownedIds(state, ctx);
   const need: string[] = [];
   const seen = new Set<string>();
   const blocked = new Set<string>();
+  const ranks = new Map<string, number>();
   const visit = (cur: string): void => {
     if (owned.has(cur) || seen.has(cur)) return;
     seen.add(cur);
     // 可選初始骰子擋在這裡就停：它的祖先玩家根本不必解（那顆是從骰子樹外面領的）。
     if (ctx.optional.has(cur)) { blocked.add(cur); return; }
     for (const p of ctx.parents.get(cur) ?? []) visit(p);
+    // 等級條件的那顆祖先**不一定是直接前置**（規則 26 只保證它在祖先集合裡），所以要自己
+    // 再走一次：先確保它會被取得（排在 cur 前面才是合法的拓樸序），再記下要練到幾級。
+    for (const [prereqId, rank] of Object.entries(ctx.byId.get(cur)?.prereqRanks ?? {})) {
+      visit(prereqId);
+      ranks.set(prereqId, Math.max(ranks.get(prereqId) ?? 0, rank));
+    }
     need.push(cur);
   };
   visit(id);
-  return blocked.size > 0 ? { need: [], blocked: [...blocked] } : { need, blocked: [] };
+  if (blocked.size > 0) return { need: [], blocked: [...blocked], levels: [] };
+  // 已經練得夠高的就不必列進計畫（畫面上那句「已點亮 N 個節點」與成本都跟著少一段）。
+  const levels = [...ranks]
+    .filter(([prereqId, rank]) => (state.levels.get(prereqId) ?? 1) < rank)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([prereqId, level]) => ({ id: prereqId, level }));
+  return { need, blocked: [], levels };
 }
 
 export interface SimTotals { unlock: Cost; upgrade: Cost; total: Cost }
@@ -229,7 +346,7 @@ export function simTotals(state: SimState, ctx: SimContext): SimTotals {
   // 起始骰子與勾選的初始骰子不在 state.unlocked 裡，所以這裡自然不會算到它們；
   // sumUnlockCost 另外擋掉「靠成就開門又不用付錢」的節點（同 /tree 的前置鏈成本）。
   const { cost: unlock } = sumUnlockCost(state.unlocked, ctx.byId);
-  const upgrade: Cost = { core: 0, gold: 0 };
+  const upgrade: Cost = { core: 0, gold: 0, solar: 0 };
   for (const [id, level] of state.levels) {
     if (level <= 1) continue;
     const node = ctx.byId.get(id);
@@ -239,8 +356,17 @@ export function simTotals(state: SimState, ctx: SimContext): SimTotals {
     if (!extra) continue;
     upgrade.core += extra.core;
     upgrade.gold += extra.gold;
+    upgrade.solar += extra.solar;
   }
-  return { unlock, upgrade, total: { core: unlock.core + upgrade.core, gold: unlock.gold + upgrade.gold } };
+  return {
+    unlock,
+    upgrade,
+    total: {
+      core: unlock.core + upgrade.core,
+      gold: unlock.gold + upgrade.gold,
+      solar: unlock.solar + upgrade.solar,
+    },
+  };
 }
 
 /**
@@ -254,7 +380,7 @@ export function simTotals(state: SimState, ctx: SimContext): SimTotals {
  */
 export function exceedsLimit(
   total: Cost,
-  limits: { core: number | null; gold: number | null },
+  limits: { core: number | null; gold: number | null; solar: number | null },
   previous?: Cost,
 ): string[] {
   const out: string[] = [];
@@ -265,6 +391,11 @@ export function exceedsLimit(
   }
   if (limits.gold !== null && total.gold > limits.gold && worse(total.gold, previous?.gold)) {
     out.push(`金幣 ${fmt(total.gold)} / ${fmt(limits.gold)}`);
+  }
+  // 太陽核心走同一條路徑（含「只擋會變貴的方向」那條語意）——三種貨幣任一種超出都要擋，
+  // 不然玩家設了太陽核心上限卻照樣買得下去，而畫面上完全沒有東西說話。
+  if (limits.solar !== null && total.solar > limits.solar && worse(total.solar, previous?.solar)) {
+    out.push(`太陽核心 ${fmt(total.solar)} / ${fmt(limits.solar)}`);
   }
   return out;
 }

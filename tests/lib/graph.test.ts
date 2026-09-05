@@ -4,11 +4,11 @@ import {
 } from '../../src/lib/graph';
 import type { Edge, TreeNode } from '../../src/lib/types';
 
-const node = (id: string, core: number, gold: number, via: TreeNode['unlockVia'] = 'cost') =>
-  ({ id, unlockCost: { core, gold }, unlockVia: via } as TreeNode);
+const node = (id: string, core: number, gold: number, via: TreeNode['unlockVia'] = 'cost', solar = 0) =>
+  ({ id, unlockCost: { core, gold, solar }, unlockVia: via } as TreeNode);
 /** 成就／任務開門但仍要付錢的節點（例：恐懼骰子＝合作累積 900 擊殺後，使用 8 核心解鎖）。 */
 const paidNode = (id: string, core: number, gold: number, via: TreeNode['unlockVia']) =>
-  ({ id, unlockCost: { core, gold }, unlockVia: via, unlockPaid: true } as TreeNode);
+  ({ id, unlockCost: { core, gold, solar: 0 }, unlockVia: via, unlockPaid: true } as TreeNode);
 
 describe('graph', () => {
   //  A → B → D
@@ -62,7 +62,7 @@ describe('graph', () => {
     const byId = new Map([node('A', 5, 0), node('B', 0, 3000), node('C', 10, 0), node('D', 0, 8000)]
       .map(n => [n.id, n]));
     const r = sumUnlockCost(prerequisiteChain('D', parents), byId);
-    expect(r.cost).toEqual({ core: 15, gold: 11000 });
+    expect(r.cost).toEqual({ core: 15, gold: 11000, solar: 0 });
     expect(r.skipped).toEqual([]);
   });
 
@@ -70,7 +70,19 @@ describe('graph', () => {
     const byId = new Map([node('A', 5, 0, 'quest'), node('B', 0, 3000), node('C', 10, 0), node('D', 0, 8000)]
       .map(n => [n.id, n]));
     const r = sumUnlockCost(prerequisiteChain('D', parents), byId);
-    expect(r.cost).toEqual({ core: 10, gold: 11000 });
+    expect(r.cost).toEqual({ core: 10, gold: 11000, solar: 0 });
+    expect(r.skipped).toEqual(['A']);
+  });
+
+  // 太陽核心（v1.1.0）也要進前置鏈的加總。⚠️ 鏈上放兩顆才驗得到「加總」——只有一顆的話，
+  // 一個把 solar 直接指派而不是累加的實作照樣會綠。
+  it('sumUnlockCost 加總太陽核心，並照樣排除非 cost 節點', () => {
+    const byId = new Map([
+      node('A', 5, 0, 'quest', 999), node('B', 0, 3000, 'cost', 100),
+      node('C', 10, 0, 'cost', 2000), node('D', 0, 8000),
+    ].map(n => [n.id, n]));
+    const r = sumUnlockCost(prerequisiteChain('D', parents), byId);
+    expect(r.cost).toEqual({ core: 10, gold: 11000, solar: 2100 });
     expect(r.skipped).toEqual(['A']);
   });
 
@@ -80,7 +92,7 @@ describe('graph', () => {
     const byId = new Map([paidNode('A', 5, 0, 'achievement'), node('B', 0, 3000), node('C', 10, 0), node('D', 0, 8000)]
       .map(n => [n.id, n]));
     const r = sumUnlockCost(prerequisiteChain('D', parents), byId);
-    expect(r.cost).toEqual({ core: 15, gold: 11000 });
+    expect(r.cost).toEqual({ core: 15, gold: 11000, solar: 0 });
     expect(r.skipped).toEqual([]);
   });
 });

@@ -4,7 +4,7 @@ import {
   matchesFilter, normalizeQuery, stateToQueryString, queryStringToState, emptyState, isTypingTarget,
 } from '../../src/lib/filter';
 import { computeSelection } from '../../src/lib/selection';
-import type { TreeNode, TreeData } from '../../src/lib/types';
+import type { PassiveUpgradeCost, TreeNode, TreeData } from '../../src/lib/types';
 import type { FilterState } from '../../src/lib/filter';
 
 const n = (p: Partial<TreeNode>) =>
@@ -103,10 +103,11 @@ describe('isTypingTarget（搜尋框/篩選核取方塊 focus 時，畫布方向
 // （1001/1002/1006，含選取節點本身）仍可見，hiddenByFilter 應為 3。
 describe('1002 hiddenByFilter 真實資料驗算', () => {
   const data: TreeData = JSON.parse(readFileSync('src/generated/tree.json', 'utf8'));
+  const tables: PassiveUpgradeCost = JSON.parse(readFileSync('data/passive-upgrade-cost.json', 'utf8'));
   const byId = new Map(data.nodes.map(nd => [nd.id, nd]));
 
   it('前置鏈節點清單與型別如預期', () => {
-    const sel = computeSelection('1002', data);
+    const sel = computeSelection('1002', data, tables);
     const chainInfo = [...sel.chain].sort().map(id => {
       const node = byId.get(id);
       return `${id}:${node?.type}`;
@@ -117,7 +118,7 @@ describe('1002 hiddenByFilter 真實資料驗算', () => {
   });
 
   it('只勾類型=dice 時，hiddenByFilter 為 3（3 個 passive 前置被篩掉）', () => {
-    const sel = computeSelection('1002', data);
+    const sel = computeSelection('1002', data, tables);
     const state: FilterState = { ...emptyState(), types: new Set(['dice']) };
     const hidden = [...sel.chain].filter(id => {
       const node = byId.get(id);

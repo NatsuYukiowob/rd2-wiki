@@ -118,6 +118,29 @@ export function unreachableFrom(roots: string[], ids: string[], children: Map<st
 }
 
 /**
+ * 前置鏈上所有「某個祖先要先練到某等級」的條件，合併成「祖先 id → 要達到的等級」。
+ *
+ * ⚠️ **要掃整條鏈，不是只看選到的那一顆。** 太陽強化（1601）自己沒有等級條件，但它的前置鏈
+ * 經過太陽骰子（1501），而 1501 要求 1201 練滿 50 級——只問選到的那一顆的話，選 1601 會少算
+ * 一整段 46 萬金幣的練等費用，而畫面上不會有任何地方說話。
+ *
+ * 同一個祖先被多顆節點要求時取最大的那個等級（要求 Lv.50 的那一顆滿足了，Lv.20 那個也就滿足了）。
+ *
+ * @param ids 前置鏈上的節點 id 迭代器
+ * @param byId 節點 id 對映到節點資料的 Map
+ * @returns 祖先 id → 需要達到的等級
+ */
+export function requiredPrereqRanks(ids: Iterable<string>, byId: Map<string, TreeNode>): Map<string, number> {
+  const required = new Map<string, number>();
+  for (const id of ids) {
+    for (const [prereqId, rank] of Object.entries(byId.get(id)?.prereqRanks ?? {})) {
+      required.set(prereqId, Math.max(required.get(prereqId) ?? 0, rank));
+    }
+  }
+  return required;
+}
+
+/**
  * 對前置鏈中的節點加總解鎖成本。
  *
  * 只計入玩家真的要付錢的節點：`unlockVia === 'cost'`，或雖然靠成就／任務開門、
@@ -129,7 +152,7 @@ export function unreachableFrom(roots: string[], ids: string[], children: Map<st
  * @returns 物件包含：`cost` 為聚合成本、`skipped` 為被排除的節點 id 陣列
  */
 export function sumUnlockCost(ids: Iterable<string>, byId: Map<string, TreeNode>): { cost: Cost; skipped: string[] } {
-  const cost: Cost = { core: 0, gold: 0 };
+  const cost: Cost = { core: 0, gold: 0, solar: 0 };
   const skipped: string[] = [];
   for (const id of ids) {
     const n = byId.get(id);
@@ -137,6 +160,7 @@ export function sumUnlockCost(ids: Iterable<string>, byId: Map<string, TreeNode>
     if (n.unlockVia !== 'cost' && !n.unlockPaid) { skipped.push(id); continue; }
     cost.core += n.unlockCost.core;
     cost.gold += n.unlockCost.gold;
+    cost.solar += n.unlockCost.solar;
   }
   return { cost, skipped };
 }

@@ -12,7 +12,7 @@ const ctx = buildSimContext(data, tables);
 function sampleState() {
   const rune = data.nodes.find(x => x.type === 'rune' && x.maxLevel === 50)!;
   let s = setInitialDice(initialSimState(ctx), ctx, '5006', true)!;
-  s = unlockMany(s, ctx, pathTo(rune.id, s, ctx).need);
+  s = unlockMany(s, ctx, pathTo(rune.id, s, ctx));
   s = setNodeLevel(s, ctx, rune.id, 3)!;
   return { s, runeId: rune.id };
 }
@@ -57,6 +57,20 @@ describe('存檔', () => {
     expect(deserializeSim(JSON.stringify(raw), ctx)!.levels.get(runeId)).toBe(50);
   });
 
+  // 等級條件是 1.1.0 才有的（太陽骰子要求 1201 練滿 Lv.50），所以 1.1.0 上線那幾天存下來的
+  // 檔案可能是「1501 已取得、1201 停在 Lv.1」——遊戲裡不存在的局面，而且總資源少算 46 萬金幣。
+  it('把被等級條件卡住的祖先補到門檻（舊存檔沒有那段升級費用）', () => {
+    const stale = JSON.stringify({
+      v: 1,
+      unlocked: ['1201', '1301', '1401', '1501'],
+      levels: { '1201': 1 },
+      initial: [],
+    });
+    const back = deserializeSim(stale, ctx)!;
+    expect(back.unlocked.has('1501')).toBe(true);
+    expect(back.levels.get('1201')).toBe(50);
+  });
+
   it('前置不齊的節點會被連帶清掉，而不是留在畫面上繼續算錢', () => {
     // 1002 的前置是 1001（起始骰子，一定有），2002 的前置是 2001…改用一顆前置沒被存進來的節點
     const deep = data.nodes.find(x => (ctx.parents.get(x.id) ?? []).length > 0
@@ -87,6 +101,26 @@ describe('文字報告', () => {
     expect(withNone).toMatch(/初始骰子：.*無/);
     const { s } = sampleState();
     expect(simReport(s, ctx)).toContain('貪婪骰子');
+  });
+
+  // 太陽核心（v1.1.0）只在這份規劃真的用得到時才進報告——用不到就一個字都不多印，
+  // 既有格式逐位元組不變。⚠️ 正本目前 239 顆的 solar 全是 0，所以這裡得合成一份資料：
+  // 拿真實資料驗只會驗到「沒有多印」那一半。
+  it('用得到太陽核心時三行都多一段，用不到時一個字都不提', () => {
+    expect(simReport(sampleState().s, ctx)).not.toContain('太陽核心');
+
+    const clone = structuredClone(data) as TreeData;
+    const rune = clone.nodes.find(x => x.type === 'rune' && x.maxLevel === 50)!;
+    rune.unlockCost = { ...rune.unlockCost, solar: 2000 };
+    const solarCtx = buildSimContext(clone, tables);
+    const s0 = initialSimState(solarCtx);
+    const s = unlockMany(s0, solarCtx, pathTo(rune.id, s0, solarCtx));
+
+    const text = simReport(s, solarCtx);
+    // 三行是同一個區塊：只有其中一行多一段的話，讀報告的人得自己去推另外兩行是 0 還是不適用。
+    expect(text).toMatch(/總資源：核心 [\d,]+ ／金幣 [\d,]+ ／太陽核心 2,000/);
+    expect(text).toMatch(/解鎖：核心 [\d,]+ ／金幣 [\d,]+ ／太陽核心 2,000/);
+    expect(text).toMatch(/升級：核心 [\d,]+ ／金幣 [\d,]+ ／太陽核心 0/);
   });
 
   // 起始骰子不該出現在「取得節點」清單裡——玩家沒有為它們做過任何選擇。

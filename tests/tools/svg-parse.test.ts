@@ -28,8 +28,8 @@ describe('parseTree（真實資料）', () => {
   const r = parseTree(svg);
 
   it('節點與邊的數量正確', () => {
-    expect(r.nodes).toHaveLength(239);
-    expect(r.edges).toHaveLength(248);
+    expect(r.nodes).toHaveLength(241);
+    expect(r.edges).toHaveLength(251);
   });
   it('meta 來自 svg 屬性與 metadata', () => {
     // 期望值從正本的原始文字現場取，不寫死版本號與畫布尺寸。這條測的是「parser 有沒有把
@@ -86,8 +86,8 @@ describe('parseTree（真實資料）', () => {
   });
   it('形狀由子元素判定：rect / 4 點 polygon / circle / 6 點 polygon', () => {
     const count = (s: string) => r.nodes.filter(n => n.shape === s).length;
-    expect(count('rect')).toBe(41);
-    expect(count('diamond')).toBe(123);
+    expect(count('rect')).toBe(42);
+    expect(count('diamond')).toBe(124);
     expect(count('circle')).toBe(70);
     expect(count('hex')).toBe(5);
   });
@@ -106,7 +106,7 @@ describe('parseTree（真實資料）', () => {
     // 若兩者永遠相同，label 就該從 nodes.json 拿掉、由 name 推導。60/239 是縮寫
     // （`所有骰子傷害` → `全骰傷害`），所以它得自己一欄。這條測的是那個前提還成立。
     const ids = Object.keys(nodeText);
-    expect(ids).toHaveLength(239);
+    expect(ids).toHaveLength(241);
     expect(ids.filter(id => nodeText[id]!.label !== nodeText[id]!.name)).toHaveLength(60);
   });
 

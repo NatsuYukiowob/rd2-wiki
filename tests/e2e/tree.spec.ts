@@ -135,7 +135,7 @@ async function goToNatureBranch(page: Page, isMobile: boolean): Promise<void> {
 // `expected 239, received 240` ——這個註解是留給那時候的人一個能立刻對到根源的線索。
 test('骰子樹渲染出所有節點', async ({ page }) => {
   await page.goto('/tree');
-  await expect(page.locator('#tree g.node')).toHaveCount(239);
+  await expect(page.locator('#tree g.node')).toHaveCount(241);
 });
 
 test('點選節點會高亮前置鏈並顯示成本', async ({ page, isMobile }) => {
@@ -1571,7 +1571,10 @@ test('T. 首頁的版本資訊全部來自資料正本，不是寫死在頁面�
   expect(text).toContain(meta.updated);
   // 資源包版本 2026-08-22 起不上頁面（Yuki 指定）。它仍在資料正本與 data/changelog.json 裡
   // 給規則 20 用——這條反向守著「別又把它印回去」。
-  expect(text, '資源包版本又出現在首頁了').not.toContain(meta.gameBundle);
+  // ⚠️ 2026-09-06 起資源包欄位直接寫遊戲版本（兩者相同），字串比對分不出是誰印的，
+  // 所以只在兩者不同時用字串守，另外守「資源包」這個詞不出現。
+  if (meta.gameBundle !== meta.gameVersion) expect(text, '資源包版本又出現在首頁了').not.toContain(meta.gameBundle);
+  expect(text, '資源包版本又出現在首頁了').not.toContain('資源包');
 });
 
 test('Z. 詳情面板的視圖堆疊：關鍵字／覺醒換頁、返回鍵、系統上一頁、Esc、✕', async ({ page }) => {
@@ -2015,6 +2018,33 @@ test('Z9. 標籤只在有滑鼠的裝置升成合成層（手機會閃爍），�
   expect((await read()).visibility).toBe('visible');
 });
 
+test('X3. 太陽骰子的前置鏈把「1201 練到 Lv.50」的費用算進去，而且分三段講清楚', async ({ page }) => {
+  // 1.1.0 的太陽骰子（1501）除了 1301／1401 兩條入邊，還要求 1201 子彈傷害%增加練滿
+  // Lv.50（客戶端 DiceTreeNodeTable 的 NeedNodeRank）。圖結構完全沒動——1201 本來就是那兩顆
+  // 的前置——所以這件事**只在面板上看得見**，畫布上沒有任何痕跡。
+  //
+  // 算式（tests/lib/selection.test.ts 逐項寫著）：
+  //   解鎖 核心 30 ／金幣 132,000 ／太陽核心 2,000
+  //   ＋ 1201 Lv.1→50 追加 核心 99 ／金幣 463,700
+  //   ＝ 核心 129 ／金幣 595,700 ／太陽核心 2,000
+  await page.goto('/tree?node=1501');
+  await page.waitForSelector('#tree g.node');
+
+  const chain = page.locator('#detail .col.chain');
+  await expect(chain.locator('.cost')).toHaveText('總計 核心 129 ＋ 金幣 595,700 ＋ 太陽核心 2,000');
+  // 三段各自成立：只印總計的話，玩家看不出 595,700 裡有 463,700 是拿去練 1201 的。
+  await expect(chain).toContainText('解鎖前置 核心 30 ＋ 金幣 132,000 ＋ 太陽核心 2,000');
+  await expect(chain).toContainText('前置練等 子彈傷害%增加 Lv.50：核心 99 ＋ 金幣 463,700');
+  // 這條鏈**含**一段必要練等，所以那句「不含強化費用」不可以原封不動留著。
+  await expect(chain).not.toContainText('不含強化費用');
+
+  // 反向控制：條件掛在 1501 身上，選 1201 自己時面板跟改動前逐字相同。
+  await page.goto('/tree?node=1201');
+  await page.waitForSelector('#tree g.node');
+  await expect(page.locator('#detail .col.chain')).not.toContainText('前置練等');
+  await expect(page.locator('#detail .col.chain')).toContainText('不含強化費用');
+});
+
 test('X2. 可跳過的前置邊畫成虛線，而且只有那兩條', async ({ page }) => {
   // 官方資料表 v1.0.3 v2 寫明貪婪（5006）與空虛（5008）「無視骰子樹前置」。圖結構沒有變
   // ——239／248 照舊、邊還在——差別只在那條路可以不走，所以用虛線而不是刪線表達。
@@ -2036,7 +2066,7 @@ test('X2. 可跳過的前置邊畫成虛線，而且只有那兩條', async ({ p
       ids: withDash.map(e => `${e.getAttribute('data-from')}→${e.getAttribute('data-to')}`).sort(),
     };
   });
-  expect(dashed.total).toBe(248);
+  expect(dashed.total).toBe(251);
   expect(dashed.ids).toEqual(['5007→5006', '5009→5008']);
 
   // 三組狀態下虛線都不可以被洗掉——`.edge-bypassable` 只設 stroke-dasharray，而另外三組規則
@@ -2074,4 +2104,20 @@ test('X2. 可跳過的前置邊畫成虛線，而且只有那兩條', async ({ p
   // 說明若綁在「省了幾個」上，這裡會是一條金色虛線配上零說明。
   await expect(page.locator('#detail')).toContainText('鏈上有 1 顆可直接領的骰子');
   await expect(page.locator('#detail')).not.toContainText('已跳過');
+});
+
+test('T2. 詳情面板的成本帶遊戲貨幣圖：三種貨幣各一張、每張都載得到、文字不受影響', async ({ page, request }) => {
+  // 太陽骰子的前置鏈總計同時有核心／金幣／太陽核心，是全站唯一能一次看到三張圖的節點。
+  await page.goto('/tree?node=1501');
+  const chain = page.locator('#detail .chain');
+  const icons = chain.locator('.cost .currency-icon');
+  await expect(icons).toHaveCount(3);
+  // 圖是裝飾（alt 空），所以文字斷言跟沒有圖的時候一模一樣。
+  await expect(chain.locator('.cost')).toHaveText('總計 核心 129 ＋ 金幣 595,700 ＋ 太陽核心 2,000');
+  const srcs = await icons.evaluateAll(els => els.map(el => (el as HTMLImageElement).getAttribute('src') ?? ''));
+  expect(srcs).toEqual(['/currency/core.png', '/currency/gold.png', '/currency/solar.png']);
+  for (const src of srcs) expect((await request.get(src)).status(), src).toBe(200);
+  // 圖跟著字級走：高度等於該行的 font-size（1em），不是寫死的 px。
+  const { h, fs } = await icons.first().evaluate(el => ({ h: el.getBoundingClientRect().height, fs: parseFloat(getComputedStyle(el.parentElement!).fontSize) }));
+  expect(Math.abs(h - fs)).toBeLessThan(1);
 });

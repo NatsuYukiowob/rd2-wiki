@@ -3,76 +3,297 @@
   "source": "Random Dice 2 骰子樹升級資源表（社群整理，2026-08-23）。同一份檔案裡的符文 1–50 級表與 data/upgrade-cost.json 逐級全等，可當這份資料的交叉驗算。",
   "tiers": {
     "A": {
-      "maxLevel": 10, "unlockGold": 12000,
+      "maxLevel": 10,
+      "unlockGold": 12000,
       "bands": [
-        {"from":   2, "to":   5, "gold":   8000, "core":  0},
-        {"from":   6, "to":  10, "gold":  16000, "core":  6}
+        {
+          "from": 2,
+          "to": 5,
+          "gold": 8000,
+          "core": 0
+        },
+        {
+          "from": 6,
+          "to": 10,
+          "gold": 16000,
+          "core": 6
+        }
       ]
     },
     "B": {
-      "maxLevel": 15, "unlockGold": 8000,
+      "maxLevel": 15,
+      "unlockGold": 8000,
       "bands": [
-        {"from":   2, "to":   5, "gold":   4000, "core":  0},
-        {"from":   6, "to":  10, "gold":   8000, "core":  3},
-        {"from":  11, "to":  15, "gold":  15000, "core":  6}
+        {
+          "from": 2,
+          "to": 5,
+          "gold": 4000,
+          "core": 0
+        },
+        {
+          "from": 6,
+          "to": 10,
+          "gold": 8000,
+          "core": 3
+        },
+        {
+          "from": 11,
+          "to": 15,
+          "gold": 15000,
+          "core": 6
+        }
       ]
     },
     "C": {
-      "maxLevel": 20, "unlockGold": 3000,
+      "maxLevel": 20,
+      "unlockGold": 3000,
       "bands": [
-        {"from":   2, "to":   5, "gold":   1500, "core":  0},
-        {"from":   6, "to":  10, "gold":   3000, "core":  2},
-        {"from":  11, "to":  15, "gold":   6000, "core":  2},
-        {"from":  16, "to":  20, "gold":  12000, "core":  4}
+        {
+          "from": 2,
+          "to": 5,
+          "gold": 1500,
+          "core": 0
+        },
+        {
+          "from": 6,
+          "to": 10,
+          "gold": 3000,
+          "core": 2
+        },
+        {
+          "from": 11,
+          "to": 15,
+          "gold": 6000,
+          "core": 2
+        },
+        {
+          "from": 16,
+          "to": 20,
+          "gold": 12000,
+          "core": 4
+        }
       ]
     },
     "D": {
-      "maxLevel": 20, "unlockGold": 15000,
+      "maxLevel": 20,
+      "unlockGold": 15000,
       "bands": [
-        {"from":   2, "to":   5, "gold":   8000, "core":  0},
-        {"from":   6, "to":  10, "gold":  10000, "core":  5},
-        {"from":  11, "to":  15, "gold":  15000, "core":  5},
-        {"from":  16, "to":  20, "gold":  30000, "core": 10}
+        {
+          "from": 2,
+          "to": 5,
+          "gold": 8000,
+          "core": 0
+        },
+        {
+          "from": 6,
+          "to": 10,
+          "gold": 10000,
+          "core": 5
+        },
+        {
+          "from": 11,
+          "to": 15,
+          "gold": 15000,
+          "core": 5
+        },
+        {
+          "from": 16,
+          "to": 20,
+          "gold": 30000,
+          "core": 10
+        }
       ]
     },
     "E": {
-      "maxLevel": 50, "unlockGold": 8000,
+      "maxLevel": 50,
+      "unlockGold": 8000,
       "bands": [
-        {"from":   2, "to":   5, "gold":   3000, "core":  0},
-        {"from":   6, "to":  10, "gold":   4000, "core":  2},
-        {"from":  11, "to":  15, "gold":   5000, "core":  2},
-        {"from":  16, "to":  20, "gold":   7000, "core":  4},
-        {"from":  21, "to":  25, "gold":   8000, "core":  4},
-        {"from":  26, "to":  30, "gold":  10000, "core":  6},
-        {"from":  31, "to":  35, "gold":  12000, "core":  6},
-        {"from":  36, "to":  40, "gold":  14000, "core":  8},
-        {"from":  41, "to":  45, "gold":  16000, "core":  8},
-        {"from":  46, "to":  50, "gold":  20000, "core": 10}
+        {
+          "from": 2,
+          "to": 5,
+          "gold": 3000,
+          "core": 0
+        },
+        {
+          "from": 6,
+          "to": 10,
+          "gold": 4000,
+          "core": 2
+        },
+        {
+          "from": 11,
+          "to": 15,
+          "gold": 5000,
+          "core": 2
+        },
+        {
+          "from": 16,
+          "to": 20,
+          "gold": 7000,
+          "core": 4
+        },
+        {
+          "from": 21,
+          "to": 25,
+          "gold": 8000,
+          "core": 4
+        },
+        {
+          "from": 26,
+          "to": 30,
+          "gold": 10000,
+          "core": 6
+        },
+        {
+          "from": 31,
+          "to": 35,
+          "gold": 12000,
+          "core": 6
+        },
+        {
+          "from": 36,
+          "to": 40,
+          "gold": 14000,
+          "core": 8
+        },
+        {
+          "from": 41,
+          "to": 45,
+          "gold": 16000,
+          "core": 8
+        },
+        {
+          "from": 46,
+          "to": 50,
+          "gold": 20000,
+          "core": 10
+        }
       ]
     },
     "F": {
-      "maxLevel": 100, "unlockGold": 3000,
+      "maxLevel": 100,
+      "unlockGold": 3000,
       "bands": [
-        {"from":   2, "to":   5, "gold":   1000, "core":  0},
-        {"from":   6, "to":  10, "gold":   2000, "core":  1},
-        {"from":  11, "to":  15, "gold":   3000, "core":  1},
-        {"from":  16, "to":  20, "gold":   4000, "core":  2},
-        {"from":  21, "to":  25, "gold":   5000, "core":  2},
-        {"from":  26, "to":  30, "gold":   7000, "core":  3},
-        {"from":  31, "to":  35, "gold":   9000, "core":  3},
-        {"from":  36, "to":  40, "gold":  12000, "core":  4},
-        {"from":  41, "to":  45, "gold":  15000, "core":  4},
-        {"from":  46, "to":  50, "gold":  18000, "core":  5},
-        {"from":  51, "to":  55, "gold":  21000, "core":  5},
-        {"from":  56, "to":  60, "gold":  24000, "core":  6},
-        {"from":  61, "to":  65, "gold":  27000, "core":  6},
-        {"from":  66, "to":  70, "gold":  30000, "core":  7},
-        {"from":  71, "to":  75, "gold":  35000, "core":  7},
-        {"from":  76, "to":  80, "gold":  40000, "core":  8},
-        {"from":  81, "to":  85, "gold":  45000, "core":  8},
-        {"from":  86, "to":  90, "gold":  50000, "core":  9},
-        {"from":  91, "to":  95, "gold":  55000, "core":  9},
-        {"from":  96, "to": 100, "gold":  60000, "core": 10}
+        {
+          "from": 2,
+          "to": 5,
+          "gold": 1000,
+          "core": 0
+        },
+        {
+          "from": 6,
+          "to": 10,
+          "gold": 2000,
+          "core": 1
+        },
+        {
+          "from": 11,
+          "to": 15,
+          "gold": 3000,
+          "core": 1
+        },
+        {
+          "from": 16,
+          "to": 20,
+          "gold": 4000,
+          "core": 2
+        },
+        {
+          "from": 21,
+          "to": 25,
+          "gold": 5000,
+          "core": 2
+        },
+        {
+          "from": 26,
+          "to": 30,
+          "gold": 7000,
+          "core": 3
+        },
+        {
+          "from": 31,
+          "to": 35,
+          "gold": 9000,
+          "core": 3
+        },
+        {
+          "from": 36,
+          "to": 40,
+          "gold": 12000,
+          "core": 4
+        },
+        {
+          "from": 41,
+          "to": 45,
+          "gold": 15000,
+          "core": 4
+        },
+        {
+          "from": 46,
+          "to": 50,
+          "gold": 18000,
+          "core": 5
+        },
+        {
+          "from": 51,
+          "to": 55,
+          "gold": 21000,
+          "core": 5
+        },
+        {
+          "from": 56,
+          "to": 60,
+          "gold": 24000,
+          "core": 6
+        },
+        {
+          "from": 61,
+          "to": 65,
+          "gold": 27000,
+          "core": 6
+        },
+        {
+          "from": 66,
+          "to": 70,
+          "gold": 30000,
+          "core": 7
+        },
+        {
+          "from": 71,
+          "to": 75,
+          "gold": 35000,
+          "core": 7
+        },
+        {
+          "from": 76,
+          "to": 80,
+          "gold": 40000,
+          "core": 8
+        },
+        {
+          "from": 81,
+          "to": 85,
+          "gold": 45000,
+          "core": 8
+        },
+        {
+          "from": 86,
+          "to": 90,
+          "gold": 50000,
+          "core": 9
+        },
+        {
+          "from": 91,
+          "to": 95,
+          "gold": 55000,
+          "core": 9
+        },
+        {
+          "from": 96,
+          "to": 100,
+          "gold": 60000,
+          "core": 10
+        }
       ]
     }
   },
@@ -80,8 +301,315 @@
     "4303": {
       "maxLevel": 3,
       "levels": [
-        {"level": 2, "gold": 60000, "core": 6},
-        {"level": 3, "gold": 120000, "core": 10}
+        {
+          "level": 2,
+          "gold": 60000,
+          "core": 6
+        },
+        {
+          "level": 3,
+          "gold": 120000,
+          "core": 10
+        }
+      ]
+    },
+    "1601": {
+      "maxLevel": 50,
+      "levels": [
+        {
+          "level": 2,
+          "gold": 100000,
+          "core": 0,
+          "solar": 200
+        },
+        {
+          "level": 3,
+          "gold": 150000,
+          "core": 0,
+          "solar": 300
+        },
+        {
+          "level": 4,
+          "gold": 200000,
+          "core": 0,
+          "solar": 400
+        },
+        {
+          "level": 5,
+          "gold": 250000,
+          "core": 0,
+          "solar": 500
+        },
+        {
+          "level": 6,
+          "gold": 300000,
+          "core": 0,
+          "solar": 600
+        },
+        {
+          "level": 7,
+          "gold": 350000,
+          "core": 0,
+          "solar": 700
+        },
+        {
+          "level": 8,
+          "gold": 400000,
+          "core": 0,
+          "solar": 800
+        },
+        {
+          "level": 9,
+          "gold": 450000,
+          "core": 0,
+          "solar": 900
+        },
+        {
+          "level": 10,
+          "gold": 500000,
+          "core": 0,
+          "solar": 1000
+        },
+        {
+          "level": 11,
+          "gold": 550000,
+          "core": 0,
+          "solar": 1100
+        },
+        {
+          "level": 12,
+          "gold": 600000,
+          "core": 0,
+          "solar": 1200
+        },
+        {
+          "level": 13,
+          "gold": 650000,
+          "core": 0,
+          "solar": 1300
+        },
+        {
+          "level": 14,
+          "gold": 700000,
+          "core": 0,
+          "solar": 1400
+        },
+        {
+          "level": 15,
+          "gold": 750000,
+          "core": 0,
+          "solar": 1500
+        },
+        {
+          "level": 16,
+          "gold": 800000,
+          "core": 0,
+          "solar": 1600
+        },
+        {
+          "level": 17,
+          "gold": 850000,
+          "core": 0,
+          "solar": 1700
+        },
+        {
+          "level": 18,
+          "gold": 900000,
+          "core": 0,
+          "solar": 1800
+        },
+        {
+          "level": 19,
+          "gold": 950000,
+          "core": 0,
+          "solar": 1900
+        },
+        {
+          "level": 20,
+          "gold": 1000000,
+          "core": 0,
+          "solar": 2000
+        },
+        {
+          "level": 21,
+          "gold": 1000000,
+          "core": 0,
+          "solar": 2000
+        },
+        {
+          "level": 22,
+          "gold": 1000000,
+          "core": 0,
+          "solar": 2000
+        },
+        {
+          "level": 23,
+          "gold": 1000000,
+          "core": 0,
+          "solar": 2000
+        },
+        {
+          "level": 24,
+          "gold": 1000000,
+          "core": 0,
+          "solar": 2000
+        },
+        {
+          "level": 25,
+          "gold": 1000000,
+          "core": 0,
+          "solar": 2000
+        },
+        {
+          "level": 26,
+          "gold": 1000000,
+          "core": 0,
+          "solar": 2000
+        },
+        {
+          "level": 27,
+          "gold": 1000000,
+          "core": 0,
+          "solar": 2000
+        },
+        {
+          "level": 28,
+          "gold": 1000000,
+          "core": 0,
+          "solar": 2000
+        },
+        {
+          "level": 29,
+          "gold": 1000000,
+          "core": 0,
+          "solar": 2000
+        },
+        {
+          "level": 30,
+          "gold": 1000000,
+          "core": 0,
+          "solar": 2000
+        },
+        {
+          "level": 31,
+          "gold": 1000000,
+          "core": 0,
+          "solar": 2000
+        },
+        {
+          "level": 32,
+          "gold": 1000000,
+          "core": 0,
+          "solar": 2000
+        },
+        {
+          "level": 33,
+          "gold": 1000000,
+          "core": 0,
+          "solar": 2000
+        },
+        {
+          "level": 34,
+          "gold": 1000000,
+          "core": 0,
+          "solar": 2000
+        },
+        {
+          "level": 35,
+          "gold": 1000000,
+          "core": 0,
+          "solar": 2000
+        },
+        {
+          "level": 36,
+          "gold": 1000000,
+          "core": 0,
+          "solar": 2000
+        },
+        {
+          "level": 37,
+          "gold": 1000000,
+          "core": 0,
+          "solar": 2000
+        },
+        {
+          "level": 38,
+          "gold": 1000000,
+          "core": 0,
+          "solar": 2000
+        },
+        {
+          "level": 39,
+          "gold": 1000000,
+          "core": 0,
+          "solar": 2000
+        },
+        {
+          "level": 40,
+          "gold": 1000000,
+          "core": 0,
+          "solar": 2000
+        },
+        {
+          "level": 41,
+          "gold": 1000000,
+          "core": 0,
+          "solar": 2000
+        },
+        {
+          "level": 42,
+          "gold": 1000000,
+          "core": 0,
+          "solar": 2000
+        },
+        {
+          "level": 43,
+          "gold": 1000000,
+          "core": 0,
+          "solar": 2000
+        },
+        {
+          "level": 44,
+          "gold": 1000000,
+          "core": 0,
+          "solar": 2000
+        },
+        {
+          "level": 45,
+          "gold": 1000000,
+          "core": 0,
+          "solar": 2000
+        },
+        {
+          "level": 46,
+          "gold": 1000000,
+          "core": 0,
+          "solar": 2000
+        },
+        {
+          "level": 47,
+          "gold": 1000000,
+          "core": 0,
+          "solar": 2000
+        },
+        {
+          "level": 48,
+          "gold": 1000000,
+          "core": 0,
+          "solar": 2000
+        },
+        {
+          "level": 49,
+          "gold": 1000000,
+          "core": 0,
+          "solar": 2000
+        },
+        {
+          "level": 50,
+          "gold": 1000000,
+          "core": 0,
+          "solar": 2000
+        }
       ]
     }
   }

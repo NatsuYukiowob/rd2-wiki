@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync, mkdirSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { gzipSync } from 'node:zlib';
 import sharp from 'sharp';
@@ -22,6 +22,14 @@ interface BuildOpts {
    */
   nodeText: NodeTextMap;
   unlockExceptions: Record<string, { unlockVia: UnlockVia; note?: string; unlockPaid?: boolean; bypassPrereq?: boolean }>;
+  /**
+   * `data/prereq-ranks.json` 的 `ranks`（「某個祖先要先練到某等級」）；沒有這份資料時傳 `null`。
+   *
+   * 跟 `upgradeCostTable` 同款刻意必填：可選的話，呼叫端漏傳只會讓每顆節點的 `prereqRanks`
+   * 安靜消失——`/tree` 的前置鏈少算一整段練等費用、`/sim` 把一顆解不開的節點畫成「可取得」，
+   * 而型別檢查與測試都不會有任何反應。
+   */
+  prereqRanks: Record<string, Record<string, number>> | null;
   /**
    * `data/upgrade-cost.json`；沒有這份資料時傳 `null`。
    *
@@ -63,6 +71,10 @@ export function buildTreeData(svgText: string, opts: BuildOpts): TreeData {
       // 成就開門仍要付錢（恐懼），以及從骰子樹外面直接領、不必解前置（貪婪／空虛）。
       ...(opts.unlockExceptions[r.id]?.unlockPaid ? { unlockPaid: true as const } : {}),
       ...(opts.unlockExceptions[r.id]?.bypassPrereq ? { bypassPrereq: true as const } : {}),
+      // 「某個祖先要先練到某等級」的條件，同樣「有值才放欄位」。⚠️ 這裡不可以順手寫成
+      // `prereqRanks: opts.prereqRanks?.[r.id] ?? {}`：240 顆節點各多一個 `{}` 在 gzip 之後
+      // 就是幾十位元組，而 tree.json 的餘裕只剩 0.5 KB，硬上限釘在 build-data.test.ts。
+      ...(opts.prereqRanks?.[r.id] ? { prereqRanks: opts.prereqRanks[r.id]! } : {}),
       maxLevel: level,
       prereqMode: null, upgradeCost: null,
       description: r.description,
@@ -104,8 +116,12 @@ export function buildTreeData(svgText: string, opts: BuildOpts): TreeData {
   // 但 wip 節點要排除：它們的語意是「這顆之後才會接進樹裡」，還沒接線就先把成本算進「全樹解鎖
   // 成本」，等於讓一個佔位節點去動首頁上那個數字。目前正本沒有 wip 節點，所以這條不改變現值。
   const totalUnlockCost = nodes.filter(n => !wipIds.has(n.id)).reduce(
-    (acc, n) => ({ core: acc.core + n.unlockCost.core, gold: acc.gold + n.unlockCost.gold }),
-    { core: 0, gold: 0 }
+    (acc, n) => ({
+      core: acc.core + n.unlockCost.core,
+      gold: acc.gold + n.unlockCost.gold,
+      solar: acc.solar + n.unlockCost.solar,
+    }),
+    { core: 0, gold: 0, solar: 0 }
   );
 
   const bounds = {} as Record<Branch, [number, number, number, number]>;
@@ -180,6 +196,11 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
   const nodeText = loadNodeText(JSON.parse(readFileSync('data/nodes.json', 'utf8')), MAX_TEXT_LENGTH);
   const unlockExceptions = JSON.parse(readFileSync('data/unlock-exceptions.json', 'utf8'));
   const upgradeCostTable = JSON.parse(readFileSync('data/upgrade-cost.json', 'utf8'));
+  // 沒有這份檔案時視為「沒有任何等級條件」（同 ValidateOpts 那一族「傳 null」的路）：
+  // 它是一份沒有自動來源、只有一筆內容的資料，不該讓整個建置因為它不在而停下來。
+  const prereqRanks: Record<string, Record<string, number>> | null = existsSync('data/prereq-ranks.json')
+    ? (JSON.parse(readFileSync('data/prereq-ranks.json', 'utf8')).ranks ?? null)
+    : null;
 
   const { meta: rawMeta, nodes: rawGeom } = parseTree(svgText);
   const rawNodes = mergeNodes(rawGeom, nodeText);
@@ -255,7 +276,7 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
     }
   }
 
-  const data = buildTreeData(svgText, { keywords, nodeText, unlockExceptions, upgradeCostTable, spriteIndex: index, spriteSize: size });
+  const data = buildTreeData(svgText, { keywords, nodeText, unlockExceptions, prereqRanks, upgradeCostTable, spriteIndex: index, spriteSize: size });
   const json = JSON.stringify(data);
   writeFileSync('src/generated/tree.json', json);
 

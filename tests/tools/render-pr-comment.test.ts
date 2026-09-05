@@ -19,7 +19,7 @@ const ok = (p: Record<string, unknown> = {}) => ({
   counts: { added: 0, removed: 0, changed: 1 },
   removedIds: [],
   changed: [{ id: '1001', name: '火骰子' }],
-  cost: { base: { core: 1772, gold: 6662000 }, head: { core: 1772, gold: 6662000 } },
+  cost: { base: { core: 1772, gold: 6662000, solar: 0 }, head: { core: 1772, gold: 6662000, solar: 0 } },
   ...p,
 });
 

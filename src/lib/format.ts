@@ -17,12 +17,17 @@ const UNIT_TEXT: Record<GrowthUnit, string> = {
 
 /**
  * 把解鎖成本格式化成含千分位的顯示字串，例：「核心 26 ＋ 金幣 12,000」。
- * 只有一種貨幣有值時不顯示另一種；兩者皆為 0 顯示「免費」。
+ * 沒有值的貨幣整段不顯示；三者皆為 0 顯示「免費」。
+ *
+ * ⚠️ 太陽核心（v1.1.0）**只在有值時才印**，而不是無條件補一段「太陽核心 0」：全樹 239 顆
+ * 節點裡只有太陽骰子那一支花得到它，每個面板都印一段 0 等於讓一個 2 顆節點的貨幣佔掉
+ * 每一顆節點的版面。
  */
 export function formatCost(c: Cost): string {
   const parts: string[] = [];
   if (c.core > 0) parts.push(`核心 ${c.core.toLocaleString('en-US')}`);
   if (c.gold > 0) parts.push(`金幣 ${c.gold.toLocaleString('en-US')}`);
+  if (c.solar > 0) parts.push(`太陽核心 ${c.solar.toLocaleString('en-US')}`);
   return parts.length > 0 ? parts.join(' ＋ ') : '免費';
 }
 

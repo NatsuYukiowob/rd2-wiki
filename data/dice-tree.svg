@@ -1,13 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="2000" height="1700" viewBox="0 0 2000 1700" data-version="1.1.0" data-game-version="1.0.3" data-updated="2026-09-02" data-label-mode="skill-names">
-<metadata>Random Dice 2 dice tree; layout rebased on RD2骰子樹 v1.0.1 (2026-08-18), coordinates halved; content from game resource bundle 0.0.6 on 2026-08-23.</metadata><style>
+<svg xmlns="http://www.w3.org/2000/svg" width="2000" height="1700" viewBox="0 0 2000 1700" data-version="1.1.0" data-game-version="1.1.0" data-updated="2026-09-06" data-label-mode="skill-names">
+<metadata>Random Dice 2 dice tree; layout rebased on RD2骰子樹 v1.0.1 (2026-08-18), coordinates halved; content from game client 1.1.0 data tables (resource bundle 1.1.0) on 2026-09-06.</metadata><style>
 text{font-family:'Noto Sans TC','Microsoft JhengHei',sans-serif;fill:#f7f3ff;text-anchor:middle}.edge{fill:none;stroke:#a89ad3;stroke-linecap:round;stroke-width:3.2;opacity:.9}.node .cost{font-size:9px;fill:#ffd66f}.node .id{font-size:8px;fill:#aaa4c1}.dice-label{font-size:10px;font-weight:700}.fallback-label{font-size:10px;font-weight:700}.mini-label{font-size:8px;font-weight:700}.tree-center-link{fill:none;stroke:#a89ad3;stroke-width:3.2;stroke-linecap:round;opacity:.96}.tree-center-label{font-size:12px;font-weight:700}</style>
 <rect width="100%" height="100%" fill="#2f2942" />
 <defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#736b91" /></marker></defs>
 <path class="edge" marker-end="url(#arrow)" d="M 1000.00 730.00 L 880.00 610.00" />
 <path class="edge" marker-end="url(#arrow)" d="M 1000.00 730.00 L 1100.00 630.00" />
 <path class="edge" marker-end="url(#arrow)" d="M 1000.00 730.00 L 1000.00 630.00" />
-<path class="edge" marker-end="url(#arrow)" d="M 1000.00 730.00 L 950.00 730.00" />
+<path class="edge" marker-end="url(#arrow)" d="M 1000.00 730.00 L 960.00 770.00" />
 <path class="edge" marker-end="url(#arrow)" d="M 880.00 330.00 L 880.00 230.00" />
 <path class="edge" marker-end="url(#arrow)" d="M 880.00 330.00 L 820.00 330.00" />
 <path class="edge" marker-end="url(#arrow)" d="M 1180.00 330.00 L 1180.00 230.00" />
@@ -26,8 +26,8 @@ text{font-family:'Noto Sans TC','Microsoft JhengHei',sans-serif;fill:#f7f3ff;tex
 <path class="edge" marker-end="url(#arrow)" d="M 1100.00 530.00 L 1030.00 460.00" />
 <path class="edge" marker-end="url(#arrow)" d="M 1100.00 530.00 L 1100.00 410.00" />
 <path class="edge" marker-end="url(#arrow)" d="M 1100.00 530.00 L 1140.00 490.00" />
-<path class="edge" marker-end="url(#arrow)" d="M 950.00 730.00 L 920.00 760.00" />
-<path class="edge" marker-end="url(#arrow)" d="M 950.00 730.00 L 920.00 700.00" />
+<path class="edge" marker-end="url(#arrow)" d="M 960.00 770.00 L 920.00 770.00" />
+<path class="edge" marker-end="url(#arrow)" d="M 960.00 770.00 L 920.00 730.00" />
 <path class="edge" marker-end="url(#arrow)" d="M 820.00 330.00 L 820.00 290.00" />
 <path class="edge" marker-end="url(#arrow)" d="M 820.00 330.00 L 780.00 290.00" />
 <path class="edge" marker-end="url(#arrow)" d="M 1240.00 330.00 L 1280.00 330.00" />
@@ -152,7 +152,7 @@ text{font-family:'Noto Sans TC','Microsoft JhengHei',sans-serif;fill:#f7f3ff;tex
 <path class="edge" marker-end="url(#arrow)" d="M 560.00 910.00 L 560.00 960.00" />
 <path class="edge" marker-end="url(#arrow)" d="M 760.00 710.00 L 660.00 710.00" />
 <path class="edge" marker-end="url(#arrow)" d="M 760.00 710.00 L 600.00 550.00" />
-<path class="edge" marker-end="url(#arrow)" d="M 760.00 710.00 L 810.00 660.00" />
+<path class="edge" marker-end="url(#arrow)" d="M 760.00 710.00 L 760.00 660.00" />
 <path class="edge" marker-end="url(#arrow)" d="M 560.00 810.00 L 460.00 710.00" />
 <path class="edge" marker-end="url(#arrow)" d="M 560.00 810.00 L 510.00 810.00" />
 <path class="edge" marker-end="url(#arrow)" d="M 660.00 710.00 L 560.00 710.00" />
@@ -171,8 +171,8 @@ text{font-family:'Noto Sans TC','Microsoft JhengHei',sans-serif;fill:#f7f3ff;tex
 <path class="edge" marker-end="url(#arrow)" d="M 860.00 810.00 L 860.00 860.00" />
 <path class="edge" marker-end="url(#arrow)" d="M 560.00 960.00 L 520.00 960.00" />
 <path class="edge" marker-end="url(#arrow)" d="M 560.00 960.00 L 600.00 960.00" />
-<path class="edge" marker-end="url(#arrow)" d="M 810.00 660.00 L 840.00 690.00" />
-<path class="edge" marker-end="url(#arrow)" d="M 810.00 660.00 L 780.00 630.00" />
+<path class="edge" marker-end="url(#arrow)" d="M 760.00 660.00 L 800.00 660.00" />
+<path class="edge" marker-end="url(#arrow)" d="M 760.00 660.00 L 760.00 620.00" />
 <path class="edge" marker-end="url(#arrow)" d="M 510.00 810.00 L 470.00 810.00" />
 <path class="edge" marker-end="url(#arrow)" d="M 510.00 810.00 L 510.00 850.00" />
 <path class="edge" marker-end="url(#arrow)" d="M 660.00 660.00 L 620.00 660.00" />
@@ -252,6 +252,9 @@ text{font-family:'Noto Sans TC','Microsoft JhengHei',sans-serif;fill:#f7f3ff;tex
 <path class="edge" marker-end="url(#arrow)" d="M 1440.00 960.00 L 1400.00 1000.00" />
 <path class="edge" marker-end="url(#arrow)" d="M 1390.00 810.00 L 1420.00 780.00" />
 <path class="edge" marker-end="url(#arrow)" d="M 1390.00 810.00 L 1420.00 840.00" />
+<path class="edge" marker-end="url(#arrow)" d="M 920.00 770.00 L 860.00 680.00" />
+<path class="edge" marker-end="url(#arrow)" d="M 920.00 730.00 L 860.00 680.00" />
+<path class="edge" marker-end="url(#arrow)" d="M 860.00 680.00 L 860.00 760.00" />
 <g class="tree-center" data-links="1001 2001 3001 4008 5002">
 <path class="tree-center-link" d="M 1000.00 850.50 L 1000.00 730.00" />
 <path class="tree-center-link" d="M 1000.00 850.50 L 920.00 970.00" />
@@ -269,9 +272,9 @@ text{font-family:'Noto Sans TC','Microsoft JhengHei',sans-serif;fill:#f7f3ff;tex
 <g class="node" transform="translate(880.00,470.00)" data-id="1006"><rect x="-25" y="-26.5" width="50" height="53" rx="8" fill="#322b4b" stroke="#ef625e" stroke-width="2" /><image href="icons/1f54c0d9e993.png" x="-25" y="-26.5" width="50" height="53" preserveAspectRatio="xMidYMid meet" /></g>
 <g class="node" transform="translate(1100.00,630.00)" data-id="1007"><rect x="-25" y="-26.5" width="50" height="53" rx="8" fill="#322b4b" stroke="#ef625e" stroke-width="2" /><image href="icons/9f9e58202a99.png" x="-25" y="-26.5" width="50" height="53" preserveAspectRatio="xMidYMid meet" /></g>
 <g class="node" transform="translate(1100.00,530.00)" data-id="1008"><rect x="-25" y="-26.5" width="50" height="53" rx="8" fill="#322b4b" stroke="#ef625e" stroke-width="2" /><image href="icons/54fff6066001.png" x="-25" y="-26.5" width="50" height="53" preserveAspectRatio="xMidYMid meet" /></g>
-<g class="node" transform="translate(950.00,730.00)" data-id="1201"><polygon points="0,-13 13,0 0,13 -13,0" fill="#405276" stroke="#ef625e" stroke-width="2" /><image href="icons/6cf30eac370b.png" x="-13" y="-13" width="26" height="26" preserveAspectRatio="xMidYMid meet" /></g>
-<g class="node" transform="translate(920.00,760.00)" data-id="1301"><polygon points="0,-13 13,0 0,13 -13,0" fill="#405276" stroke="#ef625e" stroke-width="2" /><image href="icons/a4059fa9725c.png" x="-13" y="-13" width="26" height="26" preserveAspectRatio="xMidYMid meet" /></g>
-<g class="node" transform="translate(920.00,700.00)" data-id="1401"><polygon points="0,-13 13,0 0,13 -13,0" fill="#405276" stroke="#ef625e" stroke-width="2" /><image href="icons/e5765ca71313.png" x="-13" y="-13" width="26" height="26" preserveAspectRatio="xMidYMid meet" /></g>
+<g class="node" transform="translate(960.00,770.00)" data-id="1201"><polygon points="0,-13 13,0 0,13 -13,0" fill="#405276" stroke="#ef625e" stroke-width="2" /><image href="icons/6cf30eac370b.png" x="-13" y="-13" width="26" height="26" preserveAspectRatio="xMidYMid meet" /></g>
+<g class="node" transform="translate(920.00,770.00)" data-id="1301"><polygon points="0,-13 13,0 0,13 -13,0" fill="#405276" stroke="#ef625e" stroke-width="2" /><image href="icons/a4059fa9725c.png" x="-13" y="-13" width="26" height="26" preserveAspectRatio="xMidYMid meet" /></g>
+<g class="node" transform="translate(920.00,730.00)" data-id="1401"><polygon points="0,-13 13,0 0,13 -13,0" fill="#405276" stroke="#ef625e" stroke-width="2" /><image href="icons/e5765ca71313.png" x="-13" y="-13" width="26" height="26" preserveAspectRatio="xMidYMid meet" /></g>
 <g class="node" transform="translate(820.00,330.00)" data-id="1202"><polygon points="0,-13 13,0 0,13 -13,0" fill="#405276" stroke="#ef625e" stroke-width="2" /><image href="icons/cf40aa4f9283.png" x="-13" y="-13" width="26" height="26" preserveAspectRatio="xMidYMid meet" /></g>
 <g class="node" transform="translate(820.00,290.00)" data-id="1302"><polygon points="0,-13 13,0 0,13 -13,0" fill="#405276" stroke="#ef625e" stroke-width="2" /><image href="icons/36e97fa8cec9.png" x="-13" y="-13" width="26" height="26" preserveAspectRatio="xMidYMid meet" /></g>
 <g class="node" transform="translate(780.00,290.00)" data-id="1402"><polygon points="0,-13 13,0 0,13 -13,0" fill="#405276" stroke="#ef625e" stroke-width="2" /><image href="icons/97300a8f09b0.png" x="-13" y="-13" width="26" height="26" preserveAspectRatio="xMidYMid meet" /></g>
@@ -281,6 +284,8 @@ text{font-family:'Noto Sans TC','Microsoft JhengHei',sans-serif;fill:#f7f3ff;tex
 <g class="node" transform="translate(990.00,220.00)" data-id="1204"><polygon points="0,-13 13,0 0,13 -13,0" fill="#405276" stroke="#ef625e" stroke-width="2" /><image href="icons/f657f76b609f.png" x="-13" y="-13" width="26" height="26" preserveAspectRatio="xMidYMid meet" /></g>
 <g class="node" transform="translate(950.00,220.00)" data-id="1304"><polygon points="0,-13 13,0 0,13 -13,0" fill="#405276" stroke="#ef625e" stroke-width="2" /><image href="icons/8bb46e71fbe1.png" x="-13" y="-13" width="26" height="26" preserveAspectRatio="xMidYMid meet" /></g>
 <g class="node" transform="translate(990.00,260.00)" data-id="1404"><polygon points="0,-13 13,0 0,13 -13,0" fill="#405276" stroke="#ef625e" stroke-width="2" /><image href="icons/e70c95a2c063.png" x="-13" y="-13" width="26" height="26" preserveAspectRatio="xMidYMid meet" /></g>
+<g class="node" transform="translate(860.00,680.00)" data-id="1501"><rect x="-25" y="-26.5" width="50" height="53" rx="8" fill="#322b4b" stroke="#ef625e" stroke-width="2" /><image href="icons/7894e16c2b27.png" x="-25" y="-26.5" width="50" height="53" preserveAspectRatio="xMidYMid meet" /></g>
+<g class="node" transform="translate(860.00,760.00)" data-id="1601"><polygon points="0,-13 13,0 0,13 -13,0" fill="#405276" stroke="#ef625e" stroke-width="2" /><image href="icons/0fcde7a638e4.png" x="-13" y="-13" width="26" height="26" preserveAspectRatio="xMidYMid meet" /></g>
 <g class="node" transform="translate(1000.00,570.00)" data-id="1205"><polygon points="0,-13 13,0 0,13 -13,0" fill="#405276" stroke="#ef625e" stroke-width="2" /><image href="icons/fbf517a5a46c.png" x="-13" y="-13" width="26" height="26" preserveAspectRatio="xMidYMid meet" /></g>
 <g class="node" transform="translate(970.00,540.00)" data-id="1305"><polygon points="0,-13 13,0 0,13 -13,0" fill="#405276" stroke="#ef625e" stroke-width="2" /><image href="icons/a3495240ae29.png" x="-13" y="-13" width="26" height="26" preserveAspectRatio="xMidYMid meet" /></g>
 <g class="node" transform="translate(1030.00,540.00)" data-id="1405"><polygon points="0,-13 13,0 0,13 -13,0" fill="#405276" stroke="#ef625e" stroke-width="2" /><image href="icons/36189bc16f2e.png" x="-13" y="-13" width="26" height="26" preserveAspectRatio="xMidYMid meet" /></g>
@@ -413,9 +418,9 @@ text{font-family:'Noto Sans TC','Microsoft JhengHei',sans-serif;fill:#f7f3ff;tex
 <g class="node" transform="translate(560.00,960.00)" data-id="4201"><polygon points="0,-13 13,0 0,13 -13,0" fill="#405276" stroke="#f3bd55" stroke-width="2" /><image href="icons/f9d943dcfcae.png" x="-13" y="-13" width="26" height="26" preserveAspectRatio="xMidYMid meet" /></g>
 <g class="node" transform="translate(520.00,960.00)" data-id="4301"><polygon points="0,-13 13,0 0,13 -13,0" fill="#405276" stroke="#f3bd55" stroke-width="2" /><image href="icons/bec9fb671f76.png" x="-13" y="-13" width="26" height="26" preserveAspectRatio="xMidYMid meet" /></g>
 <g class="node" transform="translate(600.00,960.00)" data-id="4401"><polygon points="0,-13 13,0 0,13 -13,0" fill="#405276" stroke="#f3bd55" stroke-width="2" /><image href="icons/0ed31f49c88d.png" x="-13" y="-13" width="26" height="26" preserveAspectRatio="xMidYMid meet" /></g>
-<g class="node" transform="translate(810.00,660.00)" data-id="4202"><polygon points="0,-13 13,0 0,13 -13,0" fill="#405276" stroke="#f3bd55" stroke-width="2" /><image href="icons/35f1845c118c.png" x="-13" y="-13" width="26" height="26" preserveAspectRatio="xMidYMid meet" /></g>
-<g class="node" transform="translate(840.00,690.00)" data-id="4302"><polygon points="0,-13 13,0 0,13 -13,0" fill="#405276" stroke="#f3bd55" stroke-width="2" /><image href="icons/832955d2352c.png" x="-13" y="-13" width="26" height="26" preserveAspectRatio="xMidYMid meet" /></g>
-<g class="node" transform="translate(780.00,630.00)" data-id="4402"><polygon points="0,-13 13,0 0,13 -13,0" fill="#405276" stroke="#f3bd55" stroke-width="2" /><image href="icons/7139e931d108.png" x="-13" y="-13" width="26" height="26" preserveAspectRatio="xMidYMid meet" /></g>
+<g class="node" transform="translate(760.00,660.00)" data-id="4202"><polygon points="0,-13 13,0 0,13 -13,0" fill="#405276" stroke="#f3bd55" stroke-width="2" /><image href="icons/35f1845c118c.png" x="-13" y="-13" width="26" height="26" preserveAspectRatio="xMidYMid meet" /></g>
+<g class="node" transform="translate(800.00,660.00)" data-id="4302"><polygon points="0,-13 13,0 0,13 -13,0" fill="#405276" stroke="#f3bd55" stroke-width="2" /><image href="icons/832955d2352c.png" x="-13" y="-13" width="26" height="26" preserveAspectRatio="xMidYMid meet" /></g>
+<g class="node" transform="translate(760.00,620.00)" data-id="4402"><polygon points="0,-13 13,0 0,13 -13,0" fill="#405276" stroke="#f3bd55" stroke-width="2" /><image href="icons/7139e931d108.png" x="-13" y="-13" width="26" height="26" preserveAspectRatio="xMidYMid meet" /></g>
 <g class="node" transform="translate(510.00,810.00)" data-id="4203"><polygon points="0,-13 13,0 0,13 -13,0" fill="#405276" stroke="#f3bd55" stroke-width="2" /><image href="icons/8aaf42b9657b.png" x="-13" y="-13" width="26" height="26" preserveAspectRatio="xMidYMid meet" /></g>
 <g class="node" transform="translate(470.00,810.00)" data-id="4303"><polygon points="0,-13 13,0 0,13 -13,0" fill="#405276" stroke="#f3bd55" stroke-width="2" /><image href="icons/8c50100383aa.png" x="-13" y="-13" width="26" height="26" preserveAspectRatio="xMidYMid meet" /></g>
 <g class="node" transform="translate(510.00,850.00)" data-id="4403"><polygon points="0,-13 13,0 0,13 -13,0" fill="#405276" stroke="#f3bd55" stroke-width="2" /><image href="icons/5b8b8656bee4.png" x="-13" y="-13" width="26" height="26" preserveAspectRatio="xMidYMid meet" /></g>

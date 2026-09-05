@@ -368,3 +368,14 @@
     margin-left: 0;
   }
 }
+
+/* 成本文字前的遊戲貨幣圖（金幣／骰子核心／太陽核心），由 src/lib/cost-html.ts 產生。
+   跟著字級走（1em）而不是給固定 px：同一段 HTML 會出現在 .meta（--fs-sm）、.cost（粗體 --fs-base）
+   與 /sim 的按鈕裡，圖要跟旁邊的字一樣大。圖檔是 64×64 正方形置中，所以三種貨幣佔的寬度相同。 */
+.currency-icon {
+  height: 1em;
+  width: 1em;
+  object-fit: contain;
+  vertical-align: -0.15em;
+  margin-inline-end: var(--space-h);
+}

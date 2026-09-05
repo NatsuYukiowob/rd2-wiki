@@ -48,8 +48,8 @@ export interface DiffSummaryData {
   wipAdded: string[];
   wipRemoved: string[];
   cost: {
-    base: { core: number; gold: number };
-    head: { core: number; gold: number };
+    base: { core: number; gold: number; solar: number };
+    head: { core: number; gold: number; solar: number };
   };
 }
 
@@ -115,7 +115,7 @@ export function computeDiff(base: unknown, head: unknown): DiffSummaryData {
     edgesRewired: false,
     wipAdded: [],
     wipRemoved: [],
-    cost: { base: { core: 0, gold: 0 }, head: { core: 0, gold: 0 } },
+    cost: { base: { core: 0, gold: 0, solar: 0 }, head: { core: 0, gold: 0, solar: 0 } },
   };
   if (!looksLikeTree(base) || !looksLikeTree(head)) return empty;
 
@@ -216,8 +216,8 @@ export function renderDiffComment(raw: unknown): string {
     changed: safeInt(d.counts!.changed),
   };
   const cost = {
-    base: { core: safeInt(d.cost!.base.core), gold: safeInt(d.cost!.base.gold) },
-    head: { core: safeInt(d.cost!.head.core), gold: safeInt(d.cost!.head.gold) },
+    base: { core: safeInt(d.cost!.base.core), gold: safeInt(d.cost!.base.gold), solar: safeInt(d.cost!.base.solar) },
+    head: { core: safeInt(d.cost!.head.core), gold: safeInt(d.cost!.head.gold), solar: safeInt(d.cost!.head.solar) },
   };
   const nodes = [safeInt(d.nodes![0]), safeInt(d.nodes![1])];
   const edges = [safeInt(d.edges![0]), safeInt(d.edges![1])];
@@ -263,7 +263,12 @@ export function renderDiffComment(raw: unknown): string {
     `- 節點：${nodes[0]} → ${nodes[1]}`,
     `- 邊：${edges[0]} → ${edges[1]}`,
     `- 新增 ${counts.added}｜刪除 ${counts.removed}｜修改 ${counts.changed}`,
-    `- 全樹解鎖成本：核心 ${cost.base.core} → ${cost.head.core}，金幣 ${cost.base.gold.toLocaleString('en-US')} → ${cost.head.gold.toLocaleString('en-US')}`,
+    `- 全樹解鎖成本：核心 ${cost.base.core} → ${cost.head.core}，金幣 ${cost.base.gold.toLocaleString('en-US')} → ${cost.head.gold.toLocaleString('en-US')}`
+      // 太陽核心只在兩邊任一有值時才接上去：這則留言貼在每一個資料 PR 上，為一個大多數 PR
+      // 都動不到的貨幣固定多印「0 → 0」，只會稀釋掉真正改了的那幾個數字。
+      + (cost.base.solar > 0 || cost.head.solar > 0
+        ? `，太陽核心 ${cost.base.solar.toLocaleString('en-US')} → ${cost.head.solar.toLocaleString('en-US')}`
+        : ''),
     removedLine,
     d.edgesRewired === true
       ? '\n⚠️ **邊數不變但前置關係被改動**——解鎖成本可能已經改變，請逐條確認下面的清單。'

@@ -16,6 +16,9 @@ const opts = {
   // ⚠️ 這一項漏了的話，下面那條 20 KB 效能預算斷言量的就不是真正上線的產物：
   // meta.upgradeCostTable 會是 null，少量 292 B gzip，測試綠燈而 CLI 寫出的檔案已經超標。
   upgradeCostTable: JSON.parse(readFileSync('data/upgrade-cost.json', 'utf8')) as UpgradeCostTable,
+  // 前置等級條件（「1201 要練到 Lv.50 才解得開 1501」）。同 unlockExceptions：這一項漏了的話
+  // 產物少一個欄位、gzip 少量幾十位元組，而測試照樣綠。
+  prereqRanks: (JSON.parse(readFileSync('data/prereq-ranks.json', 'utf8')) as { ranks: Record<string, Record<string, number>> }).ranks,
   spriteIndex: Object.fromEntries(readdirSync('data/icons').map(f => [f.replace('.png', ''), [0, 0, 48, 52]])) as Record<string, [number, number, number, number]>,
   // 這裡的尺寸只是測試替身，不代表真實 sprite.webp 大小；真實數字由 tools/build-data.ts 的
   // CLI 區塊從 buildSprite() 的回傳值取得。
@@ -25,8 +28,8 @@ const data = buildTreeData(svg, opts);
 
 describe('buildTreeData', () => {
   it('節點與邊數量正確', () => {
-    expect(data.nodes).toHaveLength(239);
-    expect(data.edges).toHaveLength(248);
+    expect(data.nodes).toHaveLength(241);
+    expect(data.edges).toHaveLength(251);
   });
   it('edges 方向為 [前置, 被解鎖]', () => {
     const fromRoot = data.edges.filter(([from]) => from === '1001');
@@ -40,8 +43,22 @@ describe('buildTreeData', () => {
   // 不是遊戲裡量到的數字。正本的任何一顆 cost 一動這裡就要跟著動——
   // 2026-09-02 PR #61 依 1.0.3 客戶端解包表改了 4307／4407／5304／5403／5404 五顆符文的解鎖成本：
   // 核心 +70、金幣 +244,000（1772／6,662,000 → 1842／6,906,000）。
+  // 2026-09-06 依 1.1.0 客戶端加了太陽骰子 1501（金幣 100,000／太陽核心 2,000）與太陽強化 1601
+  // （金幣 50,000／太陽核心 100）：金幣 +150,000、太陽核心 +2,100（→ 1842／7,056,000／2,100）。
   it('全樹解鎖成本總和釘住正本（成本一動這裡就要跟著動）', () => {
-    expect(data.meta.totalUnlockCost).toEqual({ core: 1842, gold: 6906000 });
+    expect(data.meta.totalUnlockCost).toEqual({ core: 1842, gold: 7056000, solar: 2100 });
+  });
+  // 太陽核心（v1.1.0）也要進全樹總和。正本目前 239 顆的 solar 全是 0，光靠上面那條
+  // 「solar: 0」證明不了加總會動——0 加 0 在任何寫法下都是 0。所以這裡合成兩顆帶太陽核心
+  // 的節點再建一次；**兩顆**是為了同時驗到「有累加」而不只是「有讀到」。
+  it('全樹解鎖成本會把太陽核心加總起來', () => {
+    const nodeText = structuredClone(opts.nodeText);
+    nodeText['1201']!.cost = '金幣 2,000／太陽核心 100';
+    nodeText['1202']!.cost = '金幣 2,000／太陽核心 2,000';
+    const withSolar = buildTreeData(svg, { ...opts, nodeText });
+    // 真實資料自 2026-09-06 起本來就有太陽骰子那 2,100 太陽核心，這裡量的是**增量**。
+    expect(withSolar.meta.totalUnlockCost.solar).toBe(data.meta.totalUnlockCost.solar + 2100);
+    expect(withSolar.nodes.find(x => x.id === '1201')!.unlockCost.solar).toBe(100);
   });
   it('玩家被動的等級上限來自 title', () => {
     const n = data.nodes.find(x => x.id === '1101')!;
@@ -105,18 +122,28 @@ describe('buildTreeData', () => {
 
   it('41 顆骰子都有覺醒，其他 198 個節點都沒有', () => {
     const withAwakening = data.nodes.filter(n => n.awakening !== undefined);
-    expect(withAwakening).toHaveLength(41);
+    expect(withAwakening).toHaveLength(42);
     expect(withAwakening.every(n => n.type === 'dice')).toBe(true);
     expect(withAwakening.every(n => (n.awakening ?? '').length > 0)).toBe(true);
   });
 
   it('覺醒文字裡的 # 標記也進得了 meta.glossary（含只出現在覺醒裡的別名）', () => {
-    // #播種 只出現在花骰子的覺醒、#傳送 只出現在貪婪骰子的覺醒，兩個都不在任何 description 裡
-    expect(data.nodes.some(n => n.description.includes('#播種'))).toBe(false);
-    expect(data.nodes.find(n => n.id === '1003')!.awakening).toContain('#播種');
+    // 2026-09-06 之前 #播種／#傳送 是真實資料裡「只出現在覺醒」的兩個別名；1.1.0 客戶端把顯示名
+    // 統一成 #果實／#SP怪物 之後真實資料裡沒有樣本了，所以改用合成樣本注入——綁真實節點的話
+    // 資料一改測試就跟著消失，而「別名要展開成本尊的解釋」那段程式還活著卻沒人守。
+    expect(data.nodes.some(n => n.description.includes('#播種') || n.awakening?.includes('#播種'))).toBe(false);
+    const nodeText = structuredClone(opts.nodeText);
+    nodeText['1003']!.awakening = '達到7骰點時爆炸\n於骰盤上隨機格子發射7個#播種';
+    nodeText['5006']!.awakening = '每隔一段時間召喚#傳送';
+    const synthetic = buildTreeData(svg, { ...opts, nodeText });
+    expect(synthetic.nodes.find(n => n.id === '1003')!.awakening).toContain('#播種');
     // 別名展開成本尊的解釋，不是自己抄一份
-    expect(data.meta.glossary['播種']!.desc).toBe(data.meta.glossary['果實']?.desc ?? '擊中骰子時，對象骰點+1\n擊中空格時，召喚1骰點骰子');
-    expect(data.meta.glossary['傳送']!.desc).toBe(data.meta.glossary['SP怪物']!.desc);
+    // 合成樣本裡 #果實 沒被任何節點用到（meta.glossary 只放用得到的詞），所以本尊的解釋退回字面值比。
+    expect(synthetic.meta.glossary['播種']!.desc).toBe(synthetic.meta.glossary['果實']?.desc ?? '擊中骰子時，對象骰點+1\n擊中空格時，召喚1骰點骰子');
+    expect(synthetic.meta.glossary['傳送']!.desc).toBe(synthetic.meta.glossary['SP怪物']!.desc);
+    // 真實資料裡 #果實／#SP怪物 是本尊直接出現在覺醒裡
+    expect(data.nodes.find(n => n.id === '1003')!.awakening).toContain('#果實');
+    expect(data.meta.glossary['果實']).toBeDefined();
   });
 
   it('70 個玩家被動都有細分類，其他節點都沒有；管理 ID 刻意不進 tree.json', () => {
@@ -156,7 +183,20 @@ describe('buildTreeData', () => {
   it('樞紐不佔節點名額：nodes 裡沒有它，成本總和也不含它', () => {
     const c = data.meta.center!;
     expect(data.nodes.some(n => n.x === c.x && n.y === c.y)).toBe(false);
-    expect(data.nodes).toHaveLength(239);
+    expect(data.nodes).toHaveLength(241);
+  });
+
+  // prereqRanks 是「只在有值的節點上才放」的欄位（同 wip／category／unlockNote）。
+  // ⚠️ 240 顆節點各掛一個空物件 `{}` 看起來無害，但 tree.json 的 gzip 餘裕只剩 0.5 KB，
+  // 而下面那兩條預算斷言是硬上限——「順手補齊欄位」在這裡是會讓 CI 紅的改動。
+  it('前置等級條件只出現在真的有條件的節點上', () => {
+    const withRanks = data.nodes.filter(n => n.prereqRanks !== undefined);
+    expect(withRanks.map(n => n.id)).toEqual(['1501']);
+    expect(withRanks[0]!.prereqRanks).toEqual({ '1201': 50 });
+    // 反向：1201／1301／1401 自己身上不該有這個欄位（條件是掛在 1501 身上的）
+    for (const id of ['1201', '1301', '1401', '1601']) {
+      expect(data.nodes.find(n => n.id === id)!.prereqRanks).toBeUndefined();
+    }
   });
 
   it('gzip 後符合效能預算（≤ 20 KB）', () => {

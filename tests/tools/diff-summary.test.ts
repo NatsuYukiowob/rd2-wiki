@@ -7,7 +7,7 @@ const n = (p: Partial<TreeNode>): TreeNode =>
   ({
     id: '1001', branch: 'nature', element: 'nature', type: 'dice', name: '火骰子', label: '火',
     shape: 'rect', size: [48, 52], x: 0, y: 0,
-    unlockCost: { core: 10, gold: 1000 }, unlockVia: 'cost', maxLevel: 1,
+    unlockCost: { core: 10, gold: 1000, solar: 0 }, unlockVia: 'cost', maxLevel: 1,
     prereqMode: null, upgradeCost: null, description: '造成傷害', keywords: [],
     growth: null, dataIssue: null, icon: 'aaaaaaaaaaaa',
     ...p,
@@ -23,7 +23,7 @@ const meta = (totalUnlockCost: { core: number; gold: number }) =>
     sprite: { url: '/assets/sprite.webp', size: [768, 458], index: {} },
   }) as TreeData['meta'];
 
-const tree = (nodes: TreeNode[], edges: Edge[] = [], totalUnlockCost = { core: 0, gold: 0 }): TreeData => ({
+const tree = (nodes: TreeNode[], edges: Edge[] = [], totalUnlockCost = { core: 0, gold: 0, solar: 0 }): TreeData => ({
   meta: meta(totalUnlockCost),
   nodes,
   edges,
@@ -31,8 +31,8 @@ const tree = (nodes: TreeNode[], edges: Edge[] = [], totalUnlockCost = { core: 0
 
 describe('buildDiffSummary（規則 11：id 變動警告）', () => {
   it('新增節點：計入「新增」計數，不觸發 id 消失警告', () => {
-    const base = tree([n({ id: '1001' })], [], { core: 10, gold: 1000 });
-    const head = tree([n({ id: '1001' }), n({ id: '1002', name: '風骰子' })], [], { core: 25, gold: 2000 });
+    const base = tree([n({ id: '1001' })], [], { core: 10, gold: 1000, solar: 0 });
+    const head = tree([n({ id: '1001' }), n({ id: '1002', name: '風骰子' })], [], { core: 25, gold: 2000, solar: 0 });
 
     const summary = buildDiffSummary(base, head);
 
@@ -42,8 +42,8 @@ describe('buildDiffSummary（規則 11：id 變動警告）', () => {
   });
 
   it('刪除節點：id 消失要有顯眼警告，且點出分享網址會失效', () => {
-    const base = tree([n({ id: '1001' }), n({ id: '1002', name: '風骰子' })], [], { core: 20, gold: 2000 });
-    const head = tree([n({ id: '1001' })], [], { core: 10, gold: 1000 });
+    const base = tree([n({ id: '1001' }), n({ id: '1002', name: '風骰子' })], [], { core: 20, gold: 2000, solar: 0 });
+    const head = tree([n({ id: '1001' })], [], { core: 10, gold: 1000, solar: 0 });
 
     const summary = buildDiffSummary(base, head);
 
@@ -54,8 +54,8 @@ describe('buildDiffSummary（規則 11：id 變動警告）', () => {
   });
 
   it('修改成本：同 id 但 unlockCost 不同要計入「修改」並列進清單', () => {
-    const base = tree([n({ id: '1001', unlockCost: { core: 10, gold: 1000 } })], [], { core: 10, gold: 1000 });
-    const head = tree([n({ id: '1001', unlockCost: { core: 20, gold: 2000 } })], [], { core: 20, gold: 2000 });
+    const base = tree([n({ id: '1001', unlockCost: { core: 10, gold: 1000, solar: 0 } })], [], { core: 10, gold: 1000, solar: 0 });
+    const head = tree([n({ id: '1001', unlockCost: { core: 20, gold: 2000, solar: 0 } })], [], { core: 20, gold: 2000, solar: 0 });
 
     const summary = buildDiffSummary(base, head);
 
@@ -66,8 +66,8 @@ describe('buildDiffSummary（規則 11：id 變動警告）', () => {
   });
 
   it('完全無變動時不附加警告或修改清單區塊', () => {
-    const base = tree([n({ id: '1001' })], [], { core: 10, gold: 1000 });
-    const head = tree([n({ id: '1001' })], [], { core: 10, gold: 1000 });
+    const base = tree([n({ id: '1001' })], [], { core: 10, gold: 1000, solar: 0 });
+    const head = tree([n({ id: '1001' })], [], { core: 10, gold: 1000, solar: 0 });
 
     const summary = buildDiffSummary(base, head);
 
@@ -110,21 +110,21 @@ describe('escapeMarkdown（PR 留言的注入防護）', () => {
 
 describe('buildDiffSummary 的留言標記與逃逸', () => {
   it('永遠帶識別標記，pr-comment 才找得到上一則就地更新', () => {
-    const base = tree([n({ id: '1001' })], [], { core: 10, gold: 1000 });
-    const head = tree([n({ id: '1002' })], [], { core: 10, gold: 1000 });
+    const base = tree([n({ id: '1001' })], [], { core: 10, gold: 1000, solar: 0 });
+    const head = tree([n({ id: '1002' })], [], { core: 10, gold: 1000, solar: 0 });
 
     expect(buildDiffSummary(base, head)).toContain(SUMMARY_MARKER);
   });
 
   it('兩份 tree.json 逐字元相同時標成「無變動」，pr-comment 據此不貼留言', () => {
-    const same = () => tree([n({ id: '1001' })], [['1001', '1002']], { core: 10, gold: 1000 });
+    const same = () => tree([n({ id: '1001' })], [['1001', '1002']], { core: 10, gold: 1000, solar: 0 });
 
     expect(buildDiffSummary(same(), same())).toContain(NO_CHANGE_MARKER);
   });
 
   it('只要有任何差異就不標「無變動」——包含只有邊被改接（節點計數全部是 0）的情況', () => {
-    const base = tree([n({ id: '1001' })], [['1001', '1002']], { core: 10, gold: 1000 });
-    const head = tree([n({ id: '1001' })], [['1001', '1003']], { core: 10, gold: 1000 });
+    const base = tree([n({ id: '1001' })], [['1001', '1002']], { core: 10, gold: 1000, solar: 0 });
+    const head = tree([n({ id: '1001' })], [['1001', '1003']], { core: 10, gold: 1000, solar: 0 });
 
     const summary = buildDiffSummary(base, head);
 
@@ -133,8 +133,8 @@ describe('buildDiffSummary 的留言標記與逃逸', () => {
   });
 
   it('修改清單裡的節點名稱有逃逸', () => {
-    const base = tree([n({ id: '1001', name: '火骰子', unlockCost: { core: 10, gold: 1000 } })]);
-    const head = tree([n({ id: '1001', name: '<img src=x onerror=alert(1)> @yuki', unlockCost: { core: 20, gold: 1000 } })]);
+    const base = tree([n({ id: '1001', name: '火骰子', unlockCost: { core: 10, gold: 1000, solar: 0 } })]);
+    const head = tree([n({ id: '1001', name: '<img src=x onerror=alert(1)> @yuki', unlockCost: { core: 20, gold: 1000, solar: 0 } })]);
 
     const summary = buildDiffSummary(base, head);
 
@@ -163,7 +163,7 @@ describe('buildDiffSummary 的留言標記與逃逸', () => {
 describe('buildDiffSummary：邊與 wip 的變化（P3）', () => {
   const withEdges = (edges: Edge[], extra: Partial<TreeNode>[] = []) =>
     tree([n({ id: '1001', name: '火骰子' }), n({ id: '1002', name: '尖刺骰子' }), n({ id: '1003', name: '冰骰子' }),
-      ...extra.map(p => n(p))], edges, { core: 10, gold: 1000 });
+      ...extra.map(p => n(p))], edges, { core: 10, gold: 1000, solar: 0 });
 
   it('邊數不變但接法變了：要有顯眼警告，且摘要不能跟「完全沒改」長得一樣', () => {
     const base = withEdges([['1001', '1002']]);
@@ -196,7 +196,7 @@ describe('buildDiffSummary：邊與 wip 的變化（P3）', () => {
     const base = withEdges([['1001', '1002']]);
     const head = tree(
       [n({ id: '1001', name: '火骰子' }), n({ id: '1002', name: '尖刺骰子' }), n({ id: '1003', name: '冰骰子', wip: true })],
-      [['1001', '1002']], { core: 10, gold: 1000 },
+      [['1001', '1002']], { core: 10, gold: 1000, solar: 0 },
     );
 
     const summary = buildDiffSummary(base, head);

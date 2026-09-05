@@ -1,7 +1,8 @@
 // `/sim` 的存檔與文字報告。純函式——`localStorage` 的實際讀寫在 src/scripts/sim.ts，
 // 這裡只負責「狀態 ↔ 字串」，才測得動（jsdom 的 storage 替身跟真的瀏覽器行為不完全一樣）。
-import { maxSelectableLevel, ownedIds, simTotals } from './sim.js';
+import { maxSelectableLevel, minSelectableLevel, ownedIds, simTotals } from './sim.js';
 import type { SimContext, SimState } from './sim.js';
+import type { Cost } from './types.js';
 
 /**
  * 存檔的鍵名。**版本號寫在鍵名裡**：格式改了就換一個鍵，舊資料自然失效，
@@ -22,8 +23,9 @@ export function serializeSim(state: SimState): string {
 /**
  * 讀回存檔；沒有存檔、格式不合、或版本不符時回 null（呼叫端退回 `initialSimState()`）。
  *
- * ⚠️ 存檔是使用者瀏覽器裡的舊資料，而骰子樹會改版。三種漂移都在這裡收掉：節點被移除
- * （丟掉那筆）、等級上限被調低（夾回上限）、前置邊被拿掉（連帶清掉前置不齊的節點）。
+ * ⚠️ 存檔是使用者瀏覽器裡的舊資料，而骰子樹會改版。四種漂移都在這裡收掉：節點被移除
+ * （丟掉那筆）、等級上限被調低（夾回上限）、前置邊被拿掉（連帶清掉前置不齊的節點）、
+ * **新增了「祖先要練到某等級」的條件**（把那顆祖先的等級補到門檻）。
  * 不收的話玩家會看到一份算錯的資源總額，而畫面上不會有任何地方說話。
  */
 export function deserializeSim(text: string | null, ctx: SimContext): SimState | null {
@@ -62,7 +64,20 @@ export function deserializeSim(text: string | null, ctx: SimContext): SimState |
     const lv = typeof saved === 'number' && Number.isInteger(saved) ? Math.min(Math.max(saved, 1), cap) : 1;
     nextLevels.set(id, lv);
   }
-  return { unlocked: nextUnlocked, levels: nextLevels, initial: nextInitial };
+
+  // 等級條件是 1.1.0 才有的東西（太陽骰子要求 1201 練滿 Lv.50），所以存檔裡可能有一份
+  // 「1501 已取得、1201 停在 Lv.1」的組合——那在遊戲裡不存在。**往上補到門檻而不是把 1501
+  // 丟掉**：玩家真的解開過它，就代表那段等級他也真的練過；丟掉節點反而是憑空改掉他的規劃。
+  // ⚠️ 這一輪要排在等級夾制之後（它讀的是夾完的 nextLevels），也要排在 unlocked 收斂之後
+  // （下限的來源是「已取得的後續節點」）。
+  const repaired: SimState = { unlocked: nextUnlocked, levels: nextLevels, initial: nextInitial };
+  for (const [id, lv] of nextLevels) {
+    const node = ctx.byId.get(id);
+    if (!node) continue;
+    const floor = Math.min(minSelectableLevel(node, repaired, ctx), maxSelectableLevel(node, ctx));
+    if (lv < floor) nextLevels.set(id, floor);
+  }
+  return repaired;
 }
 
 const num = (n: number) => n.toLocaleString('en-US');
@@ -70,6 +85,12 @@ const num = (n: number) => n.toLocaleString('en-US');
 /** 可貼進聊天室的純文字報告。刻意不含表格或色碼——它會被貼到哪裡我們控制不了。 */
 export function simReport(state: SimState, ctx: SimContext): string {
   const t = simTotals(state, ctx);
+  // 太陽核心只在這份規劃真的用得到時才進報告——沒用到就一個字都不多印，既有的報告格式
+  // 逐位元組不變。⚠️ 判準是**總計**而不是逐行：三行是同一個區塊，只有其中一行多一段的話
+  // 讀報告的人得自己去推「另外兩行是 0 還是這個欄位不適用」。
+  const showSolar = t.total.solar > 0;
+  const money = (c: Cost) =>
+    `核心 ${num(c.core)} ／金幣 ${num(c.gold)}` + (showSolar ? ` ／太陽核心 ${num(c.solar)}` : '');
   const owned = ownedIds(state, ctx);
   const initialNames = [...state.initial].map(id => ctx.byId.get(id)?.name ?? id);
   // 起始骰子不列進清單：玩家沒有為它們做過任何選擇，列出來只是稀釋掉真正的規劃內容。
@@ -82,9 +103,9 @@ export function simReport(state: SimState, ctx: SimContext): string {
     `初始骰子：${initialNames.length > 0 ? initialNames.join('、') : '無（只有起始的 5 顆）'}`,
     `已取得節點：${owned.size} / ${ctx.byId.size}`,
     '',
-    `總資源：核心 ${num(t.total.core)} ／金幣 ${num(t.total.gold)}`,
-    `解鎖：核心 ${num(t.unlock.core)} ／金幣 ${num(t.unlock.gold)}`,
-    `升級：核心 ${num(t.upgrade.core)} ／金幣 ${num(t.upgrade.gold)}`,
+    `總資源：${money(t.total)}`,
+    `解鎖：${money(t.unlock)}`,
+    `升級：${money(t.upgrade)}`,
     '',
     '取得節點：',
   ];

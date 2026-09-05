@@ -24,8 +24,8 @@ test('C1. /dice 的骰子名稱與效果是伺服器輸出的 HTML，不是瀏�
   const html = await res.text();
 
   // 這是 #22 要解掉的症狀：2026-08-20 實測 dist/tree/index.html 的可索引文字只有 194 個
-  // 字元，239 個節點名一個字都沒進 HTML。圖鑑必須把 41 顆骰子全部寫進去。
-  expect(dice.length).toBe(41);
+  // 字元，239 個節點名一個字都沒進 HTML。圖鑑必須把 42 顆骰子全部寫進去。
+  expect(dice.length).toBe(42);
   const missing = dice.filter(d => !html.includes(d.name));
   expect(missing.map(d => d.name)).toEqual([]);
 
@@ -236,7 +236,10 @@ test('C5. 首頁的更新日誌顯示最新 3 筆，且資料條目的版本戳�
   await expect(stamp).toContainText(`v${tree.meta.gameVersion}`);
   // 資源包版本 2026-08-22 起不上頁面（Yuki 指定：玩家不需要知道資料抄自哪一版資源包）。
   // 它仍然在 data/changelog.json 裡給規則 20 用——這條反向守著「別又把它印回去」。
-  await expect(stamp).not.toContainText(tree.meta.gameBundle);
+  // ⚠️ 2026-09-06 起資源包欄位直接寫遊戲版本（兩者相同），字串比對分不出是誰印的，
+  // 所以只在兩者不同時才用字串守，另外守「資源包」這個詞不出現。
+  if (tree.meta.gameBundle !== tree.meta.gameVersion) await expect(stamp).not.toContainText(tree.meta.gameBundle);
+  await expect(stamp).not.toContainText('資源包');
   await expect(entries.first().locator('time')).toHaveAttribute('datetime', /^\d{4}-\d{2}-\d{2}$/);
 });
 
@@ -374,7 +377,7 @@ test('C8. 切檔只換數字：41 張卡片的 pill 區塊高度在四個檔位�
 
   // 前提斷言：真的掃到 41 張，而且四個檔位真的有值在變。少了這兩行，選擇器哪天改名之後
   // 這條測試會掃到 0 張卡片、然後「通過」。
-  expect(result.measured, '應該掃到 41 張卡片').toBe(41);
+  expect(result.measured, '應該掃到 42 張卡片').toBe(42);
   expect(result.anyValueChanged, '四個檔位應該真的有值不一樣，否則這條在量一個不會動的東西').toBe(true);
   expect(result.bad, 'pill 區塊高度隨檔位改變的卡片').toEqual([]);
 });

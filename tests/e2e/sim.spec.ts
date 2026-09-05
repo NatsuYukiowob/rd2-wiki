@@ -452,6 +452,31 @@ test('S18. 邊有三階：沒到手＝暗、兩端都在手上＝正常亮、真
   expect(await gold.evaluate(el => Number(getComputedStyle(el).opacity))).toBe(1);
 });
 
+test('S21. 一鍵點亮太陽骰子時，1201 真的被練到 Lv.50，而且降不回去', async ({ page }) => {
+  // 1501 要求 1201 練滿 Lv.50。那段升級佔了整條路徑 78% 的金幣——沒把它納入計畫的話，
+  // 玩家會花掉 13 萬金幣、目標卻仍然點不開，而畫面上只會說「還缺前置」。
+  await openSim(page);
+  await tapNode(page, '1501');
+
+  // 面板要說得出「差在等級」，不是只說「缺少前置」。
+  await expect(page.locator('#sim-detail')).toContainText('子彈傷害%增加需達 Lv.50');
+
+  await page.locator('#sim-detail [data-path]').click();
+  await expect(page.locator('#sim-toast')).toContainText('練到 Lv.50');
+  // 等級牌是「畫面真的跟上了」最直接的證據（它由 .sim-owned ＋ 文字內容決定）。
+  await expect(page.locator('#tree g.node[data-id="1201"] .sim-badge text')).toHaveText('50/50');
+  await expect(page.locator('#tree g.node[data-id="1501"]')).toHaveClass(/sim-owned/);
+  // 解鎖 132,000 ＋ 練等 463,700 ＝ 595,700 金幣
+  await expect(totals(page).total).toHaveText('核心 129 ／金幣 595,700 ／太陽核心 2,000');
+
+  // 遊戲裡做不到「把 1201 降回 49 級但保留太陽骰子」，滑桿也不該做得到。
+  await tapNode(page, '1201');
+  const range = page.locator('#sim-level-range');
+  await expect(range).toHaveAttribute('min', '50');
+  await expect(page.locator('#sim-detail [data-step="-1"]')).toBeDisabled();
+  await expect(page.locator('#sim-detail .sim-level')).toContainText('要求它達到 Lv.50，不能再往下調');
+});
+
 test('S19. toast 是常駐的 live region，不靠 hidden 收放', async ({ page }) => {
   await openSim(page);
   const el = page.locator('#sim-toast');
@@ -480,4 +505,13 @@ test('S12. 手機版：抽屜不蓋住著作權聲明，而且整頁不捲動', 
   expect(geo.footTop).toBeLessThan(geo.panelTop);   // footer 有一截露在抽屜上方
   expect(geo.scrollable).toBe(false);
   await expect(page.locator('footer')).toContainText('111 Percent Inc.');
+});
+
+test('S22. 側欄三列合計帶貨幣圖，核心與金幣永遠各一張；文字仍是舊格式', async ({ page }) => {
+  await page.goto('/sim');
+  const t = totals(page);
+  await expect(t.total).toHaveText('核心 0 ／金幣 0');
+  await expect(t.total.locator('.currency-icon')).toHaveCount(2);
+  await expect(t.total.locator('.currency-icon').first()).toHaveAttribute('src', '/currency/core.png');
+  await expect(t.total.locator('.currency-icon').nth(1)).toHaveAttribute('src', '/currency/gold.png');
 });

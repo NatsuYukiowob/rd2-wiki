@@ -5,9 +5,10 @@
 // 面板是一疊「視圖」而不是一張固定的卡片（2026-08-20）：點描述裡的 `#關鍵字` 或
 // 「骰子覺醒」那一列，會在**同一張卡片裡**換頁（左滑推入），左上角出現返回鍵。
 // 這裡只負責產生每一種視圖的 HTML；堆疊、動畫、瀏覽器上一頁的接線都在 tree-canvas.ts。
-import { formatCost, formatGrowth, formatUnlockVia } from '../lib/format.js';
-import { cumulativeUpgradeCost, upgradeTableApplies } from '../lib/cost.js';
-import type { GlossaryDisplay, TreeNode, UpgradeCostTable } from '../lib/types.js';
+import { formatGrowth, formatUnlockVia } from '../lib/format.js';
+import { costHtml } from '../lib/cost-html.js';
+import { levelTableFor, upgradeExtraCost } from '../lib/upgrade-tiers.js';
+import type { Cost, GlossaryDisplay, PassiveUpgradeCost, TreeNode, UpgradeCostTable } from '../lib/types.js';
 import type { Selection } from '../lib/selection.js';
 import { escapeHtml, renderTaggedText } from '../lib/markup.js';
 import { AWAKENING_CONDITION, BRANCH_ZH, typeLabel } from '../lib/labels.js';
@@ -59,14 +60,26 @@ function nodeBody(
   sel: Selection,
   glossary: Record<string, GlossaryDisplay>,
   upgradeCostTable: UpgradeCostTable | null,
+  tables: PassiveUpgradeCost,
 ): string {
   const growth = formatGrowth(node);
   const desc = renderDescription(node.description, node.keywords, glossary);
-  // 練滿的累計花費。表格只適用骰子符文（見 UpgradeCostTable），套不上就整列不顯示——
+  // 練滿的累計花費＝解鎖那一筆 ＋ Lv.2 → maxLevel 的追加。查不到費用表就整列不顯示——
   // 顯示一個算錯的總價比什麼都不顯示糟得多。
-  const maxUpgrade = upgradeTableApplies(upgradeCostTable, node)
-    ? cumulativeUpgradeCost(upgradeCostTable, node.maxLevel)
-    : null;
+  //
+  // ⚠️ **查表一律走 `levelTableFor()`（跟 `/sim` 同一個判準），不要用 `upgradeTableApplies()`**：
+  // 那支只認通用符文表（`type === 'rune'` ＋ `maxLevel === 50`），而 1601 太陽強化雖然剛好
+  // 符合那兩個條件，它的費用卻在 `data/passive-upgrade-cost.json` 的 `special` 裡（逐級金幣
+  // 與太陽核心都不同、一顆核心都不用）。用通用表算出來的是「核心 99 ＋ 金幣 465,700」——
+  // 一個看起來很專業、而且跟真實費用（金幣 40,500,000 ＋ 太陽核心 81,000）差了兩個數量級的
+  // 數字。`levelTableFor()` 明確讓 special 優先，兩張表的優先順序只有那一份實作。
+  const levels = levelTableFor(node, tables, upgradeCostTable);
+  const extra = levels ? upgradeExtraCost(levels, node.maxLevel) : null;
+  const maxUpgrade: Cost | null = extra && {
+    core: extra.core + node.unlockCost.core,
+    gold: extra.gold + node.unlockCost.gold,
+    solar: extra.solar + node.unlockCost.solar,
+  };
 
   // 兩欄：左欄是「這個節點是什麼」，右欄是「要花多少才走得到」，
   // 最後那句重置警告（spec §2.1 強制要求，永遠是卡片最後一段）**跨兩欄**放底部——
@@ -78,9 +91,9 @@ function nodeBody(
   return `
     <div class="node-body">
       <div class="col">
-        <p class="meta">${BRANCH_ZH[node.branch]} · ${typeLabel(node)} · ${escapeHtml(formatUnlockVia(node))}</p>
+        <p class="meta">${BRANCH_ZH[node.branch]} · ${typeLabel(node)} · ${node.unlockVia === 'cost' ? costHtml(node.unlockCost) : escapeHtml(formatUnlockVia(node))}</p>
         ${node.maxLevel > 1 ? `<p class="meta">等級上限 ${node.maxLevel}</p>` : ''}
-        ${maxUpgrade ? `<p class="upgrade">練滿 ${node.maxLevel} 級累計 ${escapeHtml(formatCost(maxUpgrade))}<span class="cond">含解鎖那一次</span></p>` : ''}
+        ${maxUpgrade ? `<p class="upgrade">練滿 ${node.maxLevel} 級累計 ${costHtml(maxUpgrade)}<span class="cond">含解鎖那一次</span></p>` : ''}
         ${growth ? `<p class="growth">${escapeHtml(growth)}</p>` : ''}
         ${node.dataIssue === 'placeholder' ? '<p class="warn">數值待補（遊戲資料含未替換佔位符）</p>' : ''}
         <p class="desc">${desc}</p>
@@ -88,8 +101,18 @@ function nodeBody(
       </div>
       <div class="col chain">
         <h3>前置鏈（${sel.chain.size} 個節點）</h3>
-        <p class="cost">${formatCost(sel.cost)}</p>
-        <p class="note">此為 AND 假設下的上限值，不含強化費用。</p>
+        ${sel.prereqRanks.length > 0
+          // 有必要練等時分三件事講：總計、解鎖前置、每一段練等各多少。混成一個數字的話，
+          // 太陽骰子那 595,700 金幣裡有 78% 其實是拿去練 1201 的，玩家完全看不出來。
+          ? `<p class="cost">總計 ${costHtml(sel.totalCost)}</p>
+        <p class="note">解鎖前置 ${costHtml(sel.cost)}</p>
+        ${sel.prereqRanks.map(r =>
+          // cost 是 null ＝查不到費用表。**寫「成本未確認」而不是印 0**：「這一段免費」跟
+          // 「這一段算不出來」在畫面上必須是兩件事（見 PrereqRankCost 的說明）。
+          `<p class="note">前置練等 ${escapeHtml(r.name)} Lv.${r.rank}：${r.cost ? costHtml(r.cost) : '成本未確認'}</p>`
+        ).join('\n        ')}`
+          : `<p class="cost">${costHtml(sel.cost)}</p>`}
+        <p class="note">此為 AND 假設下的上限值${sel.prereqRanks.length > 0 ? '；除了上列必要練等之外，不含其他強化費用' : '，不含強化費用'}。</p>
         ${sel.skipped.length > 0 ? `<p class="note">已排除 ${sel.skipped.length} 個非成本解鎖節點</p>` : ''}
         ${sel.bypassNodes > 0 ? `<p class="note">鏈上有 ${sel.bypassNodes} 顆可直接領的骰子，通往它的前置邊畫成虛線</p>` : ''}
         ${sel.bypassed > 0 ? `<p class="note">因此已跳過 ${sel.bypassed} 個前置</p>` : ''}
@@ -100,16 +123,23 @@ function nodeBody(
   `;
 }
 
-/** 根視圖（節點）的 HTML。`back` 恆為 false——它是堆疊最底層。 */
+/**
+ * 根視圖（節點）的 HTML。`back` 恆為 false——它是堆疊最底層。
+ *
+ * ⚠️ `glossary`／`upgradeCostTable`／`tables` **刻意都沒有預設值**：三者少傳一個的後果都是
+ * 面板安靜地少一段或印出錯的數字（詞彙不再可點、練滿那一列消失、1601 拿到通用表的數字），
+ * 而型別檢查與測試都不會有反應。要跳過就得自己寫一個 null 出來，那是看得見的決定。
+ */
 export function nodeViewHtml(
   node: TreeNode,
   sel: Selection,
-  glossary: Record<string, GlossaryDisplay> = {},
-  upgradeCostTable: UpgradeCostTable | null = null,
+  glossary: Record<string, GlossaryDisplay>,
+  upgradeCostTable: UpgradeCostTable | null,
+  tables: PassiveUpgradeCost,
 ): string {
   return viewShell({
     title: escapeHtml(node.name),
-    body: nodeBody(node, sel, glossary, upgradeCostTable),
+    body: nodeBody(node, sel, glossary, upgradeCostTable, tables),
     back: false,
   });
 }
@@ -146,8 +176,9 @@ export function renderDetail(
   node: TreeNode,
   sel: Selection,
   host: HTMLElement,
-  glossary: Record<string, GlossaryDisplay> = {},
-  upgradeCostTable: UpgradeCostTable | null = null,
+  glossary: Record<string, GlossaryDisplay>,
+  upgradeCostTable: UpgradeCostTable | null,
+  tables: PassiveUpgradeCost,
 ): void {
-  host.innerHTML = `<div class="stack">${nodeViewHtml(node, sel, glossary, upgradeCostTable)}</div>`;
+  host.innerHTML = `<div class="stack">${nodeViewHtml(node, sel, glossary, upgradeCostTable, tables)}</div>`;
 }

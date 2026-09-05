@@ -13,17 +13,21 @@ import {
   DESKTOP_ICON_TARGET_PX, MOBILE_ICON_TARGET_PX, Viewport, minReadableScale,
 } from '../lib/viewport.js';
 import {
-  buildSimContext, initialSimState, ownedIds, isAvailable, missingParents,
+  buildSimContext, initialSimState, ownedIds, isAvailable, missingParents, missingPrereqRanks,
   unlockNode, removeNode, setNodeLevel, setInitialDice, pathTo, unlockMany,
-  simTotals, maxSelectableLevel, summarizeAbilities, exceedsLimit, edgeWasUsed, edgeIsLinked,
+  simTotals, maxSelectableLevel, minSelectableLevel, summarizeAbilities, exceedsLimit,
+  edgeWasUsed, edgeIsLinked,
 } from '../lib/sim.js';
 import type { AbilityGroup, SimState } from '../lib/sim.js';
 import { SIM_STORAGE_KEY, deserializeSim, serializeSim, simReport } from '../lib/sim-io.js';
 import { levelTableFor, upgradeExtraCost } from '../lib/upgrade-tiers.js';
-import { formatCost } from '../lib/format.js';
+import { costHtml, simCostHtml } from '../lib/cost-html.js';
 import { typeLabel } from '../lib/labels.js';
 import { renderTaggedText } from '../lib/markup.js';
-import type { PassiveUpgradeCost, TreeData, TreeNode } from '../lib/types.js';
+import type { Cost, PassiveUpgradeCost, TreeData, TreeNode } from '../lib/types.js';
+
+/** 「這一級沒有追加花費」的零成本。三種貨幣都要寫齊，Cost 的欄位刻意全是必填（見 types.ts）。 */
+const ZERO_COST: Cost = { core: 0, gold: 0, solar: 0 };
 
 const data = rawData as unknown as TreeData;
 const tables = rawTables as unknown as PassiveUpgradeCost;
@@ -183,8 +187,12 @@ function readLimit(el: HTMLInputElement): number | null {
   return Number.isFinite(v) && v >= 0 ? Math.floor(v) : null;
 }
 
-function limits(): { core: number | null; gold: number | null } {
-  return { core: readLimit($<HTMLInputElement>('sim-limit-core')), gold: readLimit($<HTMLInputElement>('sim-limit-gold')) };
+function limits(): { core: number | null; gold: number | null; solar: number | null } {
+  return {
+    core: readLimit($<HTMLInputElement>('sim-limit-core')),
+    gold: readLimit($<HTMLInputElement>('sim-limit-gold')),
+    solar: readLimit($<HTMLInputElement>('sim-limit-solar')),
+  };
 }
 
 // --- 畫面 -------------------------------------------------------------------
@@ -242,14 +250,16 @@ function renderCanvas(): void {
   }
 }
 
-const num = (n: number) => n.toLocaleString('en-US');
-const cost = (c: { core: number; gold: number }) => `核心 ${num(c.core)} ／金幣 ${num(c.gold)}`;
+// 太陽核心只在有值時才印：三列合計是側欄常駐的東西，為一個只有太陽骰子那一支花得到的
+// 貨幣固定多佔一段寬度，會讓 239 顆節點裡的 237 顆看到一段永遠是 0 的字。
+// 帶貨幣圖的版本在 src/lib/cost-html.ts（文字跟以前逐字相同，E2E 的 toHaveText 不受影響）。
+const cost = (c: Cost) => simCostHtml(c);
 
 function renderTotals(): void {
   const t = simTotals(state, ctx);
-  $('sim-total').textContent = cost(t.total);
-  $('sim-total-unlock').textContent = cost(t.unlock);
-  $('sim-total-upgrade').textContent = cost(t.upgrade);
+  $('sim-total').innerHTML = cost(t.total);
+  $('sim-total-unlock').innerHTML = cost(t.unlock);
+  $('sim-total-upgrade').innerHTML = cost(t.upgrade);
   $('sim-owned-count').textContent = `${ownedIds(state, ctx).size} / ${data.nodes.length}`;
 
   const over = exceedsLimit(t.total, limits());
@@ -259,6 +269,7 @@ function renderTotals(): void {
   const lim = limits();
   $<HTMLInputElement>('sim-limit-core').classList.toggle('over-limit', lim.core !== null && t.total.core > lim.core);
   $<HTMLInputElement>('sim-limit-gold').classList.toggle('over-limit', lim.gold !== null && t.total.gold > lim.gold);
+  $<HTMLInputElement>('sim-limit-solar').classList.toggle('over-limit', lim.solar !== null && t.total.solar > lim.solar);
 
   $<HTMLButtonElement>('sim-undo').disabled = undoStack.length === 0;
   $<HTMLButtonElement>('sim-redo').disabled = redoStack.length === 0;
@@ -277,16 +288,20 @@ const esc = (s: string): string => {
 /** 等級區塊要顯示的四個數字。完整重建與拖曳中的局部更新共用同一份計算。 */
 function levelInfo(node: TreeNode) {
   const cap = maxSelectableLevel(node, ctx);
+  // 下限不是恆等於 1：已取得的太陽骰子要求 1201 至少 Lv.50，降到那以下在遊戲裡做不到。
+  const floor = minSelectableLevel(node, state, ctx);
   const lv = state.levels.get(node.id) ?? 1;
   const table = levelTableFor(node, ctx.tables, ctx.runeTable);
   const extra = table ? upgradeExtraCost(table, lv) : null;
   const next = table && lv < cap ? upgradeExtraCost(table, lv + 1) : null;
-  const step = next && extra ? { core: next.core - extra.core, gold: next.gold - extra.gold } : null;
-  return { cap, lv, extra, step };
+  const step: Cost | null = next && extra
+    ? { core: next.core - extra.core, gold: next.gold - extra.gold, solar: next.solar - extra.solar }
+    : null;
+  return { cap, floor, lv, extra, step };
 }
 
-const nextLevelText = (lv: number, cap: number, step: { core: number; gold: number } | null): string =>
-  lv >= cap ? '已滿級' : step ? formatCost(step) : '成本未確認';
+const nextLevelText = (lv: number, cap: number, step: Cost | null): string =>
+  lv >= cap ? '已滿級' : step ? costHtml(step) : '成本未確認';
 
 /**
  * 拖曳滑桿時**只改文字**，不重建等級區塊。
@@ -301,30 +316,35 @@ function updateLevelReadout(): void {
   const box = $('sim-detail');
   const value = box.querySelector('.sim-level-value');
   if (!node || !value) return;
-  const { cap, lv, extra, step } = levelInfo(node);
+  const { cap, floor, lv, extra, step } = levelInfo(node);
   value.textContent = `Lv.${lv} / ${cap}`;
   const notes = box.querySelectorAll('.sim-level .note');
-  if (notes[0]) notes[0].textContent = `下一級：${nextLevelText(lv, cap, step)}`;
-  if (notes[1]) notes[1].textContent = `Lv.1 → Lv.${lv} 追加：${formatCost(extra ?? { core: 0, gold: 0 })}`;
+  if (notes[0]) notes[0].innerHTML = `下一級：${nextLevelText(lv, cap, step)}`;
+  if (notes[1]) notes[1].innerHTML = `Lv.1 → Lv.${lv} 追加：${costHtml(extra ?? ZERO_COST)}`;
   const dec = box.querySelector<HTMLButtonElement>('[data-step="-1"]');
   const inc = box.querySelector<HTMLButtonElement>('[data-step="1"]');
-  if (dec) dec.disabled = lv <= 1;
+  if (dec) dec.disabled = lv <= floor;
   if (inc) inc.disabled = lv >= cap;
 }
 
 function levelBlockHtml(node: TreeNode): string {
   if (maxSelectableLevel(node, ctx) <= 1 || !ownedIds(state, ctx).has(node.id)) return '';
-  const { cap, lv, extra, step } = levelInfo(node);
+  const { cap, floor, lv, extra, step } = levelInfo(node);
+  // 卡著它的是哪幾顆？滑桿的 min 與停用的「−」只表達得出「不能再低了」，說不出為什麼。
+  const heldBy = (ctx.rankHolders.get(node.id) ?? [])
+    .filter(h => ownedIds(state, ctx).has(h.id) && h.rank >= floor)
+    .map(h => ctx.byId.get(h.id)?.name ?? h.id);
   return `
     <div class="sim-level">
       <div class="sim-level-row">
-        <button type="button" data-step="-1" aria-label="降低等級"${lv <= 1 ? ' disabled' : ''}>−</button>
-        <input type="range" id="sim-level-range" min="1" max="${cap}" value="${lv}" aria-label="等級" />
+        <button type="button" data-step="-1" aria-label="降低等級"${lv <= floor ? ' disabled' : ''}>−</button>
+        <input type="range" id="sim-level-range" min="${floor}" max="${cap}" value="${lv}" aria-label="等級" />
         <button type="button" data-step="1" aria-label="提高等級"${lv >= cap ? ' disabled' : ''}>＋</button>
         <span class="sim-level-value">Lv.${lv} / ${cap}</span>
       </div>
-      <p class="note">下一級：${esc(nextLevelText(lv, cap, step))}</p>
-      <p class="note">Lv.1 → Lv.${lv} 追加：${esc(formatCost(extra ?? { core: 0, gold: 0 }))}</p>
+      <p class="note">下一級：${nextLevelText(lv, cap, step)}</p>
+      <p class="note">Lv.1 → Lv.${lv} 追加：${costHtml(extra ?? ZERO_COST)}</p>
+      ${floor > 1 ? `<p class="note">已取得的${esc(heldBy.join('、'))}要求它達到 Lv.${floor}，不能再往下調</p>` : ''}
     </div>`;
 }
 
@@ -350,9 +370,18 @@ function renderDetailPanel(): void {
       ? '<button type="button" class="cta danger" data-uncheck>取消勾選（會連帶取消後續）</button>'
       : '<button type="button" class="cta" data-check>我已經有這顆了</button>';
   } else if (owned) action = '<button type="button" class="cta danger" data-remove>取消此節點（會連帶取消後續）</button>';
-  else if (avail) action = `<button type="button" class="cta" data-unlock>取得 · ${esc(formatCost(node.unlockCost))}</button>`;
+  else if (avail) action = `<button type="button" class="cta" data-unlock>取得 · ${costHtml(node.unlockCost)}</button>`;
   else {
-    action = `<p class="note warn">缺少前置：${missing.map(id => esc(ctx.byId.get(id)?.name ?? id)).join('、')}</p>`
+    // ⚠️ 不可以只說「還缺前置」：太陽骰子的三顆前置全在手上時它照樣點不開，那句話會讓玩家
+    // 對著一棵已經解完的前置鏈找不到問題在哪。缺前置與等級不夠是兩句不同的話，各印各的。
+    const lines: string[] = [];
+    if (missing.length > 0) {
+      lines.push(`缺少前置：${missing.map(id => esc(ctx.byId.get(id)?.name ?? id)).join('、')}`);
+    }
+    for (const m of missingPrereqRanks(node.id, state, ctx)) {
+      lines.push(`${esc(m.name)}需達 Lv.${m.rank}（目前 ${m.owned ? `Lv.${m.level}` : '未取得'}）`);
+    }
+    action = lines.map(t => `<p class="note warn">${t}</p>`).join('')
       + '<button type="button" class="cta" data-path>一鍵點亮到這裡</button>';
   }
 
@@ -442,13 +471,21 @@ $('sim-detail').addEventListener('click', e => {
   else if (btn.hasAttribute('data-check')) commit(setInitialDice(state, ctx, id, true));
   else if (btn.hasAttribute('data-uncheck')) commit(setInitialDice(state, ctx, id, false));
   else if (btn.hasAttribute('data-path')) {
-    const { need, blocked } = pathTo(id, state, ctx);
-    if (blocked.length > 0) {
-      toast(`請先在「初始骰子」勾選：${blocked.map(x => ctx.byId.get(x)?.name ?? x).join('、')}`);
+    const plan = pathTo(id, state, ctx);
+    if (plan.blocked.length > 0) {
+      toast(`請先在「初始骰子」勾選：${plan.blocked.map(x => ctx.byId.get(x)?.name ?? x).join('、')}`);
       return;
     }
-    if (need.length === 0) return;
-    if (commit(unlockMany(state, ctx, need))) toast(`已點亮 ${need.length} 個節點`);
+    if (plan.need.length === 0 && plan.levels.length === 0) return;
+    // ⚠️ 整份計畫一起套用（節點 ＋ 練等），資源上限也一起判：太陽骰子那段升級佔了整條路徑
+    // 78% 的金幣，分兩次套用的話玩家會在「解完節點、還沒練完」的中間狀態被上限擋下來，
+    // 而那正是「解一半」要避免的情形。
+    const levelText = plan.levels
+      .map(l => `${ctx.byId.get(l.id)?.name ?? l.id} 練到 Lv.${l.level}`)
+      .join('、');
+    if (commit(unlockMany(state, ctx, plan))) {
+      toast(`已點亮 ${plan.need.length} 個節點${levelText ? `，並把${levelText}` : ''}`);
+    }
   } else if (btn.hasAttribute('data-step')) {
     const lv = (state.levels.get(id) ?? 1) + Number(btn.getAttribute('data-step'));
     commit(setNodeLevel(state, ctx, id, lv));

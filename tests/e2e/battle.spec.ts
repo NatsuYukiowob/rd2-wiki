@@ -17,10 +17,15 @@ const tactics = JSON.parse(
 
 const bosses = JSON.parse(
   readFileSync(new URL('../../data/boss.json', import.meta.url), 'utf8'),
-) as { id: string; name: string; effect: string; gameId: string }[];
+) as { id: string; name: string; effect: string; gameId: string; difficulty: string }[];
 
 const coopOnly = tactics.filter(t => t.coop);
 const versusOnly = tactics.filter(t => !t.coop);
+
+/** /boss 的兩組。⚠️ 條數一律從資料算：寫死 10／11 的話，收一批新 Boss 時這條會自己變紅，
+    而它該說的是「畫面漏了誰」不是「數字又要改一次」（2026-09-06 B1 就是這樣被寫死成 10）。 */
+const BOSS_DIFFICULTIES = ['一般', '困難'] as const;
+const bossesBy = (difficulty: string) => bosses.filter(b => b.difficulty === difficulty);
 
 test('T1. /tactic 的名稱與對戰效果全文是伺服器輸出的 HTML', async ({ request }) => {
   const res = await request.get('/tactic');
@@ -184,13 +189,39 @@ test('B1. /boss 的名稱與效果全文是伺服器輸出的 HTML', async ({ re
   expect(res.status()).toBe(200);
   const html = await res.text();
 
-  expect(bosses.length).toBe(10);
-  expect(bosses.filter(b => !html.includes(b.name)).map(b => b.name)).toEqual([]);
+  // ⚠️ 兩組**分別**驗，不是驗總數：只驗 `bosses.length` 的話，渲染端漏掉整個「困難」那一組
+  // （例如分組條件寫成 `gameId.endsWith('_hard')` 而上游改了命名）仍然可以綠——那批名稱還
+  // 在資料檔裡，而測試比對的是資料檔自己。
+  for (const difficulty of BOSS_DIFFICULTIES) {
+    const group = bossesBy(difficulty);
+    expect(group.length, `資料裡沒有任何「${difficulty}」Boss`).toBeGreaterThan(0);
+    expect(group.filter(b => !html.includes(b.name)).map(b => b.name), `${difficulty} 這一組有名稱沒進 HTML`).toEqual([]);
+  }
+  // 每一隻都要被分進兩組其中之一，否則它在畫面上會整筆消失（CI 規則 25 守同一件事）。
+  expect(bosses.filter(b => !(BOSS_DIFFICULTIES as readonly string[]).includes(b.difficulty)).map(b => b.id)).toEqual([]);
+
   for (const b of bosses) {
     // 蛇王的效果含 `#一般怪物`，會被包成連結——比對 `#` 前面那一段就好。
     const plain = b.effect.split('#')[0]!.trim();
     expect(html, `${b.name} 的效果沒進 HTML`).toContain(plain);
   }
+});
+
+test('B1b. /boss 分成一般與困難兩組，每組的條數等於資料裡該難度的筆數', async ({ page }) => {
+  await page.goto('/boss');
+  const heads = page.locator('.battle-group-head');
+  await expect(heads).toHaveCount(BOSS_DIFFICULTIES.length);
+
+  for (let i = 0; i < BOSS_DIFFICULTIES.length; i++) {
+    const difficulty = BOSS_DIFFICULTIES[i]!;
+    await expect(heads.nth(i)).toContainText(difficulty);
+    // ⚠️ 量的是**該組那一份清單**底下的條數，不是整頁的 `.battle-item` 總數：後者只要總和
+    // 對得上就會綠，兩組的界線畫錯（例如一隻困難的排進一般那一組）完全看不出來。
+    await expect(page.locator('.battle-list').nth(i).locator('.battle-item')).toHaveCount(bossesBy(difficulty).length);
+  }
+
+  // 錨點跟著條目走，不因為多了組標題而改變（`#b1` 是既有的外部連結目標，B2–B4 也靠它）。
+  for (const b of bosses) await expect(page.locator(`#b${b.id}`)).toHaveCount(1);
 });
 
 test('B2. 蛇王的 #一般怪物 是關鍵字標記，不是裸的 #', async ({ page }) => {

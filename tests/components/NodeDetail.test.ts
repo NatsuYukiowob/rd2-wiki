@@ -4,9 +4,10 @@ import { parseHTML } from 'linkedom';
 import { renderDetail, termViewHtml, awakeningViewHtml } from '../../src/components/NodeDetail';
 import { computeSelection } from '../../src/lib/selection';
 import { formatCost } from '../../src/lib/format';
-import type { TreeData } from '../../src/lib/types';
+import type { PassiveUpgradeCost, TreeData } from '../../src/lib/types';
 
 const data: TreeData = JSON.parse(readFileSync('src/generated/tree.json', 'utf8'));
+const tables: PassiveUpgradeCost = JSON.parse(readFileSync('data/passive-upgrade-cost.json', 'utf8'));
 const byId = new Map(data.nodes.map(n => [n.id, n]));
 
 function renderNode(id: string) {
@@ -14,8 +15,8 @@ function renderNode(id: string) {
   const host = document.getElementById('detail') as unknown as HTMLElement;
   const node = byId.get(id);
   if (!node) throw new Error(`測試資料中找不到節點 ${id}`);
-  const sel = computeSelection(id, data);
-  renderDetail(node, sel, host, data.meta.glossary, data.meta.upgradeCostTable);
+  const sel = computeSelection(id, data, tables);
+  renderDetail(node, sel, host, data.meta.glossary, data.meta.upgradeCostTable, tables);
   return { host, node, sel };
 }
 
@@ -37,7 +38,7 @@ describe('視圖：節點頁', () => {
 
   it('骰子只留一列覺醒入口，內容在覺醒頁；非骰子沒有這一列', () => {
     const { host, node } = renderNode('1003');
-    expect(node.awakening).toBe('達到7骰點時爆炸\n於骰盤上隨機格子發射7個#播種');
+    expect(node.awakening).toBe('達到7骰點時爆炸\n於骰盤上隨機格子發射7個#果實');
     const link = host.querySelector('.awakening-link') as HTMLElement;
     expect(link.tagName).toBe('BUTTON');
     expect(link.hasAttribute('data-detail-awakening')).toBe(true);
@@ -92,7 +93,7 @@ describe('視圖：關鍵字頁與覺醒頁', () => {
     expect(host.querySelector('h2')?.textContent).toBe('骰子覺醒');
     expect(host.querySelector('.meta')?.textContent).toBe('花骰子 · 7 骰點時啟用');
     expect(host.querySelectorAll('.desc br')).toHaveLength(1);
-    expect(host.querySelector('.desc .kw')?.getAttribute('data-term')).toBe('播種');
+    expect(host.querySelector('.desc .kw')?.getAttribute('data-term')).toBe('果實');
     expect(host.querySelector('[data-detail-back]')).not.toBeNull();
   });
 });
@@ -109,6 +110,47 @@ describe('renderDetail', () => {
     expect(text).toContain('此為 AND 假設下的上限值');
     expect(text).toContain('不含強化費用');
     expect(text).toContain('⚠️ 骰子樹重置需要初期化券，且有已解鎖骰子消失的災情回報，重置前請先確認。');
+  });
+
+  // 「練滿 N 級累計」查表要跟 /sim 同一個判準（levelTableFor：special 優先於通用符文表）。
+  // 1601 太陽強化剛好是 50 級符文，用通用表算會印出「核心 99 ＋ 金幣 465,700」——一個看起來
+  // 很專業、跟真實費用差兩個數量級的數字，而畫面上沒有任何地方說話。
+  // 算式：special["1601"] 的 Lv.2–50 追加 金幣 40,450,000 ／太陽核心 80,900
+  //       ＋ 解鎖那一筆 金幣 50,000 ／太陽核心 100 ＝ 金幣 40,500,000 ／太陽核心 81,000。
+  it('1601 太陽強化的練滿累計走 special 表，不是通用符文表', () => {
+    const { host } = renderNode('1601');
+    const upgrade = host.querySelector('.upgrade')?.textContent ?? '';
+    expect(upgrade).toContain('練滿 50 級累計 金幣 40,500,000 ＋ 太陽核心 81,000');
+    // 它一顆核心都不用；出現「核心」二字就代表又掉回通用表了（465,700／99 那一組）。
+    expect(upgrade).not.toContain('核心 99');
+    expect(upgrade).not.toContain('465,700');
+  });
+
+  // 對照組：一般的 50 級符文沒有 special，照樣走通用符文表，數字跟改動前逐字相同。
+  it('1201 這種一般 50 級符文仍印通用表的數字', () => {
+    const { host } = renderNode('1201');
+    expect(host.querySelector('.upgrade')?.textContent).toContain('練滿 50 級累計 核心 99 ＋ 金幣 465,700');
+  });
+
+  // 太陽骰子（1501）的面板要把三件事分開講：解鎖前置的費用、前置練等的費用、總計。
+  // 只印一個總數的話玩家看到的是「金幣 595,700」而不知道其中 463,700 是拿去練 1201 的。
+  it('有前置等級條件時，面板分別列出解鎖費用、練等費用與總計', () => {
+    const { host, sel } = renderNode('1501');
+    const text = host.textContent ?? '';
+    expect(host.querySelector('.cost')?.textContent).toBe(`總計 ${formatCost(sel.totalCost)}`);
+    expect(text).toContain(`解鎖前置 ${formatCost(sel.cost)}`);
+    expect(text).toContain('前置練等 子彈傷害%增加 Lv.50：核心 99 ＋ 金幣 463,700');
+    // 這條鏈**含**一段必要練等，所以那句「不含強化費用」不可以原封不動留著。
+    expect(text).not.toContain('不含強化費用');
+    expect(text).toContain('此為 AND 假設下的上限值');
+  });
+
+  // 條件掛在 1501 身上：選到 1201 自己時面板要跟改動前逐字相同（只有一行成本、沒有分項）。
+  it('選到 1201 自己時面板沒有練等分項', () => {
+    const { host, sel } = renderNode('1201');
+    expect(host.querySelector('.cost')?.textContent).toBe(formatCost(sel.cost));
+    expect(host.textContent ?? '').toContain('不含強化費用');
+    expect(host.textContent ?? '').not.toContain('前置練等');
   });
 
   it('非成本解鎖節點被排除時，面板標示排除數量', () => {
@@ -159,7 +201,7 @@ describe('renderDetail', () => {
     const { document } = parseHTML('<html><body><div id="detail"></div></body></html>');
     const host = document.getElementById('detail') as unknown as HTMLElement;
     const node = { ...byId.get('2403')!, dataIssue: 'placeholder' as const };
-    renderDetail(node, computeSelection('2403', data), host, data.meta.glossary, data.meta.upgradeCostTable);
+    renderDetail(node, computeSelection('2403', data, tables), host, data.meta.glossary, data.meta.upgradeCostTable, tables);
     expect(host.querySelector('.warn')?.textContent).toBe('數值待補（遊戲資料含未替換佔位符）');
 
     // 正本現在沒有佔位符，所以同一顆節點照原樣渲染不該出現警告
@@ -211,7 +253,7 @@ describe('renderDetail', () => {
     const { document } = parseHTML('<html><body><div id="detail"></div></body></html>');
     const host = document.getElementById('detail') as unknown as HTMLElement;
     const node = { ...byId.get('5008')!, unlockNote: '<img src=x onerror=alert(1)>' };
-    renderDetail(node, computeSelection('5008', data), host, data.meta.glossary, data.meta.upgradeCostTable);
+    renderDetail(node, computeSelection('5008', data, tables), host, data.meta.glossary, data.meta.upgradeCostTable, tables);
     expect(host.querySelector('img')).toBeNull();
     expect(host.querySelectorAll('.meta')[0]?.textContent).toContain('<img src=x onerror=alert(1)>');
     expect(host.innerHTML).toContain('&lt;img src=x onerror=alert(1)&gt;');
