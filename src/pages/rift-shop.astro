@@ -1,0 +1,189 @@
+---
+// 裂縫商店。困難合作模式的局內商店，用討伐硬幣兌換的 55 條「裂縫效果」。
+//
+// 資料來自客戶端 `TacticsEffectTable` 的 `Store === True` 那 55 列——**跟戰術同一張表、
+// 但不是同一批東西**：`Use === True` 的 55 條是每波輪替池（/tactic），`Store === True` 的
+// 55 條是商店池（這一頁），兩者互斥（`CoopHardWaveTable.CoopTacticsIndex` 引用到的 44 個
+// index 沒有一個是 Store）。⚠️ 別因為同表就想併進 /tactic：那邊的軸是階段／適用模式，
+// 這邊是階級／討伐硬幣，兩套欄位沒有交集，併起來只會讓兩頁的篩選各壞一半。
+//
+// 版面共用 battle.css（圖左文右的橫列清單），分組方式抄 /boss 的難度分組。
+// 同樣不進 tree.json：靜態頁建置期直接讀 data/，不吃那 20 KB gzip 預算。
+import Base from '../layouts/Base.astro';
+import '../styles/battle.css';
+import riftShopRaw from '../../data/rift-shop.json';
+import keywordsRaw from '../../data/keywords.json';
+import treeData from '../generated/tree.json';
+import { buildGlossary, displayGlossary } from '../lib/glossary-groups';
+import { renderStaticText } from '../lib/static-markup';
+import { currencyIcon } from '../lib/cost-html';
+import type { GlossaryRecord, RiftShopEffect, RiftShopGrade, TreeData } from '../lib/types';
+
+const effects = riftShopRaw as RiftShopEffect[];
+const keywords = keywordsRaw as Record<string, GlossaryRecord>;
+const tree = treeData as unknown as TreeData;
+const index = buildGlossary(keywords, tree.nodes);
+const glossary = displayGlossary(keywords);
+const whitelist = Object.keys(keywords);
+
+/**
+ * 階級的顯示順序寫死（一般→稀有→傳說，＝遊戲的稀有度序），**數量與價格一律從資料算**。
+ * 跟 /boss 的 GROUPS 同一條理由：條數與價格會隨改版漂移，寫進版面就等著它哪天說謊，
+ * 而 CI 一個字都不會說。
+ *
+ * ⚠️ 價格用 `[...new Set()]` 而不是取第一筆：傳說階級有 100 與 200 兩種（奇蹟之石與
+ * 女王寶座是 200），寫成單一數字的話那兩條在組標題上會被說成 100。
+ */
+const GRADE_ORDER: RiftShopGrade[] = ['一般', '稀有', '傳說'];
+const grouped = GRADE_ORDER.map(grade => {
+  const items = effects.filter(e => e.grade === grade);
+  return {
+    grade,
+    items,
+    costs: [...new Set(items.map(e => e.cost))].sort((a, b) => a - b),
+    // 規則 27(i) 保證同階級只有一個權重，這裡仍然照資料算——版面不該重述一條規則的結論。
+    weights: [...new Set(items.map(e => e.weight))],
+  };
+});
+
+const coin = currencyIcon('tacticcoin');
+
+/**
+ * 困難模式全怪物共通的三種「意志」（客戶端 `common_ingame_hard_desc_03..05`）。
+ *
+ * ⚠️ 寫死在這裡而不是進資料檔（Yuki 2026-09-06 裁決）：它們不是商品、沒有編號、沒有圖，
+ * 進 rift-shop.json 就得為三筆特例放寬規則 27 的每一條欄位檢查。
+ */
+const WILLS = [
+  { name: '不屈意志', effect: '僵硬效果產生 1 秒延遲' },
+  { name: '守護意志', effect: '生命值等比傷害減少 50%' },
+  { name: '生存意志', effect: '生命值低於 30% 時，子彈暴斃效果生效' },
+];
+---
+
+<Base title="裂縫商店">
+  <section class="page battle-page" id="rift-shop-page">
+    <h1>裂縫商店</h1>
+    <p class="lede">
+      合作困難模式的局內商店。擊殺首領與 SP 魔像會掉落<strong>討伐硬幣</strong>，
+      在裂縫商店兌換以下 {effects.length} 種裂縫效果。
+    </p>
+
+    {/* 困難模式的共通條件。⚠️ 這一段不是商品清單的一部分，所以在篩選器上面、不受篩選影響。 */}
+    <div class="battle-intro">
+      <p class="note">困難模式的所有怪物都帶著三種「意志」：</p>
+      <ul class="battle-intro-list">
+        {WILLS.map(w => (
+          <li><strong>{w.name}</strong>　{w.effect}</li>
+        ))}
+      </ul>
+    </div>
+
+    <div class="filters" id="rift-filters">
+      <div role="group" aria-label="依階級篩選">
+        {/* 切換鈕跟 /tactic、/dice 用同一個 .chip：外觀是按鈕、骨子裡是 <label> 包真的
+            checkbox，鍵盤、螢幕閱讀器的「已勾選」、沒有 JS 時仍可操作全部免費。 */}
+        <button type="button" id="rift-all" class="chip">全部</button>
+        {grouped.map(g => (
+          <label class="chip">
+            <input type="checkbox" name="grade" value={g.grade} checked />
+            {g.grade} {g.items.length}
+          </label>
+        ))}
+      </div>
+
+      <p class="filter-count" aria-live="polite">
+        顯示 <span id="rift-count">{effects.length}</span> / {effects.length}
+      </p>
+    </div>
+
+    {grouped.map(g => (
+      <>
+        {/* 組標題與底下那一份清單一起藏（`data-grade` 同時掛在兩者上）——只藏清單的話，
+            篩掉的那一組會剩下一個標題孤零零地掛在畫面上。 */}
+        <h2 class="battle-group-head" data-grade={g.grade}>
+          {g.grade}階級
+          <span class="battle-group-note">
+            <Fragment set:html={coin} />{g.costs.join('／')} 討伐硬幣 · 出現權重 {g.weights.join('／')}
+          </span>
+        </h2>
+        <ul class="battle-list" data-grade={g.grade}>
+          {g.items.map(e => (
+            <li class="battle-item" id={`r${e.id}`} data-id={e.id} data-grade={e.grade}>
+              <img
+                class="battle-icon"
+                src={`/assets/rift-shop-icons/${e.icon}.webp`}
+                alt=""
+                loading="lazy"
+                decoding="async"
+              />
+              <div>
+                <div class="battle-head">
+                  {/* 組標題已經是 h2，條目就得降成 h3——標題階層是讀屏的目錄，跟 /boss 同一條。 */}
+                  <h3 class="battle-name">{e.name}</h3>
+                  <span class="battle-meta">
+                    {/* 價格逐條印而不是只印在組標題上：傳說階級有 100 與 200 兩種，
+                        只看組標題的人會把奇蹟之石當成 100。
+                        ⚠️ **權重刻意不逐條印**（Yuki 2026-09-06）：它在同一階級內是固定值，
+                        組標題已經說過一次，印在 55 張卡片上是同一個數字重複 55 次。
+                        資料檔仍然留著 `weight`——它是規則 27(i) 的鍵，也是組標題那句的來源。 */}
+                    <span class="battle-tag"><Fragment set:html={coin} />{e.cost}</span>
+                  </span>
+                </div>
+                <p class="battle-text" set:html={renderStaticText(e.effect, whitelist, glossary, index)} />
+              </div>
+            </li>
+          ))}
+        </ul>
+      </>
+    ))}
+
+    <p class="battle-empty" id="rift-empty" hidden>目前的篩選條件沒有符合的裂縫效果。</p>
+  </section>
+</Base>
+
+<script>
+  // 階級篩選。整組（標題 ＋ 清單）一起顯示／隱藏——這一頁的分組是資料本身的分組，
+  // 不像 /tactic 那樣要逐條判斷，所以不需要逐條掃 DOM。
+  //
+  // 刻意不做 URL 狀態同步：同 /tactic，重新整理回到「全部階級」是可以接受的。
+  const filters = document.getElementById('rift-filters');
+  const count = document.getElementById('rift-count');
+  const empty = document.getElementById('rift-empty');
+  const all = document.getElementById('rift-all');
+
+  if (filters && count && empty) {
+    const boxes = [...filters.querySelectorAll<HTMLInputElement>('input[name=grade]')];
+    // ⚠️ 選擇器要指名這兩個 class，不能只寫 `[data-grade]`——每一條 `.battle-item` 也帶著
+    // 自己的 `data-grade`（給測試與樣式用），全抓進來會變成逐條開關 55 個 <li>，
+    // 而真正該藏的組標題反而混在同一份清單裡，行為看起來一樣、意圖卻讀不出來。
+    const groups = [...document.querySelectorAll<HTMLElement>('.battle-group-head[data-grade], .battle-list[data-grade]')];
+
+    const apply = () => {
+      // 一個維度全不勾＝該維度不篩（等同全勾）。全部取消勾選後畫面一片空白是最容易踩到、
+      // 又最像壞掉的狀態——跟 /tactic 的 apply()、/dice 的 picked() 同一個判準。
+      const on = boxes.filter(b => b.checked).map(b => b.value);
+      const shown = on.length === 0 ? null : new Set(on);
+
+      let n = 0;
+      for (const el of groups) {
+        const ok = !shown || shown.has(el.dataset.grade ?? '');
+        el.hidden = !ok;
+        // 條目數只數 <ul>，標題與清單共用同一個 data-grade，兩邊都數會剛好翻倍。
+        if (ok && el.tagName === 'UL') n += el.children.length;
+      }
+      count.textContent = String(n);
+      // 篩到零筆時要說話。畫面一片空白跟「頁面壞了」在使用者眼裡沒有差別。
+      empty.hidden = n > 0;
+      all?.toggleAttribute('data-active', boxes.every(b => b.checked) || boxes.every(b => !b.checked));
+    };
+
+    filters.addEventListener('change', apply);
+    // 「全部」是動作不是狀態（按下去＝全開），所以是 <button> 而不是第四個 checkbox。
+    all?.addEventListener('click', () => {
+      for (const box of boxes) box.checked = true;
+      apply();
+    });
+    apply();
+  }
+</script>

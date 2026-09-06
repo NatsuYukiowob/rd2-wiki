@@ -16,13 +16,24 @@ import type { Cost } from './types.js';
  */
 export type CurrencyKind = 'core' | 'gold' | 'solar';
 
-const CURRENCY: Record<CurrencyKind, { label: string; file: string }> = {
+/**
+ * 圖示用得到、但 `Cost` 裝不下的第四種貨幣：**討伐硬幣**（`/rift-shop` 的裂縫商店計價）。
+ *
+ * ⚠️ 刻意**不加進 `CurrencyKind`**：`Cost` 是骰子樹的三格數字（核心／金幣／太陽核心），
+ * 全站的成本加總、`/sim` 的側欄、規則 4 與差異摘要都建立在「就這三種」之上。討伐硬幣是
+ * 困難合作模式的**局內**貨幣（客戶端 `GoodsTable` 裡根本沒有它，跟 SP 一樣一局結束就沒了），
+ * 加進去等於讓每一處成本運算都多背一個永遠是 0 的欄位。它只需要一張圖，所以只擴圖示這一層。
+ */
+export type CurrencyIconKind = CurrencyKind | 'tacticcoin';
+
+const CURRENCY: Record<CurrencyIconKind, { label: string; file: string }> = {
   core: { label: '核心', file: 'core.png' },
   gold: { label: '金幣', file: 'gold.png' },
   solar: { label: '太陽核心', file: 'solar.png' },
+  tacticcoin: { label: '討伐硬幣', file: 'tacticcoin.png' },
 };
 
-export function currencyIcon(kind: CurrencyKind): string {
+export function currencyIcon(kind: CurrencyIconKind): string {
   return `<img class="currency-icon" src="/currency/${CURRENCY[kind].file}" alt="" width="16" height="16" aria-hidden="true">`;
 }
 

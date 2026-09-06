@@ -1,13 +1,27 @@
-/* --- 戰術（/tactic）與 Boss（/boss）--- */
+/* --- 戰術（/tactic）、Boss（/boss）與裂縫商店（/rift-shop）--- */
 /*
- * 兩頁共用一個檔：版面是同一種「圖左、文右、一行一條」的橫列清單，差別只有右側印幾個欄位。
- * 分成 tactic.css 與 boss.css 的話，兩份會各自漂移（這個 repo 已經為此吃過兩次虧：
- * `--panel` 一個東西兩個名字、規則 7 與 21 的兩份目錄掃描）。
+ * 三頁共用一個檔：版面是同一種「圖左、文右、一行一條」的橫列清單，差別只有右側印幾個欄位。
+ * 分成 tactic.css／boss.css／rift-shop.css 的話，三份會各自漂移（這個 repo 已經為此吃過
+ * 兩次虧：`--panel` 一個東西兩個名字、規則 7 與 21 的兩份目錄掃描）。
  *
  * ⚠️ **為什麼是橫列不是卡片網格**（Yuki 2026-08-26 指定）：效果文字最短 12 字、最長 55 字，
  * 排進 `.codex-grid` 那種等寬網格會讓同一列的卡片高度參差；橫列讓長文字自己往下長，
  * 不影響任何鄰居。副作用是圖只能小張——這一頁的重點是文字，可以接受。
  */
+
+/* /rift-shop 的頁首說明（困難模式的三種「意志」）。刻意不做成卡片或色塊：它是一段前提，
+   不是商品——長得像卡片的話會被當成第一組商品，而它在篩選器上面、永遠不受篩選影響。 */
+.battle-intro {
+  max-width: 44rem;
+  margin: 0 0 var(--space-5);
+}
+
+.battle-intro-list {
+  margin: var(--space-1) 0 0;
+  padding-inline-start: var(--space-4);
+  color: var(--muted);
+  font-size: var(--fs-sm);
+}
 
 .battle-list {
   display: flex;
@@ -18,7 +32,8 @@
   list-style: none;
 }
 
-/* /boss 的難度分組標題（一般／困難）。/tactic 沒有分組，它的分群是靠篩選器做的。
+/* 分組標題：/boss 的難度（一般／困難）與 /rift-shop 的階級（一般／稀有／傳說）。
+   /tactic 沒有分組，它的分群是靠篩選器做的。
    ⚠️ 這個 h2 出現之後 /boss 的 Boss 名稱降成 h3；`.battle-name` 兩頁共用同一條規則，
    所以名稱的字級不會因為標籤換了而跟著變（那正是用 class 而不是選 h2/h3 的理由）。 */
 .battle-group-head {
@@ -30,6 +45,14 @@
      不然兩組之間看起來像三個等距的區塊，分不出標題屬於上面還是下面。 */
   margin: var(--space-6) 0 var(--space-3);
   font-size: var(--fs-xl);
+}
+
+/* ⚠️ 必要，不是保險——跟 `.battle-item[hidden]` 一模一樣的坑：`display: flex`／`grid`
+   會壓過 `[hidden]` 的預設 `display: none`。少了這兩條，/rift-shop 篩掉的那一組照樣
+   留在畫面上，而計數已經扣掉它們。 */
+.battle-group-head[hidden],
+.battle-list[hidden] {
+  display: none;
 }
 
 .battle-group-note {

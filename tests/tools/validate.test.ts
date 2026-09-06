@@ -26,10 +26,12 @@ const tacticIconsDir = 'data/tactic-icons';
 const boss: unknown = JSON.parse(readFileSync('data/boss.json', 'utf8'));
 const bossIconsDir = 'data/boss-icons';
 const prereqRanks: unknown = JSON.parse(readFileSync('data/prereq-ranks.json', 'utf8'));
+const riftShop: unknown = JSON.parse(readFileSync('data/rift-shop.json', 'utf8'));
+const riftShopIconsDir = 'data/rift-shop-icons';
 const opts = {
   keywords, nodeText, upgradeCostTable, maxLevelOfficial, unlockExceptions, changelog, iconsDir, dataDir,
   boardIcons, boardIconsDir, passiveUpgradeCost, diceStats,
-  tactics, tacticIconsDir, boss, bossIconsDir, prereqRanks,
+  tactics, tacticIconsDir, boss, bossIconsDir, prereqRanks, riftShop, riftShopIconsDir,
 };
 
 /** 換掉升級費用表、其餘照舊。深拷貝理由同 patch()。 */
@@ -1446,6 +1448,13 @@ describe('規則 24：戰術', () => {
     const result = validate(svg, withTactics(data));
     expect(result.errors.some(e => /規則 24\(k\).*# 標記比不到白名單/.test(e))).toBe(true);
   });
+
+  it('gameId 撞號會被擋（節點那邊由規則 16 守，這三份檔案在 2026-09-06 之前沒人守）', () => {
+    const data = rows();
+    data[1]!.gameId = data[0]!.gameId;
+    const result = validate(svg, withTactics(data));
+    expect(result.errors.some(e => /規則 24\(h\).*gameId 都是.*join key/.test(e))).toBe(true);
+  });
 });
 
 describe('規則 25：Boss', () => {
@@ -1508,5 +1517,141 @@ describe('規則 25：Boss', () => {
     data[0]!.difficulty = '普通';
     const result = validate(svg, withBoss(data));
     expect(result.errors.some(e => /規則 25\(e\).*的 1 的 difficulty "普通" 不是「一般」或「困難」/.test(e))).toBe(true);
+  });
+
+  it('gameId 撞號會被擋', () => {
+    const data = rows();
+    data[1]!.gameId = data[0]!.gameId;
+    const result = validate(svg, withBoss(data));
+    expect(result.errors.some(e => /規則 25\(h\).*gameId 都是.*join key/.test(e))).toBe(true);
+  });
+});
+
+describe('規則 27：裂縫商店', () => {
+  const rows = () => structuredClone(riftShop) as Record<string, unknown>[];
+  const withShop = (over: unknown) => ({ ...opts, riftShop: over });
+  /** 同名三檔的第一組（強化彈 72／73／74）在真實資料裡的索引。 */
+  const family = (data: Record<string, unknown>[]) => {
+    const first = data.find(r => data.filter(x => x.name === r.name).length > 1)!;
+    return data.filter(r => r.name === first.name);
+  };
+
+  it('沒有提供 data/rift-shop.json 時只警告、不擋 PR', () => {
+    const result = validate(svg, withShop(null));
+    expect(result.errors).toEqual([]);
+    expect(result.warnings.some(w => /規則 27: 沒有提供 data\/rift-shop\.json/.test(w))).toBe(true);
+  });
+
+  it('最外層不是陣列會被擋', () => {
+    const result = validate(svg, withShop({}));
+    expect(result.errors.some(e => /規則 27\(a\).*最外層必須是陣列/.test(e))).toBe(true);
+  });
+
+  it('真實資料裡同名的三個檔位共用一張圖是合法的（35 張圖對 55 筆）', () => {
+    // 這條是 sharedIconKey 存在的理由：客戶端只給 *Low 畫圖，同一個效果的三個檔位
+    // 在遊戲裡本來就是同一張圖。零錯誤才代表放行條件真的生效了。
+    const data = rows();
+    expect(new Set(data.map(r => r.icon)).size).toBeLessThan(data.length);
+    expect(validate(svg, withShop(data)).errors.filter(e => /規則 27/.test(e))).toEqual([]);
+  });
+
+  it('不同名字的兩筆指向同一張圖仍然被擋', () => {
+    // ⚠️ sharedIconKey 放寬的是「同名共用」，不是整條 (g) 關掉。這條反例守住那條界線：
+    // 「複製上一筆、忘了換成新加進來的那張」在這份檔案裡照樣要紅，否則畫面上會是兩條
+    // 名字不同、圖一模一樣的卡片，而 (d)(f) 全程沉默（檔案在、也沒有孤兒檔）。
+    const data = rows();
+    const [a, b] = [data.find(r => r.name === '絕滅')!, data.find(r => r.name === '挖掘王')!];
+    b.icon = a.icon;
+    const result = validate(svg, withShop(data));
+    expect(result.errors.some(e => /規則 27\(g\).*指向同一張圖.*它們的 name 不同/.test(e))).toBe(true);
+  });
+
+  it('同名的兩筆指向不同的圖會被擋（sharedIconKey 的反方向）', () => {
+    // ⚠️ 這是 2026-09-06 code review 抓到的漏洞：sharedIconKey 原本只做了「放行同名共用」
+    // 這一半，反方向沒人守，實測**零錯誤零警告**。失敗長相是
+    // `npm run add-icon -- --rift-shop 73 new.png`——只更新被指名的那一筆，同名的兄弟
+    // 仍指著舊雜湊，而 (d)(f)(g) 三條全部沉默（舊圖還被兄弟引用著、兩張圖都在、
+    // 新雜湊只有一筆），畫面上是同一個效果的三個檔位出現兩種圖。
+    const dir = mkdtempSync(join(tmpdir(), 'rd2-rift-sibling-'));
+    for (const f of readdirSync(riftShopIconsDir)) writeFileSync(join(dir, f), readFileSync(join(riftShopIconsDir, f)));
+    // 拿另一條資產路徑的真 PNG 當「新加進來的那張」：內容不同 → 雜湊不同，而且是有效 PNG。
+    const fresh = readFileSync(join('data/tactic-icons', readdirSync('data/tactic-icons')[0]!));
+    const hash = createHash('sha256').update(fresh).digest('hex').slice(0, 12);
+    writeFileSync(join(dir, `${hash}.png`), fresh);
+    const data = rows();
+    const trio = family(data);
+    expect(trio.length).toBeGreaterThan(1);
+    trio[1]!.icon = hash;
+    const result = validate(svg, { ...opts, riftShop: data, riftShopIconsDir: dir });
+    expect(result.errors.some(e => /規則 27\(g\).*name 同為.*指向不同的圖/.test(e))).toBe(true);
+  });
+
+  it('gameId 撞號會被擋（畫面上完全正常，只有對帳時才會發現）', () => {
+    const data = rows();
+    data[1]!.gameId = data[0]!.gameId;
+    const result = validate(svg, withShop(data));
+    expect(result.errors.some(e => /規則 27\(h\).*gameId 都是.*join key/.test(e))).toBe(true);
+  });
+
+  it('grade 寫成三個合法值以外的字串會被擋', () => {
+    // 同規則 25 的 difficulty：`普通` 是非空字串、也不是未知欄位，每一條通用檢查都會放行，
+    // 而 /rift-shop 分成三組渲染——這一筆三組都不屬於，畫面上是整筆安靜消失。
+    const data = rows();
+    data[0]!.grade = '普通';
+    const result = validate(svg, withShop(data));
+    expect(result.errors.some(e => /規則 27\(e\).*grade "普通" 不是「一般」「稀有」「傳說」之一/.test(e))).toBe(true);
+  });
+
+  it('cost 寫成字串會被擋（requiredText 只認非空字串，驗不到數字欄位）', () => {
+    const data = rows();
+    data[0]!.cost = '30';
+    const result = validate(svg, withShop(data));
+    expect(result.errors.some(e => /規則 27\(e\).*cost "30" 必須是正整數/.test(e))).toBe(true);
+  });
+
+  it('weight 是 0 或負數會被擋', () => {
+    const data = rows();
+    data[0]!.weight = 0;
+    const result = validate(svg, withShop(data));
+    expect(result.errors.some(e => /規則 27\(e\).*weight 0 必須是正整數/.test(e))).toBe(true);
+  });
+
+  it('同一個階級出現兩種權重會被擋（階級與稀有度的對應關係崩了）', () => {
+    const data = rows();
+    const same = data.filter(r => r.grade === data[0]!.grade);
+    expect(same.length).toBeGreaterThan(1);
+    same[1]!.weight = (same[0]!.weight as number) + 1;
+    const result = validate(svg, withShop(data));
+    expect(result.errors.some(e => /規則 27\(i\).*階級與出現權重的對應關係崩了/.test(e))).toBe(true);
+  });
+
+  it('同名的兩筆同階級會被擋（同名＝同一個效果的不同檔位）', () => {
+    // ⚠️ 這條 (g) 抓不到——同名共用圖是合法的，所以複製一筆只改編號會全程沉默，
+    // 畫面上是同一組裡出現兩張同名同圖的卡片。
+    const data = rows();
+    const trio = family(data);
+    trio[1]!.grade = trio[0]!.grade;
+    const result = validate(svg, withShop(data));
+    expect(result.errors.some(e => /規則 27\(j\).*同名.*又同是.*階級/.test(e))).toBe(true);
+  });
+
+  it('必填欄位缺一個會被擋', () => {
+    const data = rows();
+    delete data[0]!.effect;
+    const result = validate(svg, withShop(data));
+    expect(result.errors.some(e => /規則 27\(e\).*effect 必須是非空字串/.test(e))).toBe(true);
+  });
+
+  it('圖檔檢查與規則 7／21／24／25 是同一支函式（放非 PNG 進去一樣被擋）', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'rd2-rift-icons-'));
+    for (const f of readdirSync(riftShopIconsDir)) writeFileSync(join(dir, f), readFileSync(join(riftShopIconsDir, f)));
+    const buf = Buffer.from('not a png');
+    const hash = createHash('sha256').update(buf).digest('hex').slice(0, 12);
+    writeFileSync(join(dir, `${hash}.png`), buf);
+    const data = rows();
+    // 整組同名的都要換，否則會先撞上 (g) 的「同名不同圖」以外的檢查而模糊焦點。
+    for (const r of family(data)) r.icon = hash;
+    const result = validate(svg, { ...opts, riftShop: data, riftShopIconsDir: dir });
+    expect(result.errors.some(e => /規則 27\(c\).*不是有效的 PNG/.test(e))).toBe(true);
   });
 });

@@ -24,6 +24,7 @@ const PAGES = [
   { request: '/board', canonical: `${SITE}/board/`, name: '骰盤' },
   { request: '/tactic', canonical: `${SITE}/tactic/`, name: '戰術' },
   { request: '/boss', canonical: `${SITE}/boss/`, name: 'Boss' },
+  { request: '/rift-shop', canonical: `${SITE}/rift-shop/`, name: '裂縫商店' },
   { request: '/sim', canonical: `${SITE}/sim/`, name: '骰子樹-模擬器(beta)' },
   { request: '/guide', canonical: `${SITE}/guide/`, name: '遊戲介紹' },
   { request: '/guide/mechanics', canonical: `${SITE}/guide/mechanics/`, name: '骰子機制與觸發' },

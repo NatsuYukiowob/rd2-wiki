@@ -19,6 +19,14 @@ const bosses = JSON.parse(
   readFileSync(new URL('../../data/boss.json', import.meta.url), 'utf8'),
 ) as { id: string; name: string; effect: string; gameId: string; difficulty: string }[];
 
+const riftShop = JSON.parse(
+  readFileSync(new URL('../../data/rift-shop.json', import.meta.url), 'utf8'),
+) as { id: string; name: string; grade: string; cost: number; weight: number; effect: string; gameId: string; icon: string }[];
+
+/** /rift-shop 的三組。⚠️ 條數一律從資料算，理由同上面 BOSS_DIFFICULTIES。 */
+const GRADES = ['一般', '稀有', '傳說'] as const;
+const shopBy = (grade: string) => riftShop.filter(e => e.grade === grade);
+
 const coopOnly = tactics.filter(t => t.coop);
 const versusOnly = tactics.filter(t => !t.coop);
 
@@ -293,5 +301,115 @@ test('B6. 兩個新入口收在「遊戲介紹」下拉裡，而且整個下拉�
     // ⚠️ 下拉本身也要亮：它預設是收起來的，裡面那條 aria-current 使用者根本看不到，
     // 只驗裡面那條的話「站在戰術頁時導覽列零提示」會是綠的。
     await expect(page.locator('#site-nav .nav-menu > summary')).toHaveAttribute('aria-current', 'page');
+  }
+});
+
+// --- 裂縫商店（/rift-shop，2026-09-06）---
+//
+// 跟 /tactic、/boss 同一族：核心承諾是「文字進得了 HTML」，所以前兩條讀伺服器回的原始 HTML。
+// ⚠️ 這一頁的資料跟 /tactic 是客戶端同一張表的**兩批不重疊的列**（Use vs Store），
+// 所以下面刻意驗「兩邊的內部ID 沒有交集」——併錯批在畫面上看起來完全正常。
+
+test('RS1. /rift-shop 的名稱、階級、價格與效果全文是伺服器輸出的 HTML', async ({ request }) => {
+  const res = await request.get('/rift-shop');
+  expect(res.status()).toBe(200);
+  const html = await res.text();
+
+  expect(riftShop.length).toBeGreaterThan(0);
+  expect(riftShop.filter(e => !html.includes(e.name)).map(e => e.name)).toEqual([]);
+  // 名字有了不代表內容有了——效果全文才是玩家搜尋時會命中的東西。
+  // 這 55 條目前一個 `#關鍵字` 標記都沒有（2026-09-06 實測），所以可以整句直接比對。
+  expect(riftShop.filter(e => !html.includes(e.effect)).map(e => e.id)).toEqual([]);
+  // 價格也要在 HTML 裡：傳說階級有 100 與 200 兩種，只看組標題會把奇蹟之石當成 100。
+  expect(riftShop.filter(e => !html.includes(`>${e.cost}<`)).map(e => e.id)).toEqual([]);
+});
+
+test('RS1b. /rift-shop 與 /tactic 是兩批不重疊的資料', async () => {
+  // 客戶端 TacticsEffectTable 同一張表：Use=True 是每波輪替池（/tactic），
+  // Store=True 是商店池（這一頁）。併錯批的話兩頁都會多出對方的內容而畫面完全正常。
+  const shared = riftShop.filter(e => tactics.some(t => t.gameId === e.gameId));
+  expect(shared.map(e => e.gameId)).toEqual([]);
+});
+
+test('RS2. 三組的條數等於資料裡該階級的筆數，篩到只剩傳說時計數跟著變', async ({ page }) => {
+  await page.goto('/rift-shop');
+  for (const grade of GRADES) {
+    await expect(page.locator(`ul.battle-list[data-grade="${grade}"] > li`)).toHaveCount(shopBy(grade).length);
+  }
+  await expect(page.locator('#rift-count')).toHaveText(String(riftShop.length));
+
+  for (const grade of ['一般', '稀有']) {
+    await page.locator(`#rift-filters input[name=grade][value="${grade}"]`).uncheck();
+  }
+  await expect(page.locator('#rift-count')).toHaveText(String(shopBy('傳說').length));
+  // 組標題要跟著它管的清單一起藏，否則畫面上會剩兩個孤零零的標題。
+  await expect(page.locator('h2.battle-group-head[data-grade="一般"]')).toBeHidden();
+  await expect(page.locator('ul.battle-list[data-grade="一般"]')).toBeHidden();
+  await expect(page.locator('h2.battle-group-head[data-grade="傳說"]')).toBeVisible();
+
+  // 傳說階級的兩種價格都要看得到（200 的那兩條是這一頁唯一的例外）。
+  const legendary = shopBy('傳說');
+  const pricey = legendary.filter(e => e.cost === 200);
+  expect(pricey.length).toBeGreaterThan(0);
+  for (const e of pricey) {
+    await expect(page.locator(`#r${e.id} .battle-tag`).first()).toContainText('200');
+  }
+});
+
+test('RS3. 沒有 JS 時全部裂縫效果仍然完整顯示', async ({ browser }) => {
+  const context = await browser.newContext({ javaScriptEnabled: false });
+  const page = await context.newPage();
+  await page.goto('/rift-shop');
+  await expect(page.locator('.battle-item')).toHaveCount(riftShop.length);
+  // 沒有 JS 時 apply() 沒跑過，三組都要是可見的（篩選是漸進增強，不是顯示的前提）。
+  for (const grade of GRADES) {
+    await expect(page.locator(`ul.battle-list[data-grade="${grade}"]`)).toBeVisible();
+  }
+  await context.close();
+});
+
+test('RS4. 圖示等比縮放不裁切；35 張圖對 55 筆是刻意的，每一張都載得到', async ({ page, request }) => {
+  await page.goto('/rift-shop');
+  const imgs = page.locator('.battle-icon');
+  await expect(imgs).toHaveCount(riftShop.length);
+  await expect(imgs.first()).toHaveCSS('object-fit', 'contain');
+
+  const srcs = await imgs.evaluateAll(els => els.map(el => (el as HTMLImageElement).getAttribute('src') ?? ''));
+  expect(srcs.filter(s => !s)).toEqual([]);
+  // ⚠️ 這一頁的 src 本來就會重複（同名的三個檔位共用一張圖，客戶端只給 *Low 畫圖）。
+  // 去重之後的張數要剛好等於資料裡的唯一雜湊數——多了代表有人替某個檔位另外加了圖，
+  // 少了代表兩個不同的效果撞到同一張（規則 27(g) 會擋，這裡是畫面端的第二道）。
+  expect(new Set(srcs).size).toBe(new Set(riftShop.map(e => e.icon)).size);
+
+  const bad: string[] = [];
+  for (const src of new Set(srcs)) {
+    const res = await request.get(src);
+    if (!res.ok()) bad.push(`${src} → ${res.status()}`);
+  }
+  expect(bad, '/rift-shop 有載不到的圖示').toEqual([]);
+});
+
+test('RS5. 入口收在「遊戲介紹」下拉裡，而且整個下拉會標成目前分頁', async ({ page }) => {
+  await page.goto('/rift-shop');
+  await expect(page.locator('#site-nav .nav-menu-items a:text-is("裂縫商店")')).toHaveAttribute('aria-current', 'page');
+  await expect(page.locator('#site-nav > a:text-is("裂縫商店")')).toHaveCount(0);
+  // ⚠️ 下拉本身也要亮，理由同 B6：它預設收起來，裡面那條 aria-current 使用者看不到。
+  await expect(page.locator('#site-nav .nav-menu > summary')).toHaveAttribute('aria-current', 'page');
+});
+
+test('RS6. 三個階級全部取消勾選時要說話，不是留一片空白', async ({ page }) => {
+  await page.goto('/rift-shop');
+  // 全不勾＝該維度不篩（等同全勾），跟 /tactic 的 apply()、/dice 的 picked() 同一個判準
+  // ——所以這一頁走不到「零筆」，`#rift-empty` 是為了「哪天篩選維度變多」而存在的防線。
+  for (const grade of GRADES) {
+    await page.locator(`#rift-filters input[name=grade][value="${grade}"]`).uncheck();
+  }
+  await expect(page.locator('#rift-count')).toHaveText(String(riftShop.length));
+  await expect(page.locator('#rift-empty')).toBeHidden();
+
+  // 「全部」按下去要把三個都勾回來。
+  await page.locator('#rift-all').click();
+  for (const grade of GRADES) {
+    await expect(page.locator(`#rift-filters input[name=grade][value="${grade}"]`)).toBeChecked();
   }
 });

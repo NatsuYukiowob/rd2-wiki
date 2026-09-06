@@ -177,6 +177,17 @@ function checkIconedRecordList(
     markupKeys: readonly string[];
     /** `data/keywords.json` 的全部鍵，同規則 8 的白名單。 */
     whitelist: string[];
+    /**
+     * 放寬 (g)「兩筆不准指向同一張圖」的欄位名：兩筆**這一欄的值相同時**才准共用同一張圖。
+     *
+     * 只有 `data/rift-shop.json` 用（傳 `'name'`）：客戶端只給 `*Low` 畫圖，同一個效果的
+     * 三個檔位在遊戲裡本來就是同一張圖，35 張 ↔ 55 筆是正確狀態而不是漏加圖。
+     *
+     * ⚠️ **不做成 `boolean`。** 整條關掉的話，(g) 真正要擋的「複製上一筆、忘了換成新加進來
+     * 的那張」就完全沒人守了——而那時 (d)(f) 全部沉默（檔案在、也沒有孤兒檔），畫面上是
+     * 兩條長得一模一樣的卡片。綁在欄位上才留得住這個保護：同名共用是設計，跨名共用是抄錯。
+     */
+    sharedIconKey?: string;
   },
 ): { records: Record<string, unknown>[]; errors: string[]; warnings: string[] } {
   const errors: string[] = [];
@@ -274,7 +285,59 @@ function checkIconedRecordList(
     idsByHash.set(hash, [...(idsByHash.get(hash) ?? []), rec.id as string]);
   }
   for (const [hash, ids] of idsByHash) {
-    if (ids.length > 1) push(`${opts.rule}(g): ${opts.file} 的 ${ids.join('、')} 指向同一張圖 ${hash}.png`);
+    if (ids.length <= 1) continue;
+    if (opts.sharedIconKey === undefined) {
+      push(`${opts.rule}(g): ${opts.file} 的 ${ids.join('、')} 指向同一張圖 ${hash}.png`);
+      continue;
+    }
+    // 有 sharedIconKey 時只擋「不同 X 卻共用同一張圖」。⚠️ 比的是**值**不是筆數：
+    // 同名三筆共用一張是設計，兩個不同名字撞到同一張仍然是抄錯。
+    const groups = [...new Set(records.filter(r => r.icon === hash).map(r => String(r[opts.sharedIconKey!])))];
+    if (groups.length > 1) {
+      push(`${opts.rule}(g): ${opts.file} 的 ${ids.join('、')} 指向同一張圖 ${hash}.png，但它們的 ${opts.sharedIconKey} 不同（${groups.join('、')}）——同一張圖只給同一個 ${opts.sharedIconKey} 的多個檔位共用`);
+    }
+  }
+
+  // (g) 的**反方向**：同一個 sharedIconKey 的多筆也必須共用同一張圖。
+  //
+  // ⚠️ 少了這一半，`sharedIconKey` 就只是個單向的放行條款，而放行條款自己成了漏洞
+  // （2026-09-06 code review 抓到，已實測重現：**零錯誤零警告**）。失敗長相是
+  // `npm run add-icon -- --rift-shop 73 new.png`——`addRecordIcon()` 只更新被指名的那一筆，
+  // 同名的 72／74 仍指著舊雜湊。這時每一條既有檢查都沉默：
+  // (d) 舊圖還被兄弟引用著、不是孤兒；(f) 兩張圖都真的在目錄裡；(g) 新雜湊只有一筆、
+  // 舊雜湊那兩筆同名。畫面上是**同一個效果的三個檔位出現兩種圖**，而 CI 全綠。
+  if (opts.sharedIconKey !== undefined) {
+    const hashesByKey = new Map<string, Map<string, string[]>>();
+    for (const rec of records) {
+      const key = String(rec[opts.sharedIconKey]);
+      const byHash = hashesByKey.get(key) ?? new Map<string, string[]>();
+      byHash.set(rec.icon as string, [...(byHash.get(rec.icon as string) ?? []), rec.id as string]);
+      hashesByKey.set(key, byHash);
+    }
+    for (const [key, byHash] of hashesByKey) {
+      if (byHash.size <= 1) continue;
+      const detail = [...byHash].map(([hash, ids]) => `${ids.join('／')}→${hash}.png`).join('、');
+      push(`${opts.rule}(g): ${opts.file} 裡 ${opts.sharedIconKey} 同為「${key}」的幾筆指向不同的圖（${detail}）——同一個 ${opts.sharedIconKey} 的每個檔位必須共用同一張圖，換圖時要整組一起換`);
+    }
+  }
+
+  // (h) 的第二半：`gameId` 也不准撞號。
+  //
+  // ⚠️ 這不是把 (h) 的 id 檢查抄一份——兩個欄位擋的是不同的失敗（2026-09-06 code review）。
+  // `id` 撞號畫面上看得出來（同一個編號出現兩次）；`gameId` 撞號**畫面上完全正常**，
+  // 它是拿本站對上游資料表的 join key，而 `requiredText` 只驗它是非空字串。
+  // 具體情境：複製兄弟列來新增一個檔位——`id` 換了、`grade` 換了、`name` 與 `icon` 照抄
+  // （前兩者滿足 (h)(j)，後兩者被 sharedIconKey 放行），**只有 `gameId` 忘了改**。
+  // CI 全綠，下次拿新版客戶端表對帳時兩筆會 join 到上游同一列。
+  // 節點那邊由規則 16 守著同一件事，戰術／Boss／裂縫效果在這條之前一個都沒有。
+  const seenGameId = new Map<string, string>();
+  for (const rec of records) {
+    const gameId = rec.gameId;
+    if (typeof gameId !== 'string' || gameId.length === 0) continue; // 型別由 (e) 負責
+    const first = seenGameId.get(gameId);
+    if (first !== undefined) {
+      push(`${opts.rule}(h): ${opts.file} 的 ${first} 與 ${rec.id as string} 的 gameId 都是 ${JSON.stringify(gameId)}——那是對上游資料表的 join key，撞號在畫面上看不出來`);
+    } else seenGameId.set(gameId, rec.id as string);
   }
 
   // (k) 效果文字裡的 `#標記` 必須落在 data/keywords.json 的白名單內——跟規則 8 對節點文案
@@ -406,6 +469,10 @@ export interface ValidateOpts {
    * 宣告成已驗過的型別等於在型別層面假設它一定合法，而規則 26 要擋的正是不合法的那些。
    */
   prereqRanks: unknown;
+  /** `data/rift-shop.json` 的內容。同 `tactics`，沒有時傳 `null`（規則 27 只警告）。 */
+  riftShop: unknown;
+  /** `data/rift-shop-icons/` 所在目錄。⚠️ 這一份是 35 張圖對 55 筆，見規則 27 的說明。 */
+  riftShopIconsDir: string;
 }
 
 export interface ValidateResult {
@@ -1468,6 +1535,85 @@ export function validate(svgText: string, opts: ValidateOpts): ValidateResult {
     }
   }
 
+  // 規則 27：裂縫商店（`data/rift-shop.json` ＋ `data/rift-shop-icons/`）。
+  //
+  // 第五條資產路徑，跟規則 24／25 同一種資料檔，所以通用檢查一樣全部走
+  // checkIconedRecordList()。跟前兩條的差別只有兩件，兩件都寫在這一層：
+  //
+  // 1. **圖示是多對一**（35 張 ↔ 55 筆）。客戶端只給 `*Low` 畫圖，同一個效果的三個檔位
+  //    在遊戲裡本來就是同一張圖，所以傳 `sharedIconKey: 'name'` 放行同名之間的共用。
+  //    ⚠️ 不是把 (g) 關掉——跨不同名字共用仍然是抄錯，見那一支的說明。
+  // 2. **階級是這份資料自己的語意軸**（同規則 25 的 `difficulty`）：(i) 管階級與權重的
+  //    自洽、(j) 管同名多筆的檔位。少了這兩條，兩種寫壞法都會 CI 全綠：
+  //    - `grade: "普通"` → 那一筆在 `/rift-shop` 的三組裡**哪一組都不屬於**，安靜地整筆
+  //      消失（跟規則 25 記過的失敗一模一樣）。
+  //    - 強化彈的三筆有兩筆寫成「稀有」→ 畫面上同一組出現兩張同名同圖的卡片，而 (g) 因為
+  //      同名共用是合法的、不會說話。
+  //
+  // ⚠️ (i) 刻意**不寫死 30／70／100／200 與 30／20／10 這些數字**，改驗「同一階級內的
+  // weight 必須一致」：寫死的話上游調一次價就整片紅，而真正會壞畫面的是「同階級不同權重」
+  // ——那代表階級與權重的對應關係崩了，分組的前提就不成立。價格只驗它是正整數。
+  if (opts.riftShop === null) {
+    warn('規則 27: 沒有提供 data/rift-shop.json，裂縫商店未檢查');
+  } else {
+    const scan = checkIconedRecordList(opts.riftShop, {
+      rule: '規則 27',
+      file: 'data/rift-shop.json',
+      iconsDir: opts.riftShopIconsDir,
+      idPattern: /^[1-9]\d*$/,
+      knownKeys: ['id', 'name', 'grade', 'cost', 'weight', 'effect', 'gameId', 'icon'],
+      requiredText: ['id', 'name', 'grade', 'effect', 'gameId'],
+      markupKeys: ['effect'],
+      whitelist,
+      sharedIconKey: 'name',
+    });
+    scan.errors.forEach(push);
+    scan.warnings.forEach(warn);
+
+    const GRADES = new Set(['一般', '稀有', '傳說']);
+    const weightByGrade = new Map<string, { weight: number; id: string }>();
+    for (const rec of scan.records) {
+      const id = rec.id as string;
+      const grade = rec.grade as string;
+      if (!GRADES.has(grade)) {
+        push(`規則 27(e): data/rift-shop.json 的 ${id} 的 grade ${JSON.stringify(grade)} 不是「一般」「稀有」「傳說」之一`);
+        continue;
+      }
+      // cost／weight 是數字欄位，checkIconedRecordList 的 requiredText 驗不到它們
+      // （那一支只認非空字串）——寫成 `"30"` 或 `null` 都得在這裡擋下來。
+      let numsOk = true;
+      for (const key of ['cost', 'weight'] as const) {
+        const v = rec[key];
+        if (typeof v !== 'number' || !Number.isInteger(v) || v <= 0) {
+          push(`規則 27(e): data/rift-shop.json 的 ${id} 的 ${key} ${JSON.stringify(v)} 必須是正整數`);
+          numsOk = false;
+        }
+      }
+      if (!numsOk) continue;
+
+      // (i) 同一階級內的 weight 必須一致（客戶端是一般 30／稀有 20／傳說 10）。
+      const weight = rec.weight as number;
+      const seen = weightByGrade.get(grade);
+      if (seen === undefined) weightByGrade.set(grade, { weight, id });
+      else if (seen.weight !== weight) {
+        push(`規則 27(i): data/rift-shop.json 的 ${id} 是「${grade}」階級卻是權重 ${weight}，同階級的 ${seen.id} 是 ${seen.weight}——階級與出現權重的對應關係崩了，/rift-shop 的分組前提就不成立`);
+      }
+    }
+
+    // (j) 同名的多筆＝同一個效果的多個檔位，階級必須互異。
+    const gradesByName = new Map<string, Map<string, string>>();
+    for (const rec of scan.records) {
+      const name = rec.name as string;
+      const grade = rec.grade as string;
+      const byGrade = gradesByName.get(name) ?? new Map<string, string>();
+      const first = byGrade.get(grade);
+      if (first !== undefined) {
+        push(`規則 27(j): data/rift-shop.json 的 ${first} 與 ${rec.id as string} 同名「${name}」又同是「${grade}」階級——同名的多筆是同一個效果的不同檔位，階級必須互異`);
+      } else byGrade.set(grade, rec.id as string);
+      gradesByName.set(name, byGrade);
+    }
+  }
+
   return { errors, warnings };
 }
 
@@ -1523,6 +1669,8 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
     boss: readDataFile('data/boss.json', true),
     bossIconsDir: 'data/boss-icons',
     prereqRanks: readDataFile('data/prereq-ranks.json', true),
+    riftShop: readDataFile('data/rift-shop.json', true),
+    riftShopIconsDir: 'data/rift-shop-icons',
   };
 
   // 有資料檔讀不到時就停在這裡：接下來每一條規則都會拿著一份空殼在猜，噴出來的幾百條錯誤
