@@ -94,11 +94,11 @@ export interface AddRecordIconResult extends AddIconResult {
 }
 
 /**
- * 把一張圖加進「一筆一個 id、雜湊寫在紀錄 `icon` 欄」的資料檔——`data/tactics.json`（戰術）
- * 與 `data/boss.json`（Boss）共用。
+ * 把一張圖加進「一筆一個 id、雜湊寫在紀錄 `icon` 欄」的資料檔——`data/tactics.json`（戰術）、
+ * `data/boss.json`（Boss）與 `data/rift-shop.json`（裂縫效果）共用。
  *
- * 存在的理由跟 `addBoardIcon()` 一模一樣：規則 24／25 擋下「新增一條戰術／一個 Boss」這個
- * 動作，但**沒有工具放得進 `data/tactic-icons`／`data/boss-icons`**的話，貢獻者只能自己算
+ * 存在的理由跟 `addBoardIcon()` 一模一樣：規則 24／25／27 擋下「新增一條戰術／一個 Boss／
+ * 一條裂縫效果」這個動作，但**沒有工具放得進那三個 `data/*-icons`**的話，貢獻者只能自己算
  * 雜湊、自己改 JSON——2026-08-23 規則 21 就是這樣把人卡在一條他讀不到的規則上（review F10）。
  *
  * ⚠️ **只更新既有那一筆的 `icon`，不新增紀錄**：一條新戰術要填的是名稱、階段、模式、效果
@@ -137,13 +137,19 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
     '  npm run add-icon -- --board <節點 id> <圖片路徑>    /board 純骰子圖 → data/board-icons/，並更新 data/board-icons.json',
     '  npm run add-icon -- --tactic <戰術編號> <圖片路徑>  戰術圖 → data/tactic-icons/，並更新 data/tactics.json 那一筆的 icon',
     '  npm run add-icon -- --boss <Boss 編號> <圖片路徑>   Boss 圖 → data/boss-icons/，並更新 data/boss.json 那一筆的 icon',
+    '  npm run add-icon -- --rift-shop <效果編號> <圖片路徑>  裂縫效果圖 → data/rift-shop-icons/，並更新 data/rift-shop.json 那一筆的 icon',
   ].join('\n');
   try {
-    // 戰術與 Boss 走同一條分支：兩者的資料檔形狀相同（陣列 ＋ 每筆自帶 icon），
-    // 差別只有目錄與檔名。分成兩段 if 只會讓兩邊的提示訊息各自漂移。
+    // 戰術、Boss 與裂縫效果走同一條分支：三者的資料檔形狀相同（陣列 ＋ 每筆自帶 icon），
+    // 差別只有目錄與檔名。分成三段 if 只會讓三邊的提示訊息各自漂移。
+    //
+    // ⚠️ 裂縫效果是 **35 張圖對 55 筆**（同名的三個檔位共用一張）：換掉其中一個檔位的圖
+    // 之後，同名的另外兩筆仍然指著舊雜湊——所以底下那句孤兒檔提醒的「若沒有別筆在用」
+    // 對這份檔案是常態而不是例外，看到它先確認同名的兄弟要不要一起換。
     const RECORD_KINDS = {
       '--tactic': { label: '戰術', iconsDir: 'data/tactic-icons', dataPath: 'data/tactics.json' },
       '--boss': { label: 'Boss', iconsDir: 'data/boss-icons', dataPath: 'data/boss.json' },
+      '--rift-shop': { label: '裂縫效果', iconsDir: 'data/rift-shop-icons', dataPath: 'data/rift-shop.json' },
     } as const;
     const kind = RECORD_KINDS[args[0] as keyof typeof RECORD_KINDS];
     if (kind) {

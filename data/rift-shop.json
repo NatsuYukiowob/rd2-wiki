@@ -1,0 +1,552 @@
+[
+  {
+    "id": "72",
+    "name": "強化彈",
+    "grade": "一般",
+    "cost": 30,
+    "weight": 30,
+    "effect": "子彈攻擊力增加10%",
+    "gameId": "FieldAttackUpLow",
+    "icon": "8a51b42bc296"
+  },
+  {
+    "id": "73",
+    "name": "強化彈",
+    "grade": "稀有",
+    "cost": 70,
+    "weight": 20,
+    "effect": "子彈攻擊力增加20%",
+    "gameId": "FieldAttackUpMid",
+    "icon": "8a51b42bc296"
+  },
+  {
+    "id": "74",
+    "name": "強化彈",
+    "grade": "傳說",
+    "cost": 100,
+    "weight": 10,
+    "effect": "子彈攻擊力增加30%",
+    "gameId": "FieldAttackUpHigh",
+    "icon": "8a51b42bc296"
+  },
+  {
+    "id": "75",
+    "name": "研磨",
+    "grade": "一般",
+    "cost": 30,
+    "weight": 30,
+    "effect": "暴擊傷害量增加30%",
+    "gameId": "CritDamageUpLow",
+    "icon": "e7dca62a76f3"
+  },
+  {
+    "id": "76",
+    "name": "研磨",
+    "grade": "稀有",
+    "cost": 70,
+    "weight": 20,
+    "effect": "暴擊傷害量增加50%",
+    "gameId": "CritDamageUpMid",
+    "icon": "e7dca62a76f3"
+  },
+  {
+    "id": "77",
+    "name": "研磨",
+    "grade": "傳說",
+    "cost": 100,
+    "weight": 10,
+    "effect": "暴擊傷害量增加100%",
+    "gameId": "CritDamageUpHigh",
+    "icon": "e7dca62a76f3"
+  },
+  {
+    "id": "78",
+    "name": "沉重腳步",
+    "grade": "一般",
+    "cost": 30,
+    "weight": 30,
+    "effect": "怪物移動速度減少10%",
+    "gameId": "MinionSpeedDownLow",
+    "icon": "8a2806fd67a6"
+  },
+  {
+    "id": "79",
+    "name": "沉重腳步",
+    "grade": "稀有",
+    "cost": 70,
+    "weight": 20,
+    "effect": "怪物移動速度減少15%",
+    "gameId": "MinionSpeedDownMid",
+    "icon": "8a2806fd67a6"
+  },
+  {
+    "id": "80",
+    "name": "沉重腳步",
+    "grade": "傳說",
+    "cost": 100,
+    "weight": 10,
+    "effect": "怪物移動速度減少20%",
+    "gameId": "MinionSpeedDownHigh",
+    "icon": "8a2806fd67a6"
+  },
+  {
+    "id": "81",
+    "name": "訣竅",
+    "grade": "一般",
+    "cost": 30,
+    "weight": 30,
+    "effect": "擊殺怪物時，獲得的SP提升1",
+    "gameId": "KillSpUpLow",
+    "icon": "32493257c724"
+  },
+  {
+    "id": "82",
+    "name": "訣竅",
+    "grade": "稀有",
+    "cost": 70,
+    "weight": 20,
+    "effect": "擊殺怪物時，獲得的SP提升2",
+    "gameId": "KillSpUpMid",
+    "icon": "32493257c724"
+  },
+  {
+    "id": "83",
+    "name": "訣竅",
+    "grade": "傳說",
+    "cost": 100,
+    "weight": 10,
+    "effect": "擊殺怪物時，獲得的SP提升5",
+    "gameId": "KillSpUpHigh",
+    "icon": "32493257c724"
+  },
+  {
+    "id": "84",
+    "name": "殺手",
+    "grade": "一般",
+    "cost": 30,
+    "weight": 30,
+    "effect": "子彈對首領造成的傷害增加10%",
+    "gameId": "BossDamageUpLow",
+    "icon": "128430a164ab"
+  },
+  {
+    "id": "85",
+    "name": "殺手",
+    "grade": "稀有",
+    "cost": 70,
+    "weight": 20,
+    "effect": "子彈對首領造成的傷害增加20%",
+    "gameId": "BossDamageUpMid",
+    "icon": "128430a164ab"
+  },
+  {
+    "id": "86",
+    "name": "殺手",
+    "grade": "傳說",
+    "cost": 100,
+    "weight": 10,
+    "effect": "子彈對首領造成的傷害增加30%",
+    "gameId": "BossDamageUpHigh",
+    "icon": "128430a164ab"
+  },
+  {
+    "id": "87",
+    "name": "重新分配",
+    "grade": "稀有",
+    "cost": 70,
+    "weight": 20,
+    "effect": "最高與最低骰點骰子的骰點互換",
+    "gameId": "SwapMaxMinDicePip",
+    "icon": "00a5aa519c5c"
+  },
+  {
+    "id": "88",
+    "name": "唯我獨尊",
+    "grade": "傳說",
+    "cost": 100,
+    "weight": 10,
+    "effect": "立即於目前持有骰子中統一為隨機1種",
+    "gameId": "UnifyDiceTypesToN1",
+    "icon": "14812810a85f"
+  },
+  {
+    "id": "89",
+    "name": "勢力戰",
+    "grade": "稀有",
+    "cost": 70,
+    "weight": 20,
+    "effect": "立即於目前持有骰子中統一為隨機2種",
+    "gameId": "UnifyDiceTypesToN2",
+    "icon": "aeb4d03ab0f6"
+  },
+  {
+    "id": "90",
+    "name": "上方賓果",
+    "grade": "稀有",
+    "cost": 70,
+    "weight": 20,
+    "effect": "立即將上方1列變更為相同骰子",
+    "gameId": "ChangeTopNRowsToSameDice1",
+    "icon": "9693ed31594c"
+  },
+  {
+    "id": "91",
+    "name": "中間賓果",
+    "grade": "稀有",
+    "cost": 70,
+    "weight": 20,
+    "effect": "立即將中間1列變更為相同骰子",
+    "gameId": "ChangeTopNRowsToSameDice2",
+    "icon": "40cee05123f9"
+  },
+  {
+    "id": "92",
+    "name": "下方賓果",
+    "grade": "稀有",
+    "cost": 70,
+    "weight": 20,
+    "effect": "立即將下方1列變更為相同骰子",
+    "gameId": "ChangeTopNRowsToSameDice3",
+    "icon": "50da403b8901"
+  },
+  {
+    "id": "93",
+    "name": "茁壯的新芽",
+    "grade": "傳說",
+    "cost": 100,
+    "weight": 10,
+    "effect": "立即使3個最低骰點的骰子骰點+1",
+    "gameId": "UpgradeNLowestDicePipByM1",
+    "icon": "19e441f6650f"
+  },
+  {
+    "id": "94",
+    "name": "雙胞胎城堡",
+    "grade": "傳說",
+    "cost": 100,
+    "weight": 10,
+    "effect": "立即使2個最低骰點的骰子骰點+2",
+    "gameId": "UpgradeNLowestDicePipByM2",
+    "icon": "c2fbce1ed5b5"
+  },
+  {
+    "id": "95",
+    "name": "骰子福利",
+    "grade": "傳說",
+    "cost": 100,
+    "weight": 10,
+    "effect": "立即使1個最低骰點的骰子骰點+3",
+    "gameId": "UpgradeNLowestDicePipByM3",
+    "icon": "ed8ea267fe18"
+  },
+  {
+    "id": "96",
+    "name": "小丑代幣",
+    "grade": "一般",
+    "cost": 30,
+    "weight": 30,
+    "effect": "購買後的3次召喚固定為小丑骰子",
+    "gameId": "FixNextNSummonsToJoker",
+    "icon": "b01952413f2b"
+  },
+  {
+    "id": "97",
+    "name": "最後的抵抗",
+    "grade": "稀有",
+    "cost": 70,
+    "weight": 20,
+    "effect": "當玩家的生命值為10時，整體傷害增加2倍",
+    "gameId": "AmplifyDamageByNAtTenHP",
+    "icon": "1ac3be1b2642"
+  },
+  {
+    "id": "98",
+    "name": "神秘沙漏",
+    "grade": "稀有",
+    "cost": 70,
+    "weight": 20,
+    "effect": "立即重置支援冷卻時間",
+    "gameId": "ResetSupporterCooldown",
+    "icon": "d61ff632171b"
+  },
+  {
+    "id": "99",
+    "name": "奇蹟之石",
+    "grade": "傳說",
+    "cost": 200,
+    "weight": 10,
+    "effect": "立即召喚奇蹟之石",
+    "gameId": "SummonMiracleStone",
+    "icon": "f573dc394129"
+  },
+  {
+    "id": "100",
+    "name": "擊破重型裝甲",
+    "grade": "一般",
+    "cost": 30,
+    "weight": 30,
+    "effect": "子彈打擊SP魔像傷害增加10%",
+    "gameId": "GolemDamageUpLow",
+    "icon": "457cd8b5864e"
+  },
+  {
+    "id": "101",
+    "name": "擊破重型裝甲",
+    "grade": "稀有",
+    "cost": 70,
+    "weight": 20,
+    "effect": "子彈打擊SP魔像傷害增加20%",
+    "gameId": "GolemDamageUpMid",
+    "icon": "457cd8b5864e"
+  },
+  {
+    "id": "102",
+    "name": "擊破重型裝甲",
+    "grade": "傳說",
+    "cost": 100,
+    "weight": 10,
+    "effect": "子彈打擊SP魔像傷害增加30%",
+    "gameId": "GolemDamageUpHigh",
+    "icon": "457cd8b5864e"
+  },
+  {
+    "id": "103",
+    "name": "豐厚的懸賞金",
+    "grade": "一般",
+    "cost": 30,
+    "weight": 30,
+    "effect": "擊殺SP魔像獲得的SP增加25%",
+    "gameId": "GolemKillSpUpLow",
+    "icon": "f44e35d44292"
+  },
+  {
+    "id": "104",
+    "name": "豐厚的懸賞金",
+    "grade": "稀有",
+    "cost": 70,
+    "weight": 20,
+    "effect": "擊殺SP魔像獲得的SP增加50%",
+    "gameId": "GolemKillSpUpMid",
+    "icon": "f44e35d44292"
+  },
+  {
+    "id": "105",
+    "name": "豐厚的懸賞金",
+    "grade": "傳說",
+    "cost": 100,
+    "weight": 10,
+    "effect": "擊殺SP魔像獲得的SP增加100%",
+    "gameId": "GolemKillSpUpHigh",
+    "icon": "f44e35d44292"
+  },
+  {
+    "id": "106",
+    "name": "金礦開採",
+    "grade": "稀有",
+    "cost": 70,
+    "weight": 20,
+    "effect": "打擊SP魔像時，1%機率立即獲得10 SP",
+    "gameId": "GolemHitSpGain",
+    "icon": "073c0ef2cb13"
+  },
+  {
+    "id": "107",
+    "name": "材料交易",
+    "grade": "傳說",
+    "cost": 100,
+    "weight": 10,
+    "effect": "即使SP魔像通過地圖消失，仍可獲得20%的SP",
+    "gameId": "GolemEscapeSpGain",
+    "icon": "fed008e26c3d"
+  },
+  {
+    "id": "108",
+    "name": "緊急升級",
+    "grade": "稀有",
+    "cost": 70,
+    "weight": 20,
+    "effect": "立即使隨機骰子2強化",
+    "gameId": "RandomDicePowerUp",
+    "icon": "44d9b26fbb93"
+  },
+  {
+    "id": "109",
+    "name": "魔法小丑帽",
+    "grade": "一般",
+    "cost": 30,
+    "weight": 30,
+    "effect": "將3個骰盤骰子轉換為小丑",
+    "gameId": "TransformNDiceToJokerLow",
+    "icon": "2e4a08e3c404"
+  },
+  {
+    "id": "110",
+    "name": "魔法小丑帽",
+    "grade": "稀有",
+    "cost": 70,
+    "weight": 20,
+    "effect": "將5個骰盤骰子轉換為小丑",
+    "gameId": "TransformNDiceToJokerMid",
+    "icon": "2e4a08e3c404"
+  },
+  {
+    "id": "111",
+    "name": "魔法小丑帽",
+    "grade": "傳說",
+    "cost": 100,
+    "weight": 10,
+    "effect": "將7個骰盤骰子轉換為小丑",
+    "gameId": "TransformNDiceToJokerHigh",
+    "icon": "2e4a08e3c404"
+  },
+  {
+    "id": "112",
+    "name": "危險地帶",
+    "grade": "一般",
+    "cost": 30,
+    "weight": 30,
+    "effect": "立即召喚5個地雷",
+    "gameId": "SummonNMinesLow",
+    "icon": "880d0b8309e4"
+  },
+  {
+    "id": "113",
+    "name": "危險地帶",
+    "grade": "稀有",
+    "cost": 70,
+    "weight": 20,
+    "effect": "立即召喚10個地雷",
+    "gameId": "SummonNMinesMid",
+    "icon": "880d0b8309e4"
+  },
+  {
+    "id": "114",
+    "name": "危險地帶",
+    "grade": "傳說",
+    "cost": 100,
+    "weight": 10,
+    "effect": "立即召喚15個地雷",
+    "gameId": "SummonNMinesHigh",
+    "icon": "880d0b8309e4"
+  },
+  {
+    "id": "115",
+    "name": "女王寶座",
+    "grade": "傳說",
+    "cost": 200,
+    "weight": 10,
+    "effect": "女王寶座：產生賦予王位一半增益的格子",
+    "gameId": "QueensSeatBuff",
+    "icon": "b35f09a5d120"
+  },
+  {
+    "id": "116",
+    "name": "絕滅",
+    "grade": "一般",
+    "cost": 30,
+    "weight": 30,
+    "effect": "使首領與SP魔像以外的怪物暴斃",
+    "gameId": "KillMinionsExceptBoss",
+    "icon": "9c5277e052b2"
+  },
+  {
+    "id": "117",
+    "name": "多數優先",
+    "grade": "稀有",
+    "cost": 70,
+    "weight": 20,
+    "effect": "骰盤上的骰子統一為數量最多類型",
+    "gameId": "UnifyToMostFrequentType",
+    "icon": "bc36cb1be721"
+  },
+  {
+    "id": "118",
+    "name": "稀有優先",
+    "grade": "稀有",
+    "cost": 70,
+    "weight": 20,
+    "effect": "骰盤上的骰子統一為數量最少類型",
+    "gameId": "UnifyToLeastFrequentType",
+    "icon": "8a0d273633a9"
+  },
+  {
+    "id": "119",
+    "name": "星座",
+    "grade": "稀有",
+    "cost": 70,
+    "weight": 20,
+    "effect": "7骰點骰子達到3個以上時，7骰點骰子最終傷害增加10%",
+    "gameId": "AttackUpByMWhenSevenPipsNOrMore",
+    "icon": "acfe447479de"
+  },
+  {
+    "id": "120",
+    "name": "畫龍點睛",
+    "grade": "傳說",
+    "cost": 100,
+    "weight": 10,
+    "effect": "2個6骰點骰子立即+1骰點",
+    "gameId": "UpgradeNSixPipsByOne",
+    "icon": "785b7d8e82ec"
+  },
+  {
+    "id": "121",
+    "name": "星星飛翔",
+    "grade": "傳說",
+    "cost": 100,
+    "weight": 10,
+    "effect": "7骰點骰子最終傷害增加20%",
+    "gameId": "AmplifySevenPipDamageByN",
+    "icon": "b088bcc1b688"
+  },
+  {
+    "id": "122",
+    "name": "少數菁英",
+    "grade": "稀有",
+    "cost": 70,
+    "weight": 20,
+    "effect": "骰盤上每有1個空格，使剩餘骰子基本傷害增加5%",
+    "gameId": "AmplifyDamageByNPerEmptySpace",
+    "icon": "bd55d4620c9e"
+  },
+  {
+    "id": "123",
+    "name": "支援金",
+    "grade": "一般",
+    "cost": 30,
+    "weight": 30,
+    "effect": "立即獲得3000 SP",
+    "gameId": "GainNSpLow",
+    "icon": "c4211ebc7e60"
+  },
+  {
+    "id": "124",
+    "name": "支援金",
+    "grade": "稀有",
+    "cost": 70,
+    "weight": 20,
+    "effect": "立即獲得10000 SP",
+    "gameId": "GainNSpMid",
+    "icon": "c4211ebc7e60"
+  },
+  {
+    "id": "125",
+    "name": "支援金",
+    "grade": "傳說",
+    "cost": 100,
+    "weight": 10,
+    "effect": "立即獲得30000 SP",
+    "gameId": "GainNSpHigh",
+    "icon": "c4211ebc7e60"
+  },
+  {
+    "id": "126",
+    "name": "挖掘王",
+    "grade": "一般",
+    "cost": 30,
+    "weight": 30,
+    "effect": "於骰盤產生2格採掘區域",
+    "gameId": "SpawnNMiningTiles",
+    "icon": "66d79fd0aea4"
+  }
+]
