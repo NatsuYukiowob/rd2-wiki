@@ -120,6 +120,12 @@ jobs:
   e2e-shard:
     name: e2e-shard ${{ matrix.shard }}
     runs-on: ubuntu-latest
+    # ⚠️ 2026-09-06 起 E2E 跑在 Playwright 官方容器裡，tag **pin 到 package-lock 的 @playwright/test 版本**
+    #（兩邊版本不同時 Playwright 會拒絕啟動瀏覽器）。理由不只是下面那段 apt 的歷史：畫布改成 canvas 之後
+    # 四張快照（tests/e2e/tree.spec.ts 的 F）比的是點陣圖，標籤字型差一點就整張紅——第一次在 ubuntu-latest
+    # 裸 runner 上跑，241 顆節點的標籤全部不一樣（10,973 px）。容器把字型、Chromium 版本、字型渲染都釘死，
+    # 本機用 `npm run e2e:snapshots`（同一個 image）產生與比對基準圖，CI 才會跟本機一致。
+    container: mcr.microsoft.com/playwright:v1.62.1-noble
     timeout-minutes: 20
     # E2E 是整個 CI 的關鍵路徑：2026-08-23 的 run 32655761955 逐步驟時間是
     # verify 47 秒、e2e 4 分 07 秒、deploy 30 秒——省時間只有省 e2e 這一條路。
@@ -180,8 +186,7 @@ jobs:
       # 會在「端對端測試」那步立刻噴 launch 失敗，是幾秒內就看得到的紅燈，不是 20 分鐘的卡死。
       # 那時的下一手是改用官方容器（`container: mcr.microsoft.com/playwright:v1.62.1-noble`，
       # tag 要 pin 具體版本），image 內建瀏覽器與函式庫，整個問題類別消失。
-      - name: 安裝 Playwright 瀏覽器
-        run: npx playwright install chromium
+      # 不再 `npx playwright install chromium`：容器 image 已內建對應版本的瀏覽器與系統函式庫。
       - name: 端對端測試（含建置）
         # 這裡刻意沒有獨立的「建置站台」步驟：package.json 的 `pree2e` 已經會跑一次
         # `npm run build`，多加一步等於整包資料與站台建兩次（多花 5–7 秒且兩份產物可能不同步）。

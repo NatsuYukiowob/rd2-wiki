@@ -36,6 +36,29 @@ export default defineConfig({
   // 純粹加固，不影響 brief 給定的其他欄位。
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
+  expect: {
+    // 畫布快照（tests/e2e/tree.spec.ts 的 F）比對的是 Canvas 2D 的輸出，不是 DOM 排版，
+    // 而 Canvas 2D **在同一台機器上重跑也不是逐位元組重現的**：前置鏈節點的標籤與金色光暈
+    // （strokeText/fillText ＋ shadowBlur，走 swiftshader 的多執行緒光柵化）每次會有幾十個
+    // 像素的對抗鋸齒差異。
+    //
+    // ⚠️ **這個數字是量出來的，不是猜的**（2026-09-06 Task 12；改之前先看這一段）：
+    //   * 把容差設 0 連跑四次「什麼都沒改」：`tree-selected-5201` 差 64／65／139／171 像素，
+    //     另外三張（沒有前置鏈光暈的）逐位元組相同。→ **雜訊上限約 170 px**
+    //   * 反例：把 painter 的 `LABEL_DY` 15→25（每個標籤下移 10px）重新 build 之後，
+    //     差 **7,076 px**。→ **真的畫錯時的訊號量級**
+    // 也就是說訊號與雜訊之間有 40 倍的空隙，容差要落在中間。0.001 ＝ 1280×599 的
+    // 767 px：比雜訊高 4.5 倍、比訊號低 9 倍。
+    //
+    // ⚠️ **不要為了「換一版 Chromium 也不會紅」把它調大**：一開始寫的 0.02（2%＝15,334 px）
+    // 比上面那個反例的訊號還大，`LABEL_DY` 改成 25 之後四張快照**照樣全綠**——那是一組
+    // 完全沒有守備能力的基準圖。真的換了瀏覽器版本就重錄基準圖並肉眼看過，不是放寬門檻。
+    // ⚠️ 這是**比例**不是絕對像素數，換視窗尺寸不必跟著調。
+    // ⚠️ 盲區：767 px 大於預設視角下單一節點的面積（一顆骰子約 550 px²），所以「只有一顆圖示畫錯」
+    //   在 tree-default／selected／filtered 三張守不到，只有放大的 tree-zoomed-1001 那張守得到；
+    //   守的是整體版面／標籤／光暈／淡出這類跨很多節點的退步，不是單顆像素。
+    toHaveScreenshot: { maxDiffPixelRatio: 0.001 },
+  },
   webServer: {
     command: `npx serve dist -l ${PORT}`,
     port: PORT,

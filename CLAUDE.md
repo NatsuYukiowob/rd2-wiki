@@ -63,6 +63,14 @@
 同一台機器連跑兩次則完全相同。`@playwright/test` 是 `^1.49.0` 的 caret 範圍，`npm install` 換到
 新的 Chromium 就會漂。**所以「重跑後 PNG 位元組不變」不可以拿來當驗收條件**，會無關改動地紅。
 
+⚠️ **瀏覽器不渲染這份 SVG，站台上沒有任何節點元素。** 正本只是資料來源：`build:data` 把幾何
+與文案壓成 `src/generated/tree.json`，`/tree` 與 `/sim` 由 `src/lib/canvas/` 這一層（`mountCanvasTree()`）
+用 **Canvas 2D** 畫進 `#canvas-host` 底下的兩張 `<canvas>`。節點、邊、標籤、前置鏈光暈、篩選淡出、
+中央樞紐、模擬器狀態色與等級牌**全部是像素**——`document.querySelector('.node')` 在站台上回 null，
+CSS 也碰不到它們（在 `canvas.css` 加 `.node` 規則不會有作用，也不會有任何錯誤訊息）。
+唯一的例外是每顆節點一顆的隱形 `<button>`（見「圖示」一節）。畫布內容的外觀寫在
+`src/lib/canvas/theme.ts`（顏色字級，從 token 讀）、`state.ts`（透明度與邊色）、`painter.ts`（怎麼畫）。
+
 核心功能：點一個節點 → 高亮它在 DAG 上的**所有祖先聯集**（去重、含自身、多重前置視為 AND）
 → 算出解鎖成本。
 
@@ -104,7 +112,7 @@ npm run compare -- <beforeURL> <afterURL>  # computed-style 逐元素比對，�
 | Boss | **21 條**（一般 10 ＋ 困難 11，`difficulty` 欄），圖示雙向零殘餘 | `data/boss.json`，規則 25 |
 | 初始就可解鎖的節點 | 11 個（前置只有起始骰子） | `/sim` 的測試挑節點時要從這裡挑 |
 | 畫布 viewBox | `0 0 2000 1700` | |
-| 效能預算（硬斷言） | `tree.json` gzip ≤ 20KB（目前 18.5KB）／sprite ≤ 400KB（目前 130KB） | |
+| 效能預算（硬斷言） | `tree.json` gzip ≤ 20KB（目前 19.5KB）／sprite ≤ 400KB（目前 126KB） | 數字每次 `build:data` 都會印，不要照抄這一格 |
 
 - **版本欄位有三個、意義不同**：`data-game-version`（玩家看得到的遊戲版本，1.1.0）、
   `<metadata>` 的 `resource bundle`（資料抄自哪一版資源包；2026-09-06 起直接寫遊戲版本 1.1.0——
@@ -121,10 +129,11 @@ npm run compare -- <beforeURL> <afterURL>  # computed-style 逐元素比對，�
   非 cost 節點，站台一個地方都沒顯示它；會跟著變的是 `sumUnlockCost()` 的前置鏈計算。
 - **顯示尺寸逐節點寫在正本的 `<image width/height>`**（骰子 50×53、符文 26×26、被動 34×34 與
   44×44、支援 51×47）。**不要再加「類型 → 尺寸」對照表**：同一種類型底下也會有不同尺寸，
-  舊的 `sizeOfType()` 就是為此拿掉的。改動後一定要回頭看 `src/lib/viewport.ts` 的兩個
+  舊的 `sizeOfType()` 就是為此拿掉的。改動後一定要回頭看 `src/lib/canvas/view.ts` 的兩個
   `*_ICON_TARGET_PX`（照骰子寬度換算，曾因骰子從 56 縮到 50 沒跟著改，每個視角多放大 12%）
-  與 `SHADOW_ON/OFF_AT_ICON_PX`（`SHADOW_OFF` 必須高於那兩個，否則預設視角會重畫 239 個
-  drop-shadow，手機平移從 40 掉回 20 FPS）。`tests/lib/viewport.test.ts` 有斷言。
+  與 `SHADOW_ON/OFF_AT_ICON_PX`（`SHADOW_OFF` 必須高於那兩個，否則預設視角每次重畫靜態層都要
+  為 241 顆節點各設一次 `shadowBlur`，手機平移從 40 掉回 20 FPS）。
+  `tests/lib/canvas/view.test.ts` 有斷言。
 - ⚠️ **`tests/tools/build-data.test.ts` 的效能預算有兩條斷言**，不要合併：一條量測試自己組的
   產物（`spriteIndex` 是全同值替身，壓得比真實座標好，**會低估約 0.5KB**），另一條量 `pretest`
   用 CLI 寫出的 `src/generated/tree.json`。餘裕只剩 1KB，少了後面那條就會「本機全綠、CI 爆掉」。
@@ -312,11 +321,13 @@ npm run compare -- <beforeURL> <afterURL>  # computed-style 逐元素比對，�
   | 旗標 | 節點 | 語意 | 誰在用 |
   |---|---|---|---|
   | `unlockPaid` | `5002` 恐懼 | 成就開門，**仍要付** `unlockCost`（「合作累積900擊殺後，使用8核心解鎖」） | `sumUnlockCost()`、`upgradeTableApplies()` |
-  | `bypassPrereq` | `5006` 貪婪／`5008` 空虛 | 從討伐獎勵／競技場通行證**直接領，無視骰子樹前置** | `prerequisiteChain()`、`render.ts` |
+  | `bypassPrereq` | `5006` 貪婪／`5008` 空虛 | 從討伐獎勵／競技場通行證**直接領，無視骰子樹前置** | `prerequisiteChain()`、`canvas/painter.ts` |
 
   **`bypassPrereq` 不改變圖結構**——邊照樣存在、239／248 不變，只有前置鏈遍歷走到它時停止往上追。
-  `/tree` 上指向它的入邊掛 `.edge-bypassable` 畫成虛線（CSS 在 `canvas.css`，**只設
-  `stroke-dasharray`**，所以跟 `.in-chain`／篩選／`has-selection` 那三組 opacity 規則互不搶屬性）。
+  `/tree` 上指向它的入邊畫成虛線：旗標由 `scene.ts` 搬成 `SceneEdge.bypassable`，`painter.ts`
+  的邊迴圈**跑兩趟**（實線一趟、虛線一趟），把 `setLineDash([9, 7])` 設在迴圈外——canvas 的
+  `setLineDash` 是 context 狀態不是每條線的屬性，逐條切換會多出幾百次狀態變更。虛線只決定線型，
+  顏色與透明度仍走 `state.ts` 的 `edgeColor()`／`edgeAlpha()`，兩件事互不搶。
   站台**沒有全站圖例**，虛線的意思由詳情面板那句「鏈上有 N 顆可直接領的骰子」承擔。
 
   ⚠️ **那句要綁 `Selection.bypassNodes`（鏈上有幾顆），不可以綁 `bypassed`（省了幾個前置）**：
@@ -422,7 +433,8 @@ npm run compare -- <beforeURL> <afterURL>  # computed-style 逐元素比對，�
   配方的三個狀態：`--face` 靜止（上緣 `--hair` 高光 ＋ 下緣硬邊 ＋ `--shadow-2`）、`--face-lift`
   hover（硬邊跟著 `--p-lift` 長）、`--face-float` 浮在畫布上的面（**不要下緣硬邊**——硬邊在講
   「它坐在某個平面上」，而 `#detail`／下拉選單沒有坐在任何東西上）。抄散到元件檔就是四份會漂
-  的複本，跟 `--panel`、`render.ts` 的第二份金色同一族。
+  的複本，跟 `--panel`、畫布金色的第二份定義同一族（畫布的顏色現在只有 `src/lib/canvas/theme.ts`
+  一份，開機時從 token 讀出來）。
 - **hover 抬升一律 `var(--p-lift)`**，不要再寫死 `translateY(-2px)`：`--face-lift` 的下緣硬邊
   是用 `calc(2px + var(--p-lift))` 跟著它算的，寫死就對不上。
 - **字級級距 2026-08-26 拉到 3.2 倍**（0.75 / 0.84 / 0.92 / 1 / 1.2 / 1.45 / 1.85 / 2.4rem）。
@@ -520,7 +532,7 @@ npm run compare -- <beforeURL> <afterURL>  # computed-style 逐元素比對，�
 | `content.css` | 靜態內容頁共用 `.page`（首頁／圖鑑／遊戲介紹）＋首頁訪客計數器 `#hit-counter`＋詞彙頁 `.kw-*` | Base |
 | `components.css` | 跨頁共用元件：篩選切換鈕 `.chip`、**沾頂篩選列 `.filters`／`.filter-count`**、`--branch` 供應者（`:is(.dice-card, .chip)[data-branch=…]`）、分支色點 `.branch-dot`、首頁卡片、遊戲介紹索引卡 | Base |
 | `detail.css` | `/tree` 詳情面板 `#detail`（含視圖堆疊換頁動畫） | `/tree` |
-| `canvas.css` | 畫布本體：`#canvas-host`／`#tree`／`#viewport`、節點與邊 `.node`／`.edge`、中央樞紐 `.tree-center*` | `/tree`、`/sim` |
+| `canvas.css` | 畫布**容器**：版面骨架（`body`／`main`／`#canvas-host`）、兩張 `<canvas>` 的定位、隱形節點按鈕清單 `.tree-a11y*`。⚠️ 畫布**內容**的外觀不在這裡（見 `src/lib/canvas/theme.ts`） | `/tree`、`/sim` |
 | `dice.css` | `/dice` 圖鑑：卡片網格 `.codex-grid`、`.dice-card` 本體、關鍵字卡片 `.card-term*`、數值面板 `.dice-stats`、篩選列 `.filters` | `/dice` |
 | `board.css` | `/board` 骰盤編輯器：`.board-*`／`#board-*`、組合列 `#deck-row`／`.deck-*`、選骰面板 `#dice-picker`／`.picker-*` | `/board` |
 | `battle.css` | `/tactic` 與 `/boss` 共用的橫列清單：`.battle-*` | `/tactic`、`/boss` |
@@ -621,8 +633,16 @@ npm run compare -- <beforeURL> <afterURL>  # computed-style 逐元素比對，�
   用它讓位，否則 `#branch-chips` 會永遠疊在「著作權屬 111 Percent Inc.」那句上面。W 守。
 - 手機 `#detail` 用 `inset: auto 0 var(--chips-h) 0` 讓**可視方框**停在 chip 列上方，
   不是靠內距推——內距在捲動內容的**結尾**，使用者根本還沒捲到那裡。
-- ⚠️ **`#tree` 必須是 `position: absolute; inset: 0`**，不能用 `width/height: 100%`：SVG 有內建
-  長寬比，`height: 100%` 在父層高度未定案時退回 auto，用寬度反推出一個內在高度把 `<main>` 撐開。
+- ⚠️ **`#canvas-host > canvas` 必須是 `position: absolute; inset: 0`**，不能用 `width/height: 100%`：
+  `#canvas-host` 的高度是 flex 算出來的、不是「確定的」高度，`height: 100%` 會退回 auto，而
+  `<canvas>` 的預設內在尺寸是 300×150——版面會被縮成左上角一小塊。`inset: 0` 讓兩個偏移量都給定，
+  瀏覽器把 auto 的寬高撐滿容器，同時它抽離普通流程、對 `<main>` 的高度貢獻是 0。
+  繪圖解析度跟 CSS 尺寸是兩件事。
+  ⚠️ **兩張元素的 CSS 寬高與 `canvas.width/height` 由 controller 的 `measure()`
+  （`canvas-tree.ts`）用 inline style 明寫成「視口＋2×邊距」的尺寸並 `translate(−邊距)` 定位**，
+  比 host 大一圈；`inset: 0` 只是掛載到 `measure()` 跑之前那一瞬間的預設，撐出去的那一圈由
+  host 的 `overflow: hidden` 裁掉。設 `canvas.width/height` 的也是 `measure()`，不是 painter。
+  **不要把那個 inline width 當成多餘的東西「修正」掉。**
 
 **動版面時不要再引入新的固定偏移量。** E2E 的 U（不該捲動）、V（詳情卡片避開側欄）、
 J（手機抽屜不蓋住工具列）是這三條防線。
@@ -643,6 +663,10 @@ J（手機抽屜不蓋住工具列）是這三條防線。
 - **置中平移期間卡片釘在終點不動**，只有畫布在走；`cancelCenterPan()` 只能掛在真的會動畫布的
   路徑上（一度掛在 `window` keydown 的開頭 → 節點上按 Enter 完全不會置中）。
 - 節點卡片桌機是**橫式兩欄**（`.node-body > .col`／`.col.chain`，重置警告跨兩欄），手機單欄。
+- ⚠️ **節點在螢幕上的位置一律問 `tree.nodeScreenRect(id)`**（`TreeHandle`，回相對 viewport 的
+  `{left, top, width, height}`），不要去量 DOM——canvas 裡沒有節點元素。`positionPanel()` 與
+  `sideLeastCovered()` 的算法一個字都沒變，只是換了幾何的來源。畫布每動一幀 controller 會呼叫
+  `onViewChange()` 的回呼，卡片跟著重新定位。
 - 守它的 E2E：**N**（置中＋垂直緊鄰）、**N2**（不蓋前置鏈）、**N3**（平移期間卡片不動）、
   **N4**（兩欄）、**N5**（Enter 也置中）、**N6**（打字與拖曳都不壓到節點）。
 
@@ -762,8 +786,8 @@ J（手機抽屜不蓋住工具列）是這三條防線。
 PNG，檔名＝內容 sha256 前 12 碼，`addIcon()` 直接重用）＋ `data/board-icons.json`（`{節點 id: hash}`，
 兩邊由 `npm run add-icon -- --board <id> <png>` 一次更新），
 `build:data` 轉成 `public/assets/board-icons/<hash>.webp`（`tools/lib/icons.ts` 的 `buildBoardIcon()`），規則 21 守。
-⚠️ **刻意不套 `withGutter()`**：gutter 是為了 `<pattern>` 的繞回取樣而存在，`/board` 用的是普通
-`<img>`，加了只會讓圖示在方框裡顯得更小。
+⚠️ **刻意不套 `withGutter()`**：gutter 是為了骰子樹圖集在 canvas 上取樣時不吃到隔壁格而存在，
+`/board` 用的是普通 `<img>`，加了只會讓圖示在方框裡顯得更小。
 
 ⚠️ **這批來源圖尺寸與長寬比都不統一**（跟節點圖示統一 200×210 不一樣），帶出兩個不變量：
 
@@ -840,20 +864,23 @@ PNG，檔名＝內容 sha256 前 12 碼，`addIcon()` 直接重用）＋ `data/b
   `src/lib/upgrade-tiers.ts`（費用查表）。`src/scripts/sim.ts` 只做「把狀態畫成畫面、把事件翻成
   狀態轉換」。**每個操作都回傳新狀態而不是就地改**——undo／redo 直接把整份狀態推進堆疊，不必為
   每種操作各寫一次反向操作（而反向操作正是最容易漏掉連帶效果的地方）。
-- **畫布是自己組的**（`renderTree()` ＋ `Viewport`），**不重用 `src/scripts/tree-canvas.ts`**：
-  那支是 side-effect 腳本、載入即掛載，而且跟 `/tree` 的篩選器、詳情卡片擺位、高解析圖示 LOD
-  綁死。⚠️ 共用的是 **`canvas.css` 的兩個區塊**（「畫布頁的版面骨架」與「畫布內容」），2026-08-23
-  從 `tree.astro` 搬過去——搬的當下就抓到一個真 bug：`/sim` 完全沒有節點外觀那一節，標籤吃
-  SVG 預設的 **16px**（使用者座標），**別的節點的標籤蓋住了 10 顆節點的圖示中心**，症狀是
-  「點某幾顆完全沒反應」。⚠️ 反例測過：擋住這件事的是**字級**——單獨拿掉
-  `pointer-events: none`、或讓符文標籤全部顯示，S13 都不會紅，把字級改回 16px 才紅。
-  **加樣式時不要以為 `pointer-events: none` 是那道防線。**
-- ⚠️ **不能在節點上綁 `click`。** `svg.setPointerCapture()` 一旦生效，後續 pointer 事件（以及由
-  它們合成的 click）的 target 全部被改標成 svg 本身，節點的 handler 永遠不會跑——實測就是整頁點
-  下去沒反應。做法跟 `/tree` 一樣：pointerdown「當下」記下被按到的節點，pointerup 只用來量位移。
-- ⚠️ **SVG 元素不吃 HTML 的 `hidden` 屬性。** 等級牌第一版用 `toggleAttribute('hidden')` 收放，
-  那是完全沒有作用的一行，239 個牌子全部留在畫面上——**所有測試照樣綠，是截圖才看出來的**。
-  現在交給 CSS 的 `.node:not(.sim-owned) .sim-badge { display: none }`。
+- **畫布跟 `/tree` 共用同一個 controller**：兩頁都是 `mountCanvasTree(host, data)`，**沒有
+  「這是 /sim」的參數**。平移／縮放／命中測試／隱形按鈕清單／兩層 canvas 全部只有一份實作，
+  `/sim` 只多傳一個 `PaintState.sim`（`SimPaint`：owned／available／selected／linked／active／
+  ready／levels／maxLevels）進去，畫成什麼樣由 `state.ts` 與 `painter.ts` 決定。
+  ⚠️ **差異全部由 `setState({ sim })` 表達**——不要為了 `/sim` 在 `painter.ts` 裡開分支，
+  也不要在 `MountOptions` 上加旗標。`/tree` 專屬的詳情卡片置中平移與篩選器接線在
+  `src/scripts/tree-canvas.ts`，`/sim` 只是不載那支腳本（2026-09-06 拿掉的 `sim?: boolean`
+  是個死參數：controller 從頭到尾沒讀過它，而這裡曾經寫成「它只關掉 /tree 專屬行為」）。
+- **等級牌是畫的，不是元素**（`drawStatic` 最後一段：`owned` 且 `maxLevel > 1` 才畫）。
+  ⚠️ **牌子的透明度要吃 `nodeAlpha(state, id)`，不可以寫死 1**：舊版 `<g class="sim-badge">` 是
+  節點群組的子元素，父層一淡它就跟著淡；canvas 裡每一次 `fill`／`fillText` 都得自己設
+  `globalAlpha`，漏設的話搜尋淡出時牌子會浮在半透明的節點上。
+- **狀態色與三階邊都在 `state.ts`**（`nodeAlpha`／`edgeAlpha`／`edgeColor`），數值是從舊
+  `canvas.css`／`sim.astro` 的 opacity 規則逐條搬過來的。⚠️ **搬的時候要連 CSS 的優先順序一起搬**：
+  舊版 `#tree.sim .node.sim-dimmed` (1,3,0) 壓過 `.sim-selected`／`.sim-locked` (1,2,0)，所以
+  `nodeAlpha()` 裡搜尋淡出（0.08）要排在選取（1）與未取得（0.28）**前面**，順序寫反的話
+  「搜尋不符的節點被選取時仍是淡的」這個行為會安靜地反過來。
 - **可選初始骰子（陰陽／貪婪／空虛）只能用勾的，不能在樹上點。** 它們不花錢，讓玩家點一下就拿到
   等於送。判準從資料推導（`unlockVia` 非 cost 非 default 且無 `unlockPaid`），不硬編碼 id。
   ⚠️ **恐懼骰子（`5002`）不在這一組**：它是成就開門但仍要付 8 核心（`unlockPaid`），走一般解鎖流程。
@@ -877,10 +904,11 @@ PNG，檔名＝內容 sha256 前 12 碼，`addIcon()` 直接重用）＋ `data/b
   ⚠️ **驗這件事一定要用真的滑鼠拖曳**：`fill()` ＋ `dispatchEvent('input')` 只送一次事件，完全
   繞過這條路徑（S3 就是這樣一直綠著的）。S17 用真滑鼠、S17b 直接驗「元素沒被換掉」這個根因；
   **手機的觸控拖曳 Playwright 驅動不了原生 range，只能真機驗**。
-- ⚠️ **狀態色的 `filter` 會蓋掉鍵盤焦點的 `#focus-ring`。** `#tree.sim .node.sim-available .icon`
-  的具體度 (1,4,0) 壓過 canvas.css 的 `.node:focus .icon` (0,3,0)，而 `.node:focus` 已經
-  `outline: none`——Tab 到「可取得」或「已選取」的節點時**畫面零變化**。補一條
-  `.sim-available:focus .icon` (1,5,0) 拿回來。這是這份文件為 `/tree` 記過的同一族坑。S15 守。
+- **焦點框畫在互動層，跟狀態色不搶**（`painter.ts` 的 `focusRingPath()`，依節點 `shape` 走
+  矩形／菱形／圓／六邊形的幾何路徑）。canvas 沒有層疊也沒有 `filter`，`/tree` 與 `/sim` 用同一段
+  程式，所以舊版「狀態色的具體度壓掉焦點框」那一族坑不再存在。⚠️ 代價是焦點框**不再貼著圖示的
+  alpha 輪廓**，是宣告形狀的近似框；圖示裁切品質因此不會再變成焦點框的形狀（見「圖示」一節）。
+  S15 守。
 - ⚠️ **`#sim-toast` 是這一頁唯一的 `role="status"`，不可以用 `hidden` 收放。** 收放靠清空
   `textContent`，視覺由 CSS 的 `:empty` 收——`hidden`／`display:none`／`visibility:hidden` 三種
   都會讓它從無障礙樹消失，於是「超出資源上限」這些唯一的失敗回饋對螢幕閱讀器完全不存在。S19 守。
@@ -889,39 +917,100 @@ PNG，檔名＝內容 sha256 前 12 碼，`addIcon()` 直接重用）＋ `data/b
   一開始就送的——那條路是通的，卻不是玩家走出來的。**只有兩階的話這兩條不是被畫成金線（看起來
   像自己解過），就是跟「還沒走到的路」一樣暗；Yuki 先後回報了這條界線的兩邊。**
   可選初始骰子同理（從討伐獎勵／通行證領的，指向它的邊沒被走過）。
-  ⚠️ `edgeWasUsed` 是 `edgeIsLinked` 的**子集**，CSS 靠這個包含關係把兩件事拆成互不搶屬性的
-  兩條規則（`.sim-linked` 只設 opacity、`.sim-active` 只設 stroke），不必去算具體度也不靠順序。
+  ⚠️ `edgeWasUsed` 是 `edgeIsLinked` 的**子集**，`state.ts` 靠這個包含關係把兩件事拆成互不干涉的
+  兩個函式（`edgeAlpha()` 只回透明度、`edgeColor()` 只回顏色），不必去算誰壓過誰。
   `src/lib/sim.ts` 有一條全邊掃描的測試守著那個包含關係，畫面三階由 S18 守。
 - **E2E 挑節點要挑「初始狀態就可解鎖」的那 11 顆**（前置只有起始骰子），否則每條測試都得先「一鍵
-  點亮」，測到的就不是自己要測的那件事。⚠️ **定位要用 `.icon` 不是整個 `<g>`**：節點群組的
-  bounding box 是「圖示 ∪ 標籤」的聯集，標籤比圖示寬得多，聯集框的中心常常落在**隔壁那顆節點**上
-  （實測點 1201 打到 1001）。⚠️ 安全點擊區**兩個方向都要算**：工具列與手機版抽屜擋上下，桌機側欄
-  擋右邊——只算上下的話節點會落在 `<aside>` 底下，症狀是「側欄一直停在空狀態」。
+  點亮」，測到的就不是自己要測的那件事。⚠️ **座標一律問 `window.__tree.nodeScreenRect(id)`**
+  （回傳的框只含圖示、不含標籤，正是要點的地方），再用真滑鼠點那個中心——canvas 裡沒有可以
+  `locator()` 的節點元素，隱形按鈕清單被 `clip-path` 裁成 1px，拿去量幾何只會得到左上角那 1px。
+  ⚠️ 安全點擊區**兩個方向都要算**：工具列與手機版抽屜擋上下，桌機側欄擋右邊——只算上下的話節點
+  會落在 `<aside>` 底下，症狀是「側欄一直停在空狀態」。
 
-## 圖示
+## 圖示與畫布怎麼畫（`src/lib/canvas/`）
 
-⚠️ **圖示的 alpha 輪廓＝高亮的形狀。** `.node.in-chain` 的金色光暈與鍵盤 focus 的 `#focus-ring`
-**描的都是圖示自己的 alpha 輪廓**，不是節點宣告的 `shape`——所以圖裁得乾不乾淨會直接變成高亮的形狀。
-兩個真實案例：
+`/tree` 與 `/sim` 共用一個 controller：`mountCanvasTree(host, data, opts)` 回一個 `TreeHandle`
+（`setState`／`getState`／`nodeScreenRect`／`hitAt`／`fitAll`／`fitBounds`／`pan`／`requestRedraw`／
+`onSelect`／`onViewChange`／`destroy`）。⚠️ **`pan()` 是唯一帶陷阱的一支**：它跟拖曳收尾一樣會
+`cache.invalidate()` 把位圖邊距重新置中，動畫的中間幀誤用等於每幀重畫 241 顆——中間幀請用
+`view.pan()` ＋ `requestRedraw()`，只有收尾那一下才叫 `pan()`。
+一個檔一件事：`view.ts` 座標數學、`scene.ts` 由 tree.json 組出不變的幾何、`state.ts` 每一幀可能不同
+的互動狀態、`theme.ts` 從 token 讀出來的顏色字級、`assets.ts` 圖集與 2× 圖、`painter.ts` 怎麼畫、
+`cache.ts` 靜態層位圖快取、`hit.ts` 命中測試、`a11y.ts` 隱形按鈕、`debug-api.ts` 給 E2E 問的介面。
 
-1. **角色圖示被切平**（五個支援角色的底板下緣圓弧被切掉 2–3 列，一被選進前置鏈就變成一條橫的淡黃色
-   條）。修法是用最底 24 列擬合圓角補回去，再從頂端切掉同樣列數的全透明列，**畫布尺寸維持不變**
-   （長寬比一變，圖在 `rect` 裡就會被拉扁）。守門是 `tests/data/icon-silhouette.test.ts`，判準是圖檔
-   本身的兩個數字（最底列寬比、最後一列的落差），⚠️ **不是截圖比對像素**——光暈是 6px 模糊、跟深色底
-   混完亮度很低，抓不到；放寬成「暖色」又會連角色自己的暖色像素一起抓進來。
-2. **`<pattern>` 邊界的繞回取樣**（節點**上緣**一條極淡的水平金線，跟圖檔內容無關——換回舊圖、改用
-   sprite 填色，那條線都一樣在）。tile 尺寸剛好等於 rect，取樣器在 tile 邊界是繞回的，底部不透明的
-   底板邊會被當成最頂那列的鄰居取樣進去。修法是 `tools/lib/icons.ts` 的 `withGutter()` 把圖縮 2px 置中、四周留一圈全透明像素
-   （sprite 那邊順帶解掉相鄰格子互相滲色）。守門是 `tests/tools/icons.test.ts`（`GUTTER = 0` 會紅）。
-   **這個坑會影響所有 239 個節點**，只是底部不透明、上半部細的圖最容易看見。
+**兩張 canvas，疊在 `#canvas-host` 裡**：`.tree-static`（節點、邊、常駐標籤、中央樞紐、`/sim` 等級牌）
+在下，`.tree-overlay`（前置鏈光暈、hover／focus 標籤、焦點框）在上。**pointer 事件全部掛在互動層**、
+`touch-action: none`。分兩層的理由是**滑過一顆節點不該讓 241 顆重畫**；靜態層再往下一層由
+`StaticCache` 存成離屏位圖，平移時只是把同一張位圖 blit 到新位置。
 
-⚠️ **走錯過的兩條路，不要再試一次**：(a)「是 CSS `drop-shadow()` 的濾鏡區域把光暈切掉了」——不是，
-換成具名 `<filter>` ＋大區域之後那條線原封不動，而且 CSS 版的光暈**擴散得比具名版更遠**。
-(b) 用截圖比對金色像素找那條線——抓不到（角色自己就有大量金／橙色像素，前置鏈的連線也是金色）。
-有用的量法是「相鄰兩列的平均色差」找突變列，以及**同一個視角開關 `.in-chain` 兩次相減**只留下光暈。
+- **快取 key＝`scale|dpr|視口尺寸|assetsVersion|stateSignature`**，`tx/ty`（平移量）**刻意不進 key**
+  ——那只是 blit 的位置，不是位圖的內容。位圖尺寸是**視口每邊外擴 `PAN_MARGIN`（0.25＝1.5×1.5 視口）**
+  ×dpr 而不是整棵樹（放大 8× 時整棵樹是 16000×13600，記憶體撐不住，畫面外的部分也沒人看）；
+  超過 `MAX_SIDE`／`MAX_AREA` 時邊距逐次減半（`marginPx()`）。⚠️ **連裸視口自己都超標時
+  `marginPx()` 回 `[0, 0]`，位圖照配那個尺寸**——元素至少要跟視口一樣大，那已經超出這一層
+  能處理的範圍（實務上要 5K／6K 螢幕才碰得到，Chromium 真實上限 268M px 撐得住）。代價是
+  邊距 0 之後平移捷徑幾乎全程失效（每一幀都真的重畫），是效能懸崖不是畫面錯誤。
+- **頁面上那兩張 canvas 元素也是同一個帶邊距的尺寸，用 `translate(−邊距)` 定位**（`measure()`／
+  `resetLayers()`）。拖曳中不重繪，只改兩張元素的 CSS `transform`；位移超出邊距（位圖或元素任一
+  蓋不滿視口，`covers()` AND `layersCover()`）就在**同一幀**重畫；拖曳結束、第二指落下、pointercancel、
+  lostpointercapture、程式化平移收尾全部走 `endDrag()` 補畫一次並把邊距重新置中。⚠️ 2026-09-06 使用者
+  實測抓到的 bug 就是「平移只 blit 舊位圖、放手不補畫 → 拖出去的區域永遠空白」，任何新的平移路徑都
+  要記得走 `endDrag()`。
+- **縮放中也不重繪，改對兩張元素設 `transform: translate(...) scale(k)`，停 150 ms 後才補畫一張
+  清晰的**。不這樣做的話滾輪一秒送幾十個事件、每個都重畫 241 顆（Pixel 7 4× 節流實測 22–47 fps →
+  53–54）。唯一例外：縮小到拉伸過的貼圖蓋不滿視口時當幀真的重畫（所以縮小仍是 44–47 fps，接受）。
+  ⚠️ **已知取捨：縮放中畫面會糊那 150 ms，光暈與焦點框跟著拉伸；縮放中的 hover／狀態變更要等 settle。**
+- ⚠️ **`shadowBlur`／`shadowOffsetY` 是 canvas 2D 唯二不吃 `setTransform` 的屬性**（它們是裝置像素）。
+  節點投影與鏈上光暈的半徑都是 world 單位常數，畫之前一定要自己乘上 `dpr * pxPerUnit`——不乘的話
+  dpr 2 的手機光暈只有一半，畫布放大 3 倍光暈也完全不會變大。
+- ⚠️ **標籤字級與線寬是 world 單位不是 CSS px**（畫在 `setTransform` 之後）。`theme.labelPx` 是
+  `--fs-xs` 換算出來的數字，套在 world 座標系上剛好對上舊 SVG 的使用者座標，**不要因為「單位看起來
+  像 px」就照 CSS 的直覺調它**。標籤先 `strokeText` 再 `fillText`（等價於舊版的 `paint-order: stroke`）。
+- **圖示走 `AssetStore`**：一張 sprite 圖集（1×）＋每顆節點各一張 2× WebP。放大到
+  `HIRES_UPGRADE_AT` 才升級、縮回 `HIRES_DOWNGRADE_AT` 才降級（兩個門檻不同＝遲滯，免得在臨界點
+  來回抖）。⚠️ **`updateLod()` 只對 `view.visibleWorldRect()`（純視口）內的節點呼叫 `wantHires()`**，
+  `painter` 則只呼叫**唯讀**的 `loadedHires()`——畫一幀就對每顆節點要一張 2× 圖等於整棵樹一次抓完，
+  視錐預載就白做了。載好的圖把 `assets.version` +1，快取 key 一變，靜態層自己重畫一次。
+  失敗的圖記住不重試（否則每次縮放都打一輪 404）。
+- ⚠️ **首屏 2× 圖示的張數與版面／初始縮放綁在一起**（實測 Pixel 7 首屏約 70 張／358.4 KB；
+  E2E 釘 **< 110 張／< 500 KB**）。改版面、改 `*_ICON_TARGET_PX`、改 `fitAll()` 的 pad 都會動到
+  這個數字，**改完要重新校那條斷言**，不要因為紅了就把上限往上調。
+  ⚠️ **視錐刻意不含位圖那一圈邊距**（Ruling X）：含進去雖然跟位圖畫的範圍一致，實測會變成
+  120 張／479.4 KB（離 500 KB 只剩 20 KB 餘裕）。邊距那一圈停在 1× 是可接受的——拖進視野、
+  手勢結束補畫那一幀就會升級。
 
-- **sprite 的透明邊要跟著輸出解析度縮放**：sprite 是 1×、高解析圖是 2×，兩者貼到畫面上**同一個
-  `<rect>`**；兩邊都留 1px 的話圖佔的比例差 3.8 個百分點，放大到觸發切換的那一刻每顆符文突然大 4.2%。
+**canvas 對鍵盤與讀屏是黑洞**，所以每顆節點另外掛一顆隱形 `<button data-id>`（`a11y.ts`，
+`<ul class="tree-a11y">` 241 顆）。⚠️ **視覺隱藏只能用 `clip-path`**——`hidden`／`display: none`／
+`visibility: hidden` 會讓元素同時退出 Tab 順序與無障礙樹，等於把這份 DOM 存在的理由砍掉
+（跟 `.sr-only` 是同一條規則）。焦點框不畫在按鈕上，畫在互動層 canvas 上。
+⚠️ **`forced-colors: active` 下現形的只有「拿到焦點的那一顆」**（高對比模式不會把 canvas 上的
+金色描邊當成焦點色，所以焦點回饋要有個看得見的去處）：容器解除裁切但高度收 0，每個 `<li>` 各自
+接手那份 1px 裁切，只有 `:focus-within` 那一顆撐開成視窗左下角的一塊文字牌（系統色 `Canvas`／
+`CanvasText`）。⚠️ **不要改回「整份清單現形」**（2026-09-06 最終審查 I1）：241 個 `<li>` 每個都帶
+可見文字、總高約 3,800px，會被 host 裁成剛好蓋滿可視區的一整欄——而 canvas 的像素不會被 forced
+colors 重新著色，那張樹本來就看得見，等於用自己的無障礙備援把畫面蓋掉。現形的元素一律
+`pointer-events: none`，否則滑鼠點擊會被它整片吃掉、永遠到不了互動層。
+
+### 圖檔本身
+
+⚠️ **圖示的 alpha 輪廓＝陰影與光暈的形狀。** 節點投影與前置鏈的金色光暈是 canvas 的
+`shadowBlur`，它描的是**圖示自己的 alpha 輪廓**——所以圖裁得乾不乾淨會直接變成光暈的形狀。
+（焦點框不在此列：它走 `focusRingPath()` 的幾何路徑，跟圖檔無關。）真實案例：
+
+- **角色圖示被切平**（五個支援角色的底板下緣圓弧被切掉 2–3 列，一被選進前置鏈就變成一條橫的淡黃色
+  條）。修法是用最底 24 列擬合圓角補回去，再從頂端切掉同樣列數的全透明列，**畫布尺寸維持不變**
+  （長寬比一變，圖貼到節點的 w×h 上就會被拉扁）。守門是 `tests/data/icon-silhouette.test.ts`，判準是
+  圖檔本身的兩個數字（最底列寬比、最後一列的落差），⚠️ **不是截圖比對像素**——光暈是 6px 模糊、跟
+  深色底混完亮度很低，抓不到；放寬成「暖色」又會連角色自己的暖色像素一起抓進來。
+  ⚠️ 用截圖找這種細線也**抓不到**（角色自己就有大量金／橙色像素，前置鏈的連線也是金色）。有用的量法
+  是「相鄰兩列的平均色差」找突變列，以及**同一個視角開關前置鏈兩次相減**只留下光暈。
+
+- ⚠️ **`withGutter()` 的透明邊不可以拿掉**（`tools/lib/icons.ts`，把圖縮 2px 置中、四周留一圈全透明
+  像素）。現在的理由是**圖集相鄰格子互相滲色**：`drawImage` 從 sprite 取一格是帶雙線性取樣的，
+  格子邊界會吃到隔壁那格的像素，非整數縮放下最明顯。守門是 `tests/tools/icons.test.ts`（`GUTTER = 0`
+  會紅）。**這件事影響所有 241 個節點**，只是底部不透明、上半部細的圖最容易看見。
+- **透明邊要跟著輸出解析度縮放**：sprite 是 1×、高解析圖是 2×，兩者貼到畫面上**同一塊 w×h**；
+  兩邊都留 1px 的話圖佔的比例差 3.8 個百分點，放大到觸發切換的那一刻每顆符文突然大 4.2%。
   `withGutter()` 收 gutter 參數，1× 傳 `GUTTER`、2× 傳 `GUTTER * 2`。
 - **日後加圖示要注意**：`tools/add-icon.ts` 只驗「是有效 PNG 且最長邊 ≥96px」，不看裁切品質。
   角色類的圖進來時順手跑一次 `icon-silhouette.test.ts`。
@@ -931,9 +1020,12 @@ PNG，檔名＝內容 sha256 前 12 碼，`addIcon()` 直接重用）＋ `data/b
 ### 中央樞紐 `<g class="tree-center">`
 
 正本裡唯一一個**不是節點**的圖形群組：遊戲內的「骰子樹」本體，五顆起手骰從它放射出去。沒有 id、
-沒有花費，不參與成本計算、祖先高亮與篩選（`.node` 選擇器碰不到它）。`data-links` 列出五條放射線接到
-的節點 id，圖在建置期轉成 `public/assets/tree-center.webp`（不進 sprite——sprite 依節點類型的顯示尺寸
-分區打包，樞紐不屬於任何類型）。整組是**選用的**：沒有時 `meta.center` 是 null、站台不畫。規則 10 守。
+沒有花費，不參與成本計算、祖先高亮與篩選。`data-links` 列出五條放射線接到的節點 id，圖在建置期轉成
+`public/assets/tree-center.webp`（不進 sprite——sprite 依節點類型的顯示尺寸分區打包，樞紐不屬於任何
+類型），瀏覽器端由 `painter.ts` 的 `drawStatic()` 畫在靜態層，圖走 `AssetStore.image(url)`。
+整組是**選用的**：沒有時 `meta.center` 是 null、站台不畫。規則 10 守。
+⚠️ **它的透明度自己一條**（`state.ts` 的 `centerAlpha()`：有選取時 0.12，否則看篩選有沒有全開），
+不要跟 `nodeAlpha()` 合併——樞紐不是節點，`filteredOut` 裡永遠沒有它。
 
 ## 資料解析
 
@@ -999,8 +1091,8 @@ PNG，檔名＝內容 sha256 前 12 碼，`addIcon()` 直接重用）＋ `data/b
   哪一步說了謊。
 - ⚠️ **Playwright 的 `omitBackground` 只拿掉「頁面」的背景**，對**內容自己畫的背景**無效。原圖有一張
   `<rect width="100%" height="100%">`，沒把它一起 `display:none` 的話截出來的每張圖都夾帶實心底色。
-  後果會蔓延：節點變成不透明方塊蓋掉穿過它的線與鄰居的標籤，`outline` 與 `drop-shadow` 去描那個方塊
-  而不是按鈕。**檢查方式是量 alpha 通道的分佈，不是看截圖。**
+  後果會蔓延：節點變成不透明方塊蓋掉穿過它的線與鄰居的標籤，畫布上的投影與前置鏈光暈（描的是圖示的
+  alpha 輪廓）會去描那個方塊而不是圖示。**檢查方式是量 alpha 通道的分佈，不是看截圖。**
 - ⚠️ **`split-svg.ts` 與 `render-nodes.ts` 的來源檔一律由參數傳入、沒有預設值。** 以前預設指向維護者
   本機的遊戲原圖，別人跑到只會得到一個看不懂的 ENOENT，而那條路徑也不該留在公開 repo 裡。
 
@@ -1008,7 +1100,26 @@ PNG，檔名＝內容 sha256 前 12 碼，`addIcon()` 直接重用）＋ `data/b
 
 - **`src/generated/tree.json` 是 gitignored 的建置產物**，多個測試會讀它 → `pretest`／`pree2e`
   已補上，**不要拿掉**。
-- linkedom 沒有 `getScreenCTM()`，`.focus()` 也不會更新 `document.activeElement` → 這類行為只能靠 E2E 驗。
+- ⚠️ **E2E 不量畫布內的 DOM 幾何，一律問 `window.__tree`。** canvas 裡什麼都不是元素，
+  `querySelector('.node')` 回 null、隱形按鈕清單被 `clip-path` 裁成 1px（拿去 `boundingBox()`
+  只會得到左上角那 1px，而且**不會報錯**）。渲染器自己包了一個查詢介面（`src/lib/canvas/debug-api.ts`）：
+  `count()`（節點／邊數）、`scale()`、`nodeScreenRect(id)`（相對 viewport 的 `{left,top,width,height}`，
+  只含圖示不含標籤）、`state()`（selected／chain／filteredOut／focus／bypassEdges／sim）、
+  `hitAt(x, y)`。它**永遠安裝、不判斷環境**——正式版與測試走同一份渲染路徑，不必為了「有沒有裝偵錯
+  介面」多維護一個 build flag。
+- ⚠️ **畫布的外觀改動只有截圖守得到。** `tests/e2e/tree.spec.ts-snapshots/` 有四張桌機快照
+  （預設視角／選取／篩選／放大），容差 `toHaveScreenshot.maxDiffPixelRatio: 0.001` 是量出來的
+  （在 1440×900 的 `#canvas-host` 上約 767 px，來源是字型與圖示解碼的次像素抖動）。
+  ⚠️ **盲區：整棵樹的視角裡單顆圖示只佔幾百 px，改壞一顆圖擋不下來**——守得到那個層級的只有放大的
+  那一張。畫面真的改了要 `npm run e2e:snapshots:update` 並**逐張人眼看過**，不要因為紅了就放寬容差。
+  ⚠️ **快照只在 Playwright 官方容器（`mcr.microsoft.com/playwright:v<lockfile 版本>-noble`）內比對**：
+  `npm run e2e:snapshots` 用 docker 跑同一個 image，CI 的 `e2e-shard` 也跑在那個容器裡；裸機上 F 一律
+  `test.skip`（沒有 `CI`／`E2E_SNAPSHOTS` 環境變數）。點陣圖比對吃字型——同一份 dist 在這台開發機與
+  ubuntu-latest 裸 runner 上，241 顆標籤全部不一樣（2026-09-06 PR #65 第一次 CI 10,973 px 紅）。
+  升 `@playwright/test` 時 ci.yml 的 `container:` tag 與 package.json 兩個 script 的 tag 要一起改。
+- linkedom 沒有 canvas，也不會更新 `document.activeElement` → 這兩類行為只能靠 E2E 驗。
+  `painter.ts` 的單元測試因此用 Proxy 假造 `Ctx2D` 記錄呼叫（`tests/lib/canvas/painter.test.ts`），
+  驗的是「畫了幾次、用什麼 alpha／dash／shadowBlur 畫的」，**不是畫出來長什麼樣**。
 - 臨時的 Playwright 腳本要放在 **repo 目錄下**才 import 得到 `@playwright/test`。
 - ⚠️ **備份檔名要帶上路徑，不要只用 `basename`。** 這個 repo 有好幾組同名不同路徑的檔案
   （`src/lib/sim.ts` 與 `src/scripts/sim.ts`、`src/lib/board.ts` 與 `src/scripts/board.ts`）。
@@ -1107,5 +1218,7 @@ README 是產品頁形式（banner ＋ 徽章 ＋ `> [!WARNING]` 免責 ＋ 分�
    改成滑過／鍵盤聚焦／被選進前置鏈時才單獨顯示（純 CSS）。量測依據：符文標籤平均寬 61 單位、最近鄰
    距離只有 41，全顯示必然重疊（實測 27 對）；**縮字級沒用**（縮到 7px 仍有 15 對），只留骰子與支援
    則是 0 對。E2E 的 M 守著。
-2. **自動化只在 Chromium 驗過**，核心渲染用 `<pattern>` 這條冷門 SVG 路徑。iOS Safari 沒有自動化覆蓋，
-   但 2026-08-20 起 iOS 使用者回報沒有問題，所以不列為待辦；日後改動 `<pattern>` 那條路徑時要重新確認。
+2. **自動化只在 Chromium 驗過**，而核心渲染是 Canvas 2D（`drawImage` 取 sprite 子矩形、`shadowBlur`
+   當光暈、離屏 canvas 當快取）。iOS Safari 沒有自動化覆蓋，2026-08-20 起 iOS 使用者回報 SVG 版沒有
+   問題，**canvas 版尚未收到 iOS 回報**；`shadowBlur` 與離屏 canvas 的效能在 Safari 上跟 Chromium
+   差距最大，改動那條路徑時要另外找人在實機上看一次。

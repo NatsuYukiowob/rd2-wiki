@@ -7,7 +7,10 @@ const NODES = 'data/nodes.json';
 const OUT = 'data/dice-tree.preview.svg';
 
 /**
- * `<text>` 的基線相對節點中心的位移，跟 `src/lib/render.ts` 用同一條公式。
+ * `<text>` 的基線相對節點中心的位移，跟 `src/lib/canvas/painter.ts` 的 `LABEL_DY` 用同一條公式。
+ * ⚠️ 兩邊是兩份寫死的 15（一份畫 canvas、一份寫 SVG），綁在一起的是
+ * `tests/tools/build-preview-svg.test.ts`——它 import `LABEL_DY` 來組期望值，
+ * 改了其中一邊就會紅。**改這個數字時兩邊要一起改。**
  *
  * 那個 15（不是更貼的 12）是留給鍵盤 focus 外框的：外框掛在圖示的 rect 上、往外擴 2px 間距
  * ＋ 2px 線寬，貼太近會壓到標籤上緣（E2E 測試 H 會擋）。這段公式在 #21 PR2 之前住在

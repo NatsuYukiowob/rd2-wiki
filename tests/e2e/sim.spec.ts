@@ -4,8 +4,45 @@
 // 算術本身已經被 tests/lib/sim.test.ts 蓋掉了（純函式），所以這裡的重心是三件單元測試
 // 碰不到的事：**點得到嗎**（setPointerCapture 會把 click 的 target 改標，第一版就是這樣
 // 讓整頁點下去沒反應）、**畫面有沒有跟著狀態走**、**重整之後還在不在**。
+//
+// ⚠️ **這一頁的畫布是 Canvas 2D，不是 SVG**（2026-09-06 起，跟 /tree 同一次改版）。
+// 節點、邊、等級牌、狀態色全部畫在兩張 `<canvas>` 上——沒有 `g.node`、沒有
+// `line.edge.sim-linked`、沒有 `.sim-badge`、沒有 class 可以問。所以這支檔案一律：
+//
+//   * 節點位置 → `window.__tree.nodeScreenRect(id)`（視窗座標 CSS px）
+//   * 某個座標點中了誰 → `window.__tree.hitAt(x, y)`
+//   * 模擬器狀態 → `window.__tree.state().sim`（`owned` / `available` / `linked` / `active`）
+//   * 鍵盤焦點 → `.tree-a11y-node[data-id]` 那顆隱形按鈕 ＋ `state().focus`
+//
+// 側欄、工具列、抽屜、footer 仍然是真的 DOM，照舊量 `getBoundingClientRect()`。
+//
+// ⚠️ **`state().sim` 沒有 `selected`／`levels`／`maxLevels`**（見 canvas-tree.ts 的
+// debugApi）。等級牌畫得對不對由 tests/lib/canvas/painter.test.ts 用假的 2D context 守
+// （「只有 owned 且 maxLevel>1 才畫牌、牌上文字是當前/上限」），畫面上的等級則改讀側欄的
+// `.sim-level-value`——那是玩家真正看數字的地方。
 import { test, expect, type Page } from '@playwright/test';
 import { readFileSync } from 'node:fs';
+
+/** `window.__tree` 的形狀（見 src/lib/canvas/debug-api.ts）。 */
+interface SimPaintState {
+  owned: string[]; available: string[];
+  linked: [string, string][]; active: [string, string][];
+}
+interface TreeState {
+  selected: string | null; chain: string[]; filteredOut: string[]; focus: string | null;
+  bypassEdges: [string, string][];
+  sim?: SimPaintState;
+}
+interface TreeDebug {
+  count(): { nodes: number; edges: number };
+  scale(): number;
+  nodeScreenRect(id: string): { left: number; top: number; width: number; height: number } | null;
+  state(): TreeState;
+  hitAt(clientX: number, clientY: number): string | null;
+}
+declare global {
+  interface Window { __tree: TreeDebug }
+}
 
 const tree = JSON.parse(
   readFileSync(new URL('../../src/generated/tree.json', import.meta.url), 'utf8'),
@@ -31,11 +68,21 @@ const READY = '1201';
 const TIER_F = '1109';
 const WITH_KIDS = '2003';
 
+const simState = async (page: Page): Promise<SimPaintState> => {
+  const s = await page.evaluate(() => window.__tree.state());
+  if (!s.sim) throw new Error('state().sim 不存在——/sim 沒有把模擬器狀態送進畫布');
+  return s.sim;
+};
+/** 已取得的節點集合。取代舊版的 `g.node.sim-owned` class 查詢。 */
+const owned = async (page: Page): Promise<string[]> => (await simState(page)).owned;
+
 async function openSim(page: Page): Promise<void> {
   await page.goto('/sim');
   await page.evaluate(() => localStorage.clear());
   await page.reload({ waitUntil: 'networkidle' });
-  await expect(page.locator('#tree g.node')).toHaveCount(NODE_COUNT);
+  await page.waitForFunction(() => Boolean(window.__tree));
+  // 畫布真的把每一顆節點都放進場景了（canvas 裡沒有元素可以數，問 scene 的清單）。
+  expect((await page.evaluate(() => window.__tree.count())).nodes).toBe(NODE_COUNT);
 }
 
 /**
@@ -44,6 +91,7 @@ async function openSim(page: Page): Promise<void> {
  * ⚠️ **兩個方向都要算**：工具列與（手機版的）底部抽屜擋的是上下，而桌機的側欄擋的是右邊
  * ——第一版只算了上下，5201 剛好落在側欄底下，Playwright 點到的是 `<aside>`，症狀是
  * 「側欄一直停在空狀態」，看起來完全像程式沒接上點選。
+ * 量的兩個都是**真的 DOM**（`#sim-toolbar`／`#sim-panel`），不是畫布內容。
  */
 async function safeBox(page: Page): Promise<{ left: number; top: number; right: number; bottom: number }> {
   const top = await page.locator('#sim-toolbar').evaluate(e => e.getBoundingClientRect().bottom);
@@ -53,35 +101,54 @@ async function safeBox(page: Page): Promise<{ left: number; top: number; right: 
   return { left: 0, top, right: isDrawer ? vw : panel.left, bottom: isDrawer ? panel.top : vh };
 }
 
+type Rect = { left: number; top: number; width: number; height: number };
+
+/** 節點在視窗座標的矩形。這是這支測試檔取得節點位置的**唯一**途徑。 */
+async function nodeRect(page: Page, id: string): Promise<Rect> {
+  const r = await page.evaluate(nid => window.__tree.nodeScreenRect(nid), id);
+  if (!r) throw new Error(`節點 ${id} 沒有螢幕矩形（畫布還沒掛好，或 id 不存在）`);
+  return r;
+}
+const outsideSafe = (r: Rect, s: { left: number; top: number; right: number; bottom: number }): boolean =>
+  r.left < s.left || r.left + r.width > s.right || r.top < s.top || r.top + r.height > s.bottom;
+
 /**
  * 點一顆節點。節點若落在工具列或抽屜底下，先把畫布拖到讓它進安全區——**用真的滑鼠事件**，
  * 因為這一頁的點選判定綁在 pointerdown／pointerup 上（見 sim.ts 的說明），
  * `dispatchEvent` 合成的 PointerEvent 會讓 `setPointerCapture()` 丟 NotFoundError。
+ *
+ * ⚠️ 位置一律問 `nodeScreenRect()`：canvas 裡沒有元素可以量，而舊版量整個 `<g>` 的
+ * bounding box 會拿到「圖示 ∪ 標籤」的聯集，中心常常落在隔壁那顆節點上（實測點 1201
+ * 打到 1001）。`nodeScreenRect()` 回的就是圖示那一格，沒有這個問題。
  */
 async function tapNode(page: Page, id: string): Promise<void> {
-  // ⚠️ 定位到 `.icon` 而不是整個 `<g>`：節點群組的 bounding box 是「圖示 ∪ 標籤」的聯集，
-  // 標籤比圖示寬得多，聯集框的中心常常落在**隔壁那顆節點**上（實測點 1201 打到 1001）。
-  // 症狀是「點了但那顆沒反應」，看起來完全像點擊沒接上。
-  const el = page.locator(`#tree g.node[data-id="${id}"] .icon`);
   const safe = await safeBox(page);
   const cx = (safe.left + safe.right) / 2;
   const cy = (safe.top + safe.bottom) / 2;
-  let box = (await el.boundingBox())!;
-  const outside = (b: typeof box): boolean =>
-    b.x < safe.left || b.x + b.width > safe.right || b.y < safe.top || b.y + b.height > safe.bottom;
-  if (outside(box)) {
+  let box = await nodeRect(page, id);
+  if (outsideSafe(box, safe)) {
     await page.mouse.move(cx, cy);
     await page.mouse.down();
-    await page.mouse.move(cx + (cx - (box.x + box.width / 2)), cy + (cy - (box.y + box.height / 2)), { steps: 8 });
+    await page.mouse.move(cx + (cx - (box.left + box.width / 2)), cy + (cy - (box.top + box.height / 2)), { steps: 8 });
     await page.mouse.up();
-    box = (await el.boundingBox())!;
+    box = await nodeRect(page, id);
   }
   // 搬完還在安全區外就是這條測試自己有問題，直接失敗比點到別的東西好。
-  expect(outside(box), `節點 ${id} 搬不進可點擊範圍`).toBe(false);
-  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  expect(outsideSafe(box, safe), `節點 ${id} 搬不進可點擊範圍`).toBe(false);
+  await page.mouse.move(box.left + box.width / 2, box.top + box.height / 2);
   await page.mouse.down();
   await page.mouse.up();
 }
+
+/**
+ * 互動層畫出來的東西的指紋。
+ *
+ * 光暈（可取得＝金、已選取＝白）與鍵盤焦點框都畫在 `canvas.tree-overlay` 上，畫布同源、
+ * 讀得回來，所以「畫面真的變了」可以直接問那張點陣圖，不必掃特定像素的顏色（CLAUDE.md
+ * 記過：掃金色像素找光暈這條路走不通，角色圖自己就有大量金／橙色像素）。
+ */
+const overlayInk = (page: Page): Promise<string> => page.evaluate(() =>
+  (document.querySelector('#canvas-host canvas.tree-overlay') as HTMLCanvasElement).toDataURL());
 
 const totals = (page: Page) => ({
   total: page.locator('#sim-total'),
@@ -96,8 +163,9 @@ test('S0. 骨架：初始只有起始骰子、資源 0，工具列每一項都�
   await expect(t.owned).toHaveText(`${FREE_IDS.length} / ${NODE_COUNT}`);
   await expect(t.total).toHaveText('核心 0 ／金幣 0');
 
-  // 起始骰子是已取得、其餘一律不是——`sim-owned` 是畫布上唯一區分兩者的東西。
-  await expect(page.locator('#tree g.node.sim-owned')).toHaveCount(FREE_IDS.length);
+  // 起始骰子是已取得、其餘一律不是。canvas 版沒有 `.sim-owned` 這個 class，同一件事由
+  // painter 依 `state().sim.owned` 決定畫成什麼樣子，所以測試問的是那份清單本身。
+  expect((await owned(page)).sort()).toEqual([...FREE_IDS].sort());
 
   // 工具列每一項都要在，而且**摸得到**（不是被裁在視窗外）。手機版第一版把它做成一條
   // 橫捲的列，「重置」之後的按鈕整批看不到，而畫面上沒有任何東西說可以往右滑。
@@ -126,7 +194,7 @@ test('S1. 點一顆前置齊了的節點就取得，成本加進總資源', asyn
   // 火骰子（起始）的後續之一：前置只有起始骰子，一點就取得。
   const target = tree.nodes.find(n => n.id === READY)!;
   await tapNode(page, target.id);
-  await expect(page.locator(`#tree g.node[data-id="${target.id}"]`)).toHaveClass(/sim-owned/);
+  await expect.poll(() => owned(page)).toContain(target.id);
   await expect(totals(page).owned).toHaveText(`${FREE_IDS.length + 1} / ${NODE_COUNT}`);
   await expect(totals(page).unlock).toContainText(String(target.unlockCost.core));
 });
@@ -137,13 +205,13 @@ test('S2. 取消一顆會連帶取消依賴它的節點，成本一起扣回去'
   const after1 = await totals(page).total.textContent();
   // 2003 的下游（2203 齒輪子彈傷害增加）：2003 到手之後它的前置就齊了，點一下直接取得。
   await tapNode(page, '2203');
-  await expect(page.locator('#tree g.node[data-id="2203"]')).toHaveClass(/sim-owned/);
+  await expect.poll(() => owned(page)).toContain('2203');
   await expect(totals(page).total).not.toHaveText(after1!);
   const deep = await totals(page).owned.textContent();
 
   await tapNode(page, WITH_KIDS);
   await page.locator('#sim-detail [data-remove]').click();
-  await expect(page.locator(`#tree g.node[data-id="${WITH_KIDS}"]`)).not.toHaveClass(/sim-owned/);
+  await expect.poll(() => owned(page)).not.toContain(WITH_KIDS);
   // 連帶取消：已取得數必須少掉不只 2003 自己那一顆
   const now = Number((await totals(page).owned.textContent())!.split('/')[0]!.trim());
   expect(now).toBeLessThan(Number(deep!.split('/')[0]!.trim()) - 1);
@@ -163,14 +231,13 @@ test('S3. 等級照 tier 累加，核心只在區間第一級收一次', async (
   await page.locator('#sim-level-range').dispatchEvent('input');
   await expect(totals(page).upgrade).toHaveText('核心 1 ／金幣 6,000');
 
-  // 等級牌跟著走。⚠️ 它的顯示是 CSS 依 `.sim-owned` 決定的——**SVG 元素不吃 HTML 的
-  // `hidden` 屬性**，第一版用 toggleAttribute('hidden') 讓 239 個牌子全部留在畫面上，
-  // 所有測試照樣綠，是截圖才看出來的。
-  await expect(page.locator(`#tree g.node[data-id="${TIER_F}"] .sim-badge text`)).toHaveText('6/100');
-  const visibleBadges = await page.locator('#tree g.node .sim-badge').evaluateAll(
-    els => els.filter(e => getComputedStyle(e).display !== 'none').length);
-  const ownedUpgradable = await page.locator('#tree g.node.sim-owned .sim-badge').count();
-  expect(visibleBadges).toBe(ownedUpgradable);
+  // 側欄的等級讀數跟著走——canvas 版的等級牌是 painter 畫上去的，DOM 裡沒有
+  // `.sim-badge` 可以問（`state().sim` 也沒有帶 levels／maxLevels 出來）。
+  // 「只有 owned 且 maxLevel>1 的節點才有牌子、牌上是當前/上限」那條由
+  // tests/lib/canvas/painter.test.ts 直接數 `roundRect`／`fillText` 守住；舊版那個
+  // 「SVG 元素不吃 HTML 的 hidden 屬性、239 個牌子全部留在畫面上」的坑，在 canvas 版
+  // 結構上不可能發生（沒有元素可以掛 hidden，牌子畫不畫是 painter 的 if）。
+  await expect(page.locator('.sim-level-value')).toHaveText('Lv.6 / 100');
 });
 
 test('S4. 一鍵點亮：鏈上有沒勾的初始骰子時一顆都不解，並指名要勾哪一顆', async ({ page }) => {
@@ -206,7 +273,7 @@ test('S6. 資源上限：會超出的操作被擋下來，總資源不變', asyn
   await tapNode(page, WITH_KIDS);   // 齒輪骰子要 5 核心，遠超過設定的 1
   await expect(page.locator('#sim-toast')).toContainText('超出資源上限');
   await expect(totals(page).total).toHaveText(before!);
-  await expect(page.locator(`#tree g.node[data-id="${WITH_KIDS}"]`)).not.toHaveClass(/sim-owned/);
+  expect(await owned(page)).not.toContain(WITH_KIDS);
 });
 
 test('S7. undo／redo 回到操作前的完整狀態', async ({ page }) => {
@@ -218,7 +285,7 @@ test('S7. undo／redo 回到操作前的完整狀態', async ({ page }) => {
 
   await page.locator('#sim-undo').click();
   await expect(totals(page).total).toHaveText('核心 0 ／金幣 0');
-  await expect(page.locator(`#tree g.node[data-id="${READY}"]`)).not.toHaveClass(/sim-owned/);
+  await expect.poll(() => owned(page)).not.toContain(READY);
 
   await page.locator('#sim-redo').click();
   await expect(totals(page).total).toHaveText(after!);
@@ -260,17 +327,20 @@ test('S10. 能力彙總把同名效果合起來，Esc 關得掉', async ({ page 
 
 test('S11. 拖曳畫布不算點選', async ({ page }) => {
   await openSim(page);
-  const el = page.locator(`#tree g.node[data-id="${READY}"] .icon`);
-  const box = (await el.boundingBox())!;
+  const box = await nodeRect(page, READY);
   const safe = await safeBox(page);
   // 只在節點本來就落在安全區時才驗——否則這條測的是 tapNode 的搬運而不是拖曳判定。
-  test.skip(box.x < safe.left || box.x + box.width > safe.right || box.y < safe.top || box.y + box.height > safe.bottom,
-    '節點不在可點擊範圍內');
-  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  test.skip(outsideSafe(box, safe), '節點不在可點擊範圍內');
+  const c = { x: box.left + box.width / 2, y: box.top + box.height / 2 };
+  await page.mouse.move(c.x, c.y);
   await page.mouse.down();
-  await page.mouse.move(box.x + box.width / 2 + 60, box.y + box.height / 2 + 20, { steps: 6 });
+  await page.mouse.move(c.x + 60, c.y + 20, { steps: 6 });
   await page.mouse.up();
-  await expect(page.locator(`#tree g.node[data-id="${READY}"]`)).not.toHaveClass(/sim-owned/);
+  // 前提：拖曳真的讓畫布動了。少了這條，只要起點落在任何攔截事件的元素上，
+  // 「沒有被取得」就會在「根本沒發生拖曳」的情況下自動成立（假綠）。
+  expect((await nodeRect(page, READY)).left, '拖曳應該真的平移了畫布')
+    .toBeGreaterThan(box.left + 30);
+  expect(await owned(page)).not.toContain(READY);
   await expect(totals(page).total).toHaveText('核心 0 ／金幣 0');
 });
 
@@ -283,27 +353,33 @@ test('S11. 拖曳畫布不算點選', async ({ page }) => {
  * ⚠️ 為什麼不是靠 S1：S1 只點一顆，而那一顆恰好沒被蓋到就永遠是綠的——把 `pointer-events`
  * 與「符文標籤預設隱藏」兩條防線同時拿掉，S1 照樣過。**逐顆掃**才守得住。
  */
-test('S13. 每顆節點的圖示中心點得到的是它自己，不是別人的標籤', async ({ page }) => {
+test('S13. 每顆節點的圖示中心命中的是它自己，不是隔壁那顆', async ({ page }) => {
   await openSim(page);
+  // canvas 版的命中判定是 `hit.ts` 的純幾何（scene 的節點矩形，由後往前找），不再牽涉
+  // 標籤的 pointer-events——但「哪一顆蓋住哪一顆」這件事仍然只有把 241 顆全掃一遍才看得見：
+  // 只點一顆的話，那一顆恰好沒被蓋到就永遠是綠的。
+  //
+  // ⚠️ 問的是 `__tree.hitAt()`（畫布自己的命中判定），不是 `elementFromPoint()`——
+  // 畫布上只有一張 canvas，`elementFromPoint` 對每一顆節點都會回同一個元素。
   const wrong = await page.evaluate(() => {
     const bad: string[] = [];
-    for (const g of document.querySelectorAll<SVGGElement>('#tree g.node')) {
-      const id = g.getAttribute('data-id')!;
-      const icon = g.querySelector('.icon')!;
-      const r = icon.getBoundingClientRect();
-      const cx = r.x + r.width / 2;
-      const cy = r.y + r.height / 2;
+    for (const btn of document.querySelectorAll<HTMLElement>('.tree-a11y-node')) {
+      const id = btn.dataset.id!;
+      const r = window.__tree.nodeScreenRect(id);
+      if (!r) { bad.push(`${id} → 沒有螢幕矩形`); continue; }
+      const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
       // 只驗看得見的那一段畫布（工具列與側欄底下的節點本來就點不到，那是版面不是這條的事）
       if (cx < 0 || cy < 0 || cx > innerWidth || cy > innerHeight) continue;
-      const hit = document.elementFromPoint(cx, cy);
-      if (!hit) continue;
-      const owner = hit.closest('g.node')?.getAttribute('data-id');
-      // 打到工具列／側欄／樞紐都不算這條的問題，只抓「打到另一顆節點」
-      if (owner !== undefined && owner !== null && owner !== id) bad.push(`${id} → ${owner}`);
+      const owner = window.__tree.hitAt(cx, cy);
+      if (owner !== null && owner !== id) bad.push(`${id} → ${owner}`);
     }
     return bad;
   });
-  expect(wrong, `這些節點的圖示中心被別的節點蓋住：${wrong.join('、')}`).toEqual([]);
+  expect(wrong, `這些節點的圖示中心命中了別人：${wrong.join('、')}`).toEqual([]);
+
+  // 反向前提：畫布外的座標要回 null，不是「最近的那一顆」。少了這條，`hitAt` 退化成
+  // 「永遠回某顆節點」時上面整段仍然全綠（每一顆都命中自己是它的特例）。
+  expect(await page.evaluate(() => window.__tree.hitAt(-50, -50))).toBeNull();
 });
 
 // EARS 10 的驗收：報告的**內容**已經被 tests/lib/sim-io.test.ts 蓋掉（純函式），
@@ -329,21 +405,23 @@ test('S14. 匯出把規劃寫進剪貼簿', async ({ page, context }) => {
 
 test('S15. 鍵盤焦點在「可取得」「已選取」的節點上也看得見', async ({ page }) => {
   await openSim(page);
-  // 狀態色是掛在 .icon 的 filter 上，具體度 (1,4,0) 會壓過 canvas.css 的
+  // 舊版的坑是 CSS 具體度：狀態色掛在 `.icon` 的 filter 上 (1,4,0)，壓過
   // `.node:focus .icon { filter: url(#focus-ring) }` (0,3,0)，而 `.node:focus` 已經
-  // outline:none——沒有補丁規則的話，Tab 到這兩種節點時畫面完全沒有變化。
+  // outline:none——Tab 到「可取得」或「已選取」的節點時畫面完全沒有變化。
+  //
+  // canvas 版沒有 CSS 具體度可言：焦點框是 painter 在**互動層**上畫的一圈金線
+  // （drawOverlay 的 focusRingPath），跟狀態光暈畫在同一張 canvas 上、有明確的先後順序。
+  // 所以這條改問兩件事：焦點狀態真的到了畫布（`state().focus`），而且互動層**真的重畫過**
+  // （點陣圖變了）。⚠️ 只驗前者不夠——`state.focus` 設對了但 painter 忘了畫，畫面上一樣
+  // 什麼都沒有，那正是舊版那個 bug 的形狀。
   for (const id of [READY, WITH_KIDS, '5201']) {
-    const r = await page.evaluate(nodeId => {
-      const g = document.querySelector<SVGGElement>(`#tree g.node[data-id="${nodeId}"]`)!;
-      const icon = g.querySelector('.icon')!;
-      const before = getComputedStyle(icon).filter;
-      g.focus();
-      const after = getComputedStyle(icon).filter;
-      g.blur();
-      return { cls: g.getAttribute('class'), before, after };
-    }, id);
-    expect(r.after, `${id}（${r.cls}）focus 時沒有套上 #focus-ring`).toContain('focus-ring');
-    expect(r.after, `${id}（${r.cls}）focus 前後畫面沒有任何變化`).not.toBe(r.before);
+    await tapNode(page, id);          // 讓它進安全區，順便把 5201 變成「已選取」
+    const before = await overlayInk(page);
+    await page.locator(`.tree-a11y-node[data-id="${id}"]`).focus();
+    await expect.poll(async () => (await page.evaluate(() => window.__tree.state())).focus).toBe(id);
+    await expect.poll(() => overlayInk(page), { message: `${id} 聚焦後互動層沒有任何變化` })
+      .not.toBe(before);
+    await page.locator(`.tree-a11y-node[data-id="${id}"]`).blur();
   }
 });
 
@@ -419,37 +497,50 @@ test('S20. 操作被擋下來時，面板與高亮仍然跟著切到新選的節
   await page.locator('#sim-limit-gold').fill('0');
   await page.locator('#sim-limit-toggle').click();
 
+  // 先把兩顆都搬進安全區，接下來兩次點擊 tapNode 就不會再拖畫布——下面用「互動層的點陣圖
+  // 變了」當證據，畫布一平移那個證據就不成立了。
+  await tapNode(page, READY);
   await tapNode(page, FREE_IDS[0]!);
   await expect(page.locator('#sim-detail h3')).toHaveText(tree.nodes.find(n => n.id === FREE_IDS[0])!.name);
+  const inkBefore = await overlayInk(page);
+  const rectBefore = await nodeRect(page, READY);
 
-  // `selected` 已經換人，但取得失敗——不重畫的話面板與 .sim-selected 會停在上一顆，
-  // 而面板上那些按鈕讀的是 selected，按下去作用在畫面上看不到的節點。
+  // `selected` 已經換人，但取得失敗——不重畫的話面板與畫布上的白色光暈會停在上一顆，
+  // 而面板上那些按鈕讀的是 selected，按下去作用在畫面上看不到的那顆。
   await tapNode(page, READY);
   await expect(page.locator('#sim-toast')).toContainText('超出資源上限');
   await expect(page.locator('#sim-detail h3')).toHaveText(tree.nodes.find(n => n.id === READY)!.name);
-  await expect(page.locator('#tree g.node.sim-selected')).toHaveAttribute('data-id', READY);
+
+  // ⚠️ 畫布那一半只能問到這裡為止：`state().sim` **沒有**帶 `selected` 出來（見檔頭），
+  // 所以「白色光暈跟著換人」改用互動層的點陣圖有沒有變來證明。前提是畫布沒有平移——
+  // 平移的話整張互動層本來就會不一樣，這個證據就退化成恆真。
+  expect(await nodeRect(page, READY), '這兩次點擊之間畫布不該平移').toEqual(rectBefore);
+  expect(await overlayInk(page), '選取換人之後互動層完全沒有重畫').not.toBe(inkBefore);
+  // 光暈畫在哪一顆由 painter 依 `state.sim.selected` 決定，那條由
+  // tests/lib/canvas/painter.test.ts 的 `/sim：被搜尋淡出的 selected 節點` 一組守著。
 });
 
 test('S18. 邊有三階：沒到手＝暗、兩端都在手上＝正常亮、真的走過＝金色', async ({ page }) => {
   await openSim(page);
   // 1001 火骰子連著 1005 風與 1007 冰，三顆都是遊戲一開始就送的。這條路是通的（該正常亮），
   // 但玩家沒有走過它（不該金色）——Yuki 先後回報了這條界線的兩邊，所以三階都要驗。
-  await expect(page.locator('#tree line.edge.sim-active')).toHaveCount(0);
-  await expect(page.locator('#tree line.edge.sim-linked')).toHaveCount(2);
-
-  const opacity = async (cls: string) =>
-    page.locator(`#tree line.edge${cls}`).first().evaluate(el => Number(getComputedStyle(el).opacity));
-  const linked = await opacity('.sim-linked');
-  const idle = await opacity(':not(.sim-linked):not(.sim-ready)');
-  expect(linked, '兩端都在手上的邊沒有回到正常亮度').toBe(1);
-  expect(idle, '還沒到手的邊應該是暗的').toBeLessThan(0.5);
+  // canvas 版沒有 `.sim-linked`／`.sim-active` 這兩個 class 可以數：三階是 state.ts 的
+  // `edgeAlpha()`（linked 1 ／ ready .7 ／ 其餘 .25）與 `edgeColor()`（active 才金色）
+  // 兩個純函式，painter 每一幀照著畫。E2E 問的是它們的**輸入**——哪幾條邊落在哪一組。
+  const s0 = await simState(page);
+  expect(s0.active, '一顆都還沒解，不該有任何金線').toEqual([]);
+  expect(s0.linked, '火骰子連著風與冰，三顆都是送的——那兩條該是通的').toHaveLength(2);
 
   await tapNode(page, READY);
-  await expect(page.locator('#tree line.edge.sim-active')).toHaveCount(1);   // 解一顆才出現一條金線
-  // 金色那條的 opacity 由 .sim-linked 給——`.sim-active` 只設 stroke，兩條規則互不搶屬性。
-  const gold = page.locator('#tree line.edge.sim-active');
-  await expect(gold).toHaveClass(/sim-linked/);
-  expect(await gold.evaluate(el => Number(getComputedStyle(el).opacity))).toBe(1);
+  const s1 = await simState(page);
+  expect(s1.active, '解一顆才出現一條金線').toEqual([['1001', READY]]);
+  // ⚠️ `active` 必須是 `linked` 的**子集**——CSS 時代靠這個包含關係把 opacity 與 stroke
+  // 拆成互不搶屬性的兩條規則，canvas 版則是 `edgeAlpha` 與 `edgeColor` 各自判斷，
+  // 包含關係一破，金線就會是暗的（畫成金色卻只有 .25 透明度）。
+  const linkedKeys = new Set(s1.linked.map(([f, t]) => `${f}>${t}`));
+  for (const [f, t] of s1.active) {
+    expect(linkedKeys.has(`${f}>${t}`), `金線 ${f}→${t} 不在 linked 裡，它會被畫成暗的`).toBe(true);
+  }
 });
 
 test('S21. 一鍵點亮太陽骰子時，1201 真的被練到 Lv.50，而且降不回去', async ({ page }) => {
@@ -463,14 +554,14 @@ test('S21. 一鍵點亮太陽骰子時，1201 真的被練到 Lv.50，而且降�
 
   await page.locator('#sim-detail [data-path]').click();
   await expect(page.locator('#sim-toast')).toContainText('練到 Lv.50');
-  // 等級牌是「畫面真的跟上了」最直接的證據（它由 .sim-owned ＋ 文字內容決定）。
-  await expect(page.locator('#tree g.node[data-id="1201"] .sim-badge text')).toHaveText('50/50');
-  await expect(page.locator('#tree g.node[data-id="1501"]')).toHaveClass(/sim-owned/);
+  await expect.poll(() => owned(page)).toContain('1501');
   // 解鎖 132,000 ＋ 練等 463,700 ＝ 595,700 金幣
   await expect(totals(page).total).toHaveText('核心 129 ／金幣 595,700 ／太陽核心 2,000');
 
   // 遊戲裡做不到「把 1201 降回 49 級但保留太陽骰子」，滑桿也不該做得到。
   await tapNode(page, '1201');
+  // 1201 真的被練到 Lv.50 了——canvas 版的等級牌沒有 DOM，側欄的讀數是玩家看數字的地方。
+  await expect(page.locator('.sim-level-value')).toHaveText('Lv.50 / 50');
   const range = page.locator('#sim-level-range');
   await expect(range).toHaveAttribute('min', '50');
   await expect(page.locator('#sim-detail [data-step="-1"]')).toBeDisabled();

@@ -147,7 +147,8 @@ mkdirSync(OUT_DIR, { recursive: true });
 
 /** 節點 id → { 圖示雜湊, 站台顯示尺寸 }。尺寸一律回頭讀 PNG 的實際像素再換算，不用瀏覽器
  *  回報的 bounding box：截圖時的裁切框會被取整成整數像素，兩者會差到零點幾，長寬比對不上
- *  就會讓 sprite 的格子與站台畫的 <rect> 錯位（見 src/lib/render.ts 對 pattern 對齊的說明）。 */
+ *  就會讓 sprite 的格子與站台畫出來的節點錯位——站台端是 src/lib/canvas/painter.ts 的
+ *  drawNodeImage()，用 scene 的 cell（sx,sy,sw,sh）從 sprite 切格子、貼進節點自己的 w×h。 */
 const info = new Map<string, { hash: string; size: [number, number] }>();
 
 for (const id of ids) {
@@ -228,7 +229,7 @@ canonical = canonical.replace(/<g class="node"[\s\S]*?<\/g>/g, block => {
     id,
   );
   // 標籤的 y 以前也在這裡改寫，現在正本沒有 `<text>` 了（#21 PR2）——那段公式搬去
-  // tools/build-preview-svg.ts，跟 src/lib/render.ts 一樣是 `h/2 + 15`。
+  // tools/build-preview-svg.ts，跟 src/lib/canvas/painter.ts 的 `LABEL_DY` 一樣是 `h/2 + 15`。
   patched++;
   return b;
 });

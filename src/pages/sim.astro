@@ -5,12 +5,11 @@
 // （Yuki 2026-08-23 指定）。進度存在 localStorage，重整會接續上次——這跟 /board 刻意不存
 // 是相反的裁決，理由是模擬一棵 239 節點的樹是會做很久的事，而擺 5 顆骰子不是。
 //
-// 畫布用 renderTree() ＋ Viewport 自己組（見 src/scripts/sim.ts），**不重用
-// src/scripts/tree-canvas.ts**：那支是 side-effect 腳本，載入即掛載，而且跟 /tree 的
-// 篩選器、詳情卡片擺位、高解析圖示 LOD 綁在一起。
-// ⚠️ 版面骨架與**節點／邊／標籤的外觀**兩頁共用 canvas.css 那兩節，不要在這裡另寫一份
-// ——第一版漏了節點外觀那一節，標籤吃 SVG 預設的 16px，蓋住 10 顆節點的圖示中心讓它們
-// 點不到（E2E 的 S13 守，反例會一次紅 10 對）。
+// 畫布跟 /tree 共用 src/lib/canvas/ 的 controller（見 src/scripts/sim.ts 的檔頭）：
+// 節點／邊／標籤／狀態色／等級牌全部由 painter 畫成像素，**不是 DOM**，所以這一頁的
+// `<style is:global>` 裡沒有、也不可能有任何 `.node`／`.edge` 規則——模擬器的狀態色
+// （已取得／可取得／鎖住／三階邊）現在是 state.ts 的 `SimPaint` ＋ painter.ts，數值從
+// 舊的 CSS 規則原封不動搬過去。canvas.css 只剩版面骨架與兩張 canvas 的定位。
 //
 // 升級費用表在建置期讀進來（data/passive-upgrade-cost.json），**不進 tree.json**——
 // tier 是 (maxLevel, unlockCost.gold) 的純函數，那兩個欄位產物裡本來就有，複製一份
@@ -411,94 +410,6 @@ const optional = [...ctx.optional]
     font-size: var(--fs-md);
     font-variant-numeric: tabular-nums;
     text-align: right;
-  }
-
-  /* --- 畫布上的節點狀態 ------------------------------------------------------ */
-  /* `#tree.sim` 前綴讓這幾條只在模擬器頁生效——/tree 的 SVG 也叫 #tree，共用的基本樣式
-     （節點、邊、標籤）刻意留著吃 canvas.css 那一份。 */
-  #tree.sim .node {
-    cursor: pointer;
-  }
-
-  #tree.sim .node.sim-locked {
-    opacity: 0.28;
-  }
-
-  #tree.sim .node.sim-available .icon {
-    filter: drop-shadow(0 0 5px var(--gold));
-  }
-
-  /* 選取的節點一律看得見。⚠️ 具體度要壓過 `.sim-locked` 的 opacity（多帶一個 class），
-     不要靠「後到者勝」——這個 repo 已經因為順序保護而讓一條反例測試假綠過一次。 */
-  #tree.sim .node.sim-locked.sim-selected,
-  #tree.sim .node.sim-selected {
-    opacity: 1;
-  }
-
-  #tree.sim .node.sim-selected .icon {
-    filter: drop-shadow(0 0 6px var(--fg));
-  }
-
-  /* ⚠️ 鍵盤焦點的金邊必須贏過上面兩條狀態色。`#tree.sim .node.sim-available .icon` 的具體度
-     是 (1,4,0)，壓過 canvas.css 的 `.node:focus .icon { filter: url(#focus-ring) }` (0,3,0)，
-     而 `.node:focus` 又已經 `outline: none`——結果是 Tab 到「可取得」或「已選取」的節點時
-     **畫面零變化**（那圈金光不管有沒有 focus 都在）。這裡補回來，具體度 (1,5,0) 拿得下。
-     這是 CLAUDE.md 為 `/tree` 記過的同一族坑（「投影拆成兩條規則，順序與權重都不能動」），
-     由 `/code-review high` 抓到，E2E 的 S15 守。 */
-  #tree.sim .node.sim-available:focus .icon,
-  #tree.sim .node.sim-selected:focus .icon,
-  #tree.sim .node.sim-locked:focus .icon {
-    filter: url(#focus-ring);
-  }
-
-  #tree.sim .edge {
-    opacity: 0.25;
-  }
-
-  /* 兩端都在手上：這條路是通的，正常亮度。⚠️ 這一階是必要的——火骰子連著風與冰，三顆都是
-     遊戲一開始就送的，那條路通了卻不是玩家走出來的。少了這一階，它們不是被畫成金線
-     （看起來像自己解過），就是跟「還沒走到的路」一樣暗（Yuki 兩次回報，正好是這條界線的兩邊）。 */
-  #tree.sim .edge.sim-linked {
-    opacity: 1;
-  }
-
-  /* 玩家真的靠這條邊解開了終點，再加金色。
-     ⚠️ 這裡刻意**只設 stroke**：`.sim-active` 一定同時帶著 `.sim-linked`（走過是連通的子集，
-     src/lib/sim.ts 有一條全邊掃描的測試守著），opacity 由上面那條給——兩條規則互不搶屬性，
-     就不必去算誰的具體度高、也不靠先後順序。 */
-  #tree.sim .edge.sim-active {
-    stroke: var(--gold);
-  }
-
-  /* 起點取得了、終點還沒的邊：下一步可以走。 */
-  #tree.sim .edge.sim-ready {
-    opacity: 0.7;
-  }
-
-  /* 搜尋不符的節點淡出但留在原位（同 /tree 的篩選，不能用 display:none）。 */
-  #tree.sim .node.sim-dimmed {
-    opacity: 0.08;
-    pointer-events: none;
-  }
-
-  /* 等級牌只掛在已取得的節點上。⚠️ 這件事一定要用 CSS 做：**SVG 元素不吃 HTML 的 `hidden`
-     屬性**，JS 那邊 `toggleAttribute('hidden')` 是完全沒有作用的一行，239 個牌子會全部
-     留在畫面上（第一版就是這樣，測試全綠、截圖才看得出來）。 */
-  #tree.sim .node:not(.sim-owned) .sim-badge {
-    display: none;
-  }
-
-  #tree.sim .sim-badge rect {
-    fill: var(--surface-1);
-    stroke: var(--border-strong);
-  }
-
-  #tree.sim .sim-badge text {
-    fill: var(--fg);
-    /* 跟節點標籤同一階（tree.astro 的 `.node .label`）。在 <g transform> 底下 rem 一樣會
-       跟著畫布縮放，所以這裡不需要、也不該用一個「SVG 專用」的裸數值。 */
-    font-size: var(--fs-xs);
-    text-anchor: middle;
   }
 
   /* --- 能力彙總 ------------------------------------------------------------- */
