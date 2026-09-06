@@ -71,8 +71,10 @@ function nodeBody(
   // 那支只認通用符文表（`type === 'rune'` ＋ `maxLevel === 50`），而 1601 太陽強化的費用在
   // `data/passive-upgrade-cost.json` 的 `special` 裡（逐級金幣與太陽核心都不同、一顆核心都不用）。
   // 它曾經被誤記成 50 級（2026-09-06 依 `RuneTable.MaxRank` 改回 20），那時剛好符合通用表的兩個
-  // 條件，算出來的是「核心 99 ＋ 金幣 465,700」——一個看起來很專業、跟真實費用（現在是
-  // 金幣 10,500,000 ＋ 太陽核心 21,000）差了兩個數量級的數字。改成 20 級只是讓這顆不再撞上，
+  // 條件，算出來的是「核心 99 ＋ 金幣 465,700」——一個看起來很專業、跟真實費用差了兩個數量級
+  // 的數字。真實費用現在是**練滿累計** 金幣 10,500,000 ＋ 太陽核心 21,000（＝解鎖那一筆
+  // 50,000／100 ＋ special 表 Lv.2–20 的追加 10,450,000／20,900，就是下面 maxUpgrade 的算法；
+  // 拿 special 表自己的總和去對這個數字會差一筆解鎖費）。改成 20 級只是讓這顆不再撞上，
   // 判準不變：`levelTableFor()` 明確讓 special 優先，兩張表的優先順序只有那一份實作。
   const levels = levelTableFor(node, tables, upgradeCostTable);
   const extra = levels ? upgradeExtraCost(levels, node.maxLevel) : null;
