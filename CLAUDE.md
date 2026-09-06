@@ -97,7 +97,7 @@ npm run compare -- <beforeURL> <afterURL>  # computed-style 逐元素比對，�
 | `dataIssue` | `placeholder` 0 ／ `no-growth` 0 | 規則 17 |
 | `unlockVia !== 'cost'` | 9 個，全是骰子 | `data/unlock-exceptions.json`，規則 18 |
 | `unlockPaid` ／ `bypassPrereq` | 1 個（`5002`）／ 2 個（`5006` `5008`） | 同上；`unlockVia` 只說「靠什麼開門」，這兩個才說「要不要付錢」「要不要解前置」 |
-| 可升級節點 | 85 ＝ 50 級符文 43 ＋ `4303` ＋ `1601`（太陽核心特例表）＋ 玩家被動／支援 40 | 其餘 156 個 `maxLevel` 是 1 |
+| 可升級節點 | 85 ＝ 50 級符文 43 ＋ `4303` ＋ `1601`（20 級、太陽核心特例表）＋ 玩家被動／支援 40 | 其餘 156 個 `maxLevel` 是 1 |
 | 升級 tier ↔ 節點 | 6 個 tier 對 40 個節點，**雙向零殘餘** | `data/passive-upgrade-cost.json`，規則 22 |
 | 骰子數值 ↔ 節點 | 42 顆骰子雙向零殘餘；帶四個檔位的項目 **99 個**＝官方強化分頁 97 列＋太陽骰子 2 項 | `data/dice-stats.json`，規則 23 ＋ `tests/data/dice-stats.test.ts` |
 | 戰術 | **58 條**（官方 74 條 − 未啟用 16 條）；階段 23／24／8／3；`mode === '對戰'` 的 **7 條** ⟺ 沒有 `coop`（1.1.0 把 6／21／22／24 開放合作） | `data/tactics.json`，規則 24 |
@@ -165,7 +165,10 @@ npm run compare -- <beforeURL> <afterURL>  # computed-style 逐元素比對，�
   這裡只記對照方式。
 - **對照鍵**：節點 id ＝ `DiceTreeNodeTable.Id`（`1501`／`1601` 就是上游自己的 id）；成本 ＝
   `RankUpGoldArr[0]`／`RankUpGoodsArr[0]`（`RankUpGoodsType` 是貨幣：`NODE_STONE` 核心、`CORE_SOLAR`
-  太陽核心）、等級上限 ＝ 陣列長度；骰子 ＝ `DefenderTable` 第 KindId 列；符文 ＝ `RuneTable.Id`；
+  太陽核心）；⚠️ **等級上限不是 `RankUpGoldArr` 的陣列長度**——上游一律把那兩個陣列補滿到 50 格，
+  骰子符文真正的上限在 `RuneTable.MaxRank`（`1601` 太陽強化就是這樣被讀成 50 級，實機只有 20，
+  2026-09-06 修正；124 顆 `DICE_RUNE` 重對過一次，只有這一顆錯）；
+  骰子 ＝ `DefenderTable` 第 KindId 列；符文 ＝ `RuneTable.Id`；
   被動 ＝ `PlayerPassiveTable` 第 KindId 列；四檔 ＝ `base`／`base+6·LvAdd`／`base+14·UpAdd`／兩者疊加。
   **SVG 座標 ＝ `(1000 + 0.2·x, 850 − 0.2·y)`**（`Position` 欄）。2026-09-06 依 Yuki 的實機截圖把火系
   符文 `1201`／`1301`／`1401` 與秩序系 `4202`／`4302`／`4402` 從本站早年挪過的位置**放回表格座標**，
@@ -217,7 +220,7 @@ npm run compare -- <beforeURL> <afterURL>  # computed-style 逐元素比對，�
   ⚠️ **鍵一定要用 `gameId`**：光「所有骰子傷害」就有 15 個同名節點。
   ⚠️ 兩個容易改壞的地方：(1) **佔位符要略過不能報錯**（否則跟規則 9 的「不擋 PR」政策自相矛盾）；
   (2) **有覆蓋率下限**——只走夾具裡有的項目等於「刪掉一個鍵就關掉那顆節點的檢查」。
-- **`data/passive-upgrade-cost.json`＝玩家被動與支援的升級費用**（6 個 tier A–F ＋ `4303`、`1601` 兩個特例；`special` 不限玩家被動，1601 是 50 級符文、逐級金幣與太陽核心都不同），
+- **`data/passive-upgrade-cost.json`＝玩家被動與支援的升級費用**（6 個 tier A–F ＋ `4303`、`1601` 兩個特例；`special` 不限玩家被動，1601 是 20 級骰子符文、逐級金幣與太陽核心都不同），
   由**規則 22** 守。⚠️ **它不進 tree.json**：tier 是 `(maxLevel, unlockCost.gold)` 的純函數，那兩個
   欄位產物裡本來就有，複製一份 `costTier` 欄位進去只是拿 gzip 預算換一個推得出來的值。
   代價是「表與節點對不上」在產物層面完全沒有痕跡——一顆節點對不到 tier，`/sim` 只會安靜地不讓它
@@ -293,8 +296,9 @@ npm run compare -- <beforeURL> <afterURL>  # computed-style 逐元素比對，�
   而不是 0）；`/sim` 的「可取得」多一條「祖先等級 ≥ rank」、一鍵點亮會把祖先拉到 rank、取得後祖先不能降到
   rank 以下（`maxSelectableLevel` 的下界）。同一個祖先被多顆節點要求時取最大的 rank。
   ⚠️ **任何「這顆練滿要多少」的顯示一律走 `levelTableFor()`**（`/sim` 與 NodeDetail 同一個判準），
-  `upgradeTableApplies()` 只給通用符文表用——1601 太陽強化剛好也是 50 級符文，但費用在 `special`
-  （只有金幣＋太陽核心），用通用表會印出「核心 99 ＋ 金幣 465,700」這種差兩個數量級的錯數字（2026-09-06 踩到）。
+  `upgradeTableApplies()` 只給通用符文表用——1601 太陽強化的費用在 `special`（只有金幣＋太陽核心）。
+  它 2026-09-06 從 50 級改成 20 級後不再撞到通用表的 `maxLevel === 50`，但判準不因此放寬：當時
+  用通用表印出過「核心 99 ＋ 金幣 465,700」這種差兩個數量級的錯數字，下一顆 special 節點照樣會踩。
 - **`data/unlock-exceptions.json`＝解鎖例外表**，由**規則 18** 守。它不是 SVG 的一部分，
   `build-data` 讀它時只有一個 `as` 斷言＝執行期零檢查。三種寫壞法在規則 18 之前全部 CI 全綠：
   key 打錯（那顆骰子安靜地變回要花核心買）、`unlockVia` 打錯（成本照樣排除，但面板印出字面的
@@ -342,7 +346,7 @@ npm run compare -- <beforeURL> <afterURL>  # computed-style 逐元素比對，�
 | 10 | 中央樞紐：`<svg>` 直屬、不帶 transform、圖檔存在且解析度 ≥ 顯示尺寸兩倍、放射線終點落在 `data-links` 指定節點中心 |
 | 13 | viewBox 必須等於 `0 0 2000 1700`；節點與邊端點落在畫布內；任兩顆節點中心至少相距 5（疊在一起時邊接到誰只取決於檔案裡的先後順序） |
 | 14 | 覺醒只掛在骰子上 |
-| 15 | 升級花費表 ↔ 正本解鎖金幣；**跳過 `passive-upgrade-cost.json` 的 `special` 節點**（`special` 的定義就是「套不進通用表」，`levelTableFor()` 執行期也是 special 優先——`1601` 太陽強化 50 級、解鎖金幣 50,000，不跳就永遠紅） |
+| 15 | 升級花費表 ↔ 正本解鎖金幣；**跳過 `passive-upgrade-cost.json` 的 `special` 節點**（`special` 的定義就是「套不進通用表」，`levelTableFor()` 執行期也是 special 優先——`1601` 太陽強化 20 級、解鎖金幣 50,000，不跳就永遠紅） |
 | 16 | `gameId` 全有且唯一；`category` 只在玩家被動 |
 | 17 | 官方滿級值反向驗算 `growth` 的推導 |
 | 18 | 解鎖例外表的型別與長度（含 `unlockPaid`／`bypassPrereq` 必須是布林） |

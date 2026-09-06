@@ -138,7 +138,7 @@ describe('upgradeExtraCost', () => {
     expect(upgradeExtraCost(RUNE_TABLE.levels, 3)).toEqual({ core: 0, gold: 1600, solar: 0 });
   });
 
-  // 太陽核心（v1.1.0）走 special 表：太陽強化的 2–50 級費用逐級不同，官方單獨列表。
+  // 太陽核心（v1.1.0）走 special 表：太陽強化的 2–20 級費用逐級不同，官方單獨列表。
   // ⚠️ 累加兩級以上才驗得到「有加總」，只驗一級的話直接指派也會綠。
   it('special 表帶 solar 時照樣逐級累加', () => {
     const solarRows: LevelCost[] = [

@@ -623,8 +623,8 @@ export function validate(svgText: string, opts: ValidateOpts): ValidateResult {
     // 「套不進通用表的節點」，而這條規則做的正是「拿通用表的第 1 級去對節點的解鎖成本」——
     // 對一顆官方單獨列表的節點問這件事，答案本來就會不一致，報出來是誤判。`levelTableFor()`
     // 執行期也是 special 優先，兩邊同一個判準。
-    // （`special` 不限於玩家被動：4303 已經是骰子符文，而太陽強化這種自帶一張逐級表的
-    //  50 級符文正是會落在這裡的下一個例子。）
+    // （`special` 不限於玩家被動：4303 已經是骰子符文，而太陽強化（1601，20 級）這種自帶
+    //  一張逐級表的骰子符文正是會落在這裡的下一個例子。）
     const rule15Special = new Set(
       isPlainObject((opts.passiveUpgradeCost as { special?: unknown } | null | undefined)?.special)
         ? Object.keys((opts.passiveUpgradeCost as { special: Record<string, unknown> }).special)
