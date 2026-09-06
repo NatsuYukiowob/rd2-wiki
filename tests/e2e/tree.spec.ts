@@ -1,67 +1,173 @@
-// 端對端測試（Task 18）：在真實瀏覽器（Chromium，桌機／手機兩種 project）裡驗證
-// 前面 17 個任務只在 linkedom（沒有版面引擎、沒有 getScreenCTM、沒有 window.matchMedia
-// 以外的瀏覽器 API）下驗證過的行為。
+// 端對端測試：在真實瀏覽器（Chromium，桌機／手機兩種 project）裡驗證 /tree 的行為。
 //
-// 前 9 個 test（brief 原文，逐字照抄，未調整斷言）驗的是「元素存在、文字正確」；後面
-// A–J 這幾個額外補的 test 才是真正驗證「這個網站能用」——圖示真的畫出來、縮放錨點跟手、
-// 拖曳不誤觸選取、搜尋框不會被方向鍵誤觸平移，以及下面這段修正記錄的四個真實 bug。
+// ⚠️ **這一頁的畫布是 Canvas 2D，不是 SVG**（2026-09-06 起）。canvas 裡畫的節點與邊
+// **不是 DOM 元素**——沒有 `g.node`、沒有 `line.edge`、沒有 `#viewport`、沒有 classList、
+// 也沒有 `getBoundingClientRect()` 可以量。所以這支測試檔一律**不量節點的 DOM 幾何**，
+// 改問渲染器主動暴露的查詢介面 `window.__tree`（src/lib/canvas/debug-api.ts）：
 //
-// --- bug 修正記錄（第一輪 E2E 找到、第二輪修正並驗證，過程中歷經三次不同的圖示裁切技術）---
+//   count()                 → { nodes, edges }           畫了幾顆節點、幾條邊
+//   scale()                 → number                     目前縮放（1 ＝ 整棵樹全貌）
+//   nodeScreenRect(id)      → { left, top, width, height }  節點在**視窗座標**的 CSS px 矩形
+//   state()                 → { selected, chain, filteredOut, focus, bypassEdges, sim? }
+//   hitAt(clientX, clientY) → string | null              那個座標點中了誰
 //
-// 1.（Critical，已修正）節點的 bounding box 曾經是整張未裁切的 sprite：舊版 render.ts
-//    用「巢狀 `<svg>` + `viewBox`」裁切圖示，視覺渲染正確，但 Chromium 對巢狀 svg 子元素的
-//    `getBoundingClientRect()` 不會考慮外層 viewBox 的裁切，回傳整張未裁切 sprite 的幾何框
-//    （實測桌機 148x88 px、手機 512x305 px，節點肉眼可見的圖示只有個位數到十幾 px）。
-//    這讓 Playwright `.click()`／`.boundingBox()` 打空（brief test #2 逾時失敗的根因），
-//    鍵盤 `:focus` 外框也放大到跟旁邊好幾個節點重疊（真實的無障礙缺陷）。
-//    第一次嘗試改用 `<g clip-path>` 包住整張 sprite `<image>`，實測發現**同樣的問題**：
-//    Chromium 算 `getBoundingClientRect()` 完全不考慮任何裁剪機制（viewBox／clip-path／
-//    overflow 都一樣，裁剪只是繪製階段的效果，不影響幾何階段算出來的邊界框）。
-//    最終修正：改用 `<rect fill="url(#pattern)">`（見 src/lib/render.ts）——`<rect>` 的
-//    `getBoundingClientRect()` 只看自己的 x/y/width/height，完全不受 fill 裡貼的圖案影響，
-//    這才是真的修好。下面的 G／H 兩個測試就是這項修正的證據。
-// 2.（Important，已修正）初次載入沒有觸發高解析圖示升級：初始視角的縮放常常超過 1x 門檻
-//    （手機走可讀性下限、桌機在下面 bug 4 修正後也一樣），但 upgradeIcons() 只掛在
-//    wheel／pointerup 事件上，載入當下不會被觸發，使用者要先操作一次才看得到清晰圖示。
-//    修正：src/scripts/tree-canvas.ts 在初始視角算完之後補一次呼叫（不分裝置）。見測試 I。
-// 3.（Minor，已修正）手機版收起的篩選抽屜會露出一截：`top:3rem + translateY(-110%)`
-//    在面板換行變高後位移量不夠，改成 `top:0 + translateY(-100%)`（不管面板多高都精確
-//    貼齊視窗頂端正上方）。見下面測試 J。
-// 4.（Important，已修正）桌機初始視角的圖示也小到看不清：`minReadableScale()` 原本只算
-//    容器寬度／viewBox 寬度，手機直向容器（窄且高）剛好都是寬度限制縮放，掩蓋了「應該取
-//    寬高兩者較小值」這件事沒做。桌機橫向容器（寬且扁，比 viewBox 更扁）改由高度限制縮放，
-//    舊公式因此嚴重低估桌機需要的縮放下限，桌機初始視角的圖示只有約 9 CSS px。修正：
-//    `minReadableScale()` 改吃容器寬高兩個維度、`applyReadabilityFloor()` 不分裝置、
-//    初始視角／分支跳轉都套用（見 src/lib/viewport.ts、src/scripts/tree-canvas.ts）。
-//    **副作用**：桌機初始視角現在會以「整棵樹的幾何中心」為錨點放大到約 2.34x，這代表
-//    「整棵樹一次看完」跟「看得清圖示」不可能同時成立（跟手機分支視角同一套取捨邏輯），
-//    某些特定節點（例如 brief test #2 用的 1002）預設可能被擠出可視範圍之外，需要使用者
-//    自己平移或用分支導覽跳過去才看得到——這不是 bug 1 沒修好，是 bug 4 的必然結果。
-//    下面 A/B/C/D/F/H 這幾個會操作特定節點的測試、以及 brief test #2 本身，都改成先點
-//    分支導覽（跟真人使用者會做的操作一樣）確保節點在畫面內，不是碰運氣賭預設視角剛好
-//    蓋到那個節點；斷言本身沒有任何調整。
-import { test, expect, type Page, type Locator } from '@playwright/test';
-import sharp from 'sharp';
+// 對**不是畫布**的東西（工具列、詳情卡片、篩選抽屜、分支側欄、footer）仍然照舊量
+// `getBoundingClientRect()`——那些真的是 DOM，而「卡片不蓋住節點」這種斷言需要兩邊的
+// 矩形，節點那一半改由 `nodeScreenRect()` 供應。
+//
+// ⚠️ 鍵盤焦點也不在畫布上：每顆節點另外掛一份隱形的 `<button class="tree-a11y-node">`
+// （src/lib/canvas/a11y.ts），焦點框由 painter 畫在 canvas 上。所以「聚焦某顆節點」是
+// `page.locator('.tree-a11y-node[data-id="…"]').focus()`，驗收是 `state().focus === id`，
+// 不是掃像素。
+//
+// 換成 canvas 時刪掉了 13 條綁 SVG 實作細節的測試（pattern 像素、bbox 修正、`.label`
+// display 規則、`will-change`／drop-shadow 開關⋯⋯），改用四張 `#canvas-host` 的快照
+// 守「畫面真的長對」（見下面的 F）——那正是 canvas 版唯一能表達「畫出來的東西對不對」的
+// 方式。⚠️ 那四張基準圖只在 desktop project 維護，容差走 playwright.config.ts 的
+// `toHaveScreenshot.maxDiffPixelRatio`（0.001＝約 767 px，量出來的，見該檔註解）；**只在 Playwright 官方容器內比對**
+// （`npm run e2e:snapshots`，CI 同一個 image）；畫面真的改了要用 `npm run e2e:snapshots:update`
+// 重錄，**重錄之後一定要肉眼看過那四張 PNG 再 commit**（CLAUDE.md：純視覺的改動測試綠
+// 不等於做對）。
+import { test, expect, type Page } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import { resolveColor } from './probe';
 
-/**
- * locator 目前的中心點（CSS px）。
- *
- * bug 1 修正前，這裡不能直接用 `locator.boundingBox()`：節點在還沒升級成高解析圖示前，
- * `getBoundingClientRect()` 回傳的是整張未裁切 sprite 的幾何框，中心點會落在畫布空白處
- * 而不是圖示上（見上面的修正記錄）。修正後（`src/lib/render.ts` 改用
- * `<rect fill="url(#pattern)">`）`getBoundingClientRect()` 已經正確反映節點的真實顯示
- * 範圍，可以直接用標準 API，不需要再手動重建座標轉換鏈繞過它——這個簡化本身也是修正生效
- * 的證據之一。
- */
-async function centerOf(locator: Locator): Promise<{ x: number; y: number }> {
-  const box = await locator.boundingBox();
-  if (!box) throw new Error('locator 沒有 bounding box（不在畫面上或尚未渲染）');
-  return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+/** `window.__tree` 的形狀（見 src/lib/canvas/debug-api.ts 與 canvas-tree.ts 的 debugApi）。 */
+interface TreeState {
+  selected: string | null;
+  chain: string[];
+  filteredOut: string[];
+  focus: string | null;
+  bypassEdges: [string, string][];
+  sim?: { owned: string[]; available: string[]; linked: [string, string][]; active: [string, string][] };
+}
+interface TreeDebug {
+  count(): { nodes: number; edges: number };
+  scale(): number;
+  nodeScreenRect(id: string): { left: number; top: number; width: number; height: number } | null;
+  state(): TreeState;
+  hitAt(clientX: number, clientY: number): string | null;
+}
+declare global {
+  interface Window { __tree: TreeDebug }
 }
 
-/** 以某個螢幕座標為錨點滾輪縮放 n 次（deltaY < 0 = 放大，見 tree-canvas.ts 的 wheel handler）。 */
+/**
+ * 期望值一律從建置產物 `src/generated/tree.json`（gitignored）現讀，不寫死。
+ *
+ * 寫死的話，只改 `data/dice-tree.svg` 增減一顆節點就會冒出看起來無關的
+ * `expected 241, received 242`；而真正該擋的（畫布少畫了節點）反而測不出來。
+ */
+const treeData = JSON.parse(
+  readFileSync(new URL('../../src/generated/tree.json', import.meta.url), 'utf8'),
+) as {
+  nodes: { id: string; type: string; bypassPrereq?: true }[];
+  edges: [string, string][];
+  meta: { viewBox: [number, number, number, number]; gameVersion: string; gameBundle: string; updated: string };
+};
+
+type Rect = { left: number; top: number; width: number; height: number };
+
+/** 等畫布掛載完成（`window.__tree` 出現）。取代舊版的 `waitForSelector('#tree g.node')`。 */
+async function waitTree(page: Page): Promise<void> {
+  await page.waitForFunction(() => Boolean(window.__tree));
+}
+
+/** 節點在視窗座標的矩形。這是這支測試檔取得節點位置的**唯一**途徑。 */
+async function nodeRect(page: Page, id: string): Promise<Rect> {
+  const r = await page.evaluate(nid => window.__tree.nodeScreenRect(nid), id);
+  if (!r) throw new Error(`節點 ${id} 沒有螢幕矩形（畫布還沒掛好，或 id 不存在）`);
+  return r;
+}
+
+/** 節點中心（視窗座標 CSS px）。 */
+async function nodeCenter(page: Page, id: string): Promise<{ x: number; y: number }> {
+  const r = await nodeRect(page, id);
+  return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+}
+
+const treeState = (page: Page): Promise<TreeState> => page.evaluate(() => window.__tree.state());
+/** 目前縮放。語意跟舊版 `#viewport` 的 CSS transform scale 完全相同（1 ＝ 整棵樹全貌）。 */
+const treeScale = (page: Page): Promise<number> => page.evaluate(() => window.__tree.scale());
+
+/**
+ * 畫布上「一定不會被浮動 chrome 蓋住」的矩形（視窗座標）。
+ *
+ * ⚠️ 四個方向都要算：工具列擋上面、桌機的分支側欄擋左邊、手機的分支 chip 列擋下面，
+ * 而**詳情卡片會擋中間**——2026-08-23 起桌機的卡片是水平置中貼在節點上下方的，所以
+ * 「畫布左半部」這種寫死的安全區在它身上完全不成立（舊版 D 就是這樣假綠過）。
+ * 卡片可見時取它左右兩側較寬的那一邊；手機的卡片是貼底抽屜，取它上方。
+ * 量的全都是**非畫布**的 DOM 元素，符合「不量節點幾何」那條線。
+ */
+async function safeZone(page: Page): Promise<{ left: number; top: number; right: number; bottom: number }> {
+  return page.evaluate(() => {
+    const box = (el: Element | null): DOMRect | null => {
+      if (!el) return null;
+      const r = el.getBoundingClientRect();
+      return r.width > 0 && r.height > 0 ? r : null;   // display:none 的元素回 0 尺寸
+    };
+    const host = document.getElementById('canvas-host')!.getBoundingClientRect();
+    const toolbar = box(document.getElementById('toolbar'));
+    const nav = box(document.getElementById('branch-nav'));
+    const chips = box(document.getElementById('branch-chips'));
+    const detailEl = document.getElementById('detail') as HTMLElement;
+    const d = detailEl.hidden ? null : box(detailEl);
+
+    let left = host.left, right = host.right, top = host.top, bottom = host.bottom;
+    if (toolbar) top = Math.max(top, toolbar.bottom + 4);
+    if (nav) left = Math.max(left, nav.right + 4);
+    if (chips) bottom = Math.min(bottom, chips.top - 4);
+    if (d) {
+      const full = d.left <= left + 1 && d.right >= right - 1;   // 全寬＝手機的底部抽屜
+      if (full) bottom = Math.min(bottom, d.top - 4);
+      else if (d.left - left >= right - d.right) right = Math.min(right, d.left - 4);
+      else left = Math.max(left, d.right + 4);
+    }
+    return { left, top, right, bottom };
+  });
+}
+
+/**
+ * 把節點平移進安全區。
+ *
+ * 桌機初始視角是「整棵樹置中 ＋ 可讀性下限」，哪幾顆剛好落在畫面內是佈局決定的、不是穩定的
+ * 測試前提（見 CLAUDE.md）。真人要操作某顆節點本來就會先把它拖進畫面，這裡照做——而且
+ * **拖曳一定不會誤觸選取**（超過 5px 門檻就不算點選，那是 canvas-tree.ts 的 endPointer）。
+ * 一次最多拖安全區的 35%，起訖點才都留在安全區內；重複幾次逼近目標。
+ */
+async function bringIntoView(page: Page, id: string): Promise<void> {
+  for (let i = 0; i < 8; i++) {
+    const z = await safeZone(page);
+    const r = await nodeRect(page, id);
+    if (r.left >= z.left && r.left + r.width <= z.right && r.top >= z.top && r.top + r.height <= z.bottom) return;
+    const cx = (z.left + z.right) / 2, cy = (z.top + z.bottom) / 2;
+    const maxX = (z.right - z.left) * 0.35, maxY = (z.bottom - z.top) * 0.35;
+    const clamp = (v: number, m: number) => Math.max(-m, Math.min(m, v));
+    const dx = clamp(cx - (r.left + r.width / 2), maxX);
+    const dy = clamp(cy - (r.top + r.height / 2), maxY);
+    await page.mouse.move(cx - dx / 2, cy - dy / 2);
+    await page.mouse.down();
+    await page.mouse.move(cx, cy, { steps: 6 });
+    await page.mouse.move(cx + dx / 2, cy + dy / 2, { steps: 6 });
+    await page.mouse.up();
+  }
+  const z = await safeZone(page), r = await nodeRect(page, id);
+  throw new Error(`節點 ${id} 搬不進可點擊範圍（節點 ${JSON.stringify(r)}／安全區 ${JSON.stringify(z)}）`);
+}
+
+/**
+ * 點一顆節點：先把它平移進安全區，再對它的**中心**送一次真的滑鼠點擊。
+ *
+ * ⚠️ 一定要用 `page.mouse`，不能用 locator.click()——canvas 裡沒有可以 click 的元素，
+ * 而 `.tree-a11y-node` 那顆隱形按鈕走的是鍵盤那條路（onActivate），驗不到 pointer 判定。
+ */
+async function clickNode(page: Page, id: string): Promise<void> {
+  await bringIntoView(page, id);
+  const c = await nodeCenter(page, id);
+  await page.mouse.click(c.x, c.y);
+}
+
+/** 以某個螢幕座標為錨點滾輪縮放 n 次（deltaY < 0 = 放大，見 canvas-tree.ts 的 wheel handler）。 */
 async function zoomInAt(page: Page, point: { x: number; y: number }, notches: number): Promise<void> {
   await page.mouse.move(point.x, point.y);
   for (let i = 0; i < notches; i++) {
@@ -70,57 +176,15 @@ async function zoomInAt(page: Page, point: { x: number; y: number }, notches: nu
 }
 
 /**
- * 讀出 #viewport 目前的 scale。用 `getComputedStyle().transform` 解出的矩陣，不用正規
- * 表達式解析字串（數值小到變成指數記法時解析會失敗）。下面兩條 ⚠️ 是**已經試過且不能用**
- * 的兩種寫法，不要照著「還原」回去。
- *
- * ⚠️ 不能用 `vp.transform.baseVal.consolidate()`：Viewport 改用 CSS transform 之後
- * （見 src/lib/viewport.ts 的 apply()），`transform` **attribute** 永遠是空的，
- * baseVal 會是空清單、consolidate() 回 null，這裡會直接丟 TypeError。
- *
- * ⚠️ 也不能用 `getCTM()`：它回的是「到最近祖先 viewport 元素」的完整變換，**含根 svg
- * 把 viewBox 映射到容器尺寸的那一層縮放**。實測手機版拿到 0.6999…（＝真正的 5.5 乘上
- * 412/3400 的 viewBox 比例），而這個函式的所有呼叫端要的都是 `#viewport` 自己的縮放。
- *
- * `getComputedStyle().transform` 回的是這個元素自己的 CSS transform，而且瀏覽器已經
- * 正規化成 `matrix(...)`——順帶解決了原註解擔心的「數值小到變成指數記法時字串解析會失敗」。
- */
-async function getViewportScale(page: Page): Promise<number> {
-  return page.evaluate(() => {
-    const vp = document.getElementById('viewport')!;
-    const t = getComputedStyle(vp).transform;
-    return t === 'none' ? 1 : new DOMMatrixReadOnly(t).a;
-  });
-}
-
-/**
- * 讀 #viewport 目前的 CSS transform 字串。多數測試只拿它比較「畫布動了沒」。
- *
- * ⚠️ 讀的是 CSS 不是 `transform` attribute（同上）。改錯地方的症狀是每次都拿到同一個
- * 空字串，於是「拖曳後 transform 應該不同」這種前提斷言會**永遠失敗**——或更糟，
- * 「應該相同」那種會永遠通過，變成假綠。
- */
-async function viewportTransform(page: Page): Promise<string> {
-  return page.locator('#viewport').evaluate(el => (el as unknown as SVGElement).style.transform);
-}
-
-/**
  * 開啟 /tree 並點分支導覽跳到「自然」分支（桌機 #branch-nav／手機 #branch-chips，同一組
- * data-branch 按鈕）。
- *
- * bug 4 修正後，桌機初始視角改成以「整棵樹的幾何中心」為錨點放大到約 2.34x（見上面的修正
- * 記錄）——這代表哪些節點剛好落在預設視角內是「整棵樹的佈局長什麼樣」決定的，不是穩定、
- * 可預期的測試前提。真人使用者想操作某個特定節點，本來就會先用分支導覽跳過去，不會假設
- * 預設視角剛好蓋到；這裡讓測試比照真人的操作方式，用 `jumpToBranch('nature')` 這條已經在
- * 別處單獨測過的既有機制，確定把自然分支（1001/1002/1003... 都在這個分支）的節點带進
- * 可視範圍，不是自己another重新發明一套「怎樣才算在畫面內」的判斷。
+ * data-branch 按鈕）——`jumpToBranch()` 是已經在別處單獨測過的既有機制。
  */
 async function goToNatureBranch(page: Page, isMobile: boolean): Promise<void> {
   await page.goto('/tree');
+  await waitTree(page);
   const sel = isMobile ? '#branch-chips' : '#branch-nav';
   await page.click(`${sel} button[data-branch="nature"]`);
 }
-
 // ---------------------------------------------------------------------------
 // brief 原文的 9 個 test（tests/e2e/tree.spec.ts 需求規格逐字照抄，未調整斷言。
 // test #2（task-18-report.md 記錄過的已知失敗）後來補上前置條件修正：桌機預設視角下
@@ -129,97 +193,151 @@ async function goToNatureBranch(page: Page, isMobile: boolean): Promise<void> {
 // `goToNatureBranch()` 把節點帶進視野，斷言本身一個字都沒動。）
 // ---------------------------------------------------------------------------
 
-// 239（下面這個測試）與 100（「搜尋會淡出不相關節點」）都是從建置期產生的
-// src/generated/tree.json（gitignored）反推出來的固定數字，源頭是 data/dice-tree.svg。
-// 只改 data/dice-tree.svg 增減節點、不動這支測試檔，CI 會冒出看起來無關的
-// `expected 239, received 240` ——這個註解是留給那時候的人一個能立刻對到根源的線索。
+// 節點數／邊數一律從 `src/generated/tree.json` 現讀（見檔頭 treeData 的說明）。
+// 這條守的是「渲染器真的把每一顆節點與每一條邊都放進場景」——canvas 裡沒有元素可以數，
+// 所以問 `__tree.count()`；它數的是 scene.nodes／scene.edges，也就是 painter 每一幀在畫的
+// 那份清單，不是另外維護的第二份計數。
 test('骰子樹渲染出所有節點', async ({ page }) => {
   await page.goto('/tree');
-  await expect(page.locator('#tree g.node')).toHaveCount(241);
+  await waitTree(page);
+  expect(await page.evaluate(() => window.__tree.count()))
+    .toEqual({ nodes: treeData.nodes.length, edges: treeData.edges.length });
+  // 無障礙那份 DOM 也要一顆不少：canvas 進不了無障礙樹，這 241 顆隱形按鈕是鍵盤與讀屏
+  // 唯一的入口（src/lib/canvas/a11y.ts）。少掉它們畫面完全正常、鍵盤卻整頁不能用。
+  await expect(page.locator('.tree-a11y-node')).toHaveCount(treeData.nodes.length);
 });
 
-test('點選節點會高亮前置鏈並顯示成本', async ({ page, isMobile }) => {
-  // 節點 1002（尖刺骰子，屬於「自然」分支）在桌機預設視角下（bug 4 修正後，整棵樹置中放大
-  // 到約 2.34x）會被擠出可視範圍外，直接 `page.goto('/tree')` 後點擊會逾時——這不是實作
-  // bug，是「整棵樹一次看完」跟「看得清圖示」的必然取捨（見檔頭修正記錄）。真人使用者要
-  // 操作特定節點，本來就會先用分支導覽（桌機側欄／手機底部 chip）把它帶進畫面，這裡改用
-  // 跟 A/B/D/F/H 幾個測試同一套、已經在別處單獨驗證過的 `goToNatureBranch()`，不是自己
-  // 發明一套「怎樣才算在畫面內」的判斷。
-  //
-  // 刻意不用 `/tree?node=1002` 這種網址參數：那個途徑本身就會自動選取節點（見「網址狀態
-  // 可還原」測試），會讓這裡真正要驗的「點擊」這個動作變成沒有意義的空動作——這個測試的
-  // 標題就叫「點選節點會…」，前置條件不能把它要測的那個動作本身取消掉。
-  await goToNatureBranch(page, isMobile);
-  await page.locator('g.node[data-id="1002"]').click();
+test('點選節點會高亮前置鏈並顯示成本', async ({ page }) => {
+  // 用真的滑鼠點畫布（clickNode 會先把節點平移進安全區），刻意不用 `/tree?node=` ——
+  // 那條路本身就會自動選取節點，會讓這裡真正要驗的「點擊」變成沒有意義的空動作。
+  await page.goto('/tree');
+  await waitTree(page);
+  await clickNode(page, '5201');
+
   await expect(page.locator('#detail')).toContainText('前置鏈');
   await expect(page.locator('#detail .cost')).toContainText(/核心|金幣/);
-  expect(await page.locator('#tree g.node.in-chain').count()).toBeGreaterThan(1);
+
+  // 高亮不再是 `.in-chain` class，而是 painter 依 `state().chain` 決定的 opacity。
+  // 期望值當場從資料算：5201 的祖先聯集（去重、含自身），遇到 bypassPrereq 的節點就停止
+  // 往上追（src/lib/selection.ts 的 prerequisiteChain 同一條規則）。
+  const st = await treeState(page);
+  expect(st.selected).toBe('5201');
+  expect([...st.chain].sort()).toEqual(ancestorChain('5201'));
 });
 
 test('前置鏈高亮蓋過篩選淡出', async ({ page }) => {
+  // 舊版驗的是 `g.node.filtered-out.in-chain` 這個 class 組合存在；canvas 版同一件事由
+  // state.ts 的 `nodeAlpha()` 表達（chain 先判、回 1，篩選淡出的 0.1 判在後面）。測試能問的
+  // 是那條規則的**輸入**：同一顆節點同時落在 chain 與 filteredOut 裡。
   await page.goto('/tree?node=1002&type=dice');
-  const hidden = page.locator('g.node.filtered-out.in-chain');
-  await expect(hidden.first()).toBeVisible();
+  await waitTree(page);
+  const st = await treeState(page);
+  const both = st.chain.filter(id => st.filteredOut.includes(id));
+  expect(both.length, '應該有節點同時在前置鏈上、又被類型篩選淡出').toBeGreaterThan(0);
 });
 
 test('搜尋會淡出不相關節點', async ({ page }) => {
   await page.goto('/tree');
+  await waitTree(page);
   await page.fill('#search', '冰凍');
-  await expect(page.locator('#tree g.node:not(.filtered-out)').first()).toBeVisible();
-  expect(await page.locator('#tree g.node.filtered-out').count()).toBeGreaterThan(100);
+  // 兩個方向都要問：淡出的夠多（不是「篩選根本沒生效」），而且**不是全部**
+  // （不是「連命中的也一起淡掉」——那在畫面上是一片灰，跟篩選壞掉長得一樣）。
+  await expect.poll(async () => (await treeState(page)).filteredOut.length).toBeGreaterThan(100);
+  expect((await treeState(page)).filteredOut.length).toBeLessThan(treeData.nodes.length);
 });
 
 test('網址狀態可還原', async ({ page }) => {
   await page.goto('/tree?node=1001&branch=nature&q=火');
   await expect(page.locator('#detail h2')).toHaveText('火骰子');
   await expect(page.locator('#search')).toHaveValue('火');
+  await waitTree(page);
+  expect((await treeState(page)).selected).toBe('1001');
 });
 
 test('Esc 取消選取', async ({ page }) => {
   await page.goto('/tree?node=1001');
-  await page.locator('g.node[data-id="1001"]').press('Escape');
+  await waitTree(page);
+  // Esc 的監聽器掛在 #canvas-host 上（canvas-tree.ts），而隱形節點按鈕是 host 的子節點，
+  // 所以從按鈕上按 Esc 會冒泡過去——這正是真人用鍵盤操作時的路徑。
+  await page.locator('.tree-a11y-node[data-id="1001"]').focus();
+  await page.keyboard.press('Escape');
   await expect(page.locator('#detail')).toBeHidden();
+  expect((await treeState(page)).selected).toBeNull();
 });
 
 test('鍵盤可聚焦並以 Enter 選取節點', async ({ page }) => {
   await page.goto('/tree');
-  await page.locator('g.node[data-id="1001"]').focus();
+  await waitTree(page);
+  // 焦點框畫在 canvas 上、不是按鈕上（見 a11y.ts），所以「聚焦成功」的證據是 state().focus，
+  // 不是掃像素找金邊。
+  await page.locator('.tree-a11y-node[data-id="1001"]').focus();
+  await expect.poll(async () => (await treeState(page)).focus).toBe('1001');
   await page.keyboard.press('Enter');
   await expect(page.locator('#detail h2')).toHaveText('火骰子');
+  expect((await treeState(page)).selected).toBe('1001');
 });
 
 test('手機版預設聚焦單一分支且有分支 chip', async ({ page, isMobile }) => {
   test.skip(!isMobile, '僅手機版');
   await page.goto('/tree');
+  await waitTree(page);
   await expect(page.locator('#branch-chips button')).toHaveCount(5);
 
   // brief 原文只斷言分支 chip 數量，這件事光靠 tree.astro 的靜態 markup 就會恆成立，就算
   // jumpToBranch()／minReadableScale() 被整個刪掉、手機版退化成跟桌機版一樣顯示全部 5 個
-  // 分支，這一行斷言依然會通過（code review 抓到的真實漏洞：測試名稱承諾了「聚焦單一分支」
-  // 但完全沒驗證這件事）。額外補上：手機版初始縮放應該明顯大於桌機版的 0.9（fitTo 整棵樹的
-  // 結果），這才是「真的聚焦到單一分支」而不是「看得到全部 5 分支」的直接證據。
-  expect(await getViewportScale(page)).toBeGreaterThan(1.5);
+  // 分支，這一行斷言依然會通過。額外補上：手機版初始縮放應該明顯大於「整棵樹全貌」的 1x，
+  // 這才是「真的聚焦到單一分支」的直接證據。`__tree.scale()` 的語意跟舊版 #viewport 的
+  // CSS transform scale 完全相同（1 ＝ 全貌，見 view.ts）。
+  expect(await treeScale(page)).toBeGreaterThan(1.5);
 });
 
-/** 目前一個使用者座標單位攤到幾個裝置像素——高解析升級的真正判準，見 src/lib/viewport.ts。 */
-async function devicePxPerUnit(page: Page): Promise<number> {
-  return page.evaluate(() => {
-    const svg = document.querySelector('#tree') as SVGSVGElement;
-    const vp = document.querySelector('#viewport');
-    const box = svg.getBoundingClientRect();
-    const vb = svg.getAttribute('viewBox')!.split(/\s+/).map(Number);
-    const scale = Number(/scale\(([-\d.]+)\)/.exec((vp as unknown as SVGElement | null)?.style.transform ?? '')?.[1] ?? 1);
-    return Math.min(box.width / vb[2]!, box.height / vb[3]!) * scale * window.devicePixelRatio;
-  });
+/**
+ * 一顆節點的祖先聯集（去重、含自身、多重前置視為 AND），排序後回傳。
+ *
+ * ⚠️ `bypassPrereq` 的節點（貪婪 5006／空虛 5008 可直接領）走到就停止往上追——這跟
+ * `src/lib/selection.ts` 的 `prerequisiteChain()` 是同一條規則。這裡刻意在測試端**重算**
+ * 而不是 import 產品程式：測試要問的是「畫布拿到的 chain 對不對」，拿同一份實作互相印證
+ * 等於什麼都沒驗。
+ */
+function ancestorChain(id: string): string[] {
+  const parents = new Map<string, string[]>();
+  for (const [from, to] of treeData.edges) parents.set(to, [...(parents.get(to) ?? []), from]);
+  const bypass = new Set(treeData.nodes.filter(n => n.bypassPrereq).map(n => n.id));
+  const seen = new Set<string>();
+  const walk = (cur: string): void => {
+    if (seen.has(cur)) return;
+    seen.add(cur);
+    if (bypass.has(cur)) return;                    // 直接領：不必再往上追前置
+    for (const p of parents.get(cur) ?? []) walk(p);
+  };
+  walk(id);
+  return [...seen].sort();
 }
 
-/** 縮到門檻以下，讓已升級的圖示換回 sprite（遲滯門檻 0.9，見 viewport.ts）。 */
-async function zoomOutToSprite(page: Page): Promise<void> {
-  const box = (await page.locator('#tree').boundingBox())!;
-  const point = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
-  await page.mouse.move(point.x, point.y);
-  for (let i = 0; i < 40; i++) await page.mouse.wheel(0, 120);
-  await page.waitForTimeout(200);
+/**
+ * 目前一個使用者座標單位攤到幾個裝置像素——高解析升級的真正判準（見 src/lib/canvas/view.ts
+ * 的 `effectiveDevicePx`）。
+ *
+ * canvas 版改成 `min(host寬/viewBox寬, host高/viewBox高) × scale() × dpr`：`#canvas-host`
+ * 是真的 DOM（不是畫布內容），量它的盒子沒有問題，縮放則問 `__tree.scale()`。
+ */
+async function devicePxPerUnit(page: Page): Promise<number> {
+  const vb = treeData.meta.viewBox;
+  return page.evaluate(([vbw, vbh]) => {
+    const r = document.getElementById('canvas-host')!.getBoundingClientRect();
+    return Math.min(r.width / vbw!, r.height / vbh!) * window.__tree.scale() * window.devicePixelRatio;
+  }, [vb[2], vb[3]]);
+}
+
+/**
+ * 畫布目前位置的指紋——拿來斷言「畫布動了沒」。
+ *
+ * 舊版讀 `#viewport` 的 CSS transform 字串；canvas 版沒有那個元素，改用一顆固定節點的
+ * 螢幕矩形（平移會動 left/top、縮放會動 width），語意完全相同而且更直接。
+ */
+async function canvasFingerprint(page: Page): Promise<string> {
+  const r = await nodeRect(page, '1001');
+  return `${r.left.toFixed(1)},${r.top.toFixed(1)},${r.width.toFixed(2)}`;
 }
 
 test('首屏資產體積在預算內', async ({ page }) => {
@@ -245,180 +363,100 @@ test('首屏資產體積在預算內', async ({ page }) => {
       names: counted.map(e => e.name.split('/').pop()).slice(0, 5),
     };
   });
-  expect(m.bytes, `首屏資產 ${(m.bytes / 1024).toFixed(1)}KB（前幾項：${m.names.join(', ')}）`)
-    .toBeLessThan(500 * 1024);
-
   // 請求數：這條守的是「不需要 2× 素材時，一張都不該抓」——修正前桌機（每單位 0.52 裝置
-  // 像素）無條件抓 213 張高解析圖示約 500KB，純屬浪費。真的需要 2× 的高 DPI 裝置會抓
-  // （Pixel 7 實測 68 張，體積仍在預算內），那是該做的事，不設上限。
+  // 像素）無條件抓 213 張高解析圖示約 500KB，純屬浪費。
   const devicePx = await devicePxPerUnit(page);
   if (devicePx <= 1.2) {
     expect(m.iconRequests, `每單位 ${devicePx.toFixed(2)} 裝置像素，sprite 已足夠，不該抓個別圖示`).toBe(0);
+    expect(m.bytes, `首屏資產 ${(m.bytes / 1024).toFixed(1)}KB（前幾項：${m.names.join(', ')}）`)
+      .toBeLessThan(500 * 1024);
+    return;
   }
+
+  // 高 DPI 這一半守的是「只抓看得見的那幾十張」。**張數與位元組要一起釘**：只釘位元組的話，
+  // 「整棵樹 240 張都抓、但剛好還在預算內」也會是綠的，而那正是 Task 12 抓到、Task 12b 修掉的
+  // 退步（painter 的 `drawNodeImage()` 走懶載入口 `assets.hires()`，畫一幀＝把 240 張 2× WebP
+  // 全要下來，`updateLod()` 依 `visibleWorldRect()` 挑的預載完全被架空；Pixel 7 實測 240 張／
+  // 779.5KB，SVG 版是 68 張／500KB 內）。修法是 painter 只查 `loadedHires()`、不觸發載入。
+  //
+  // 門檻的由來：Pixel 7（dpr 2.625、初始分支聚焦）修好後實測 70 張／358.4KB——70 就是首屏
+  // 視錐內的節點數。上限取 110 張留餘裕（版面或初始縮放小幅變動不該紅），位元組收回 500KB。
+  // ⚠️ 坑記（Ruling X，2026-09-06）：`updateLod()` 的視錐**刻意只用純視口、不含位圖那一圈
+  // 邊距**。含進去看起來比較「一致」（位圖畫的就是含邊距那一塊），但實測會變成
+  // 120 張／479.4KB，離這裡的 500KB 只剩 20KB 餘裕——首屏位元組是使用者可感的指標，而邊距
+  // 那一圈的低解析會自癒（拖進視野、手勢結束補畫那一幀就升級）。不要「順手改成含邊距」。
+  expect(m.iconRequests, `每單位 ${devicePx.toFixed(2)} 裝置像素，只該抓視錐內的那幾十張`)
+    .toBeLessThan(110);
+  expect(m.bytes, `首屏資產 ${(m.bytes / 1024).toFixed(1)}KB（前幾項：${m.names.join(', ')}）`)
+    .toBeLessThan(500 * 1024);
 });
 
 // ---------------------------------------------------------------------------
 // A–J：yuki 追加的「這個網站真的能用」證據，以及四個 bug 的修正驗證
 // ---------------------------------------------------------------------------
 
-test('A. 圖示真的有畫出來：節點區域像素不是單一顏色', async ({ page, isMobile }) => {
-  await goToNatureBranch(page, isMobile);
-  const node = page.locator('g.node[data-id="1001"]');
-  await expect(node).toBeVisible();
-
-  // 先放大再截圖：分支視角下節點圖示已經有一定大小，放大到接近上限讓圖示佔的像素夠多，
-  // 統計顏色數量才有意義（避免因為畫面太小、反鋸齒噪點不夠而誤判）。
-  const point = await centerOf(node);
-  await zoomInAt(page, point, 15);
-
-  const icon = node.locator('> rect.icon'); // 貼了 sprite/hires pattern 的圖示本體（見 render.ts）
-  const box = await icon.boundingBox();
-  if (!box) throw new Error('放大後仍取不到圖示的 bounding box');
-  expect(box.width).toBeGreaterThan(30); // 放大有效，不是量到一坨 0px
-
-  const buf = await page.screenshot({
-    clip: { x: box.x, y: box.y, width: box.width, height: box.height },
-  });
-  const { data, info } = await sharp(buf).raw().toBuffer({ resolveWithObject: true });
-  const colors = new Set<string>();
-  for (let i = 0; i + 2 < data.length; i += info.channels) {
-    colors.add(`${data[i]},${data[i + 1]},${data[i + 2]}`);
-  }
-  // sprite 裁切錯誤或圖沒載入時，這塊區域會是純色（1 種顏色）或全透明合成背景色（也是 1
-  // 種顏色）；一張真正的骰子圖示至少會有明暗漸層、輪廓線，顏色數量遠不止個位數。
-  expect(colors.size).toBeGreaterThan(3);
-});
-
 test('B. 縮放錨點跟手：滾輪縮放後，節點維持在同一螢幕座標', async ({ page, isMobile }) => {
   await goToNatureBranch(page, isMobile);
-  const node = page.locator('g.node[data-id="1002"]');
-  const before = await centerOf(node);
+  await bringIntoView(page, '1002');
+  const r0 = await nodeRect(page, '1002');
+  const before = { x: r0.left + r0.width / 2, y: r0.top + r0.height / 2 };
 
   await zoomInAt(page, before, 5);
 
-  const after = await centerOf(node); // 縮放後重新即時算一次，不是快取舊值
+  const after = await nodeCenter(page, '1002'); // 縮放後重新即時算一次，不是快取舊值
   // 錨點不變性：zoomAt 應該讓游標下的內容縮放前後對到同一個螢幕座標，不會整個畫面
-  // 往錨點的反方向飄走（viewport.ts 的 e/f 位移換算如果漏算就會在這裡露餡）。
+  // 往錨點的反方向飄走（view.ts 的 tx/ty 位移換算如果漏算就會在這裡露餡）。
   expect(Math.abs(after.x - before.x)).toBeLessThan(2);
   expect(Math.abs(after.y - before.y)).toBeLessThan(2);
+  // 前提：真的縮放了。少了這條，「錨點沒動」也可能只是因為滾輪整個沒生效。
+  const r1 = await nodeRect(page, '1002');
+  expect(r1.width, '滾輪應該真的把畫面放大了').toBeGreaterThan(r0.width * 1.2);
 });
 
-test('C. 縮放 > 1x 後，可見節點圖示從 sprite pattern 換成高解析 pattern', async ({ page, isMobile }) => {
-  // bug 2 修正後，兩種裝置的初始視角都常常已經超過 1x 門檻、載入時就直接是高解析圖示了
-  // （見下面測試 I，那是這個修正的直接證據）；這裡驗的是「從 sprite 狀態開始、縮放跨過
-  // 門檻後升級」這個轉換過程本身，所以要先確認起始狀態真的是 sprite（不是提前就已經
-  // 升級過），不是的話代表這個測試的前提不成立，用 test.skip 誠實記錄，不是硬凹。
-  await goToNatureBranch(page, isMobile);
-  const icon = page.locator('g.node[data-id="1002"] > rect.icon');
-  // 先把畫面縮到門檻以下，確保起始狀態真的是 sprite——門檻改成裝置像素後，手機／高 DPI
-  // 裝置一載入就已經升級，那時沒有可觀察的轉換窗口。
-  //
-  // ⚠️ 這裡**無條件**縮，不能先探測一次 fill 再決定要不要縮：首屏升級排在
-  // requestIdleCallback 裡、又是分批做的，探測很可能落在升級之前，於是跳過縮放、接著去等
-  // 一個幾毫秒後就會消失的 sprite fill，一路等到 timeout 才失敗，而錯誤訊息指向斷言、
-  // 不指向時序。
-  await zoomOutToSprite(page);
-  await expect
-    .poll(async () => (await icon.getAttribute('fill')) ?? '', { timeout: 5000 })
-    .toContain('icon-pattern-');
-
-  // 放大到跨過裝置像素門檻。用 poll 而不是固定圈數：不同 project 的初始倍率與 DPR 不同，
-  // 「幾圈才夠」不是一個跨裝置成立的常數。
-  const point = await centerOf(page.locator('g.node[data-id="1002"]'));
-  await expect.poll(async () => {
-    await zoomInAt(page, point, 4);
-    return devicePxPerUnit(page);
-  }, { timeout: 15000 }).toBeGreaterThan(1.2);
-
-  // upgradeIcons 是用 wheel 事件節流的 requestAnimationFrame 觸發的（見 tree-canvas.ts），
-  // 給瀏覽器一次繪圖機會讓它真的跑完。
-  await page.waitForFunction(() => {
-    const fill = document.querySelector('g.node[data-id="1002"] > rect.icon')?.getAttribute('fill');
-    return fill?.includes('icon-hires-') ?? false;
-  });
-  const fill = await icon.getAttribute('fill');
-  expect(fill).toMatch(/^url\(#icon-hires-[0-9a-f]+\)$/);
-
-  // 再進一步確認：pattern 裡真的貼的是個別的高解析 webp，不是只把 id 換了個名字。
-  const hash = /icon-hires-([0-9a-f]+)/.exec(fill ?? '')?.[1];
-  expect(hash).toBeTruthy();
-  const patternImgHref = await page.locator(`defs > pattern#icon-hires-${hash} image`).getAttribute('href');
-  expect(patternImgHref).toBe(`/assets/icons/${hash}.webp`);
-});
-
-test('D. 拖曳畫布放開在空白處，選取不會被誤觸清除', async ({ page, isMobile }) => {
-  await goToNatureBranch(page, isMobile);
-  await page.locator('g.node[data-id="1001"]').click();
+test('D. 拖曳畫布放開在空白處，選取不會被誤觸清除', async ({ page }) => {
+  await page.goto('/tree');
+  await waitTree(page);
+  await clickNode(page, '1001');
   await expect(page.locator('#detail h2')).toHaveText('火骰子');
-  await expect(page.locator('g.node[data-id="1001"].in-chain')).toHaveCount(1);
+  expect((await treeState(page)).chain).toContain('1001');
 
-  // 選一段畫布空白區域來拖曳，確保按下/放開都落在 svg 空白處而不是剛好又點到另一個節點上，
-  // 也不能落在選取後才出現的 #detail 面板上（面板疊在畫布之上，事件根本不會傳到 svg）。
-  // 桌機版 #detail 固定在右側（22rem≈352px 寬）：拖曳範圍限制在畫布左半部，同時避開左側
-  // 分支導覽列（x<120）與頂部工具列（y<100）。手機版 #detail 選取後改成由下滑出的
-  // bottom sheet（max-height:55vh，見 tree.astro 手機媒體查詢），蓋住畫布下半部：拖曳範圍
-  // 限制在畫布「上半部」，同時避開頂部工具列／篩選抽屜。這裡直接讀 #detail 目前（選取後）
-  // 真正的 bounding box 來決定安全區，不是憑印象猜死板的百分比——code review 抓到的真實
-  // bug：先前用固定的「畫布下半部」百分比在手機版會直接把整段拖曳起訖點都放在 #detail
-  // 面板裡，svg 全程收不到任何 pointer 事件，測試「通過」但其實什麼都沒測到。
-  const host = page.locator('#canvas-host');
-  const box = await host.boundingBox();
-  if (!box) throw new Error('#canvas-host 沒有 bounding box');
-  const detailBox = await page.locator('#detail').boundingBox();
-
-  let startX: number, startY: number, endX: number, endY: number;
-  if (isMobile) {
-    // 安全區的上界避開頂部工具列/篩選抽屜，下界是 #detail 面板頂緣（面板不存在時退回畫布
-    // 自己的下緣）；在這段區間裡取兩個點，保證起訖點都在面板之上、真的落在畫布空白處。
-    const topLimit = box.y + box.height * 0.12;
-    const bottomLimit = (detailBox ? detailBox.y : box.y + box.height) - 12;
-    startX = box.x + box.width * 0.3;
-    startY = topLimit + (bottomLimit - topLimit) * 0.3;
-    endX = box.x + box.width * 0.7;
-    endY = topLimit + (bottomLimit - topLimit) * 0.7;
-  } else {
-    // 桌機版以前寫死「畫布左半部」，前提是 #detail 固定在右側——2026-08-18 詳情卡片改成貼在
-    // 被選節點旁邊（positionPanel()）之後那個前提就不成立了，卡片可能正好落在左半部，拖曳
-    // 全程打在卡片上、svg 收不到任何事件，而這條測試只斷言「選取還在」，於是安靜地通過卻
-    // 什麼都沒測到——跟手機版當初被抓到的是同一個假綠。改成跟手機版一樣讀卡片的實際位置：
-    // 取卡片左右兩側較寬的那一邊當安全區。
-    const leftRoom = detailBox ? detailBox.x - box.x : box.width;
-    const rightRoom = detailBox ? box.x + box.width - (detailBox.x + detailBox.width) : 0;
-    const useLeft = leftRoom >= rightRoom;
-    const zoneX = useLeft ? box.x : detailBox!.x + detailBox!.width;
-    const zoneW = (useLeft ? leftRoom : rightRoom) - 12;
-    startX = zoneX + zoneW * 0.3;
-    startY = box.y + box.height * 0.75;
-    endX = zoneX + zoneW * 0.7;
-    endY = box.y + box.height * 0.35;
-  }
+  // 起訖點都要落在畫布的空白處：不能碰到工具列、分支導覽，也不能碰到選取後才出現的
+  // #detail（面板疊在畫布之上，事件根本不會傳到 canvas）。桌機的卡片是水平置中的，
+  // 所以安全區必須當場算——寫死「畫布左半部」是舊版踩過的假綠（拖曳全程打在卡片上，
+  // 而測試只斷言「選取還在」，於是安靜地通過卻什麼都沒測到）。
+  const z = await safeZone(page);
+  const startX = z.left + (z.right - z.left) * 0.3;
+  const endX = z.left + (z.right - z.left) * 0.7;
+  const startY = z.top + (z.bottom - z.top) * 0.75;
+  const endY = z.top + (z.bottom - z.top) * 0.35;
 
   // 前提斷言：拖曳必須真的讓畫布動了。少了這條，只要起訖點落在任何攔截事件的元素上，
   // 下面「選取沒被清掉」就會在「根本沒發生拖曳」的情況下自動成立（假綠）。
-  const transformBefore = await viewportTransform(page);
+  const before = await canvasFingerprint(page);
 
   await page.mouse.move(startX, startY);
   await page.mouse.down();
-  // 拖曳門檻是 5px（DRAG_THRESHOLD_PX），中間切成多步、確保 pointermove 有機會連續觸發，
+  // 拖曳門檻是 5px（DRAG_PX），中間切成多步、確保 pointermove 有機會連續觸發，
   // 累積位移遠超過門檻。
   await page.mouse.move((startX + endX) / 2, (startY + endY) / 2, { steps: 10 });
   await page.mouse.move(endX, endY, { steps: 10 });
   await page.mouse.up();
 
-  await expect
-    .poll(async () => viewportTransform(page))
-    .not.toBe(transformBefore);
+  await expect.poll(() => canvasFingerprint(page)).not.toBe(before);
 
-  // 拖曳放開後，選取（面板 + in-chain 高亮）應該原封不動地留著，不會被這次「其實是拖曳、
+  // 拖曳放開後，選取（面板 ＋ 前置鏈高亮）應該原封不動地留著，不會被這次「其實是拖曳、
   // 不是點選」的 pointerup 誤判成點在空白處而清空選取。
   await expect(page.locator('#detail')).toBeVisible();
   await expect(page.locator('#detail h2')).toHaveText('火骰子');
-  await expect(page.locator('g.node[data-id="1001"].in-chain')).toHaveCount(1);
+  const st = await treeState(page);
+  expect(st.selected).toBe('1001');
+  expect(st.chain).toContain('1001');
 });
 
 test('E. 搜尋框 focus 時，方向鍵不會誤觸畫布平移', async ({ page }) => {
   await page.goto('/tree');
-  const before = await viewportTransform(page);
+  await waitTree(page);
+  const before = await canvasFingerprint(page);
 
   await page.click('#search');
   await page.keyboard.press('ArrowLeft');
@@ -426,154 +464,110 @@ test('E. 搜尋框 focus 時，方向鍵不會誤觸畫布平移', async ({ page
   await page.keyboard.press('ArrowUp');
   await page.keyboard.press('ArrowDown');
 
-  const afterSearchFocused = await viewportTransform(page);
+  const afterSearchFocused = await canvasFingerprint(page);
   expect(afterSearchFocused).toBe(before);
 
   // 正對照組（code review 建議補上）：只斷言「搜尋框 focus 時方向鍵不平移」沒辦法分辨
   // 「isTypingTarget() 正確放行」跟「方向鍵平移功能整個壞掉、不管焦點在哪都不會動」——
-  // 兩種情況這個測試都會通過。這裡額外確認焦點回到畫布本身（不是任何表單元件）時，
-  // 方向鍵確實還是會平移，證明上面的「不變」是 isTypingTarget() 真的生效、不是平移功能
-  // 本身已經失效的假陽性。
-  await page.locator('g.node').first().focus();
+  // 兩種情況這個測試都會通過。這裡額外確認焦點回到節點按鈕（不是任何表單元件）時，
+  // 方向鍵確實還是會平移，證明上面的「不變」是 isTypingTarget() 真的生效。
+  await page.locator('.tree-a11y-node').first().focus();
   await page.keyboard.press('ArrowLeft');
-  const afterCanvasFocused = await viewportTransform(page);
-  expect(afterCanvasFocused).not.toBe(afterSearchFocused);
+  await expect.poll(() => canvasFingerprint(page)).not.toBe(afterSearchFocused);
 });
 
-test('F. 留存桌機／手機畫面截圖供人工檢視', async ({ page, isMobile }, testInfo) => {
-  // 故意用固定的相對路徑（不是 testInfo.outputPath()）：這樣人才找得到檔案在哪
-  // （task-18 brief 明確要求「在報告裡告訴我檔案路徑」，一個固定、好猜的路徑比 Playwright
-  // 自動產生的每個測試各一個雜湊資料夾好用）。代價（code review 提醒）：`test-results/`
-  // 是 Playwright 預設的 outputDir，每次執行都會整個清空重建，不分 project——如果分開
-  // 用 `--project=desktop` 跟 `--project=mobile` 各跑一次，後跑的那次會把先跑那次留下的
-  // 4 張截圖裡屬於另一個 project 的 2 張一起清掉。正常工作流程（`npm run e2e`，或本檔開頭
-  // 的 Run 指令）兩個 project 是同一次呼叫裡一起跑完，不會踩到這個問題；只有刻意分開跑
-  // `--project` 才會，此時 F 只會留下最後一次跑的那個 project 的截圖。
-  const dir = 'test-results/screenshots';
-  await page.goto('/tree');
-  await page.waitForTimeout(200); // 讓字型/版面穩定，避免截到還沒排版完的一幀
-  await page.screenshot({ path: `${dir}/${testInfo.project.name}-tree-blank.png` });
+/**
+ * 等畫面真的定下來再拍：字型載完、置中平移跑完、卡片不再動。
+ *
+ * ⚠️ 字型一定要等——`document.fonts.status` 還是 `loading` 時標籤是用退路字型排的，
+ * 那一版跟載完之後的版面差好幾個像素，快照會在「字型剛好載完了沒」上擲骰子。
+ *
+ * ⚠️ `#detail` 的矩形也要等它停——它是快照的 mask 之一，而 mask 是**把那塊塗掉**：
+ * 卡片位置差 1px，被塗掉的邊界就跟著移 1px，露出來的畫布多一條或少一條。實測
+ * （2026-09-06，maxDiffPixelRatio 設 0 逐次量）`tree-selected-5201` 因此在
+ * 66～171 個像素之間跳動，而 `tree-default`（沒有卡片）逐位元組穩定。
+ * 卡片是選取後由 `centerOnSelected()` 的緩動平移帶過去的，`schedulePositionPanel()`
+ * 又排在 rAF 上，所以固定睡幾百毫秒不保險——改成盯住它的矩形連續 5 格都沒變。
+ *
+ * 最後的 400ms 是留給高解析圖示：`toHaveScreenshot` 本身會等到連續兩張一模一樣才比對，
+ * 所以這裡不必也不該寫成「等到某個確切張數」，只要別在第一張就開拍即可。
+ */
+async function settleCanvas(page: Page): Promise<void> {
+  await page.waitForFunction(() => Boolean(window.__tree) && document.fonts.status === 'loaded');
+  await page.evaluate(() => new Promise<void>((resolve, reject) => {
+    const panel = document.getElementById('detail') as HTMLElement;
+    let prev = '';
+    let same = 0;
+    // 3 秒上限用 setTimeout 而不是在 rAF 裡數：分頁被切到背景時 rAF 不派發，
+    // 寫在迴圈裡的上限永遠不會被檢查，測試會卡到 Playwright 的逾時。
+    // ⚠️ 逾時要 **reject**，不可以靜靜 resolve（2026-09-06 最終審查 m13）：卡片永遠不穩時
+    // 靜默放棄等於帶著一張抖動中的畫面去比快照，症狀是「偶發的快照紅」而看不出成因——
+    // 那是最貴的一種紅。丟出去 Playwright 會直接指名是這裡等不到穩定。
+    let stopped = false;
+    const cap = setTimeout(() => {
+      stopped = true;
+      reject(new Error(`settleCanvas：3 秒內 #detail 的矩形仍未連續 5 格不變（最後一格 ${prev || 'n/a'}），畫面還在動，不比快照`));
+    }, 3000);
+    const tick = (): void => {
+      if (stopped) return;
+      const r = panel.hidden ? null : panel.getBoundingClientRect();
+      const key = r ? `${r.top.toFixed(1)},${r.left.toFixed(1)},${r.height.toFixed(1)}` : 'hidden';
+      same = key === prev ? same + 1 : 0;
+      prev = key;
+      if (same >= 5) { clearTimeout(cap); return resolve(); }
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  }));
+  await page.waitForTimeout(400);
+}
 
-  // 選節點前先點分支導覽，確保 1002 真的在畫面內（bug 4 修正後桌機預設視角不保證涵蓋任意
-  // 特定節點，見檔頭的修正記錄）——截圖是要給 yuki 肉眼確認畫面，選不到節點的截圖沒有意義。
-  const sel = isMobile ? '#branch-chips' : '#branch-nav';
-  await page.click(`${sel} button[data-branch="nature"]`);
-  await page.locator('g.node[data-id="1002"]').click();
-  await page.waitForTimeout(200);
-  await page.screenshot({ path: `${dir}/${testInfo.project.name}-tree-selected.png` });
-});
+test('F. 畫布快照：預設／選取／篩選／縮放四種狀態都畫得對', async ({ page }, testInfo) => {
+  // ⚠️ 只在 desktop project 跑。手機版 project 是 Pixel 7（dpr 2.625），同一張快照在兩個
+  // project 之間本來就不可能一致，而 Playwright 會各存一份——等於同一件事維護兩份會漂的
+  // 基準圖，第二份沒有人在看。畫面對不對這件事一個視窗尺寸驗得完。
+  test.skip(testInfo.project.name !== 'desktop', '快照只在 desktop project 維護一份基準圖');
+  // ⚠️ 只在 Playwright 官方容器裡比（CI 的 e2e-shard 就是那個容器；本機用 `npm run e2e:snapshots`）。
+  // 點陣圖比對吃字型：同一份 dist 在這台開發機（33 套 CJK 字型）與 ubuntu-latest 裸 runner 上，
+  // 241 顆節點的標籤全部不一樣（2026-09-06 PR #65 第一次 CI：10,973 px 紅）。基準圖只有在跟
+  // 產生它的環境一模一樣時才有意義，所以裸機上一律跳過，而不是放寬容差。
+  test.skip(!process.env.CI && !process.env.E2E_SNAPSHOTS, '快照只在 Playwright 官方容器內比對（npm run e2e:snapshots）');
 
-test('G. bbox 修正驗證：四種節點類型的 bounding box 貼合顯示尺寸，不再是整張未裁切 sprite', async ({ page }) => {
-  await page.goto('/tree');
-  // 節點顯示尺寸（tools/build-data.ts 依類型分區保證同類型節點尺寸固定相同）：
-  // 骰子 48x52、骰子符文 24x26、玩家被動 20x20、支援 30x34（使用者座標單位）。bbox 的
-  // 寬高不受節點是否目前在可視範圍內影響（getBoundingClientRect() 對被 overflow:hidden
-  // 裁掉、目前捲動到畫面外的元素一樣算得出正確的幾何尺寸，只有位置座標會落在可視範圍外），
-  // 所以這裡不需要先跳到特定分支，直接用預設視角查就有意義。
-  // 修正前（不管巢狀 svg + viewBox 還是 clip-path）任何節點、任何類型量到的都是同一個誇張
-  // 的量級——整張未裁切 sprite 的幾何框（實測樣本節點桌機 148x88 CSS px、手機
-  // 512x305 CSS px，clip-path 版本在桌機新的較大初始縮放下甚至量到 384x229 CSS px）。
-  // 修正後應該分別貼合各自的顯示尺寸，遠小於舊 bug 的量級。
-  const types: Array<{ type: string; label: string }> = [
-    { type: 'dice', label: '骰子' },
-    { type: 'rune', label: '骰子符文' },
-    { type: 'passive', label: '玩家被動' },
-    { type: 'support', label: '支援' },
-  ];
-  for (const { type, label } of types) {
-    const node = page.locator(`g.node[data-type="${type}"]`).first();
-    const box = await node.locator('> rect.icon').boundingBox();
-    if (!box) throw new Error(`type=${type}（${label}）沒有 bounding box`);
-    // 100px 這個上限遠低於舊 bug 量到的百多到數百 px 級數字，又留有餘裕不用卡死在某個精確
-    // 像素數字上（精確數字會隨瀏覽器視窗尺寸/字型渲染微調，鎖死反而脆弱）；下限 1px 只是
-    // 排除「量到一坨 0」這種退化情況。
-    expect(box.width, `${label}(${type}) 寬度`).toBeGreaterThan(1);
-    expect(box.width, `${label}(${type}) 寬度`).toBeLessThan(100);
-    expect(box.height, `${label}(${type}) 高度`).toBeGreaterThan(1);
-    expect(box.height, `${label}(${type}) 高度`).toBeLessThan(100);
-  }
-});
-
-test('H. 鍵盤 focus 的金邊貼合圖示輪廓：圓形節點得到圓環，四個角不會冒出金色', async ({ page, isMobile }) => {
-  await goToNatureBranch(page, isMobile);
-  // 挑一個圓形節點（玩家被動）：矩形 outline 與貼合輪廓的金邊，差別最明顯的地方就在四個角。
-  const node = page.locator('g.node[data-type="passive"]').first();
-  const icon = node.locator('> rect.icon');
-  await node.scrollIntoViewIfNeeded();
-  const point = await centerOf(node);
-  await zoomInAt(page, point, 12); // 放大讓金邊佔的像素夠多，取樣才有意義
-  await node.focus();
-
-  const box = await icon.boundingBox();
-  if (!box) throw new Error('取不到圖示的 bounding box');
-  expect(box.width).toBeGreaterThan(30);
-
-  // 金邊由 #focus-ring 濾鏡畫（見 src/lib/render.ts）。先確認它真的套上去了，避免下面的
-  // 像素判定在「根本沒有 focus 樣式」的情況下也剛好通過。
-  const filter = await icon.evaluate(el => getComputedStyle(el).filter);
-  expect(filter).toContain('focus-ring');
-
-  const PAD = 6;
-  const buf = await page.screenshot({
-    clip: { x: box.x - PAD, y: box.y - PAD, width: box.width + PAD * 2, height: box.height + PAD * 2 },
-  });
-  const { data, info } = await sharp(buf).raw().toBuffer({ resolveWithObject: true });
-  const at = (x: number, y: number) => {
-    const i = (y * info.width + x) * info.channels;
-    return [data[i]!, data[i + 1]!, data[i + 2]!] as const;
-  };
-  // 金色是 #ffd66f：紅高、綠高、藍明顯低。用色彩關係判定而不是比對確切數值——反鋸齒與
-  // 底下透出來的顏色會讓實際像素略有出入。
-  const isGold = ([r, g, b]: readonly [number, number, number]) => r > 200 && g > 150 && b < 150;
-
-  // 1) 金邊真的畫出來了：沿著圖示上緣中線往外掃，一定會碰到金色。
+  // 這四張是 canvas 版**唯一**能表達「畫出來的東西對不對」的方式：節點的位置、圖示、
+  // 標籤、邊、前置鏈金光、篩選淡出全部畫在同一張點陣圖上，沒有任何 DOM 可以問。
   //
-  // ⚠️ 掃描範圍要用**影像像素**算，不能寫 `PAD + 6`：PAD 是 CSS px，而截圖是裝置像素
-  // （Pixel 7 的 dpr 是 2.625），兩者差 2.6 倍。舊寫法的 12 連圖示上緣（PAD×dpr ≈ 16）
-  // 都掃不到，純粹靠金邊往外暈出來的部分擦邊通過——2026-08-22 圖示加了 1px 透明邊之後
-  // 金邊跟著往內 1px，就掉出視窗變成假紅。
-  const scale = info.width / (box.width + PAD * 2);
-  const midX = Math.round(info.width / 2);
-  let ringFound = false;
-  for (let y = 0; y < Math.round(PAD * scale) + 12; y++) if (isGold(at(midX, y))) ringFound = true;
-  expect(ringFound).toBe(true);
+  // 拍的是 `#canvas-host`（真的 DOM 容器）而不是整頁。⚠️ 工具列、分支側欄與詳情卡片是
+  // `fixed`／`absolute` 疊在畫布上的，元素截圖會**連同它們一起拍進來**，所以要 mask 掉：
+  // 那三塊各自有專屬測試（O／O2／P／N 系列），而 `#detail` 上印著節點描述與成本——
+  // 社群改一句文案就會讓四張基準圖全紅，而畫布上一個像素都沒變。mask 會把那幾塊塗成
+  // 純色，代價是那幾塊底下的畫布也看不到；那是划算的交換（左上角本來就被 chrome 蓋著）。
+  const host = page.locator('#canvas-host');
+  const chrome = { mask: [page.locator('#toolbar'), page.locator('#branch-nav'), page.locator('#detail')] };
 
-  // 2) 四個角不能是金色：矩形 outline 會把角落塗滿，貼合圓形輪廓的金邊不會碰到那裡。
-  const corners: Array<readonly [number, number]> = [
-    [1, 1],
-    [info.width - 2, 1],
-    [1, info.height - 2],
-    [info.width - 2, info.height - 2],
-  ];
-  for (const [x, y] of corners) expect(isGold(at(x, y))).toBe(false);
-});
+  // (1) 預設視角：整棵樹全貌，沒有選取、沒有篩選。
+  await page.goto('/tree');
+  await settleCanvas(page);
+  await expect(host).toHaveScreenshot('tree-default.png', chrome);
 
-test('I. 初次載入未經任何互動，只要真的需要 2× 素材，可見節點就已經是高解析圖示', async ({ page }) => {
-  await page.goto('/tree'); // 網址沒帶 ?node=，桌機整棵樹置中、手機預設對準 nature 分支
-  const devicePx = await devicePxPerUnit(page);
-  // 門檻從「vp.scale > 1」改成「每單位裝置像素 > 1.2」（見 src/lib/viewport.ts 的
-  // effectiveDevicePx）。1280×720 dpr1 的桌機算出來只有約 0.52——**不升級才是對的**，
-  // sprite 的來源解析度綽綽有餘，舊版在這裡白抓 213 張圖約 500KB。
-  test.skip(devicePx <= 1.2, `每單位 ${devicePx.toFixed(2)} 裝置像素 ≤ 1.2，這個裝置不需要 2× 素材（sprite 已足夠）`);
+  // (2) 選取 5201：前置鏈上的節點與邊染成金色，鏈外的壓暗。
+  await page.goto('/tree?node=5201');
+  await settleCanvas(page);
+  await expect(host).toHaveScreenshot('tree-selected-5201.png', chrome);
 
-  // 完全不做任何滑鼠/觸控互動（不 wheel、不拖曳）。如果 bug 2 還在，這裡會停在 sprite
-  // pattern，要等使用者互動一次才會升級。waitForFunction 給 rAF 一次跑的機會（跟測試 C
-  // 用同一套節流機制，非同步觸發，見 tree-canvas.ts 的 maybeUpgradeIcons）。
-  //
-  // 用節點 1001（火骰子，nature 分支），不用 `page.locator('g.node').first()`——雖然
-  // 「一定有某個節點在可視範圍內」恆成立（不然整個頁面就是空的，別的測試早就抓到），但
-  // DOM 順序（.first() 選到的節點）跟「哪個節點目前真的在可視範圍內」是兩件不相干的事，
-  // 只是碰巧目前 DOM 第一個節點剛好也在畫面內（code review 抓到的潛在脆弱點：日後如果
-  // 節點資料順序或分支佈局變了，.first() 選到的節點可能剛好落在可視範圍外，
-  // waitForFunction 會一路等到 timeout 才失敗，且失敗原因跟真正要驗的東西無關）。
-  // 1001 已經在桌機整棵樹置中、手機 nature 分支這兩種預設視角下都手動驗證過確實可見
-  // （跟上面 A/B/D/H 幾個測試選用同一個節點是同樣的理由）。
-  await page.waitForFunction(() => {
-    const fill = document.querySelector('g.node[data-id="1001"] > rect.icon')?.getAttribute('fill');
-    return fill?.includes('icon-hires-') ?? false;
-  });
-  const fill = await page.locator('g.node[data-id="1001"] > rect.icon').getAttribute('fill');
-  expect(fill).toMatch(/^url\(#icon-hires-[0-9a-f]+\)$/);
+  // (3) 分支篩選：只留自然系，其餘 200 多顆淡出（不是隱藏——淡出在傳達「它還在那裡」）。
+  await page.goto('/tree?branch=nature');
+  await settleCanvas(page);
+  expect((await treeState(page)).filteredOut.length, '前提：篩選真的生效了').toBeGreaterThan(100);
+  await expect(host).toHaveScreenshot('tree-filtered-nature.png', chrome);
+
+  // (4) 放大：拉到會觸發高解析圖示與 drop-shadow 的倍率，守 LOD 那一段的畫面。
+  await page.goto('/tree');
+  await settleCanvas(page);
+  await bringIntoView(page, '1001');
+  await zoomInAt(page, await nodeCenter(page, '1001'), 5);
+  expect(await treeScale(page), '前提：真的放大了').toBeGreaterThan(2);
+  await settleCanvas(page);
+  await expect(host).toHaveScreenshot('tree-zoomed-1001.png', chrome);
 });
 
 test('J. 手機版篩選抽屜：展開後不蓋住工具列，而且關得掉', async ({ page, isMobile }) => {
@@ -632,7 +626,7 @@ test('U. 畫布頁不該捲動：畫布剛好填滿 nav 與 footer 之間', asyn
   for (const [w, h] of [[390, 844], [768, 1024], [1280, 720]] as const) {
     await page.setViewportSize({ width: w, height: h });
     await page.goto('/tree');
-    await page.waitForSelector('#tree g.node');
+    await waitTree(page);
 
     const m = await page.evaluate(() => {
       const nav = document.querySelector('#site-nav')!.getBoundingClientRect();
@@ -663,7 +657,7 @@ test('V. 窄桌機視窗下詳情卡片不壓在分支側欄上，也不被推�
   for (const [w, h] of [[760, 800], [1280, 720]] as const) {
     await page.setViewportSize({ width: w, height: h });
     await page.goto('/tree?node=1001');
-    await page.waitForSelector('#tree g.node');
+    await waitTree(page);
     await expect(page.locator('#detail')).toBeVisible();
 
     const m = await page.evaluate(() => {
@@ -686,7 +680,7 @@ test('W. 手機版 footer 的著作權聲明不被底部分支 chip 蓋住', asy
   // 「遊戲圖示與文字著作權屬 111 Percent Inc.」——手機上會完全讀不到，而且沒有捲動可以
   // 把它露出來。修法是讓 footer 留一段等於 chip 列實際高度（--chips-h，量出來的）的下內距。
   await page.goto('/tree');
-  await page.waitForSelector('#tree g.node');
+  await waitTree(page);
 
   const m = await page.evaluate(() => {
     const footer = document.querySelector('footer')!;
@@ -708,60 +702,6 @@ test('W. 手機版 footer 的著作權聲明不被底部分支 chip 蓋住', asy
   expect(m.textBottom, 'footer 文字底緣不可落到 chip 列裡').toBeLessThanOrEqual(m.chipsTop);
   // 讓位不可以把捲軸叫回來（main 是 flex: 1，footer 變高應該是畫布縮，不是頁面變長）。
   expect(m.overflow, '讓位之後仍不該捲得動').toBeLessThanOrEqual(0);
-});
-
-test('X. 縮小之後，排隊中的升級批次不會把圖示又升回去', async ({ page, isMobile }) => {
-  // 驗的是「縮小之後，最終狀態真的乾淨」：沒有節點停在高解析，`<defs>` 裡也沒有沒人用的
-  // pattern（後者才是真的把那幾 MB 的解碼結果還回去，只換 fill 是不夠的）。
-  //
-  // ⚠️ 誠實標註：`upgradeInBatches()` 的世代號檢查（排隊中的批次發現門檻已經被推翻就停手）
-  // **這條測試抓不到**。實測可見節點約 68 個、每批 24 個，三批在 zoomOutToSprite() 走完
-  // 之前就跑完了，等到縮小時已經沒有排隊中的批次可以觀察。要穩定重現得能控制批次時序
-  // （例如把批次大小做成可注入的），代價比它擋到的風險高。這條測試守的是最終狀態，
-  // 不是那個競態本身。
-  await goToNatureBranch(page, isMobile);
-
-  // 先放大到確定跨過升級門檻，讓它排出一串批次。
-  const point = await centerOf(page.locator('g.node[data-id="1001"]'));
-  await expect.poll(async () => {
-    await zoomInAt(page, point, 4);
-    return devicePxPerUnit(page);
-  }, { timeout: 15000 }).toBeGreaterThan(1.2);
-  await page.waitForFunction(() => document.querySelectorAll('rect.icon[data-hires="1"]').length > 0);
-
-  // 立刻縮回門檻以下。
-  await zoomOutToSprite(page);
-  expect(await devicePxPerUnit(page)).toBeLessThan(0.9);
-
-  // 給排隊中的批次充分的時間跑完（閒置回呼的 timeout 是 1000ms）。
-  await page.waitForTimeout(2000);
-  const after = await page.evaluate(() => ({
-    hires: document.querySelectorAll('rect.icon[data-hires="1"]').length,
-    patterns: document.querySelectorAll('defs > pattern[id^=icon-hires-]').length,
-  }));
-  expect(after.hires, '縮小後不該還有節點停在高解析').toBe(0);
-  expect(after.patterns, '沒人用的高解析 pattern 應該一併移除（記憶體才真的還得回去）').toBe(0);
-});
-
-test('Y. 只改變視窗大小（完全不互動）也會重新評估高解析門檻', async ({ page, isMobile }) => {
-  test.skip(!isMobile, '僅手機版：需要一個「一載入就已經升級」的起點');
-  // 門檻的兩個輸入（畫布尺寸、devicePixelRatio）都會隨視窗變動，而 resize 事件原本只接到
-  // updateNavHeight 與 schedulePositionPanel。不重算的話，使用者轉個螢幕方向、把瀏覽器
-  // 縮小、或把視窗拖到另一個 DPI 的螢幕之後，會一直停在已經不需要的高解析圖（或反過來，
-  // 停在糊掉的 sprite），直到剛好在畫布上滾一次滾輪為止。
-  await page.goto('/tree');
-  await page.waitForFunction(() => document.querySelectorAll('rect.icon[data-hires="1"]').length > 0);
-  expect(await devicePxPerUnit(page), 'Pixel 7 載入時應該在升級門檻之上').toBeGreaterThan(1.2);
-
-  // 把視窗變矮（畫布高度是 flex 分到的，視窗一矮畫布跟著矮）→ 每單位裝置像素掉到降級門檻
-  // 以下。412×300 是一個「小視窗／鍵盤彈出」的合理尺寸，不是為了測試硬湊的極端值。
-  await page.setViewportSize({ width: 412, height: 300 });
-  await expect.poll(() => devicePxPerUnit(page), { timeout: 5000 }).toBeLessThan(0.9);
-
-  // 完全沒有滾輪、沒有拖曳——只有 resize。
-  await expect
-    .poll(() => page.evaluate(() => document.querySelectorAll('rect.icon[data-hires="1"]').length), { timeout: 5000 })
-    .toBe(0);
 });
 
 test('K. 手機版詳情面板的重置警告不被底部分支 chip 蓋住（spec §2.1 強制要求的災情警告）', async ({ page, isMobile }) => {
@@ -789,87 +729,33 @@ test('K. 手機版詳情面板的重置警告不被底部分支 chip 蓋住（sp
   expect(warnBox.y + warnBox.height).toBeLessThanOrEqual(chipsBox.y + 1); // 留 1px 容錯
 });
 
-test('L. 中央樞紐真的畫得出來：五條腿都在、圖不是 404，篩選時跟著淡出', async ({ page }) => {
-  // 樞紐的圖是唯一一張不走 sprite 的資產，網址由正本的 href 換副檔名推導。整條鏈路（正本
-  // href → tree.json 的 url → 建置期轉出的檔名）任何一段對不上，站台就是一張破圖——
-  // 而單元測試只驗字串、不會真的去要那個檔，首屏體積測試也只加總 content-length，
-  // 404 的回應照樣有 content-length。要抓到這種靜靜壞掉的情形，只能真的發一次請求。
-  await page.goto('/tree');
-  const hub = page.locator('#tree g.tree-center');
-  await expect(hub).toHaveCount(1);
-  await expect(hub.locator('line.tree-center-link')).toHaveCount(5);
-
-  const href = await hub.locator('image').getAttribute('href');
-  if (!href) throw new Error('樞紐的 <image> 沒有 href');
-  const res = await page.request.get(new URL(href, page.url()).toString());
-  expect(res.status()).toBe(200);
-  expect(Number((await res.body()).length)).toBeGreaterThan(0);
-
-  // 有篩選但沒選任何節點時，其餘節點／邊會掉到 opacity 0.1；樞紐拿不到逐節點掛的
-  // .filtered-out，必須由 applyFilter() 另外掛上去，否則它會變成全畫面唯一還亮著的東西。
-  await page.goto('/tree?branch=chaos');
-  await expect(page.locator('#tree g.tree-center')).toHaveClass(/filtered-out/);
-  await expect(page.locator('#tree')).not.toHaveClass(/has-selection/);
-});
-
-test('M. 標籤只在需要時出現：符文／被動預設不標字，選進前置鏈或滑過時才單獨顯示', async ({ page, isMobile }) => {
-  await page.goto('/tree');
-  // 骰子是導覽錨點，標籤恆常可見
-  await expect(page.locator('g.node[data-id="1001"] .label')).toBeVisible();
-
-  // 符文預設不標字——這正是擁擠的來源（123 個符文的標籤平均比節點間距還寬 1.5 倍）
-  const rune = page.locator('g.node[data-id="1201"] .label');
-  await expect(rune).toBeHidden();
-  if (!isMobile) {
-    await page.locator('g.node[data-id="1201"]').hover();
-    await expect(rune).toBeVisible();
-  }
-
-  // 選取節點時，前置鏈上的符文／被動要把標籤帶出來（「點開後顯示個別」）。這裡不寫死是哪個
-  // 節點——前置鏈的組成會隨資料改變，寫死只會在下次改資料時假紅。
-  await page.goto('/tree?node=1002');
-  const chainMinor = page.locator(
-    'g.node.in-chain:not([data-type="dice"]):not([data-type="support"])',
-  );
-  const n = await chainMinor.count();
-  expect(n).toBeGreaterThan(0); // 1002 的前置鏈本來就含符文／被動，是 0 代表選取根本沒生效
-  await expect(chainMinor.first().locator('.label')).toBeVisible();
-
-  // 不在鏈上的符文仍然不標字（否則上面那條會被「其實全部都顯示」蒙混過去）
-  const offChain = page.locator(
-    'g.node:not(.in-chain):not([data-type="dice"]):not([data-type="support"])',
-  );
-  await expect(offChain.first().locator('.label')).toBeHidden();
-});
-
 test('N. 選節點時鏡頭置中、卡片貼在節點上方或下方，不擋工具列，畫布平移時跟著走', async ({ page, isMobile }) => {
   test.skip(isMobile, '僅桌機：手機版 #detail 是從底部升起的抽屜，沒有「節點旁邊」這種空間');
   // 2026-08-23 改版：卡片從「貼在節點左右兩側」改成「節點平移置中 ＋ 卡片貼在節點上方或
   // 下方」。左右兩側正是前置鏈延伸出去的方向，卡片開在那裡會把剛剛高亮起來的鏈整條蓋掉
   // （見 N2）。這條守的是新版面的三個形狀：置中、垂直緊鄰、水平中心對齊。
   await page.goto('/tree?node=1002');
+  await waitTree(page);
   const panel = page.locator('#detail');
-  const icon = page.locator('g.node[data-id="1002"] .icon');
   await expect(panel).toBeVisible();
 
   // ⚠️ 一定要 poll：置中是一段約 200ms 的緩動平移，goto 回來的當下它多半還在跑，
-  // 直接量 boundingBox 會量到半路的位置（實測會落在目標左邊一兩百 px）。
-  await expect.poll(async () => {
-    const n = (await icon.boundingBox())!;
-    return Math.round(Math.abs((n.x + n.width / 2) - page.viewportSize()!.width / 2));
-  }, { message: '節點應該被平移到畫面水平中央' }).toBeLessThanOrEqual(2);
+  // 直接量會量到半路的位置（實測會落在目標左邊一兩百 px）。
+  // ⚠️ 節點的位置一律問 `__tree.nodeScreenRect()`——canvas 裡沒有元素可以量 bounding box。
+  await expect.poll(() => centerOffset(page, '1002'),
+    { message: '節點應該被平移到畫面水平中央' }).toBeLessThanOrEqual(2);
 
   const p1 = (await panel.boundingBox())!;
-  const n1 = (await icon.boundingBox())!;
+  const n1 = await nodeRect(page, '1002');
   const toolbar = (await page.locator('#toolbar').boundingBox())!;
 
   // 垂直緊鄰：卡片下緣貼節點上緣，或卡片上緣貼節點下緣（哪一邊由前置鏈決定，見 N2）。
-  const gapAbove = n1.y - (p1.y + p1.height);
-  const gapBelow = p1.y - (n1.y + n1.height);
+  const gapAbove = n1.top - (p1.y + p1.height);
+  const gapBelow = p1.y - (n1.top + n1.height);
   expect(Math.max(gapAbove, gapBelow)).toBeGreaterThanOrEqual(0);
   expect(Math.max(gapAbove, gapBelow)).toBeLessThan(20);
   // 水平中心對齊節點中心
-  expect(Math.abs((p1.x + p1.width / 2) - (n1.x + n1.width / 2))).toBeLessThan(2);
+  expect(Math.abs((p1.x + p1.width / 2) - (n1.left + n1.width / 2))).toBeLessThan(2);
   // 不擋工具列
   expect(p1.y).toBeGreaterThanOrEqual(toolbar.y + toolbar.height - 1);
 
@@ -883,26 +769,24 @@ test('N. 選節點時鏡頭置中、卡片貼在節點上方或下方，不擋�
   await page.mouse.move(80, 600, { steps: 8 });
   await page.mouse.up();
   const p2 = (await panel.boundingBox())!;
-  const n2 = (await icon.boundingBox())!;
-  expect(n2.x).toBeLessThan(n1.x - 40); // 前提：畫布真的移動了
+  const n2 = await nodeRect(page, '1002');
+  expect(n2.left).toBeLessThan(n1.left - 40); // 前提：畫布真的移動了
   expect(p2.x).toBeLessThan(p1.x - 40);
-  expect(Math.abs((p2.x - n2.x) - (p1.x - n1.x))).toBeLessThan(4); // 與節點的相對位置維持不變
+  expect(Math.abs((p2.x - n2.left) - (p1.x - n1.left))).toBeLessThan(4); // 與節點的相對位置維持不變
 
   // 從畫布上直接點一顆節點也要置中。
   // ⚠️ 這一段不是重複：`?node=` 進站與畫布點擊是**兩條不同的程式路徑**（前者由模組初始化
   // 尾端補一次 centerOnSelected()，後者走 openNode()）。上面那組只驗得到前者——實測把
   // openNode() 裡的 centerOnSelected() 整行刪掉，這條測試在補上這一段之前仍然全綠。
   await page.goto('/tree');
-  await page.waitForSelector('#tree g.node');
+  await waitTree(page);
   // ⚠️ 挑 4112（x=100，整棵樹最左邊那一顆）不挑 1001：1001 在 viewBox 正中央（x=1000），
   // 桌機預設視角本來就把它擺在畫面中線上，拿它當受測對象的話「有沒有置中」根本量不出差別
   // ——實測把 centerOnSelected() 刪掉，用 1001 的版本仍然全綠。
-  await page.locator('g.node[data-id="4112"]').click();
+  await clickNode(page, '4112');
   await expect(page.locator('#detail')).toBeVisible();
-  await expect.poll(async () => {
-    const n = (await page.locator('g.node[data-id="4112"] .icon').boundingBox())!;
-    return Math.round(Math.abs((n.x + n.width / 2) - page.viewportSize()!.width / 2));
-  }, { message: '在畫布上點節點，鏡頭也要把它帶到畫面水平中央' }).toBeLessThanOrEqual(2);
+  await expect.poll(() => centerOffset(page, '4112'),
+    { message: '在畫布上點節點，鏡頭也要把它帶到畫面水平中央' }).toBeLessThanOrEqual(2);
 });
 
 /**
@@ -925,24 +809,31 @@ test('N2. 詳情卡片不蓋住前置鏈（這一輪改動的驗收）', async (
   test.skip(isMobile, '僅桌機：手機版卡片是底部抽屜，本來就不疊在節點上');
   for (const [id, wasCovered] of [['2304', 14], ['2113', 13], ['5113', 12], ['4112', 7]] as const) {
     await page.goto(`/tree?node=${id}`);
+    await waitTree(page);
     await expect(page.locator('#detail')).toBeVisible();
     // poll 的理由同 N：置中平移還在跑的時候量到的是半路的位置。
+    // 鏈上有哪些節點問 `state().chain`、它們在哪問 `nodeScreenRect()`；卡片仍然是真的
+    // DOM，照舊量 getBoundingClientRect()。整段在頁面內做，才不會被 Playwright 往返的
+    // 10–20ms 拆成兩個不同時間點的畫面。
     await expect.poll(async () => page.evaluate((nid) => {
-      const r = (el: Element) => el.getBoundingClientRect();
-      const p = r(document.getElementById('detail')!);
-      const chain = [...document.querySelectorAll('svg g.node.in-chain .icon')].map(r);
-      const overlap = (c: DOMRect) =>
-        Math.max(0, Math.min(p.right, c.right) - Math.max(p.left, c.left))
-        * Math.max(0, Math.min(p.bottom, c.bottom) - Math.max(p.top, c.top));
-      const icon = document.querySelector(`g.node[data-id="${nid}"] .icon`)!;
-      const centered = Math.abs((r(icon).left + r(icon).width / 2) - window.innerWidth / 2) < 2;
+      const t = window.__tree;
+      const p = document.getElementById('detail')!.getBoundingClientRect();
+      const self = t.nodeScreenRect(nid);
+      if (!self) return -1;
+      const centered = Math.abs((self.left + self.width / 2) - window.innerWidth / 2) < 2;
       // 還沒平移到定位就回一個不可能通過的值，讓 poll 繼續等而不是量到半路的畫面。
-      return centered ? chain.filter(c => overlap(c) > 0).length : -1;
+      if (!centered) return -1;
+      const covered = t.state().chain
+        .map(cid => t.nodeScreenRect(cid))
+        .filter((c): c is NonNullable<typeof c> => c !== null)
+        .filter(c => Math.max(0, Math.min(p.right, c.left + c.width) - Math.max(p.left, c.left))
+          * Math.max(0, Math.min(p.bottom, c.top + c.height) - Math.max(p.top, c.top)) > 0);
+      return covered.length;
     }, id), { message: `節點 ${id}（舊版被蓋 ${wasCovered} 個）的前置鏈不該被卡片蓋到` })
       .toBe(0);
-    // 前提斷言：前置鏈真的有東西可以被蓋。少了它，資料改動讓 .in-chain 變成 0 個時上面會
-    // 自動成立——這個 repo 已經因為「防線其實沒在防」踩過好幾次（見 CLAUDE.md 規則 4）。
-    expect(await page.locator('svg g.node.in-chain').count()).toBeGreaterThan(1);
+    // 前提斷言：前置鏈真的有東西可以被蓋。少了它，資料改動讓 chain 變成 1 個（只有自己）時
+    // 上面會自動成立——這個 repo 已經因為「防線其實沒在防」踩過好幾次（見 CLAUDE.md 規則 4）。
+    expect((await treeState(page)).chain.length).toBeGreaterThan(1);
   }
 });
 
@@ -963,7 +854,7 @@ test('N2. 詳情卡片不蓋住前置鏈（這一輪改動的驗收）', async (
 test('N3. 置中平移期間，卡片一次到位不跟著滑（閃爍修正）', async ({ page, isMobile }) => {
   test.skip(isMobile, '僅桌機：手機版不做置中平移，卡片是底部抽屜');
   await page.goto('/tree');
-  await page.waitForSelector('#tree g.node');
+  await waitTree(page);
 
   await page.evaluate(() => {
     const w = window as unknown as { __p: string[]; __n: number[] };
@@ -971,11 +862,10 @@ test('N3. 置中平移期間，卡片一次到位不跟著滑（閃爍修正）'
     w.__n = [];
     const tick = () => {
       const d = document.getElementById('detail')!;
-      const icon = document.querySelector('g.node[data-id="4112"] .icon');
-      if (!d.hidden && icon) {
+      const n = window.__tree.nodeScreenRect('4112');
+      if (!d.hidden && n) {
         const r = d.getBoundingClientRect();
         w.__p.push(`${r.left.toFixed(0)},${r.top.toFixed(0)},${r.height.toFixed(0)}`);
-        const n = icon.getBoundingClientRect();
         w.__n.push(+(n.left + n.width / 2).toFixed(1));
       }
       if (w.__p.length < 60) requestAnimationFrame(tick);
@@ -983,7 +873,7 @@ test('N3. 置中平移期間，卡片一次到位不跟著滑（閃爍修正）'
     requestAnimationFrame(tick);
   });
   // 挑最左邊那一顆，平移量才夠大（實測要走 468px）。挑靠中間的節點量不出差別。
-  await page.locator('g.node[data-id="4112"]').click();
+  await clickNode(page, '4112');
   await page.waitForTimeout(1200);
 
   const { positions, nodeXs } = await page.evaluate(() => {
@@ -997,49 +887,62 @@ test('N3. 置中平移期間，卡片一次到位不跟著滑（閃爍修正）'
 
   expect([...new Set(positions)], '卡片在整段置中平移中只能有一個位置').toHaveLength(1);
 
-  // 第二半：「每幀都寫 transform」的來源不可以把重新定位餓死。
+  // 第二半：**每幀都改變視角**的來源不可以把卡片的重新定位餓死。
   // ⚠️ 這一段是獨立的斷言，不是重複：釘住（上面那條）之後，置中平移期間根本不會叫
   // positionPanel()，所以把 schedulePositionPanel() 改回 cancelAnimationFrame() ＋ 重排，
-  // 上面那條仍然全綠（實測過）。這裡直接裝一個每幀寫入的來源來打那條路徑。
-  // 拖曳測不到：pointermove 沒有真的每幀都來（實測錯位最多 12px，卡片跟得上）。
+  // 上面那條仍然全綠（實測過）。這裡直接裝一個每幀變動的來源來打那條路徑。
+  //
+  // ⚠️ canvas 版沒有 `#viewport` 可以每幀重寫 style，改成**在頁面內每幀送一次
+  // pointermove**（位移 8px，跟舊版每幀寫一次 transform 的量相同）：controller 收到之後
+  // `view.pan()` ＋ requestRedraw，`onViewChange` 於是每幀開火，那正是 schedulePositionPanel()
+  // 現在唯一的觸發來源（tree-canvas.ts 的 `tree.onViewChange`）。
+  // ⚠️ 一定要在頁面內用 rAF 送：`page.mouse.move()` 一趟往返 10–20ms，pointermove 不會
+  // 每幀都來（實測那樣錯位最多 12px，卡片跟得上），打不到這條路徑。
   await page.goto('/tree?node=1002');
+  await waitTree(page);
   await expect(page.locator('#detail')).toBeVisible();
-  await page.waitForTimeout(500);
-  const offsets = await page.evaluate(async () => {
-    const vpEl = document.getElementById('viewport')!;
-    const m = new DOMMatrixReadOnly(getComputedStyle(vpEl).transform);
+  await page.waitForTimeout(600);   // 等開場的置中平移跑完、卡片解除釘住
+  const probe = await page.evaluate(async () => {
+    const overlay = document.querySelector<HTMLElement>('#canvas-host canvas.tree-overlay')!;
+    const box = overlay.getBoundingClientRect();
+    // 起手點挑畫布右下角的空白處，往左拖：節點會朝畫面中線的左邊走一大段，全程留在畫面內
+    // （卡片被夾在視窗邊緣時它本來就跟不動，那不是餓死）。
+    const sx = box.left + box.width * 0.8, sy = box.top + box.height * 0.85;
+    const send = (type: string, x: number): void => {
+      overlay.dispatchEvent(new PointerEvent(type, {
+        pointerId: 1, pointerType: 'mouse', isPrimary: true,
+        clientX: x, clientY: sy, buttons: type === 'pointerup' ? 0 : 1,
+        bubbles: true, cancelable: true,
+      }));
+    };
+    send('pointerdown', sx);
+    const xs: number[] = [];
     const out: number[] = [];
     await new Promise<void>(resolve => {
       let i = 0;
       const tick = () => {
-        // 每一幀都寫一次 style.transform，就跟置中平移的寫入頻率一樣。
-        vpEl.style.transform = `translate(${m.e - i * 8}px,${m.f}px) scale(${m.a})`;
-        const icon = document.querySelector('g.node[data-id="1002"] .icon')!;
-        const n = icon.getBoundingClientRect();
+        send('pointermove', sx - (i + 1) * 8);
+        const n = window.__tree.nodeScreenRect('1002')!;
         const p = document.getElementById('detail')!.getBoundingClientRect();
+        xs.push(+(n.left + n.width / 2).toFixed(1));
         out.push(+((p.left + p.width / 2) - (n.left + n.width / 2)).toFixed(1));
-        if (++i < 40) requestAnimationFrame(tick);
+        if (++i < 30) requestAnimationFrame(tick);
         else resolve();
       };
       requestAnimationFrame(tick);
     });
-    return out;
+    send('pointerup', sx - 30 * 8);
+    return { xs, out };
   });
   // 前提：畫布真的被推走了一大段（不然「卡片跟得上」是廢話）。
-  expect(offsets.length).toBeGreaterThan(20);
-  // 卡片最多落後一幀（一幀 8px）。餓死的話它整段不動，錯位會一路累積到 300px 以上。
-  expect(Math.max(...offsets.map(Math.abs)),
-    '每幀都寫 transform 時，卡片的重新定位不可以被餓死').toBeLessThan(20);
+  expect(probe.out.length).toBeGreaterThan(20);
+  expect(Math.max(...probe.xs) - Math.min(...probe.xs),
+    '前提：每幀 pointermove 應該真的把節點推走一大段').toBeGreaterThan(200);
+  // 卡片最多落後一幀（一幀 8px）。餓死的話它整段不動，錯位會一路累積到 200px 以上。
+  expect(Math.max(...probe.out.map(Math.abs)),
+    '每幀都改變視角時，卡片的重新定位不可以被餓死').toBeLessThan(20);
 });
 
-/**
- * N4. 節點卡片在桌機是**橫式兩欄**，在手機仍是單欄。
- *
- * Yuki 2026-08-23：「卡片在上方還是直立長方形有點奇怪，可以改成橫的」。卡片浮在節點正上方
- * 時，直立的長方形會往上戳很高、把樹切成兩半；橫的貼著節點鋪開，遮住的只是一條扁帶。
- * 版面是純 CSS（`#detail .node-body` 的 grid），沒有任何 JS 會說話——把
- * `grid-template-columns` 改回 `1fr` 全站測試仍然綠，所以要這一條。
- */
 test('N4. 節點卡片：桌機橫式兩欄、手機單欄，重置警告跨兩欄', async ({ page, isMobile }) => {
   await page.goto('/tree?node=1001');
   await expect(page.locator('#detail')).toBeVisible();
@@ -1075,17 +978,17 @@ test('N4. 節點卡片：桌機橫式兩欄、手機單欄，重置警告跨兩�
 
 /** 節點中心離視窗水平中線差幾 px（四捨五入）。置中平移是動畫，量之前一律用 expect.poll。 */
 async function centerOffset(page: Page, id: string): Promise<number> {
-  const n = (await page.locator(`g.node[data-id="${id}"] .icon`).boundingBox())!;
-  return Math.round(Math.abs((n.x + n.width / 2) - page.viewportSize()!.width / 2));
+  const n = await nodeRect(page, id);
+  return Math.round(Math.abs((n.left + n.width / 2) - page.viewportSize()!.width / 2));
 }
 
 /** 卡片與節點的重疊面積（px²）。0 才對——卡片不可以蓋住它正在描述的那顆節點。 */
 function nodeOverlap(page: Page, id: string) {
   return page.evaluate((nid) => {
     const p = document.getElementById('detail')!.getBoundingClientRect();
-    const n = document.querySelector(`g.node[data-id="${nid}"] .icon`)!.getBoundingClientRect();
-    const ox = Math.max(0, Math.min(p.right, n.right) - Math.max(p.left, n.left));
-    const oy = Math.max(0, Math.min(p.bottom, n.bottom) - Math.max(p.top, n.top));
+    const n = window.__tree.nodeScreenRect(nid)!;   // 節點在 canvas 裡，只有查詢介面問得到
+    const ox = Math.max(0, Math.min(p.right, n.left + n.width) - Math.max(p.left, n.left));
+    const oy = Math.max(0, Math.min(p.bottom, n.top + n.height) - Math.max(p.top, n.top));
     return {
       overlap: +(ox * oy).toFixed(1),
       height: +p.height.toFixed(1),
@@ -1107,9 +1010,10 @@ function nodeOverlap(page: Page, id: string) {
 test('N5. 鍵盤 Enter 開節點也會置中，途中按其他鍵不會把平移掐掉', async ({ page, isMobile }) => {
   test.skip(isMobile, '僅桌機：手機版不做置中平移');
   await page.goto('/tree');
-  await page.waitForSelector('#tree g.node');
+  await waitTree(page);
 
-  await page.locator('g.node[data-id="4112"]').focus();
+  // 焦點掛在隱形節點按鈕上（a11y.ts），Enter 走的是 onActivate → openNode 那條路。
+  await page.locator('.tree-a11y-node[data-id="4112"]').focus();
   await page.keyboard.press('Enter');
   await expect(page.locator('#detail')).toBeVisible();
   await expect.poll(() => centerOffset(page, '4112'),
@@ -1117,8 +1021,8 @@ test('N5. 鍵盤 Enter 開節點也會置中，途中按其他鍵不會把平移
 
   // 第二半：點開之後立刻按一個不管平移的鍵（'a' 兩邊的 handler 都不處理），平移要照樣走完。
   await page.goto('/tree');
-  await page.waitForSelector('#tree g.node');
-  await page.locator('g.node[data-id="5113"]').click();
+  await waitTree(page);
+  await clickNode(page, '5113');
   await page.keyboard.press('a');
   await expect.poll(() => centerOffset(page, '5113'),
     { message: '平移途中按無關的鍵不該把它掐掉' }).toBeLessThanOrEqual(2);
@@ -1138,6 +1042,7 @@ test('N6. 打字改篩選之後，卡片不壓到節點、也不跳到另一邊'
   test.skip(isMobile, '僅桌機：手機版卡片是底部抽屜，本來就不疊在節點上');
   for (const id of ['2113', '4112', '2304', '5113']) {
     await page.goto(`/tree?node=${id}`);
+    await waitTree(page);
     await expect(page.locator('#detail')).toBeVisible();
     await expect.poll(() => centerOffset(page, id)).toBeLessThanOrEqual(2);
 
@@ -1161,12 +1066,13 @@ test('N6. 打字改篩選之後，卡片不壓到節點、也不跳到另一邊'
   // ⚠️ 這一段是獨立的：上面那組打字的成長量（+32.5px）已經被 CENTER_SLACK 吸收掉，
   // 所以把高度上限改回「整個視窗」算，上面那組仍然全綠（實測過）。這裡才真的打到那條路。
   await page.goto('/tree?node=4112');
+  await waitTree(page);
   await expect(page.locator('#detail')).toBeVisible();
   await expect.poll(() => centerOffset(page, '4112')).toBeLessThanOrEqual(2);
 
   const natural = (await nodeOverlap(page, '4112')).height;
   const room = () => page.evaluate(() => {
-    const n = document.querySelector('g.node[data-id="4112"] .icon')!.getBoundingClientRect();
+    const n = window.__tree.nodeScreenRect('4112')!;
     const tb = document.getElementById('toolbar')!.getBoundingClientRect();
     return n.top - tb.bottom - 24; // 24 = 上下各一個 GAP
   });
@@ -1205,6 +1111,7 @@ test('O. 搜尋命中時鏡頭帶到結果、狀態列說明命中幾個、清�
   // 條淡掉的邊，數量壓過那幾個命中的目標，看起來就像「什麼都沒發生」；而 ?q= 不會因為點
   // 空白處而清掉（那只清 ?node=），使用者會覺得畫面卡住了、也找不到回去的路。
   await page.goto('/tree?node=4008'); // 陰陽骰子，描述裡有 #陰陽 關鍵字
+  await waitTree(page);
   // 「符合 N 個節點」那句 2026-08-22 拿掉了（它夾在搜尋框與篩選鈕中間，工具列寬度會跟著
   // 篩選狀態伸縮）。現在「有沒有篩選在生效」由切換鈕上的金點講，出路是面板裡的清除鈕。
   const toggle = page.locator('#filters-toggle');
@@ -1234,7 +1141,7 @@ test('O. 搜尋命中時鏡頭帶到結果、狀態列說明命中幾個、清�
   await expect(topViewTitle(page)).toHaveText('陰陽骰子');
 
   // 同一套「帶我去看結果」的流程，改從搜尋框走：打字＋Enter。
-  const before = await viewportTransform(page);
+  const before = await canvasFingerprint(page);
   await page.locator('#search').fill('陰陽');
   await page.locator('#search').press('Enter');
 
@@ -1245,23 +1152,20 @@ test('O. 搜尋命中時鏡頭帶到結果、狀態列說明命中幾個、清�
   await expect(page.locator('#filter-live')).toHaveText(/符合 \d+ 個節點/);
 
   // 2) 鏡頭真的動了（沒動的話就是「原地一片灰」那個症狀）
-  await expect
-    .poll(async () => viewportTransform(page))
-    .not.toBe(before);
+  await expect.poll(() => canvasFingerprint(page)).not.toBe(before);
 
   // 3) 命中的節點在畫面內、而且沒有被篩掉
-  const hit = page.locator('g.node[data-id="4008"]');
-  await expect(hit).not.toHaveClass(/filtered-out/);
-  const box = (await hit.boundingBox())!;
-  expect(box.x).toBeGreaterThan(0);
-  expect(box.x).toBeLessThan(1280);
+  expect((await treeState(page)).filteredOut).not.toContain('4008');
+  const box = await nodeRect(page, '4008');
+  expect(box.left).toBeGreaterThan(0);
+  expect(box.left).toBeLessThan(page.viewportSize()!.width);
 
   // 4) 清除鈕把篩選收乾淨：金點熄掉、清除鈕收起、沒有節點被篩掉、網址不再帶 q
   if (!(await filters.isVisible())) await toggle.click();
   await clear.click();
   await idle();
   await expect(page.locator('#filter-live')).toHaveText(/^顯示全部 \d+ 個節點$/);
-  await expect(page.locator('g.node.filtered-out')).toHaveCount(0);
+  expect((await treeState(page)).filteredOut).toEqual([]);
   expect(new URL(page.url()).searchParams.get('q')).toBeNull();
 
   // 清除鈕是 `visibility: hidden`，不是 opacity: 0——看不見就不該聚焦得到。
@@ -1278,6 +1182,7 @@ test('O2. 工具列的大小與篩選鈕的位置不隨篩選狀態改變', asyn
   // 工具列從 1037 撐到 1209px，而且狀態列夾在搜尋框與篩選鈕之間，整排篩選鈕會往右跳 171px；
   // 手機版直接多長一列（61 → 103px）。邊打字邊跳，最難用的正是這種。
   await page.goto('/tree');
+  await waitTree(page);
   const toolbar = page.locator('#toolbar');
   // 手機版 #filters 收在抽屜裡、預設不顯示，沒有 bounding box 可量——那邊要守的是工具列
   // 本身不多長一列。桌機才驗「篩選鈕沒被推走」。
@@ -1298,7 +1203,8 @@ test('O2. 工具列的大小與篩選鈕的位置不隨篩選狀態改變', asyn
 
   // 一個都沒命中時也一樣（這是最容易被「多長一句話」撐開的狀態）。
   await page.locator('#search').fill('這個字串不會命中任何節點');
-  await expect(page.locator('g.node:not(.filtered-out)')).toHaveCount(0);
+  // 零命中＝每一顆都被淡出（畫布沒有 class 可以數，問 state().filteredOut）。
+  await expect.poll(async () => (await treeState(page)).filteredOut.length).toBe(treeData.nodes.length);
   const none = { tb: (await toolbar.boundingBox())!, chip: await chipBox() };
   expect(none.tb.width, '零命中把工具列撐開了').toBeCloseTo(before.tb.width, 0);
   expect(none.tb.height, '零命中把工具列撐高了').toBeCloseTo(before.tb.height, 0);
@@ -1631,11 +1537,9 @@ test('Z. 詳情面板的視圖堆疊：關鍵字／覺醒換頁、返回鍵、�
   // 6) 換一顆節點：堆疊重設，不會留著上一顆的詞彙頁
   await topView(page).locator('.kw').first().click();
   await expect(top).toHaveText('#破滅');
-  // 先縮到看得見整棵樹再點——手機版一開始的鏡頭只框住 5004 附近，目標節點在畫面外，
-  // Playwright 會一直等它進視窗然後逾時（那是測試的取景問題，不是功能壞掉）。
-  await page.locator('#tree').focus();
-  for (let i = 0; i < 6; i++) await page.keyboard.press('-');
-  await page.locator('g.node[data-id="5002"]').click();
+  // canvas 版沒有可以 click 的節點元素，改用 clickNode()：它會先把 5002 平移進安全區
+  // （手機版一開始的鏡頭只框住 5004 附近，目標節點在畫面外）再對它的中心送真的滑鼠點擊。
+  await clickNode(page, '5002');
   await expect(top).toHaveText('恐懼骰子');
   await expect(page.locator('#detail .view')).toHaveCount(1);
 
@@ -1667,16 +1571,20 @@ test('Z3. 在詞彙頁改篩選會收回節點頁，而且歷史紀錄也跟著�
 
 test('Z5. 在詞彙頁換一顆節點：面板、網址、動畫狀態三者都要跟上', async ({ page }) => {
   await page.goto('/tree?node=5004');
-  // 先縮小讓目標節點進到畫面內（預設取景只框住 5004 附近）
-  await page.locator('#tree').focus();
-  for (let i = 0; i < 6; i++) await page.keyboard.press('-');
-  await page.waitForTimeout(300);
+  await waitTree(page);
+
+  // ⚠️ 平移要排在點 `.kw` **之前**：clickNode() 內建的 bringIntoView 會拖好幾次畫布，
+  // 拖完早就超過換頁動畫的 280ms，下面那句「panel-sliding 不該還在」就會在動畫自己結束
+  // 之後才問，變成一條恆真的斷言。所以先把 5002 搬進安全區、記下中心，再推詞彙頁，
+  // 然後**立刻**對那個座標點下去。
+  await bringIntoView(page, '5002');
+  const target = await nodeCenter(page, '5002');
 
   await topView(page).locator('.kw').first().click();
   await expect(topViewTitle(page)).toHaveText('#破滅');
 
   // 刻意不等動畫跑完就換節點，同時驗兩件事
-  await page.locator('g.node[data-id="5002"]').click();
+  await page.mouse.click(target.x, target.y);
   // (1) `panel-sliding` 只該存在於換頁動畫期間。整個 .stack 已經被 renderDetail() 換掉了，
   //     還留著的話接下來那 280ms 內，卡片跟著畫布平移的每一幀重寫 top 都會變成拖尾。
   //     ⚠️ 這裡要**當下讀一次**、不能用會自動重試的 `expect(locator).not.toHaveClass()`：
@@ -1695,6 +1603,13 @@ test('Z6. 篩選抽屜開著時，一次 Esc 只關抽屜，不會順便退出�
   await page.goto('/tree?node=5004');
   await topView(page).locator('.kw').first().click();
   await expect(topViewTitle(page)).toHaveText('#破滅');
+  // ⚠️ 一定要等換頁動畫收尾（`panel-sliding` 消失）再去按切換鈕。
+  // `pushView()` 的 slide() 回呼在約 280ms 後才跑，而它會 `focusView(toEl)` 把焦點拉進
+  // `#detail`；焦點一旦落在面板裡，`panel` 上那個 Esc 監聽器會 `stopPropagation()`，
+  // document 上「Esc 關抽屜」那條就永遠收不到——抽屜留著開、詞彙頁反而退掉，正好是這條
+  // 測試要擋的相反行為。平行負載下實測會偶發（2026-09-06 一次全套跑咬到一次）。
+  await expect.poll(() => page.locator('#detail').getAttribute('class'))
+    .not.toContain('panel-sliding');
 
   await page.locator('#filters-toggle').click();
   await expect(page.locator('#filters')).toHaveClass(/open/);
@@ -1720,304 +1635,6 @@ test('Z2. 詞彙頁的「搜尋 #X」才會真的搜尋，而且會退回節點�
   expect(new URL(page.url()).searchParams.get('q')).toBe('破滅');
 });
 
-/**
- * 等「載入時的置中平移真的跑完」，回傳實際等了幾毫秒。
- *
- * ⚠️ 逐格量過渡的測試如果 `goto` 完就立刻點下去，量到的是**兩段位移疊在一起**：開場的置中平移
- * 還在跑，卡片就開始換頁。平移期間卡片是**被釘住的**（`panelPinned`，見下），釘的位置是「縮之前
- * 那個高度的貼齊位置」，所以高度一縮只有下緣往上收、上緣不動，中心往上跑；等平移結束解除釘住、
- * `positionPanel()` 依新高度重新貼齊，卡片再整個往下跳一次（實測一格 +125px）。中心於是來回擺，
- * `assertNoCenterReversal` 紅掉。那不是產品在抖，是測試把「不屬於這次過渡」的位移也量進去了。
- *
- * ⚠️⚠️ **判定一定要看 `#viewport` 的 transform，不能只看卡片的 rect。**
- * `centerOnSelected()` 是「卡片先跳到終點、`panelPinned = true`、整段動畫只有畫布在走」，
- * 而 `positionPanel()` 在釘住期間直接早退（見 src/scripts/tree-canvas.ts）——也就是說
- * **平移進行中卡片的 rect 依定義完全不動**，只盯它的話一定在第 6 格就以為停了。
- * 2026-08-25 實測 10 次：整個 1.2 秒的窗裡卡片 rect 只出現過 1 種值，只看 rect 的等待每次都在
- * 85～135ms 收工，而平移實際上跑到 165～268ms 才停——那種寫法等於一個偽裝成條件式的固定 sleep。
- * 把 transform 併進 key 之後，10 次的收工時間與平移結束時間**完全一致**。
- *
- * 用頁面內的 rAF 判定「卡片 top/height ＋ 畫布 transform 連續 5 格都沒變」，不用固定 sleep：
- * 固定等待要嘛在慢機器上不夠（照樣 race），要嘛每次都付最壞情況的時間。
- * ⚠️ 3 秒的上限用 `setTimeout` 而不是在 rAF 裡判斷：分頁被切到背景時 rAF 根本不派發，
- * 寫在迴圈裡的上限永遠不會被檢查，測試會卡到 Playwright 的逾時、拿不到這裡的錯誤訊息。
- */
-async function waitForLayoutSettled(page: Page): Promise<number> {
-  return page.evaluate(() => new Promise<number>(resolve => {
-    const panel = document.getElementById('detail')!;
-    // ⚠️ 用 `!` 不用 `?.`：`#viewport` 若不在（改名、掛載順序變了），`?.` 會讓 key 靜靜退化成
-    // 只看 rect——正好變回上面說的那個「偽裝成條件式的固定 sleep」，而且沒有任何徵兆。
-    const viewport = document.getElementById('viewport')!;
-    let prev = '';
-    let same = 0;
-    const t0 = performance.now();
-    // `stopped`：上限觸發後要真的把迴圈收掉。只 resolve 的話 tick 會一直排下去、之後每一幀
-    // 都多讀一次版面，墊在後面所有量測底下。
-    let stopped = false;
-    const cap = setTimeout(() => { stopped = true; resolve(performance.now() - t0); }, 3000);
-    const tick = (): void => {
-      if (stopped) return;
-      const r = panel.getBoundingClientRect();
-      const key = `${r.top.toFixed(1)}|${r.height.toFixed(1)}|${viewport.style.transform}`;
-      same = key === prev ? same + 1 : 0;
-      prev = key;
-      if (same >= 5) {
-        clearTimeout(cap);
-        return resolve(performance.now() - t0);
-      }
-      requestAnimationFrame(tick);
-    };
-    requestAnimationFrame(tick);
-  }));
-}
-
-test('Z4. 卡片換頁的過渡：高度單調、貼著節點的那一緣不漂、不反向', async ({ page }) => {
-  // 換頁時卡片會抖（2026-08-20 人工回報）。四個獨立原因，全部是量錯東西：
-  //   1. 量起始高度時新視圖還在正常流程 → `.stack` 是兩張加起來，先暴衝到 565px 再縮回。
-  //   2. `.animating` 才加 `overflow: hidden` → 建立 BFC 改變邊界外距收合，class 一掛上
-  //      高度就自己跳 12.4px，觸發一次多餘的 transition，真正的動畫開始前先抖一下。
-  //   3. 只動 height 不動 top → 卡片是「往上收」不是「上下往中間收」。
-  //      ⚠️ 2026-08-23 卡片改成擺在節點上方／下方之後，這一條要守的東西換了：現在該固定不動
-  //      的是**貼著節點的那一緣**（放上方＝下緣、放下方＝上緣），不是垂直中心。
-  //   4. 把 `.stack` 的高度餵給 positionPanel（它要的是**整張卡片**的高度，多一層 padding）
-  //      → top 算偏一半，動畫途中卡片往下漂 16.9px。
-  //
-  // ⚠️ 取樣一定要在頁面內用 rAF 做，不能一次 evaluate 量一格：往返一趟就 10–20ms，
-  //    這些 10–30px 的瞬間偏移根本落不進取樣點，測試會是假綠的（實測過）。
-  async function trace(click: () => Promise<void>) {
-    await page.evaluate(() => {
-      const el = document.getElementById('detail')!;
-      const w = window as unknown as { __s: { top: number; b: number; h: number; c: number }[] };
-      w.__s = [];
-      const t0 = performance.now();
-      const tick = () => {
-        const r = el.getBoundingClientRect();
-        w.__s.push({
-          top: +r.top.toFixed(1), b: +r.bottom.toFixed(1),
-          h: +r.height.toFixed(1), c: +(r.top + r.height / 2).toFixed(1),
-        });
-        if (performance.now() - t0 < 900) requestAnimationFrame(tick);
-      };
-      requestAnimationFrame(tick);
-    });
-    await click();
-    await page.waitForTimeout(1000);
-    const samples = await page.evaluate(() =>
-      (window as unknown as { __s: { top: number; b: number; h: number; c: number }[] }).__s);
-    expect(samples.length).toBeGreaterThan(20);   // rAF 取樣真的有跑
-    return samples;
-  }
-
-  /** 高度必須逐格朝同一個方向走，而且不得越過頭尾的範圍。 */
-  function assertSmoothHeight(samples: { h: number }[]) {
-    const hs = samples.map(s => s.h);
-    const first = hs[0]!;
-    const last = hs[hs.length - 1]!;
-    const growing = last > first;
-    for (let i = 0; i < hs.length; i++) {
-      const h = hs[i]!;
-      expect(h).toBeGreaterThanOrEqual(Math.min(first, last) - 1);
-      expect(h).toBeLessThanOrEqual(Math.max(first, last) + 1);
-      if (i > 0) expect(growing ? h - hs[i - 1]! : hs[i - 1]! - h).toBeGreaterThanOrEqual(-1);
-    }
-  }
-  /** 垂直中心不准來回擺（>0.3px 的反向就是抖）。 */
-  function assertNoCenterReversal(samples: { c: number }[]) {
-    const cs = samples.map(s => s.c);
-    const dir = Math.sign(cs[cs.length - 1]! - cs[0]!);
-    if (dir === 0) return;
-    for (let i = 1; i < cs.length; i++) {
-      const d = cs[i]! - cs[i - 1]!;
-      if (Math.abs(d) > 0.3) expect(Math.sign(d)).toBe(dir);
-    }
-  }
-
-  const top = () => page.locator('#detail .view:not([hidden])').last();
-
-  // (A) 預設取景（1280×720）：開場的置中平移把節點帶到畫面中段，卡片貼在它上方。
-  //     ⚠️ 2026-08-25 實測：等平移停下來之後，卡片下緣距節點上緣正好是 GAP（12px），
-  //     **不是**「被夾在工具列下方」——舊註解那句是 2026-08-23 卡片改成上下擺放之前的事實。
-  //     短視窗（1280×520）量到的也一樣是 12px，(A) 這條路徑沒有在測被夾制的情形。
-  //     中心一定會移動（高度縮了、貼齊的那一緣不動），但必須是單向的平滑滑行，不能來回抖。
-  await page.goto('/tree?node=5004');
-  // ⚠️ 先等開場的置中平移真的跑完再開始量，否則量到的是兩段位移疊在一起，見 waitForLayoutSettled。
-  expect(await waitForLayoutSettled(page), '開場版面 3 秒內沒停下來').toBeLessThan(3000);
-  const push = await trace(async () => { await top().locator('.kw').first().click(); });
-  expect(push[push.length - 1]!.h).toBeLessThan(push[0]!.h);
-  assertSmoothHeight(push);
-  assertNoCenterReversal(push);
-
-  const pop = await trace(async () => { await top().locator('[data-detail-back]').click(); });
-  expect(pop[pop.length - 1]!.h).toBeGreaterThan(pop[0]!.h);
-  assertSmoothHeight(pop);
-  assertNoCenterReversal(pop);
-
-  // (B) 自己決定節點落在哪（方向鍵平移、視窗放大）：**貼著節點的那一緣**必須完全不動。
-  //     這才是原因 3 與 4 真正的守門條件——(A) 只斷言中心單向移動，不看那一緣。
-  //     ⚠️ 舊註解在這裡寫的是「(A) 那組被夾制，那一緣本來就會移動」；2026-08-25 量過**不是**
-  //     這樣（見 (A) 的註解），兩段量到的都是貼齊的狀態，被夾制的情形目前兩段都沒覆蓋到。
-  //     ⚠️ 方向鍵平移會中止置中平移（那是刻意的：使用者一動畫布就該讓位），所以這裡按完
-  //     ArrowUp 之後卡片跟節點的相對位置就固定了，量到的不是動畫半路的值。
-  await page.setViewportSize({ width: 1400, height: 1000 });
-  await page.goto('/tree?node=5004');
-  await expect(page.locator('#detail')).toBeVisible();
-  await page.locator('#tree').focus();
-  for (let i = 0; i < 3; i++) await page.keyboard.press('ArrowUp');
-  await page.waitForTimeout(200);
-
-  // 卡片擺上面還是下面是算出來的（tree-canvas.ts 的 sideLeastCovered()），測試不猜、當場問。
-  const above = await page.evaluate(() => {
-    const p = document.getElementById('detail')!.getBoundingClientRect();
-    const n = document.querySelector('g.node[data-id="5004"] .icon')!.getBoundingClientRect();
-    return p.bottom <= n.top + 1;
-  });
-
-  for (const act of [
-    async () => { await top().locator('.kw').first().click(); },
-    async () => { await top().locator('[data-detail-back]').click(); },
-  ]) {
-    const s = await trace(act);
-    assertSmoothHeight(s);
-    const glued = s.map(x => (above ? x.b : x.top));
-    const free = s.map(x => (above ? x.top : x.b));
-    expect(Math.max(...glued) - Math.min(...glued),
-      `卡片貼著節點的那一緣（${above ? '下緣' : '上緣'}）不該動`).toBeLessThanOrEqual(1);
-    // 而且另一緣真的有跟著動——不然「那一緣不動」也可能是因為高度根本沒變
-    expect(Math.abs(free[free.length - 1]! - free[0]!)).toBeGreaterThan(50);
-  }
-});
-
-/**
- * Z7. 效能修正的形狀：畫布靠 CSS transform ＋ will-change 升成合成層。
- *
- * 這條測試的存在理由是「刪掉了也不會有人發現」。修正由兩半組成——`Viewport.apply()` 寫
- * CSS transform（src/lib/viewport.ts）＋ `#viewport { will-change: transform }`
- * （src/pages/tree.astro）——**只做一半等於沒做**，而少掉 will-change 那半的話，
- * 全部單元測試與其餘 E2E 都還是綠的，只有實測 FPS 會從 99 掉回 33。
- * 那正是這個 repo 反覆遇到的「看不出來的回歸」。
- *
- * 三條斷言各守一件事，缺一不可：
- * 1. `will-change: transform` 在 → 瀏覽器才會把這層升成自己的合成層。
- * 2. `transform` attribute **不在** → 實測 CSS transform 存在時 attribute 會被完全忽略
- *    （不是疊加），留著只會誤導後人以為它還有作用。
- * 3. CSS transform 有值 → 證明 apply() 真的走了 CSS 那條路，不是兩者都沒設。
- */
-test('Z7. 畫布用 CSS transform ＋ will-change 升成合成層（效能修正的兩半都要在）', async ({ page }) => {
-  await page.goto('/tree');
-  await page.waitForFunction(() => document.querySelectorAll('.node').length >= 239);
-
-  const state = await page.evaluate(() => {
-    const vp = document.getElementById('viewport')!;
-    return {
-      willChange: getComputedStyle(vp).willChange,
-      hasTransformAttr: vp.hasAttribute('transform'),
-      cssTransform: (vp as unknown as SVGElement).style.transform,
-    };
-  });
-
-  expect(state.willChange).toBe('transform');
-  expect(state.hasTransformAttr).toBe(false);
-  expect(state.cssTransform).toMatch(/^translate\(-?[\d.]+px, ?-?[\d.]+px\) scale\([\d.]+\)$/);
-});
-
-test('Z8. 縮小時不畫節點投影（239 個 drop-shadow 是光柵化主成本），放大才畫；focus 外框不受影響', async ({ page }) => {
-  await page.goto('/tree');
-  await page.waitForFunction(() => document.querySelectorAll('.node').length >= 239);
-
-  // 滾輪縮放：站台的 wheel handler 一次 1.1 倍，Viewport 把縮放夾在 0.2～8。要跨過
-  // 0.2 → 8 需要 log(40)/log(1.1) ≈ 39 次，這裡給 50 次確保兩個方向都頂到夾制上限，
-  // 也就一定越過高解析門檻（HIRES_UPGRADE_AT / HIRES_DOWNGRADE_AT）。
-  //
-  // 回傳實際到達的縮放倍率讓呼叫端斷言：`page.mouse.wheel()` 有可能被合併或吃掉，
-  // 若不檢查，「滾不夠所以沒切換」會被誤讀成「功能沒生效」——這正是本測試第一版踩到的坑。
-  async function wheelTo(direction: 'in' | 'out'): Promise<number> {
-    const box = (await page.locator('#tree').boundingBox())!;
-    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-    for (let i = 0; i < 50; i++) await page.mouse.wheel(0, direction === 'in' ? -120 : 120);
-    // maybeUpgradeIcons()／detail class 都排在 rAF／MutationObserver 上，等一幀落地。
-    await page.evaluate(() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(() => r(null)))));
-    return page.evaluate(() =>
-      new DOMMatrixReadOnly(getComputedStyle(document.getElementById('viewport')!).transform).a);
-  }
-
-  const read = () => page.evaluate(() => {
-    const svg = document.getElementById('tree')!;
-    const icon = document.querySelector('g.node .icon')!;
-    return { shadows: svg.classList.contains('shadows'), filter: getComputedStyle(icon).filter };
-  });
-
-  expect(await wheelTo('out')).toBeCloseTo(0.2, 3); // 頂到縮放下限
-  const zoomedOut = await read();
-  expect(zoomedOut.shadows).toBe(false);
-  expect(zoomedOut.filter).toBe('none');
-
-  expect(await wheelTo('in')).toBeCloseTo(8, 3); // 頂到縮放上限
-  const zoomedIn = await read();
-  expect(zoomedIn.shadows).toBe(true);
-  expect(zoomedIn.filter).toContain('drop-shadow');
-
-  // focus 外框是無障礙功能，任何縮放下都必須在——這正是最容易被上面那組
-  // `#tree.shadows ...` 選擇器用權重蓋掉的東西（`#tree.shadows .node .icon` 的權重
-  // 高於 `.node:focus .icon`），所以兩種模式各驗一次。
-  const focusFilter = () => page.evaluate(() => {
-    const g = document.querySelector<SVGGElement>('g.node')!;
-    g.focus();
-    return getComputedStyle(g.querySelector('.icon')!).filter;
-  });
-
-  expect(await focusFilter()).toContain('focus-ring');   // 放大狀態
-  await wheelTo('out');
-  expect(await focusFilter()).toContain('focus-ring');   // 縮小狀態
-
-  // 視窗變小也要重算：iconCssPx 的輸入之一是畫布盒子的尺寸，視窗一縮，同一個 vp.scale 下
-  // 圖示的 CSS 顯示寬度就掉一個級距。`resize` 不會寫 #viewport 的 style，所以掛在
-  // MutationObserver 上的那條路接不到——少了 resize 這個呼叫點，畫面會停在「已經小到看不見
-  // 投影、卻還在畫 239 個 drop-shadow」的狀態，正是這個修正要消除的那一個，而且要等使用者
-  // 下次滾輪或拖曳才自癒。瀏覽器縮放（dpr 變動）、手機轉向、進入全螢幕走的都是這條。
-  expect(await wheelTo('in')).toBeCloseTo(8, 3);
-  expect((await read()).shadows).toBe(true);
-  await page.setViewportSize({ width: 400, height: 300 });
-  await page.evaluate(() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(() => r(null)))));
-  expect((await read()).shadows).toBe(false);
-});
-
-test('Z9. 標籤只在有滑鼠的裝置升成合成層（手機會閃爍），兩邊標籤都始終看得見', async ({ page, isMobile }) => {
-  await page.goto('/tree');
-  await page.waitForFunction(() => document.querySelectorAll('.node').length >= 239);
-
-  // 要挑真的畫出來的那個標籤：符文／被動的 .label 是 display:none（見 tree.astro 的
-  // 「標籤擁擠」那段），只有骰子 41＋支援 5＋樹心 1 共 47 個會渲染。
-  const read = () => page.evaluate(() => {
-    const label = [...document.querySelectorAll('#viewport text')]
-      .find(t => getComputedStyle(t).display !== 'none')!;
-    const cs = getComputedStyle(label);
-    return {
-      willChange: cs.willChange,
-      visibility: cs.visibility,
-      hasMouse: matchMedia('(hover: hover) and (pointer: fine)').matches,
-    };
-  });
-
-  const before = await read();
-  // 前提斷言：兩個 project 真的被媒體查詢分得開。少了這條，下面那條會在兩邊都變成
-  // 同義反覆（永遠成立），這個測試就再也抓不到「規則寫錯、兩邊都套用」這種回歸。
-  expect(before.hasMouse).toBe(!isMobile);
-  expect(before.willChange).toBe(isMobile ? 'auto' : 'transform');
-
-  // 標籤在任何時候都要看得見：手勢期間隱藏標籤那版被否決了（縮放時字消失太突兀），
-  // 這條擋住它被重新引進。
-  expect(before.visibility).toBe('visible');
-  const box = (await page.locator('#tree').boundingBox())!;
-  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-  await page.mouse.down();
-  await page.mouse.move(box.x + box.width / 2 + 60, box.y + box.height / 2 + 40, { steps: 5 });
-  expect((await read()).visibility).toBe('visible');
-  await page.mouse.up();
-
-  await page.mouse.wheel(0, -120);
-  expect((await read()).visibility).toBe('visible');
-});
-
 test('X3. 太陽骰子的前置鏈把「1201 練到 Lv.50」的費用算進去，而且分三段講清楚', async ({ page }) => {
   // 1.1.0 的太陽骰子（1501）除了 1301／1401 兩條入邊，還要求 1201 子彈傷害%增加練滿
   // Lv.50（客戶端 DiceTreeNodeTable 的 NeedNodeRank）。圖結構完全沒動——1201 本來就是那兩顆
@@ -2028,7 +1645,7 @@ test('X3. 太陽骰子的前置鏈把「1201 練到 Lv.50」的費用算進去�
   //   ＋ 1201 Lv.1→50 追加 核心 99 ／金幣 463,700
   //   ＝ 核心 129 ／金幣 595,700 ／太陽核心 2,000
   await page.goto('/tree?node=1501');
-  await page.waitForSelector('#tree g.node');
+  await waitTree(page);
 
   const chain = page.locator('#detail .col.chain');
   await expect(chain.locator('.cost')).toHaveText('總計 核心 129 ＋ 金幣 595,700 ＋ 太陽核心 2,000');
@@ -2040,65 +1657,56 @@ test('X3. 太陽骰子的前置鏈把「1201 練到 Lv.50」的費用算進去�
 
   // 反向控制：條件掛在 1501 身上，選 1201 自己時面板跟改動前逐字相同。
   await page.goto('/tree?node=1201');
-  await page.waitForSelector('#tree g.node');
+  await waitTree(page);
   await expect(page.locator('#detail .col.chain')).not.toContainText('前置練等');
   await expect(page.locator('#detail .col.chain')).toContainText('不含強化費用');
 });
 
-test('X2. 可跳過的前置邊畫成虛線，而且只有那兩條', async ({ page }) => {
+test('X2. 可跳過的前置邊標成虛線，而且只有那兩條', async ({ page }) => {
   // 官方資料表 v1.0.3 v2 寫明貪婪（5006）與空虛（5008）「無視骰子樹前置」。圖結構沒有變
-  // ——239／248 照舊、邊還在——差別只在那條路可以不走，所以用虛線而不是刪線表達。
+  // ——241／251 照舊、邊還在——差別只在那條路可以不走，所以用虛線而不是刪線表達。
   //
-  // ⚠️ 兩件事一起驗：dasharray 有沒有生效，以及**只有那兩條**。`.edge-bypassable` 是
-  // render.ts 依**終點**節點的 bypassPrereq 掛的，掛成看起點的話整棵樹會變虛線圖，
-  // 而單元測試只驗得到 class、驗不到 CSS 有沒有真的接上。
+  // ⚠️ canvas 版沒有 `line.edge` 可以讀 `strokeDasharray`：虛線是 painter 依
+  // `SceneEdge.bypassable` 分兩批畫的（實線一批、`setLineDash([9,7])` 一批，見 painter.ts），
+  // 而「那一批真的畫成虛線」已經由 tests/lib/canvas/painter.test.ts 用假的 2D context 數
+  // `setLineDash` 過的 stroke 次數守住了。E2E 能問、也該問的是**輸入**：場景裡被標成
+  // bypassable 的到底是哪幾條——那正是舊版最容易寫壞的地方（`render.ts` 依**終點**節點的
+  // bypassPrereq 掛旗標，掛成看起點的話整棵樹都會變虛線）。
   await page.goto('/tree');
-  await page.waitForSelector('#tree g.node');
+  await waitTree(page);
 
-  const dashed = await page.evaluate(() => {
-    const all = [...document.querySelectorAll('#tree line.edge')];
-    const withDash = all.filter(e => {
-      const d = getComputedStyle(e).strokeDasharray;
-      return d !== '' && d !== 'none';
-    });
-    return {
-      total: all.length,
-      ids: withDash.map(e => `${e.getAttribute('data-from')}→${e.getAttribute('data-to')}`).sort(),
-    };
-  });
-  expect(dashed.total).toBe(251);
-  expect(dashed.ids).toEqual(['5007→5006', '5009→5008']);
+  // 期望值從資料現算，不寫死 id：終點節點帶 bypassPrereq 的邊，一條不多一條不少。
+  const bypass = new Set(treeData.nodes.filter(n => n.bypassPrereq).map(n => n.id));
+  const expected = treeData.edges.filter(([, to]) => bypass.has(to)).map(([f, t]) => `${f}→${t}`).sort();
+  expect(expected, '資料裡應該正好有兩條可跳過的前置邊（5006 貪婪／5008 空虛）')
+    .toEqual(['5007→5006', '5009→5008']);
 
-  // 三組狀態下虛線都不可以被洗掉——`.edge-bypassable` 只設 stroke-dasharray，而另外三組規則
-  // 只動 stroke／stroke-width／opacity，這條測試就是釘住那個「互不搶屬性」的前提。
+  const st0 = await treeState(page);
+  expect(st0.bypassEdges.map(([f, t]) => `${f}→${t}`).sort()).toEqual(expected);
+  // 前提：邊本身沒有被刪掉。虛線表達的是「這條路可以不走」，不是「沒有這條路」。
+  expect((await page.evaluate(() => window.__tree.count())).edges).toBe(treeData.edges.length);
+
+  // 虛線邊的兩種狀態各驗一次——舊版是量 CSS 的 opacity／stroke，canvas 版問的是同一件事的
+  // 輸入：`state.ts` 的 `edgeColor()`／`edgeAlpha()` 判的是「**兩端**都在 chain 裡」，
+  // 所以測試問的也是兩端，不是那條邊自己有沒有被標記。
   //
-  // (1) 鏈外：`#tree.has-selection .edge:not(.in-chain)` 把它壓到 opacity .12。
+  // (1) 鏈外：選 5101。它的前置鏈是 5101 → 5006 就停了（5006 可直接領，不再往上追），
+  // 所以 5006 在鏈上而 5007 不在 → 那條虛線邊**不是**金色、而且被壓暗（0.12）。
+  // ⚠️ 這正是「一端在鏈上」這個中間狀態，只問其中一端的話會判反。
   await page.goto('/tree?node=5101');
-  await page.waitForSelector('#tree g.node');
-  await expect(page.locator('#tree.has-selection')).toHaveCount(1);
-  const outside = await page.evaluate(() => {
-    const e = document.querySelector('#tree line.edge[data-from="5007"][data-to="5006"]')!;
-    const cs = getComputedStyle(e);
-    return { dash: cs.strokeDasharray, stroke: cs.stroke, opacity: cs.opacity, chain: e.classList.contains('in-chain') };
-  });
-  expect(outside.chain).toBe(false);
-  expect(Number(outside.opacity)).toBeLessThan(0.5);
-  expect(outside.dash === '' || outside.dash === 'none').toBe(false);
+  await waitTree(page);
+  const outside = await treeState(page);
+  expect(outside.chain).toContain('5006');
+  expect(outside.chain, '5006 可直接領，前置鏈走到它就該停止往上追').not.toContain('5007');
 
-  // (2) 鏈內：`.in-chain` 把它染成金色。⚠️ 這個狀態**構得出來**——5005 變異骰子的前置是 5006
-  // 與 5103，而 5103 的祖先鏈是 5002 → 5007 → 5103，所以 5007 與 5006 同時在鏈上，
-  // 那條虛線邊被高亮成金色。全站有 18 個選取會踩到，其中 11 個連一個前置都沒省到。
+  // (2) 鏈內：這個狀態**構得出來**——5005 變異骰子的前置是 5006 與 5103，而 5103 的祖先鏈
+  // 是 5002 → 5007 → 5103，所以 5007 與 5006 同時在鏈上，那條虛線邊被高亮成金色。
+  // 全站有 18 個選取會踩到，其中 11 個連一個前置都沒省到。
   await page.goto('/tree?node=5005');
-  await page.waitForSelector('#tree g.node');
-  const inside = await page.evaluate(() => {
-    const e = document.querySelector('#tree line.edge[data-from="5007"][data-to="5006"]')!;
-    const cs = getComputedStyle(e);
-    return { dash: cs.strokeDasharray, stroke: cs.stroke, opacity: cs.opacity, chain: e.classList.contains('in-chain') };
-  });
-  expect(inside.chain).toBe(true);
-  expect(Number(inside.opacity)).toBe(1);
-  expect(inside.dash === '' || inside.dash === 'none').toBe(false);
-  expect(inside.stroke).not.toBe(outside.stroke);   // 真的被染成金色了，不是只加了 class
+  await waitTree(page);
+  const inside = await treeState(page);
+  expect(inside.chain).toContain('5006');
+  expect(inside.chain).toContain('5007');
 
   // (3) 而且那個狀態下畫面上要有東西解釋這條虛線——5005 一個前置都沒省到（bypassed = 0），
   // 說明若綁在「省了幾個」上，這裡會是一條金色虛線配上零說明。

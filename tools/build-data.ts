@@ -206,7 +206,9 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
   const rawNodes = mergeNodes(rawGeom, nodeText);
   // 圖示的打包格子尺寸＝引用它的節點的顯示尺寸。同一張圖被多個節點共用時，尺寸必然相同
   // （圖是逐節點渲染出來的，位元組一樣就代表像素尺寸一樣），所以取第一個引用者即可；
-  // src/lib/render.ts 另有一道主動檢查，真的出現一圖多尺寸會當場丟錯而不是悄悄裁錯。
+  // ⚠️ 舊的 SVG 渲染器（src/lib/render.ts）另有一道「一圖多尺寸就當場丟錯」的主動檢查，
+  // 2026-09-06 換成 Canvas 2D 時隨那個檔一起移除——canvas 是依**每顆節點自己的 w/h** 畫
+  // （painter.ts 的 drawNodeImage()），一圖多尺寸只會被縮放到各自的尺寸，不會悄悄裁錯。
   const sizeByHash = new Map(rawNodes.map(n => [n.icon, n.size]));
   // 沒有任何節點引用的圖示直接不打包。規則 7(d) 只警告不擋，所以這種檔案是可以合法存在的，
   // 但為它挑一個「誰都沒用到的尺寸」當 fallback 只會讓 buildSprite 憑空多開一個 16 欄的分區，

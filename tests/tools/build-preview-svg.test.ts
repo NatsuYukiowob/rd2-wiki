@@ -5,6 +5,8 @@ import { normalizeSvg } from '../../tools/normalize-svg';
 import { loadNodeText, MAX_TEXT_LENGTH, type NodeTextMap } from '../../tools/lib/node-text';
 import { parseTree } from '../../tools/lib/svg-parse';
 import { loadSvg } from '../../tools/lib/dom';
+// LABEL_DY 從畫布端 import：預覽檔的標籤位置與站台畫的位置必須是同一個數字（m8）。
+import { LABEL_DY } from '../../src/lib/canvas/painter';
 
 const canonical = readFileSync('data/dice-tree.svg', 'utf8');
 const nodeText = loadNodeText(JSON.parse(readFileSync('data/nodes.json', 'utf8')), MAX_TEXT_LENGTH);
@@ -36,14 +38,16 @@ describe('buildPreviewSvg（真實資料）', () => {
     expect([...preview.matchAll(/class="mini-label"/g)]).toHaveLength(199);
   });
 
-  // y 是幾何的函數（`h/2 + 15`，跟 src/lib/render.ts 同一條公式），不是存起來的資料——
-  // 這條防的是公式跟站台端漂開，那會讓預覽檔上的版面跟使用者看到的不一樣。
-  it('標籤的 y 等於 h/2 + 15，id 標記在圖示上方', () => {
+  // y 是幾何的函數（`h/2 + LABEL_DY`，跟 src/lib/canvas/painter.ts 畫布上那條同一個常數），
+  // 不是存起來的資料——這條防的是公式跟站台端漂開，那會讓預覽檔上的版面跟使用者看到的不一樣。
+  // ⚠️ 期望值一定要 import `LABEL_DY`，不可以再寫死 15：寫死的話兩邊各自是一份常數，
+  // 改了 painter 那份沒有任何東西會說話（2026-09-06 最終審查 m8）。
+  it('標籤的 y 等於 h/2 + LABEL_DY，id 標記在圖示上方', () => {
     for (const n of parseTree(canonical).nodes) {
       const block = new RegExp(`data-id="${n.id}"[\\s\\S]*?</g>`).exec(preview)![0];
       const labelY = /<text class="(?:dice|mini)-label" y="([-\d.]+)"/.exec(block)![1];
       const idTagY = /<text class="id" y="([-\d.]+)"/.exec(block)![1];
-      expect(Number(labelY)).toBe(Math.round(n.size[1] / 2 + 15));
+      expect(Number(labelY)).toBe(Math.round(n.size[1] / 2 + LABEL_DY));
       expect(Number(idTagY)).toBeLessThan(-n.size[1] / 2);
     }
   });

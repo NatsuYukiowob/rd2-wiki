@@ -233,7 +233,8 @@ function parseCenter(doc: Document, svg: Element): RawCenter | null {
     if (ox !== x || oy !== y) throw new Error(`tree-center 的放射線起點不一致：(${x}, ${y}) 與 (${ox}, ${oy})`);
   }
 
-  // 圖必須以樞紐中心對齊——站台端（src/lib/render.ts）就是用 c.x - w/2, c.y - h/2 擺這張圖，
+  // 圖必須以樞紐中心對齊——站台端（src/lib/canvas/painter.ts 的 drawStatic()）就是用
+  // c.x - w/2, c.y - h/2 擺這張圖，
   // 正本若擺在別的地方，兩邊畫出來的樞紐會差一段位移，而且沒有任何東西看得出來。
   const ix = Number(img.getAttribute('x'));
   const iy = Number(img.getAttribute('y'));

@@ -19,6 +19,8 @@
     "build:data": "tsx tools/build-data.ts",
     "compare": "tsx tools/compare-computed.ts",
     "build": "npm run build:data && astro build",
+    "e2e:snapshots": "docker run --rm --network host --user $(id -u):$(id -g) -e HOME=/tmp -e CI=1 -e E2E_SNAPSHOTS=1 -e E2E_PORT=4397 -v \"$PWD\":/work -w /work mcr.microsoft.com/playwright:v1.62.1-noble npx playwright test tests/e2e/tree.spec.ts -g 'F\\.' --project=desktop",
+    "e2e:snapshots:update": "npm run e2e:snapshots -- --update-snapshots",
     "dev": "npm run build:data && astro dev",
     "pree2e": "npm run build",
     "e2e": "playwright test"

@@ -76,7 +76,7 @@ export interface TreeNode {
    *
    * 目前是貪婪骰子（討伐獎勵）與空虛骰子（競技場通行證）。它**不改變圖結構**——邊照樣存在、
    * 239／248 不變，只有 `prerequisiteChain()` 走到它時停止往上追祖先。`/tree` 上指向它的
-   * 那條邊會畫成虛線（見 render.ts）。只在為真時才寫進 tree.json。
+   * 那條邊會畫成虛線（見 `src/lib/canvas/painter.ts`）。只在為真時才寫進 tree.json。
    */
   bypassPrereq?: true;
   /**

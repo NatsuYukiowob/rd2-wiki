@@ -3,15 +3,20 @@
 // 狀態機、費用計算、能力彙總、存檔與報告全部在 src/lib/sim.ts 與 src/lib/sim-io.ts
 // （純函式、測得動）。這裡只做三件事：把狀態畫成畫面、把事件翻成狀態轉換、存檔。
 //
-// ⚠️ **不重用 src/scripts/tree-canvas.ts**：那支是 side-effect 腳本（載入即掛載），而且跟
-// /tree 的篩選器、詳情卡片擺位、高解析圖示 LOD 綁死。共用的是純函式層（renderTree、
-// Viewport、graph、cost）與 canvas.css 的畫布骨架。
+// 畫布跟 /tree 共用 src/lib/canvas/ 那一層（`mountCanvasTree()`）：平移、雙指縮放、滾輪、
+// 5px 拖曳門檻、命中測試、無障礙節點按鈕、LOD 與投影門檻全在 controller 裡，這一頁只餵狀態
+// （`setState({ sim })`）與收「使用者選了哪一顆」（`onSelect`）。⚠️ 這裡以前另外維護一份
+// SVG 渲染器（src/lib/render.ts）與 Viewport，平移縮放、點選判定、等級牌各寫了第二份——
+// 那正是這個 repo 反覆被咬的「複製第二份出去」（規則 21 複製規則 7、FILTERS_MS 複製 --t-med）。
+// 模擬器的差異全部收斂成 state.ts 的 `SimPaint`，controller 內沒有第二條繪圖路徑。
 import rawData from '../generated/tree.json';
 import rawTables from '../../data/passive-upgrade-cost.json';
-import { renderTree } from '../lib/render.js';
+import { mountCanvasTree } from '../lib/canvas/canvas-tree.js';
+import { edgeKey } from '../lib/canvas/state.js';
 import {
-  DESKTOP_ICON_TARGET_PX, MOBILE_ICON_TARGET_PX, Viewport, minReadableScale,
-} from '../lib/viewport.js';
+  DESKTOP_ICON_TARGET_PX, MOBILE_ICON_TARGET_PX, minReadableScale,
+} from '../lib/canvas/view.js';
+import { isTypingTarget } from '../lib/filter.js';
 import {
   buildSimContext, initialSimState, ownedIds, isAvailable, missingParents, missingPrereqRanks,
   unlockNode, removeNode, setNodeLevel, setInitialDice, pathTo, unlockMany,
@@ -41,77 +46,44 @@ const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) 
 
 // --- 畫布 -------------------------------------------------------------------
 const host = $('canvas-host');
-const svg = renderTree(data, document);
-// `.sim` 讓模擬器專屬的 CSS 認得這張畫布——/tree 的 SVG 也叫 #tree，基本樣式共用一份。
-svg.classList.add('sim');
-host.appendChild(svg);
-const layer = svg.querySelector('#viewport') as SVGGElement;
-const vp = new Viewport(svg, layer);
-
-const nodeEls = new Map<string, SVGGElement>();
-for (const el of svg.querySelectorAll<SVGGElement>('g.node')) {
-  nodeEls.set(el.getAttribute('data-id')!, el);
-}
-const edgeEls = [...svg.querySelectorAll<SVGLineElement>('line.edge')];
+// controller 會在 host 底下掛兩張 canvas（靜態層／互動層）與一份無障礙節點按鈕清單，
+// 並自己接上 pointer（拖曳平移、雙指縮放、滾輪、hover 命中）與鍵盤焦點。
+// ⚠️ 跟 `/tree` 呼叫的是**同一支、同樣的參數**：模擬器的差異全部由 `setState({ sim })`
+// 表達，controller 內部沒有第二條繪圖路徑，也沒有任何「這是 /sim」的旗標可傳
+// （見 canvas-tree.ts 的 MountOptions）。
+const tree = mountCanvasTree(host, data);
+// `vp` 是 controller 的座標狀態機（src/lib/canvas/view.ts）。
+// ⚠️ 它吃的是**相對 host 的 CSS px**，不是 clientX/clientY。
+const vp = tree.view;
 
 const isMobile = typeof matchMedia === 'function' && matchMedia('(width <= 720px)').matches;
 
+/**
+ * 初始視角：整棵樹塞進容器，再套一次可讀性下限。
+ *
+ * `fitAll(0.9)` 沿用 SVG 時期 `fitTo()` 的 0.9 留白。之後那個下限跟 /tree 是同一條
+ * （`minReadableScale()`）：容器夠扁時「整棵樹塞進去」跟「看得清圖示」不可能同時成立，
+ * 優先保證看得清。⚠️ 縮放錨點是**相對 host 的 CSS px**（畫布中心），拿視窗座標進去的話
+ * host 有 offset（導覽列高度）時畫面會被推走。
+ */
 function fitAll(): void {
-  vp.invalidateCtm();
-  vp.fitTo(data.meta.viewBox);
-  const rect = svg.getBoundingClientRect();
-  const diceWidth = data.nodes.find(n => n.type === 'dice')?.size[0] ?? 50;
+  tree.fitAll(0.9);
+  const rect = host.getBoundingClientRect();
   const floor = minReadableScale(
     rect.width, rect.height, data.meta.viewBox[2], data.meta.viewBox[3],
-    diceWidth, isMobile ? MOBILE_ICON_TARGET_PX : DESKTOP_ICON_TARGET_PX,
+    tree.scene.diceIconWidth, isMobile ? MOBILE_ICON_TARGET_PX : DESKTOP_ICON_TARGET_PX,
   );
-  // 下限只是下限：fitTo 給的倍率已經夠大時不該反過來把畫面拉近。
-  if (vp.scale < floor) vp.zoomAt(floor / vp.scale, rect.left + rect.width / 2, rect.top + rect.height / 2);
+  // 下限只是下限：fitAll 給的倍率已經夠大時不該反過來把畫面拉近。
+  if (vp.scale < floor) {
+    vp.zoomAt(floor / vp.scale, rect.width / 2, rect.height / 2);
+    // 直接動 vp 的地方要自己排一幀——controller 只在自己的 pointer／wheel 路徑上排。
+    tree.requestRedraw();
+  }
 }
 
-// --- 平移與縮放 --------------------------------------------------------------
-// 跟 /tree 是兩份實作（見檔頭）。這裡刻意做得比較薄：沒有高解析圖示 LOD、沒有投影門檻、
-// 沒有分支跳轉——模擬器的重點是「這套規劃要花多少」，不是把樹看得多清楚。
-let dragging = false;
-svg.addEventListener('pointerdown', e => {
-  dragging = true;
-  svg.setPointerCapture(e.pointerId);
-});
-svg.addEventListener('pointerup', e => {
-  dragging = false;
-  svg.releasePointerCapture(e.pointerId);
-});
-svg.addEventListener('pointercancel', () => { dragging = false; });
-svg.addEventListener('pointermove', e => {
-  if (dragging) vp.pan(e.movementX, e.movementY);
-});
-svg.addEventListener('wheel', e => {
-  e.preventDefault();
-  vp.zoomAt(e.deltaY < 0 ? 1.1 : 1 / 1.1, e.clientX, e.clientY);
-}, { passive: false });
-
-// 雙指縮放。⚠️ `dragging` 要在第二指落下的 pointerdown 當下就關掉，不能等到 pointermove
-// ——上面那個 handler 先註冊，會把兩指移動的第一幀當成單指拖曳多 pan 一次（/tree 記過同一件事）。
-const touches = new Map<number, { x: number; y: number }>();
-let lastDist = 0;
-svg.addEventListener('pointerdown', e => {
-  touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
-  if (touches.size >= 2) dragging = false;
-});
-svg.addEventListener('pointerup', e => { touches.delete(e.pointerId); lastDist = 0; });
-svg.addEventListener('pointercancel', e => { touches.delete(e.pointerId); lastDist = 0; });
-svg.addEventListener('pointermove', e => {
-  if (!touches.has(e.pointerId)) return;
-  touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
-  if (touches.size !== 2) return;
-  const [a, b] = [...touches.values()];
-  if (!a || !b) return;
-  const dist = Math.hypot(a.x - b.x, a.y - b.y);
-  if (lastDist > 0) vp.zoomAt(dist / lastDist, (a.x + b.x) / 2, (a.y + b.y) / 2);
-  lastDist = dist;
-});
-
-addEventListener('resize', () => { vp.invalidateCtm(); });
+// 平移、雙指縮放、滾輪縮放、視窗尺寸變化全部在 controller 裡（canvas-tree.ts 的 pointer
+// 監聽器與 ResizeObserver），這裡一行都不寫——以前 /sim 與 /tree 各有一份，而那兩份對
+// 「第二指落下要不要停掉單指拖曳」這種細節必須各自記得一次。
 
 // --- 狀態與 undo／redo -------------------------------------------------------
 const UNDO_LIMIT = 100;
@@ -196,58 +168,45 @@ function limits(): { core: number | null; gold: number | null; solar: number | n
 }
 
 // --- 畫面 -------------------------------------------------------------------
-const SVG_NS = 'http://www.w3.org/2000/svg';
-
-/** 等級牌。只建一次，之後靠 hidden 與文字內容更新——每次重畫都重建的話會在拖曳中閃。 */
-function ensureBadges(): void {
-  for (const [id, el] of nodeEls) {
-    const node = ctx.byId.get(id);
-    if (!node || maxSelectableLevel(node, ctx) <= 1) continue;
-    if (el.querySelector(':scope > .sim-badge')) continue;
-    const [, h] = node.size;
-    const g = document.createElementNS(SVG_NS, 'g');
-    g.setAttribute('class', 'sim-badge');
-    // 貼在圖示下緣外側；標籤本來就在 h/2 + 15，等級牌放它上面一點不會撞到。
-    g.setAttribute('transform', `translate(0,${h / 2 - 2})`);
-    const rect = document.createElementNS(SVG_NS, 'rect');
-    rect.setAttribute('x', '-16');
-    rect.setAttribute('y', '0');
-    rect.setAttribute('width', '32');
-    rect.setAttribute('height', '16');
-    rect.setAttribute('rx', '3');
-    const text = document.createElementNS(SVG_NS, 'text');
-    text.setAttribute('x', '0');
-    text.setAttribute('y', '12');
-    g.append(rect, text);
-    el.appendChild(g);
-  }
-}
-
+/**
+ * 把模擬器的狀態餵給畫布。
+ *
+ * canvas 裡畫的節點不是 DOM 元素、沒有 classList 可掛，所以舊版那一整套
+ * `.sim-owned`／`.sim-available`／`.sim-locked`／`.sim-selected`／`.sim-linked`／
+ * `.sim-active`／`.sim-ready` class 切換全部收斂成一份 `SimPaint`（src/lib/canvas/state.ts），
+ * 由 painter 換算成 opacity 與顏色——數值是從舊的 CSS 規則原封不動搬過去的。
+ *
+ * ⚠️ 等級牌也不再是自己建的 `<g class="sim-badge">`：painter 依 `levels`／`maxLevels` 直接畫
+ * （只畫 owned 且 `maxLevels > 1` 的那幾顆）。舊版那份 SVG 實作踩過一個測試完全看不到的坑
+ * ——**SVG 元素不吃 HTML 的 `hidden` 屬性**，`toggleAttribute('hidden')` 是完全沒有作用的
+ * 一行，239 個牌子全部留在畫面上，全套測試綠、截圖才看得出來。
+ */
 function renderCanvas(): void {
   const owned = ownedIds(state, ctx);
-  for (const [id, el] of nodeEls) {
-    const isOwned = owned.has(id);
-    el.classList.toggle('sim-owned', isOwned);
-    el.classList.toggle('sim-available', !isOwned && isAvailable(id, state, ctx));
-    el.classList.toggle('sim-locked', !isOwned && !isAvailable(id, state, ctx));
-    el.classList.toggle('sim-selected', id === selected);
-    // ⚠️ 等級牌的顯示交給 CSS（`.node:not(.sim-owned) .sim-badge`）——**SVG 元素不吃 HTML 的
-    // `hidden` 屬性**，`toggleAttribute('hidden')` 在這裡是完全沒有作用的一行，239 個牌子
-    // 會全部留在畫面上。
-    const badge = el.querySelector<SVGGElement>(':scope > .sim-badge');
-    if (badge && isOwned) {
-      const node = ctx.byId.get(id)!;
-      const t = badge.querySelector('text');
-      if (t) t.textContent = `${state.levels.get(id) ?? 1}/${node.maxLevel}`;
-    }
+  const available = new Set(
+    data.nodes.filter(n => !owned.has(n.id) && isAvailable(n.id, state, ctx)).map(n => n.id),
+  );
+  const linked = new Set<string>();
+  const active = new Set<string>();
+  const ready = new Set<string>();
+  for (const [from, to] of data.edges) {
+    // 三階：沒到手＝暗、兩端都在手上＝正常亮度（edgeIsLinked）、真的走過＝再加金色
+    // （edgeWasUsed，是 linked 的子集）。少了中間那階，火骰子連著風與冰那兩條（三顆都是
+    // 遊戲一開始就送的）不是被畫成金線＝看起來像自己解過，就是跟沒走到的路一樣暗。
+    if (edgeIsLinked(from, to, state, ctx)) linked.add(edgeKey(from, to));
+    if (edgeWasUsed(from, to, state, ctx)) active.add(edgeKey(from, to));
+    if (owned.has(from) && !owned.has(to) && isAvailable(to, state, ctx)) ready.add(edgeKey(from, to));
   }
-  for (const el of edgeEls) {
-    const from = el.getAttribute('data-from')!;
-    const to = el.getAttribute('data-to')!;
-    el.classList.toggle('sim-linked', edgeIsLinked(from, to, state, ctx));
-    el.classList.toggle('sim-active', edgeWasUsed(from, to, state, ctx));
-    el.classList.toggle('sim-ready', owned.has(from) && !owned.has(to) && isAvailable(to, state, ctx));
-  }
+  tree.setState({
+    sim: {
+      owned, available, selected, linked, active, ready,
+      // 只帶已取得的等級：painter 也只畫 owned 的牌子，未取得的節點送過去只是白佔快取簽章。
+      levels: new Map([...owned].map(id => [id, state.levels.get(id) ?? 1])),
+      // 上限走 maxSelectableLevel 而不是 node.maxLevel：查不到費用表的節點在模擬器裡根本
+      // 不能升級（回 1），painter 的 `max <= 1` 就是靠這個判斷「這顆不該有牌子」。
+      maxLevels: new Map(data.nodes.map(n => [n.id, maxSelectableLevel(n, ctx)])),
+    },
+  });
 }
 
 // 太陽核心只在有值時才印：三列合計是側欄常駐的東西，為一個只有太陽骰子那一支花得到的
@@ -423,42 +382,44 @@ function toast(msg: string): void {
 }
 
 // --- 事件：畫布 --------------------------------------------------------------
-// ⚠️ **不能在節點上綁 `click`**：`svg.setPointerCapture()` 一旦生效，後續 pointer 事件
-// （以及由它們合成的 click）的 target 全部被改標成 svg 本身，節點的 handler 永遠不會跑
-// ——實測就是「點下去完全沒反應」。改成在 pointerdown「當下」（capture 還沒生效、target
-// 還沒被改標）記下被按到的節點，pointerup 只用來量位移、判定這一下算不算點選。
-// /tree 的 tree-canvas.ts 也是同一套做法。
-const DRAG_THRESHOLD_PX = 5;
-let downTarget: Element | null = null;
-let downPos = { x: 0, y: 0 };
+// 「使用者選了哪一顆」由 controller 判定：它在 pointerdown 當下用幾何命中記下被按到的是誰
+// （⚠️ `setPointerCapture()` 生效後 `e.target` 一律被改標成捕捉的那個元素，事後反推一定
+// 答錯——那個坑連同 5px 拖曳門檻與雙指判定一起搬進 canvas-tree.ts 了），pointerup 時位移
+// 沒超過門檻才算點選。空白處回 null＝清掉選取。
+// 鍵盤的 Enter／Space 走同一條路：a11y.ts 那份隱形按鈕清單的 onActivate 也進 onSelect。
 
 function activate(id: string | null): void {
   selected = id;
   // 前置齊了就直接取得——先選再按按鈕，在一棵 239 節點的樹上太累。
   // ⚠️ `commit()` 失敗（例如被資源上限擋下）時**一定要自己補一次 render**：`selected` 已經
-  // 換人了，不重畫的話面板與 `.sim-selected` 會停在上一顆節點，而面板上那些按鈕讀的是
+  // 換人了，不重畫的話面板與畫布上的選取高亮會停在上一顆節點，而面板上那些按鈕讀的是
   // `selected`——按下去作用在畫面上看不到的那顆（`/code-review high` 抓到）。
   const taken = id !== null && isAvailable(id, state, ctx) && commit(unlockNode(state, ctx, id));
   if (!taken) render();
 }
 
-svg.addEventListener('pointerdown', e => {
-  downTarget = (e.target as Element).closest('g.node');
-  downPos = { x: e.clientX, y: e.clientY };
-});
-svg.addEventListener('pointerup', e => {
-  // 雙指縮放中途放開一指不算點選（此時 touches 已被上面那個 handler 刪掉這一指）。
-  if (touches.size > 0) return;
-  if (Math.hypot(e.clientX - downPos.x, e.clientY - downPos.y) > DRAG_THRESHOLD_PX) return;
-  activate(downTarget ? downTarget.getAttribute('data-id') : null);
-});
-svg.addEventListener('keydown', e => {
-  const g = (e.target as Element).closest?.('g.node');
-  if ((e.key === 'Enter' || e.key === ' ') && g) {
-    e.preventDefault();
-    activate(g.getAttribute('data-id'));
-  }
-  if (e.key === 'Escape') activate(null);
+/**
+ * 搜尋不符的節點淡出但留在原位（同 /tree 的篩選）。
+ *
+ * 這份集合是「誰被搜尋淡出」的**唯一**事實：畫布拿它算 opacity（state.ts 的 `nodeAlpha`
+ * 在 sim 分支裡先看它，數值 0.08 是從舊的 `#tree.sim .node.sim-dimmed` 原封不動搬過來的），
+ * `onSelect` 拿它把「點到淡出的節點」翻譯成「點空白處」。舊版把它散在 241 個 `<g>` 的
+ * classList 上，而 class 本身沒有辦法被別的程式碼問到。
+ */
+const dimmed = new Set<string>();
+
+// ⚠️ 被搜尋淡出的節點點不到。舊版靠 CSS 的 `.sim-dimmed { pointer-events: none }`，事件會
+// 穿到 SVG 本身、`downTarget` 是 null，於是那一下等於「點空白處」＝清掉選取。canvas 沒有
+// pointer-events 這回事（畫的是像素不是元素），命中測試一律答得出節點 id，所以那條語意要
+// 在這裡自己補回來——不補的話搜尋中點一顆看不見的節點會直接把它解鎖，而畫面上幾乎沒有反應。
+tree.onSelect(id => activate(id !== null && dimmed.has(id) ? null : id));
+
+// Esc 取消選取。掛在 host 上而不是 window：事件要先冒泡經過 host 才會觸發，所以只有「焦點
+// 在畫布內（無障礙節點按鈕或兩張 canvas）」時才生效——搜尋框與三個上限輸入框都不是 host 的
+// 子節點，在那裡按 Esc 不會被攔截。`isTypingTarget()` 是第二道保險：焦點在表單元件上時
+// 一律讓路（同 /tree 的鍵盤平移，見 src/lib/filter.ts）。
+host.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && !isTypingTarget(document.activeElement?.tagName)) activate(null);
 });
 
 // --- 事件：側欄 --------------------------------------------------------------
@@ -630,11 +591,14 @@ addEventListener('keydown', e => {
 // --- 搜尋 -------------------------------------------------------------------
 $<HTMLInputElement>('sim-search').addEventListener('input', e => {
   const q = (e.target as HTMLInputElement).value.trim().toLowerCase();
-  for (const [id, el] of nodeEls) {
-    const node = ctx.byId.get(id);
-    const hit = q === '' || (node !== undefined && node.name.toLowerCase().includes(q));
-    el.classList.toggle('sim-dimmed', !hit);
+  dimmed.clear();
+  if (q !== '') {
+    for (const n of data.nodes) if (!n.name.toLowerCase().includes(q)) dimmed.add(n.id);
   }
+  // 用 `new Set(dimmed)` 而不是把 `dimmed` 本身交出去：PaintState 是 spread 出來的新物件，
+  // 但集合是同一個參照——controller 的 stateSignature() 會拿它算靜態層快取簽章，共用參照的話
+  // 「下一次輸入就地改掉內容」在簽章看來是同一份狀態，畫面不會跟著更新。
+  tree.setState({ filteredOut: new Set(dimmed) });
 });
 
 // --- 手機版：footer 讓位給抽屜 ------------------------------------------------
@@ -653,6 +617,5 @@ function trackPanelHeight(): void {
 
 // --- 啟動 -------------------------------------------------------------------
 trackPanelHeight();
-ensureBadges();
 fitAll();
 render();

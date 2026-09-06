@@ -1,29 +1,23 @@
-// 掛載骰子樹畫布：讀取建置期產生的 tree.json，畫成 SVG 掛進 #canvas-host，
-// 再接上平移縮放（滑鼠拖曳／滾輪、雙指觸控、鍵盤）。
-// 節點互動（詳情面板、搜尋、篩選……後續任務）會接著在這支腳本上擴充。
+// 掛載骰子樹畫布：讀取建置期產生的 tree.json，交給 src/lib/canvas 的 controller
+// （`mountCanvasTree`）畫成兩張 <canvas> 掛進 #canvas-host。
+//
+// ⚠️ **平移／縮放／hover／點選命中／鍵盤焦點都不在這支檔案裡了**：它們是「任何一張骰子樹
+// 畫布都要有」的行為，`/tree` 與 `/sim` 共用同一份 controller（見 canvas-tree.ts 的檔頭）。
+// 這裡只留 `/tree` 專屬的東西：搜尋、篩選、網址狀態同步、詳情卡片的擺位與視圖堆疊、
+// 分支跳轉。畫面狀態（選取、前置鏈、被篩掉的節點）一律用 `tree.setState()` 交出去，
+// 不再自己往 DOM 掛 class——canvas 裡什麼都不是元素，沒有 classList 可掛。
 import rawData from '../generated/tree.json';
 // ⚠️ **這份費用表刻意不進 tree.json**（tier 是 (maxLevel, unlockCost.gold) 的純函數，見
 // PassiveUpgradeCost 的說明），所以走頁面 import 直接進 /tree 的 JS bundle，不吃那 20 KB
 // 的 gzip 預算。`/sim` 用的是同一份檔案、同一種載法。詳情面板有兩個地方需要它：
 // 「練滿 N 級累計」（1601 太陽強化的費用在 special 裡）與前置鏈的「前置練等」那一段。
 import rawTables from '../../data/passive-upgrade-cost.json';
-import { renderTree } from '../lib/render.js';
+import { mountCanvasTree, type TreeHandle } from '../lib/canvas/canvas-tree.js';
 import { cssMs } from '../lib/css-ms.js';
-import {
-  DESKTOP_ICON_TARGET_PX,
-  MOBILE_ICON_TARGET_PX,
-  Viewport,
-  minReadableScale,
-  effectiveDevicePx,
-  HIRES_UPGRADE_AT,
-  HIRES_DOWNGRADE_AT,
-  SHADOW_ON_AT_ICON_PX,
-  SHADOW_OFF_AT_ICON_PX,
-} from '../lib/viewport.js';
+import { DESKTOP_ICON_TARGET_PX, MOBILE_ICON_TARGET_PX, minReadableScale } from '../lib/canvas/view.js';
 import { computeSelection } from '../lib/selection.js';
 import { renderDetail, nodeViewHtml, termViewHtml, awakeningViewHtml } from '../components/NodeDetail.js';
 import { matchesFilter, stateToQueryString, queryStringToState, isTypingTarget } from '../lib/filter.js';
-import { visibleNodeIds, upgradeIcons, downgradeIcons, buildIconIndex } from '../lib/hires.js';
 import type { Branch, NodeType, PassiveUpgradeCost, TreeData, TreeNode } from '../lib/types.js';
 import { updateNavHeight } from '../lib/nav-height.js';
 
@@ -59,39 +53,35 @@ function updateChipsHeight(): void {
 }
 updateChipsHeight();
 
+// 只剩「頁面 chrome 的量測」：畫布本身的尺寸、dpr、高解析圖示門檻與投影門檻全部由
+// controller 的 ResizeObserver ＋ 每幀 updateLod() 自己處理（見 canvas-tree.ts），
+// 不必也不該在這裡再接一次線。
 window.addEventListener('resize', () => {
   updateNavHeight();
   updateChipsHeight();
-  // 升級門檻的兩個輸入（畫布尺寸、devicePixelRatio）都會隨視窗變動：瀏覽器縮放到 200%
-  // （dpr 1→2）、手機轉向、進入全螢幕、把視窗拖到高 DPI 螢幕，全都只發 resize。不在這裡
-  // 重算的話，使用者會一直停在糊掉的 sprite（或反過來，停在已經沒必要的高解析圖），
-  // 直到剛好在畫布上滾一次滾輪為止。
-  // ⚠️ 順序不能換：這兩個判斷的輸入都是畫布盒子，必須先讓快取失效才問得到新尺寸。
-  // 這個 handler 在本檔最前面就註冊了，比下面 invalidateCanvasMetrics() 自己那道
-  // resize 失效更早執行，所以不能指望它——要在這裡自己先叫一次（函式宣告會提升，
-  // 而這個 handler 只在模組執行完之後才會被呼叫，不會有 TDZ 問題）。
-  invalidateCanvasMetrics();
-  maybeUpgradeIcons();
-  // 投影門檻同理，而且它連 rAF 都沒有：`updateShadows()` 平常掛在監看 #viewport style 的
-  // MutationObserver 上，但 resize **不會**寫那個 style（Viewport.apply() 只從 pan／
-  // zoomAt／fitTo 進來），那條路接不到。少了這一行，視窗縮小後會停在「圖示已經小到看不見
-  // 投影、卻還在畫 239 個 drop-shadow」的狀態，要等使用者下次滾輪或拖曳才自癒。E2E 的 Z8
-  // 有一段專門釘住這件事。
-  updateShadows();
 });
 
-const host = document.getElementById('canvas-host');
-if (!host) {
+const hostOrNull = document.getElementById('canvas-host');
+if (!hostOrNull) {
   throw new Error('找不到 #canvas-host，骰子樹畫布無法掛載');
 }
-const svg = renderTree(data, document);
-host.appendChild(svg);
-
-const viewport = svg.querySelector('#viewport');
-if (!viewport) {
-  throw new Error('找不到 #viewport，畫布無法平移縮放');
-}
-const vp = new Viewport(svg, viewport as SVGGElement);
+// 收窄後的別名：TS 的 control-flow 窄化不會跨函式邊界，而 applyReadabilityFloor() 等
+// 函式閉包會用到它（同下面 `panel` 的理由）。
+const host: HTMLElement = hostOrNull;
+// controller 會在 host 底下掛兩張 canvas（靜態層／互動層）與一份無障礙節點按鈕清單，
+// 並自己接上 pointer（拖曳平移、雙指縮放、滾輪、hover 命中）與鍵盤焦點。
+const tree: TreeHandle = mountCanvasTree(host, data);
+// `vp` 是 controller 的座標狀態機（src/lib/canvas/view.ts）。下面既有的
+// `vp.pan／vp.zoomAt／vp.scale／vp.pxPerUnit` 呼叫語意跟 SVG 時期一樣，
+// ⚠️ 只有一點不同：**它吃的是相對 host 的 CSS px，不是 clientX/clientY**。
+const vp = tree.view;
+// 使用者一碰畫布就放棄進行中的置中平移——兩股力量同時改 view 會互相拉扯。
+// 掛在 pointerdown／wheel 上（不是 pointermove）：手勢一開始就該讓位，不必等真的移動。
+// ⚠️ 掛在 **host** 上而不是 canvas 元素上：controller 把 pointer 監聽器掛在互動層那張
+// canvas（見 canvas-tree.ts 的說明），事件會冒泡到 host，一個掛勾同時涵蓋兩張 canvas
+// 與無障礙按鈕清單，也不必知道 controller 內部把 canvas 叫什麼。
+host.addEventListener('pointerdown', cancelCenterPan);
+host.addEventListener('wheel', cancelCenterPan, { passive: true });
 
 // --- 搜尋、篩選與網址狀態（?node=/?branch=/?type=/?q=，spec §6.3）---
 // 提前到這裡宣告（原本這段連同 searchEl/filtersEl 一起放在詳情面板段落之後）：下面「手機版
@@ -104,23 +94,20 @@ const { state: filterState, selected: initialSelected } = queryStringToState(loc
 // 「篩選條件變了、要不要重新對目前選取的節點跑一次 select() 讓面板/高亮跟著更新」，
 // syncUrl() 也用它組 ?node=。
 let currentSelected: string | null = initialSelected;
+/**
+ * 目前被篩掉的節點 id。
+ *
+ * 這是**唯一**一份「誰被篩掉」的事實：畫布拿它算 opacity（state.ts 的 nodeAlpha／
+ * edgeAlpha／centerAlpha），`selectionFor()` 拿它算 hiddenByFilter。舊版把它散在 241 個
+ * `<g>` 的 classList 上、再反過來 querySelector 讀回來。
+ * ⚠️ 宣告放在這裡而不是 `applyFilter()` 旁邊：`selectionFor()` 比 `applyFilter()` 早定義，
+ * 留在下面會落進 `let` 的暫時死區（本檔已經為同一個理由搬過三個變數，見下面的說明）。
+ */
+let filteredOut = new Set<string>();
 
 // --- 手機版視角（task-17）：預設聚焦單一分支，不像桌機版一次看全部 5 個分支 ---
-// isMobile 用 matchMedia 判斷，但故意不直接寫 `matchMedia(...)`：這支腳本的測試環境
-// （linkedom）不提供 window.matchMedia，直接呼叫會是 ReferenceError；`typeof matchMedia`
-// 對完全沒宣告過的識別字回傳 'undefined' 而不會拋錯（JS 對 typeof 的特例），是安全的
-// 存在性檢查寫法，也讓測試可以用 vi.stubGlobal('matchMedia', ...) 精準模擬手機環境
-// （見 tests/scripts/tree-canvas.test.ts）。720px 斷點要跟 src/pages/tree.astro 的
-// CSS 媒體查詢保持一致，兩邊改動時要一起改。
-// maybeUpgradeIcons() 的節流控制碼。宣告刻意提到這裡、離它的函式很遠：jumpToBranch() 會呼叫
-// maybeUpgradeIcons()，而 jumpToBranch() 在模組初始化階段（手機版初始視角）就會被呼叫一次——
-// 宣告若留在函式旁邊（檔案下半部），那次呼叫會落進 `let` 的暫時死區直接 ReferenceError，
-// 整個模組掛掉。測試環境剛好驗不到（linkedom 沒有 cancelAnimationFrame，函式會提早 return，
-// 根本讀不到這個變數），只有真瀏覽器會炸。
-let upgradeRaf = 0;
-
-// 置中平移的 rAF 控制碼，以及卡片擺在節點的哪一邊。⚠️ 宣告提到這裡的理由跟 upgradeRaf 一模
-// 一樣，而且**是實際踩到的**：jumpToBranch()（手機版初始視角，模組初始化階段就會跑）會呼叫
+// 置中平移的 rAF 控制碼，以及卡片擺在節點的哪一邊。⚠️ 宣告刻意提到這裡（離它自己的函式很
+// 遠），而且**是實際踩到的**：jumpToBranch()（手機版初始視角，模組初始化階段就會跑）會呼叫
 // cancelCenterPan()，宣告留在函式旁邊時 400×800 與 720×800 都直接
 // `ReferenceError: Cannot access 'centerRaf' before initialization`，整個模組掛掉、詳情面板
 // 永遠是 hidden。1440×900 完全正常——桌機不走 jumpToBranch()，所以只有窄畫面會炸。
@@ -134,110 +121,19 @@ let sidePickedFor: string | null = null;
 // 置中平移期間把卡片**釘在終點位置**，不讓它跟著節點跑（見 centerOnSelected()）。
 let panelPinned = false;
 
-/**
- * 高解析升級的批次世代號。跟 `upgradeRaf` 同一個理由提到這裡（見上面那段說明）：
- * `jumpToBranch()` 在模組初始化階段就會呼叫 `maybeUpgradeIcons()`，宣告留在函式旁邊會落進
- * 暫時死區。目前是因為工作都排在 rAF／閒置回呼裡才躲過，那是碰巧安全、不是設計。
- *
- * 每次重新評估門檻就 +1，排隊中的批次看到號碼變了就自己停下來——沒有它的話，使用者
- * 放大→鬆手（排了五批）→立刻縮小（觸發整批降級）之後，那五批仍會照原計畫把圖示一個個
- * 升回去，在一個 sprite 已經綽綽有餘的倍率上憑空多抓幾十個檔案。
- */
-let upgradeGeneration = 0;
-
 /** 手機版斷點。要跟 src/pages/tree.astro 的媒體查詢保持一致，兩邊改動時一起改。 */
 const NARROW_QUERY = '(max-width: 720px)';
 // 只用於「載入當下要不要走手機版初始視角」這種一次性決定；跟著視窗變化的判斷請當場再問一次
 // matchMedia（見 positionPanel()）。
+// 故意不直接寫 `matchMedia(...)`：這支腳本的測試環境（linkedom）不提供 window.matchMedia，
+// 直接呼叫會是 ReferenceError；`typeof matchMedia` 對完全沒宣告過的識別字回傳 'undefined'
+// 而不會拋錯（JS 對 typeof 的特例），是安全的存在性檢查寫法，也讓測試可以用
+// vi.stubGlobal('matchMedia', ...) 精準模擬手機環境（見 tests/scripts/tree-canvas.test.ts）。
 const isMobile = typeof matchMedia === 'function' && matchMedia(NARROW_QUERY).matches;
 
-// 骰子圖示的顯示寬度（使用者座標，見 tree.json 節點的 size 欄位／render.ts）。分支包圍盒
-// 裡最小的節點是骰子符文／被動，但「至少要看得清一顆骰子圖示」是 task-17 裁決原文明確舉的
-// 例子——拿骰子的尺寸當基準，比骰子小的圖示縮放後只會更清楚不會反而不夠，不需要每個節點
-// 各自算一個下限再取最大值，徒增複雜度換不到實質好處。
-//
-// 直接從資料取第一顆骰子的實際顯示尺寸，不抄一份數字：這個值 2026-08-18 這一天就變過兩次
-// （48 → 46 → 56），寫死的話可讀性下限會照著一個已經不存在的尺寸算，畫面上看起來「差不多」，
-// 而且沒有任何測試或型別會抱怨。
-const DICE_ICON_WIDTH_UNITS = data.nodes.find(n => n.type === 'dice')?.size[0] ?? 50;
-// 目標圖示尺寸（兩個常數與它們的由來見 src/lib/viewport.ts）。
 
 /**
- * 畫布元素盒子的快取，連同 `Viewport` 內部的 CTM 快取一起失效。
- *
- * `getBoundingClientRect()` 與 `getScreenCTM()` 都是**強制同步版面計算**，而兩者量的都是
- * 「畫布元素本身在頁面上的位置與大小」——跟 `#viewport` 那層 transform 無關，拖曳與縮放
- * 全程都不會變。不快取的話，每一個 pointermove（`pan()` → `screenToUserCtm()`）與每一幀的
- * `updateShadows()` 都各 flush 一次版面。
- *
- * 失效時機刻意用四道，各補一個對方收不到的洞：
- * - `ResizeObserver`：涵蓋**任何原因**造成的尺寸變化，不只視窗縮放（例如手機網址列收合、
- *   容器版面改變）。存在性檢查照本檔慣例——測試環境（linkedom）沒有這個 API。
- * - `resize`：ResizeObserver 不存在時的退路。註冊在本檔最前面那個 resize handler 裡
- *   （而不是這裡），因為它必須排在同一個 handler 的 maybeUpgradeIcons()／updateShadows()
- *   之前執行。
- * - 捕獲階段的 `scroll`：位置變了但尺寸沒變，ResizeObserver 收不到。用捕獲階段才接得到
- *   內層容器的捲動（scroll 不冒泡）。
- * - 每次 `pointerdown`：廉價的保險。代價是**整個手勢**一次強制版面計算，而不是每個
- *   pointermove 一次——那正是這個快取要省掉的東西。
- */
-let canvasBox: DOMRect | null = null;
-/** 見下方 `updateShadows()`。宣告放在這裡是因為 `invalidateCanvasMetrics()` 要清掉它。 */
-let lastShadowScale = NaN;
-function canvasRect(): DOMRect {
-  if (!canvasBox) canvasBox = svg.getBoundingClientRect();
-  return canvasBox;
-}
-function invalidateCanvasMetrics(): void {
-  canvasBox = null;
-  lastShadowScale = NaN;
-  vp.invalidateCtm();
-}
-if (typeof ResizeObserver === 'function') new ResizeObserver(invalidateCanvasMetrics).observe(svg);
-if (typeof addEventListener === 'function') {
-  // `resize` 不在這裡註冊：本檔最前面那個 resize handler 已經自己叫了
-  // invalidateCanvasMetrics()，而且必須排在它的 maybeUpgradeIcons()／updateShadows()
-  // 之前——在這裡再註冊一次只會是第二個、更晚執行的監聽器，解決不了順序問題，還讓
-  // 「誰負責 resize」有兩個答案。
-  addEventListener('scroll', invalidateCanvasMetrics, { capture: true, passive: true });
-}
-svg.addEventListener('pointerdown', invalidateCanvasMetrics);
-// 使用者一碰畫布就放棄進行中的置中平移——兩股力量同時寫 transform 會互相拉扯。
-// 掛在 pointerdown／wheel 上（不是 pointermove）：手勢一開始就該讓位，不必等真的移動。
-svg.addEventListener('pointerdown', cancelCenterPan);
-svg.addEventListener('wheel', cancelCenterPan, { passive: true });
-
-/**
- * 切換 `#tree.shadows`：圖示在畫面上夠大時才畫節點投影（見 src/pages/tree.astro 那條規則的
- * 說明——239 個 drop-shadow 是縮小視角下光柵化成本的主要來源，實測手機平移 20→40 FPS）。
- *
- * 判準是**骰子圖示目前的 CSS 顯示寬度**，門檻與遲滯見 `SHADOW_ON_AT_ICON_PX` /
- * `SHADOW_OFF_AT_ICON_PX`（src/lib/viewport.ts，那裡也寫了為什麼不沿用高解析圖示那組
- * 裝置像素門檻）。算式跟 `currentDevicePx()` 同一條，只是 dpr 固定給 1——「攤到幾個 CSS
- * 像素」就是「攤到幾個裝置像素」把 dpr 拿掉。
- *
- * ⚠️ 這個函式**不能**只掛在 `wheel`／`pointerup` 上（`maybeUpgradeIcons()` 就是那樣掛的）。
- * 雙指縮放要放開手指才會觸發 pointerup，那正好是最慢的一段手勢：整個縮放過程會拖著全部
- * 投影跑完，放開才切換。所以改掛在監看 `#viewport` style 的 MutationObserver 上（見下方
- * 詳情卡片那段的說明，`Viewport.apply()` 是所有變動的唯一出口），每一次 transform 變動都
- * 跟著更新。成本是安全的：盒子已經快取，這裡只剩幾個乘法，而且 scale 沒變時直接短路。
- */
-function updateShadows(): void {
-  if (vp.scale === lastShadowScale) return;
-  const box = canvasRect();
-  const iconCssPx =
-    effectiveDevicePx(box.width, box.height, data.meta.viewBox[2], data.meta.viewBox[3], vp.scale, 1) *
-    DICE_ICON_WIDTH_UNITS;
-  // 0 代表**量不到**（畫布還沒排版、容器尺寸為 0），不是「小到不必畫投影」。這種狀態下不記
-  // lastShadowScale，才能在盒子量得到之後用同一個 scale 再算一次。
-  if (iconCssPx <= 0) return;
-  lastShadowScale = vp.scale;
-  if (iconCssPx < SHADOW_OFF_AT_ICON_PX) svg.classList.remove('shadows');
-  else if (iconCssPx > SHADOW_ON_AT_ICON_PX) svg.classList.add('shadows');
-}
-
-/**
- * `fitTo(bounds)` 之後，如果算出來的縮放比 `minReadableScale()`（見 src/lib/viewport.ts）
+ * `fitTo(bounds)` 之後，如果算出來的縮放比 `minReadableScale()`（見 src/lib/canvas/view.ts）
  * 算出的可讀性下限還小，就再疊一次縮放拉到下限；若 `fitTo` 本身給的倍率已經 ≥ 下限，就不去
  * 動它，不會把已經夠清楚的畫面反而縮小。
  *
@@ -251,32 +147,28 @@ function updateShadows(): void {
  * 初始視角／分支跳轉都會套用，不再是手機專屬；桌機的目標圖示尺寸訂得比手機小一些
  * （`DESKTOP_ICON_TARGET_PX`），滑鼠操作比手指精準，不需要跟手機同樣大。
  *
- * `getBoundingClientRect()`／`Viewport.zoomAt()` 的錨點換算都需要真正的瀏覽器版面引擎，
- * 這個下限實際套用後的縮放結果本環境（linkedom）沒有版面資訊、驗不了；
- * `minReadableScale()` 這個算式本身已經在 tests/lib/viewport.test.ts 用純數字驗過，
- * 這裡的 DOM 接線與視覺結果留給第 18 個任務的 E2E 或真機。
+ * ⚠️ 換成 canvas 之後量的是 **host** 的盒子（`#canvas-host`），不是畫布元素——canvas 是
+ * controller 掛在 host 底下的子元素，尺寸就是跟著 host 走的（見 canvas-tree.ts 的
+ * `measure()`）。`CanvasView.scale` 的 1 倍定義是「整張 viewBox 剛好塞進容器」，
+ * 跟 `minReadableScale()` 的 `pxPerUnit` 是同一個基準，所以下限的數值語意原封不動。
  */
 function applyReadabilityFloor(): void {
   const targetPx = isMobile ? MOBILE_ICON_TARGET_PX : DESKTOP_ICON_TARGET_PX;
-  // 這裡刻意**先失效再讀**，不吃既有快取。這個函式只在初始視角與分支跳轉時跑（一次工作
-  // 階段幾次，不是每一幀），重新量一次的成本可以忽略；而它正好是「版面剛剛可能變了」的
-  // 時機（首屏排版完成、使用者切換分支）。順手讓這次的新鮮結果進快取，之後的每幀路徑
-  // （updateShadows／maybeUpgradeIcons／pan）就都用得到同一份正確值。
-  invalidateCanvasMetrics();
-  const rect = canvasRect();
+  const rect = host.getBoundingClientRect();
   const floor = minReadableScale(
     rect.width,
     rect.height,
     data.meta.viewBox[2],
     data.meta.viewBox[3],
-    DICE_ICON_WIDTH_UNITS,
+    tree.scene.diceIconWidth,
     targetPx,
   );
   if (vp.scale >= floor) return; // fitTo 給的倍率已經夠大，下限只是下限、不該把畫面往下拉
 
-  const cx = rect.left + rect.width / 2;
-  const cy = rect.top + rect.height / 2;
-  vp.zoomAt(floor / vp.scale, cx, cy); // zoomAt 內部本來就會把結果夾在 0.2～8 倍，這裡不重複夾一次
+  // ⚠️ 錨點是**相對 host 的** CSS px（`CanvasView.zoomAt()` 的座標系），不是視窗座標——
+  // 拿 rect.left + width/2 進去的話，host 有 offset 時畫面會被推走。
+  vp.zoomAt(floor / vp.scale, rect.width / 2, rect.height / 2);
+  tree.requestRedraw();   // 直接動 vp 的地方要自己排一幀，controller 只在自己的 pointer 路徑上排
 }
 
 /**
@@ -287,11 +179,8 @@ function applyReadabilityFloor(): void {
  */
 function jumpToBranch(branch: Branch): void {
   cancelCenterPan();
-  vp.fitTo(data.meta.bounds[branch]);
+  tree.fitBounds(data.meta.bounds[branch]);
   applyReadabilityFloor();
-  // 同 focusMatches()：程式移動鏡頭後要自己補一次高解析升級。分支按鈕在 <svg> 之外，
-  // svg 上那兩個 wheel／pointerup 監聽器接不到，不補的話跳過去看到的是糊的圖示。
-  maybeUpgradeIcons();
 }
 
 if (isMobile) {
@@ -300,10 +189,11 @@ if (isMobile) {
   const initialBranch = currentSelected ? (byId.get(currentSelected)?.branch ?? 'nature') : 'nature';
   jumpToBranch(initialBranch);
 } else {
-  // 桌機初始視角：整棵樹塞進 viewBox（`fitTo` 固定給 0.9x），一樣要套可讀性下限——容器夠扁
+  // 桌機初始視角：整棵樹塞進容器（`fitAll(1)`＝scale 1＝CanvasView 的「全貌」定義，
+  // 見 view.ts 的 base／scale），一樣要套可讀性下限——容器夠扁
   // 時，「整棵樹塞進去」跟「看得清圖示」不可能同時成立，優先保證看得清，捲動交給使用者
   // （跟手機版分支視角的取捨邏輯一致，見 applyReadabilityFloor() 的說明）。
-  vp.fitTo([0, 0, data.meta.viewBox[2], data.meta.viewBox[3]]);
+  tree.fitAll(1);
   applyReadabilityFloor();
 }
 
@@ -313,190 +203,6 @@ if (isMobile) {
 for (const btn of document.querySelectorAll<HTMLButtonElement>('#branch-chips button, #branch-nav button')) {
   btn.addEventListener('click', () => jumpToBranch(btn.dataset.branch as Branch));
 }
-
-// --- 滑鼠拖曳平移 + 滾輪縮放 ---
-// pan()/zoomAt() 吃的是螢幕座標（CSS px），內部會用 svg.getScreenCTM() 換算成
-// #viewport 所在的使用者座標系，詳見 src/lib/viewport.ts 開頭的說明。
-let dragging = false;
-svg.addEventListener('pointerdown', e => {
-  dragging = true;
-  svg.setPointerCapture(e.pointerId);
-});
-svg.addEventListener('pointerup', e => {
-  dragging = false;
-  svg.releasePointerCapture(e.pointerId);
-});
-svg.addEventListener('pointercancel', () => {
-  dragging = false;
-});
-svg.addEventListener('pointermove', e => {
-  if (dragging) vp.pan(e.movementX, e.movementY);
-});
-svg.addEventListener(
-  'wheel',
-  e => {
-    e.preventDefault();
-    vp.zoomAt(e.deltaY < 0 ? 1.1 : 1 / 1.1, e.clientX, e.clientY);
-  },
-  { passive: false },
-);
-
-// --- 雙指觸控縮放 ---
-// 與拖曳平移共用同一批 pointer 事件：一旦偵測到第二指落下，就先停用拖曳平移，
-// 改以兩指中點為錨點、依兩指距離變化量縮放，放開任一指後回到平移模式。
-//
-// dragging 要在「第二指落下的 pointerdown」當下就關掉，不能拖到下一個 pointermove
-// 才關：上面拖曳平移的 pointerdown handler 先註冊、對每次 pointerdown 都無條件把
-// dragging 設回 true，如果這裡只在 pointermove 判斷 touches.size===2 才關閉
-// dragging，會有一幀空窗——兩指都落下後、雙指 handler 還沒來得及在 pointermove 裡
-// 把 dragging 設 false 之前，拖曳平移的 pointermove handler（同一批事件、依註冊順序
-// 先跑）仍會把這次移動當成單指拖曳多 pan() 一次，畫面出現一幀跳動。在這裡的
-// pointerdown 就依當下的指數提前關閉 dragging，確保後續任何 pointermove 都不會再
-// 誤觸拖曳平移。
-const touches = new Map<number, { x: number; y: number }>();
-let lastDist = 0;
-svg.addEventListener('pointerdown', e => {
-  touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
-  if (touches.size >= 2) dragging = false;
-});
-svg.addEventListener('pointerup', e => {
-  touches.delete(e.pointerId);
-  lastDist = 0;
-});
-svg.addEventListener('pointercancel', e => {
-  touches.delete(e.pointerId);
-  lastDist = 0;
-});
-svg.addEventListener('pointermove', e => {
-  if (!touches.has(e.pointerId)) return;
-  touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
-  if (touches.size !== 2) return;
-  // dragging 這裡已經保證是 false（上面 pointerdown handler 在指數達到 2 時就關掉了），
-  // 不用再設一次。
-  const [a, b] = [...touches.values()];
-  if (!a || !b) return;
-  const dist = Math.hypot(a.x - b.x, a.y - b.y);
-  if (lastDist > 0) vp.zoomAt(dist / lastDist, (a.x + b.x) / 2, (a.y + b.y) / 2);
-  lastDist = dist;
-});
-
-// --- 高解析圖示 lazy load（縮放 > 1× 時，把可見節點的圖示從 sprite 換成個別的 2 倍
-// WebP，task-17，邏輯見 src/lib/hires.ts）---
-// 用 requestAnimationFrame 節流：滾輪縮放一次可能連續觸發十幾個 wheel 事件，沒必要每個
-// 都重算一次可視範圍、逐一檢查 239 個節點，攢到下一個影格只算一次就好；同一批事件也在
-// pointerup（拖曳放開／雙指縮放放開）時補檢查一次，涵蓋「用拖曳平移把新節點移進畫面」
-// 的情境。
-//
-// requestAnimationFrame／cancelAnimationFrame／SVGGraphicsElement.getScreenCTM／
-// DOMPoint 都是瀏覽器版面引擎才有的東西：測試環境（linkedom）裡前兩者完全不存在
-// （`typeof` 對未宣告的識別字回傳 'undefined'、不拋錯，見上面 isMobile 的說明），
-// getScreenCTM 則是存在但退化回傳 undefined（跟 src/lib/viewport.ts 的
-// screenToUserCtm() 遇到的狀況一樣）。這裡的守衛寫法確保在沒有這些 API 的環境下不會拋
-// 例外，但「縮放後圖示真的換成高解析版本」這個實際效果本環境驗不到，留給第 18 個任務的
-// E2E 或真機——src/lib/hires.ts 的 upgradeIcons() 本身（拿到正確的可視節點清單之後，
-// DOM 要怎麼改）已經在 tests/lib/hires.test.ts 用真實 SVG DOM 驗過。
-// 節點是建置期一次畫好、之後不再增刪的，圖示元素索引建一次就永遠有效——不必每次縮放都
-// 對每個可見節點各跑一次 querySelector。
-const iconIndex = buildIconIndex(svg);
-
-/**
- * 目前一個使用者座標單位攤到幾個**裝置**像素，連同量到的畫布盒子一起回傳。
- *
- * 判準本身見 `effectiveDevicePx()`（舊版只看 `vp.scale`，兩個方向都判斷錯）。盒子一起回傳是
- * 因為下面換算可視範圍還要用同一個矩形——`getBoundingClientRect()` 是強制版面計算，在每一幀
- * 都會跑的縮放路徑上讀兩次沒有意義。
- */
-function currentDevicePx(): { devicePx: number; box: DOMRect } {
-  const box = canvasRect();
-  const dpr = typeof devicePixelRatio === 'number' && devicePixelRatio > 0 ? devicePixelRatio : 1;
-  return {
-    devicePx: effectiveDevicePx(box.width, box.height, data.meta.viewBox[2], data.meta.viewBox[3], vp.scale, dpr),
-    box,
-  };
-}
-
-/** 每批處理幾個節點。24 是一個手機首屏大致的可見節點量級，夠小到不會卡住一幀。 */
-const UPGRADE_BATCH = 24;
-
-/**
- * 排一段閒置工作。
- *
- * Safari 沒有 `requestIdleCallback`（照本檔慣例做存在性檢查）。fallback 刻意是 32ms 而不是 0：
- * `setTimeout(fn, 0)` 只是「下一個 macrotask」，一串批次會在載入後幾毫秒內接力跑完——那正是
- * 這個延後想避開的首屏爭用，而 Safari 又正是 fallback 唯一的服務對象。32ms 約兩幀，讓渲染插得進去。
- */
-function whenIdle(fn: () => void): void {
-  if (typeof requestIdleCallback === 'function') requestIdleCallback(() => fn(), { timeout: 1000 });
-  else if (typeof setTimeout === 'function') setTimeout(fn, 32);
-}
-
-function upgradeInBatches(ids: string[], generation: number, start = 0): void {
-  // 排隊中的批次要自己確認「當初排隊的理由現在還成立嗎」：使用者可能已經縮小、平移，
-  // 甚至整批降級過了。號碼對不上就直接停，不要把畫面推回一個已經被推翻的狀態。
-  if (generation !== upgradeGeneration) return;
-  upgradeIcons(ids.slice(start, start + UPGRADE_BATCH), svg, undefined, iconIndex);
-  if (start + UPGRADE_BATCH < ids.length) {
-    whenIdle(() => upgradeInBatches(ids, generation, start + UPGRADE_BATCH));
-  }
-}
-
-function maybeUpgradeIcons(): void {
-  if (typeof cancelAnimationFrame === 'function') cancelAnimationFrame(upgradeRaf);
-  if (typeof requestAnimationFrame !== 'function') return;
-  upgradeRaf = requestAnimationFrame(() => {
-    // 重新評估＝先讓所有排隊中的批次失效（見 upgradeGeneration 的說明）。
-    const generation = ++upgradeGeneration;
-    const { devicePx, box } = currentDevicePx();
-    // devicePx 為 0 代表**量不到**（畫布還沒排版、祖先暫時 display:none、容器尺寸為 0），
-    // 不是「小到不需要高解析」。少了這道，那個瞬間會走進下面的降級分支，把 239 個圖示全部
-    // 打回 sprite，而且要等到下一次滾輪／放開拖曳才補得回來。
-    if (devicePx <= 0) return;
-    // 遲滯：縮小到明顯不需要 2× 素材時把已升級的換回 sprite（連同 <defs> 裡的 pattern 一起
-    // 移除，那才是真的把記憶體還回去——實測整棵樹全升級後多出約 4.6MB），但門檻比升級低一截，
-    // 免得在邊界反覆縮放時來回抖動。
-    if (devicePx < HIRES_DOWNGRADE_AT) {
-      downgradeIcons(iconIndex.values(), svg);
-      return;
-    }
-    if (devicePx <= HIRES_UPGRADE_AT) return;
-    const g = svg.querySelector<SVGGElement>('#viewport');
-    const ctm = g?.getScreenCTM?.()?.inverse();
-    if (!ctm) return; // 沒有版面引擎（測試環境）或畫布尚未真正掛進有版面的 DOM，無法換算
-    const tl = new DOMPoint(box.left, box.top).matrixTransform(ctm);
-    const br = new DOMPoint(box.right, box.bottom).matrixTransform(ctm);
-    // 分批：一次可見節點可能有近百個，全部一口氣建 pattern＋發請求會在同一幀裡卡住主執行緒。
-    // 每個閒置時段做一批，其餘排到下一次——畫面上是圖示陸續變清晰，不是整個卡一下。
-    upgradeInBatches(visibleNodeIds(data, { x: tl.x, y: tl.y, w: br.x - tl.x, h: br.y - tl.y }), generation);
-  });
-}
-svg.addEventListener('wheel', maybeUpgradeIcons);
-svg.addEventListener('pointerup', maybeUpgradeIcons);
-
-// 初始視角（上面的 jumpToBranch()／桌機整棵樹 fitTo + applyReadabilityFloor()）算出來的
-// 縮放常常超過 1x 高解析門檻——手機版走 minReadableScale 下限（task-18 E2E 實測 Pixel 7
-// 上約 5.5 倍）；桌機版原本只有 0.9x 不會超過，但 task-18 第二輪修正把可讀性下限也套用到
-// 桌機的初始視角之後（見 applyReadabilityFloor()），桌機初始視角也常常超過 1x（實測約
-// 2.34 倍）。maybeUpgradeIcons() 只掛在 wheel／pointerup 這兩個互動事件上，使用者一打開
-// 頁面、還沒操作過的當下不會被觸發——結果是不管桌機還是手機，使用者看到的第一畫面，圖示
-// 都仍然是從 sprite 格子硬拉伸的低解析度版本（會糊），要等使用者真的滾一下滾輪或放開一次
-// 拖曳才會補上高解析圖（task-18 code review 找到的真實 bug，這裡修正）。所以這裡不分裝置、
-// 兩種初始視角算完後都呼叫一次——`vp.scale <= 1` 的情況（例如桌機容器夠大、可讀性下限本身
-// 就 <1 的極端狀況）本來就會被 maybeUpgradeIcons() 內部擋掉，不用在外面再判斷一次
-// isMobile，改成無條件呼叫更準確反映「哪個裝置的初始縮放實際上超過門檻」這件事跟裝置種類
-// 沒有必然關係，是純粹看縮放數字。
-// 首屏這一次改成閒置時才做：它有可能一口氣建立上百個 pattern、發出上百個圖片請求，擠在
-// 首次繪製的同一批工作裡只會拖慢「使用者看到第一畫面」的時間，而高解析與否是漸進增強。
-// Safari 沒有 requestIdleCallback（照本檔慣例做存在性檢查後退回 setTimeout）。
-//
-// ⚠️ 門檻修正之後，1280×720 dpr1 的桌機首屏**不會**再升級（實測每單位只有 0.52 裝置像素，
-// sprite 綽綽有餘）——這正是修正的重點，不是退步。高 DPI 螢幕與手機才會在這裡真的升級。
-whenIdle(maybeUpgradeIcons);
-
-// 首屏的投影狀態要另外補一次：上面的 MutationObserver 是在本檔更後面才註冊的，而
-// 初始視角（fitTo + applyReadabilityFloor）早在那之前就把 transform 寫進去了——那一次寫入
-// 沒有任何觀察者接得到。少了這一行，桌機首屏會停在「該有投影卻沒有」的狀態，要等使用者
-// 第一次滾輪或拖曳才補上。跟高解析圖示不同，這個不必等 idle：它只是幾個乘法加一個 class。
-updateShadows();
 
 // --- 鍵盤：方向鍵平移、+/- 縮放 ---
 // 這個 handler 掛在 window 上、原本不判斷 focus（「不管焦點在哪都該生效」）；但下面
@@ -510,37 +216,41 @@ window.addEventListener('keydown', e => {
   if (isTypingTarget(document.activeElement?.tagName)) return;
   const step = 60;
   let moved = true;
-  if (e.key === 'ArrowLeft') vp.pan(step, 0);
-  else if (e.key === 'ArrowRight') vp.pan(-step, 0);
-  else if (e.key === 'ArrowUp') vp.pan(0, step);
-  else if (e.key === 'ArrowDown') vp.pan(0, -step);
-  else if (e.key === '+' || e.key === '=') vp.zoomAt(1.2, innerWidth / 2, innerHeight / 2);
-  else if (e.key === '-') vp.zoomAt(1 / 1.2, innerWidth / 2, innerHeight / 2);
+  // ⚠️ 縮放錨點要用**畫布中心**（相對 host 的 CSS px），不是 innerWidth/2：`CanvasView`
+  // 的座標系原點在 host 左上角，餵視窗座標進去的話 host 有 offset（導覽列高度）時，
+  // 每按一次 +／− 畫面就會往一邊偏一段。平移是相對量，不受這件事影響。
+  const box = host.getBoundingClientRect();
+  // 方向鍵走 `tree.pan()` 而不是 `vp.pan()`：那條會順手作廢靜態層位圖並排一幀，
+  // 平移露出來的區域才補得到（一次 60 px 是離散操作，重畫一次不影響手感）。
+  if (e.key === 'ArrowLeft') tree.pan(step, 0);
+  else if (e.key === 'ArrowRight') tree.pan(-step, 0);
+  else if (e.key === 'ArrowUp') tree.pan(0, step);
+  else if (e.key === 'ArrowDown') tree.pan(0, -step);
+  else if (e.key === '+' || e.key === '=') vp.zoomAt(1.2, box.width / 2, box.height / 2);
+  else if (e.key === '-') vp.zoomAt(1 / 1.2, box.width / 2, box.height / 2);
   else moved = false;
-  // 滑鼠滾輪縮放／拖曳放開都會觸發 maybeUpgradeIcons()（見上面），鍵盤的 +/-／方向鍵原本
-  // 沒有接這條線——純鍵盤操作把畫面縮放/平移進新的可視範圍，圖示不會自動升級成高解析版本，
-  // 要等使用者之後剛好又滾一下滑鼠才會補上（code review 找到的真實落差，這裡補齊，讓
-  // 「哪些操作會改到可視範圍」跟「該不該檢查要不要升級圖示」這兩件事保持一致，不看操作是
-  // 用滑鼠還是鍵盤）。
   if (moved) {
     // ⚠️ `cancelCenterPan()` 只能放在**確定是平移／縮放按鍵**的這條路上。
     // 放在 handler 開頭（一度是那樣寫的）會咬到兩件事：
-    // (a) 節點上按 Enter 開卡片時，svg 的 keydown 先跑 openNode() → animatePan() 排好 rAF，
-    //     同一個事件接著冒泡到 window 就把它取消——實測節點停在 x=172 而不是畫面中央 640，
-    //     Enter 這條路等於完全沒有置中（isTypingTarget 只認 INPUT/TEXTAREA/SELECT，
-    //     焦點在 <g class="node"> 上不會被前面那行擋掉）。
+    // (a) 節點上按 Enter 開卡片時，controller 的 onSelect 先跑 openNode() → animatePan()
+    //     排好 rAF，同一個事件接著冒泡到 window 就把它取消——實測節點停在 x=172 而不是
+    //     畫面中央 640，Enter 這條路等於完全沒有置中（isTypingTarget 只認
+    //     INPUT/TEXTAREA/SELECT，焦點在無障礙節點按鈕上不會被前面那行擋掉）。
     // (b) 點擊開節點之後 200ms 內按任何一個鍵（Tab、Esc、任一個字母）都會把平移中途掐掉，
     //     節點卡在半路。
     cancelCenterPan();
-    maybeUpgradeIcons();
+    // 直接動 vp 的地方要自己排一幀（controller 只在自己的 pointer／wheel 路徑上排）。
+    tree.requestRedraw();
   }
 });
 
 // --- 點選節點：前置鏈高亮 + 詳情面板 ---
-// select(null) 清空選取；select(id) 算前置鏈、幫節點與邊加上 .in-chain、
-// 切換畫布根元素（svg#tree）的 .has-selection、並把詳情面板內容交給 renderDetail 畫。
-// #detail 的初始 hidden 狀態、.in-chain／.has-selection 這幾個 class 名稱都是
-// 跨任務的 DOM 契約（後面的搜尋、篩選、E2E 測試都依賴），不要改名。
+// select(null) 清空選取；select(id) 算前置鏈，把「選了誰、鏈上有誰」寫進畫布狀態
+// （`tree.setState`），並把詳情面板內容交給 renderDetail 畫。
+// ⚠️ 高亮不再是 DOM class：canvas 裡的節點與邊不是元素，沒有 classList。舊版的
+// `.in-chain`／`.has-selection`／`.filtered-out` 三條 opacity 規則已經原值搬進
+// src/lib/canvas/state.ts 的 nodeAlpha()／edgeAlpha()／edgeColor()，那裡有自己的測試。
+// #detail 的初始 hidden 狀態仍是跨任務的 DOM 契約（E2E 依賴），不要改。
 const detailEl = document.getElementById('detail');
 if (!detailEl) {
   throw new Error('找不到 #detail，詳情面板無法掛載');
@@ -589,24 +299,21 @@ function resetViewStack(): void {
 function select(id: string | null): void {
   resetViewStack();
   currentSelected = id;
-  svg.querySelectorAll('.in-chain').forEach(el => el.classList.remove('in-chain'));
-  svg.classList.toggle('has-selection', id !== null);
   panel.hidden = id === null;
   syncUrl();
-  if (id === null) return;
+  if (id === null) {
+    // 清空選取：鏈也要一起清掉，不然畫面會留著上一顆的金光。
+    tree.setState({ selected: null, chain: new Set() });
+    return;
+  }
 
   const node = byId.get(id);
   if (!node) return;
 
   const sel = selectionFor(id);
-  for (const chainId of sel.chain) {
-    svg.querySelector(`g.node[data-id="${chainId}"]`)?.classList.add('in-chain');
-  }
-  for (const line of svg.querySelectorAll('line.edge')) {
-    const from = line.getAttribute('data-from');
-    const to = line.getAttribute('data-to');
-    if (from && to && sel.chain.has(from) && sel.chain.has(to)) line.classList.add('in-chain');
-  }
+  // 邊的高亮不必另外算：painter 用「兩端都在 chain 裡」判斷（state.ts 的 edgeAlpha／
+  // edgeColor），跟舊版逐條 line 掛 .in-chain 是同一個判準，少一份會漂移的複本。
+  tree.setState({ selected: id, chain: new Set(sel.chain) });
 
   renderDetail(node, sel, panel, data.meta.glossary, data.meta.upgradeCostTable, tables);
   viewStack = [{ view: { kind: 'node', id }, scrollTop: 0 }];
@@ -629,6 +336,20 @@ function select(id: string | null): void {
 }
 
 /**
+ * 某顆節點現在在螢幕上的矩形（相對 viewport 的 CSS px，含 host 的 offset）。
+ *
+ * 語意跟舊版的 `svg.querySelector('g.node[data-id=…] .icon').getBoundingClientRect()`
+ * 完全相同，只是改成問幾何（controller 的 `nodeScreenRect()`）而不是問 DOM——canvas 裡
+ * 的節點不是元素。`right`／`bottom` 在這裡補上，下面三個消費者（sideLeastCovered／
+ * centerOnSelected／positionPanel）用的還是 DOMRect 那套欄位名。
+ * 量不到版面（容器尺寸 0、還沒排版）時回 null，跟舊版「找不到元素就早退」一樣。
+ */
+function nodeRect(id: string): { left: number; top: number; right: number; bottom: number; width: number; height: number } | null {
+  const r = tree.nodeScreenRect(id);
+  return r && { ...r, right: r.left + r.width, bottom: r.top + r.height };
+}
+
+/**
  * 卡片要放節點上方還是下方：**實際算一遍兩種擺法各會蓋住幾個前置節點**，取少的那個。
  *
  * 為什麼一定要能翻面：五個分支的生長方向不同。1 系往上長、2／3 系往下長、4 系往左、
@@ -644,16 +365,16 @@ function select(id: string | null): void {
  * 預期，而上下兩種已經把最壞情況從「整條鏈」壓到「零星一兩顆」。
  *
  * 模擬的座標系是**平移置中之後的螢幕座標**（節點會落在 innerWidth/2, targetCenterY）——
- * 那才是使用者真正看到的版面。使用者座標換算成 CSS px 的比例是
- * 「根 svg 的 CTM ✕ 畫布自己的縮放」，兩層都要算進去。
+ * 那才是使用者真正看到的版面。使用者座標換算成 CSS px 的比例就是 view 的 `pxPerUnit`。
  */
 function sideLeastCovered(node: TreeNode, chain: Set<string>, cardH: number): 'above' | 'below' {
-  const nodeEl = svg.querySelector(`g.node[data-id="${node.id}"] .icon`);
-  if (!nodeEl) return 'above';
-  const n = nodeEl.getBoundingClientRect();
+  const n = nodeRect(node.id);
+  if (!n) return 'above';
   const cardW = panel.getBoundingClientRect().width;
   const topLimit = panelTopLimit();
-  const ppu = (svg.getScreenCTM?.()?.a ?? 1) * vp.scale;
+  // 一個使用者座標單位攤到幾個 CSS px。舊版是「根 svg 的 CTM ✕ 畫布自己的縮放」兩層相乘，
+  // canvas 版直接就是 view 的 pxPerUnit（base ✕ scale），不必再問版面引擎。
+  const ppu = vp.pxPerUnit;
   const others = [...chain]
     .filter(id => id !== node.id)
     .map(id => byId.get(id))
@@ -685,14 +406,12 @@ function sideLeastCovered(node: TreeNode, chain: Set<string>, cardH: number): 'a
  * 前置鏈計算 ＋ 把「被篩選淡出的前置有幾個」算進去。
  *
  * 抽出來是因為現在有兩個地方要它：`select()`（選節點）與視圖堆疊回到根視圖時的重繪。
- * `hiddenByFilter` 只能在這裡算——`computeSelection()` 是純函式、看不到 DOM 上的
- * `.filtered-out`，那是畫面狀態不是資料。
+ * `hiddenByFilter` 只能在這裡算——`computeSelection()` 是純函式、看不到畫面狀態，
+ * 而「哪些節點正被篩掉」是畫面狀態不是資料。
  */
 function selectionFor(id: string) {
   const sel = computeSelection(id, data, tables);
-  sel.hiddenByFilter = [...sel.chain].filter(
-    chainId => svg.querySelector(`g.node[data-id="${chainId}"]`)?.classList.contains('filtered-out'),
-  ).length;
+  sel.hiddenByFilter = [...sel.chain].filter(chainId => filteredOut.has(chainId)).length;
   return sel;
 }
 
@@ -719,7 +438,7 @@ const CENTER_SLACK = 40;
  *
  * 卡片放在節點上方，所以「卡片放得下」等於「節點必須夠低」。這個值只用來算卡片的
  * `max-height` 上限，刻意是**常數**而不是量到的節點高度：節點大小會隨縮放在 9–50 CSS px
- * 之間變動（見 src/lib/viewport.ts 的 SHADOW_ON_AT_ICON_PX＝50），拿它當上限的話縮放時
+ * 之間變動（見 src/lib/canvas/view.ts 的 SHADOW_ON_AT_ICON_PX＝50），拿它當上限的話縮放時
  * 卡片會跟著一格一格改高度。56 蓋得住最大的那一顆。
  */
 const NODE_ROOM = 56;
@@ -780,9 +499,8 @@ function animatePan(dx: number, dy: number, onDone: () => void): void {
   // 「取消上一段動畫」由呼叫端在釘住**之前**做。
   if (!canAnimate() || typeof performance === 'undefined'
     || (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5)) {
-    vp.pan(dx, dy);
+    tree.pan(dx, dy);   // 一步到位＝平移已經結束，走會補畫靜態層的那條
     onDone();
-    maybeUpgradeIcons();
     return;
   }
   const start = performance.now();
@@ -790,7 +508,11 @@ function animatePan(dx: number, dy: number, onDone: () => void): void {
   const step = (now: number): void => {
     const t = Math.min(1, (now - start) / CENTER_MS);
     const eased = 1 - (1 - t) ** 3;
-    vp.pan(dx * (eased - done), dy * (eased - done));
+    // 動畫中間的每一幀只 pan＋排一幀（直接動 vp 的地方要自己排，controller 只在自己的
+    // pointer／wheel 路徑上排）；最後一幀才走 `tree.pan()` 補畫靜態層，把位圖邊距重新置中。
+    // 每一幀都補畫的話，這段緩動就等於重畫 241 顆節點十幾次。
+    if (t < 1) { vp.pan(dx * (eased - done), dy * (eased - done)); tree.requestRedraw(); }
+    else tree.pan(dx * (eased - done), dy * (eased - done));
     done = eased;
     if (t < 1) {
       centerRaf = requestAnimationFrame(step);
@@ -798,10 +520,6 @@ function animatePan(dx: number, dy: number, onDone: () => void): void {
     }
     centerRaf = 0;
     onDone();
-    // 鏡頭一動就會有新的節點進到畫面裡，它們還掛著 sprite 的低解析 pattern（放大後會糊）。
-    // maybeUpgradeIcons() 平常只掛在 wheel／pointerup 上，程式自己移動鏡頭時不會被觸發——
-    // 跟 focusMatches() 末尾那一行同一個理由。
-    maybeUpgradeIcons();
   };
   centerRaf = requestAnimationFrame(step);
 }
@@ -843,11 +561,10 @@ function centerOnSelected(): void {
   if (isNarrow() || panel.hidden || !currentSelected) return;
   // 上一段還在跑就先收乾淨（含解除釘住），再重新量、重新釘。
   cancelCenterPan();
-  const nodeEl = svg.querySelector(`g.node[data-id="${currentSelected}"] .icon`);
-  if (!nodeEl) return;
+  const n = nodeRect(currentSelected);
+  if (!n) return;
 
   const topLimit = panelTopLimit();
-  const n = nodeEl.getBoundingClientRect();
   // ⚠️ 要的是卡片的**自然高度**（只受整個可視區限制），不是它現在被那一側空間裁過的高度。
   // 節點此刻還在平移前的位置，那一側可能只剩一點空間；拿被裁過的高度算目標，平移完卡片
   // 長回自然高度就又會壓到節點——正是 2026-08-23 code review 抓到的那一族問題。
@@ -928,8 +645,8 @@ function positionPanel(opts: {
   if (panel.hidden || !currentSelected) return;
   // 置中平移進行中：卡片已經放在終點，不要每幀再跟著節點算一次（見 centerOnSelected()）。
   if (panelPinned && !opts.nodeCenter) return;
-  const nodeEl = svg.querySelector(`g.node[data-id="${currentSelected}"] .icon`);
-  if (!nodeEl) return;
+  const now = nodeRect(currentSelected);
+  if (!now) return;
 
   const topLimit = panelTopLimit();
 
@@ -948,7 +665,6 @@ function positionPanel(opts: {
   // §2.1 強制要求的「重置需要初期化券」災情警告，捲到底也看不到（code review 實測 1000×480
   // 下超出 43.8px）。先設上限、再量高度，量到的才是夾制後的結果。
   //
-  const now = nodeEl.getBoundingClientRect();
   // 節點的「盒子」：尺寸一律用量到的（跟著縮放走），位置可以被 nodeCenter 換成終點座標。
   const n = opts.nodeCenter
     ? {
@@ -1016,20 +732,12 @@ function positionPanel(opts: {
 }
 
 // 畫布一動（拖曳、滾輪縮放、雙指縮放、分支跳轉、初始視角……）卡片就要跟著節點跑。與其在
-// 每個事件處理器後面各補一次呼叫（漏掉任何一個就會留下一張黏在原地的卡片），這裡監看
-// #viewport 的 style 屬性——Viewport 的每一次變動最後都落在那裡，一個掛勾全包。
-// ⚠️ 監看的是 `style` 不是 `transform`：Viewport 改用 CSS transform 之後（見
-// src/lib/viewport.ts 的 apply()，那是為了讓畫布升成合成層的效能修正），`transform`
-// attribute 永遠不會再變動，掛在它上面的 observer 一次都不會觸發——症狀是卡片黏在原地，
-// 而且沒有任何錯誤訊息。`style.transform = ...` 會改寫 style attribute，所以改看它。
-// #viewport 身上不會有別的 inline 樣式（will-change 寫在 tree.astro 的 CSS 裡），
-// 這個 filter 不會因此變得比原本寬鬆。
-// `typeof` 存在性檢查跟本檔上面 matchMedia 那裡同一個理由：單元測試環境（linkedom）沒有
-// MutationObserver，直接 new 會是 ReferenceError、整個模組掛掉。卡片跟隨畫布這件事需要真的
-// 版面資訊，本來就只能靠 E2E 驗（tests/e2e/tree.spec.ts 的 N）。
-// 用 requestAnimationFrame 節流（跟 maybeUpgradeIcons() 同一套路）：拖曳時每一幀都會寫一次
-// transform，不節流的話每次寫入後都立刻 getBoundingClientRect() 兩次再寫回 style，是典型的
-// 讀寫交錯版面抖動。
+// 每個事件處理器後面各補一次呼叫（漏掉任何一個就會留下一張黏在原地的卡片），統一接
+// controller 的 `onViewChange`——它在**每一幀畫完之後**呼叫一次，是所有平移縮放的唯一出口。
+// （SVG 時期是拿 MutationObserver 監看 #viewport 的 style 屬性達到同一件事，現在那個元素
+// 不存在了；換成回呼之後也不必再擔心「監看的屬性名字改了就靜靜失效」那一族坑。）
+// 仍然保留 rAF 節流：一幀最多重新定位一次，避免每次寫入後立刻 getBoundingClientRect()
+// 兩次再寫回 style 的讀寫交錯版面抖動。
 let positionRaf = 0;
 function schedulePositionPanel(): void {
   if (typeof requestAnimationFrame !== 'function') {
@@ -1048,98 +756,44 @@ function schedulePositionPanel(): void {
     positionPanel();
   });
 }
-if (typeof MutationObserver === 'function') {
-  // 包一層而不是直接把 schedulePositionPanel 當 callback：它現在收一個 options 物件，
-  // 而 MutationObserver 傳進來的第一個參數是 MutationRecord[]——會被當成 `{keepTop: undefined}`
-  // 之外的東西，型別也對不上。畫布一動就是「重新對齊」，不帶 keepTop。
-  new MutationObserver(() => {
-    // updateShadows() 也掛在這裡，理由跟卡片一樣：Viewport 的每一次變動最後都落在這個
-    // style 屬性上，一個掛勾全包，不必在每個 zoomAt()／fitTo() 呼叫點後面各補一次。
-    updateShadows();
-    schedulePositionPanel();
-  }).observe(viewport, {
-    attributes: true,
-    attributeFilter: ['style'],
-  });
-}
+// 包一層而不是直接把 schedulePositionPanel 當 callback：它不收參數，而回呼日後若加上參數
+// 會被靜靜地當成 options 傳進去。畫布一動就是「重新對齊」，不帶任何選項。
+tree.onViewChange(() => schedulePositionPanel());
 window.addEventListener('resize', () => schedulePositionPanel());
 
-// 選取判定用 pointerdown/pointerup 自己量位移，不用 click（審查回饋，2026-08-17 第 1
-// 輪修正）：
-// 1. click 沒有位移門檻。拖曳畫布放開時，瀏覽器仍會補一個 click，會誤觸
-//    select(null)（清掉選取）或選到手指移到的別的節點。這裡改成量
-//    pointerdown → pointerup 的螢幕座標位移，超過門檻視為拖曳，不當點選。
-// 2. 上面「滑鼠拖曳平移」一開始就對每個 pointerdown 呼叫 svg.setPointerCapture()；
-//    依規格，capture 生效後同一手指「後續」的 pointer 事件 target 一律改標成
-//    capture 的元素（這裡是 svg 自己），click 是否也被同樣改標則各瀏覽器行為不一。
-//    若真的被改標，e.target.closest('g.node') 會永遠是 null，節點完全點不到。
-//    這裡改成在 pointerdown「當下」（setPointerCapture 生效前，target 還沒被
-//    改標）就記下被按到的節點，pointerup 只用來量位移、判定放開，不依賴它自己的
-//    target，繞開這個風險——但瀏覽器實際行為本環境沒有瀏覽器驗不了，留給第 18
-//    個任務的 E2E 補。
-const DRAG_THRESHOLD_PX = 5; // 螢幕座標（CSS px），UI 手感判定，不是使用者座標
-let downTarget: Element | null = null;
-let downPos = { x: 0, y: 0 };
-svg.addEventListener('pointerdown', e => {
-  downTarget = (e.target as Element).closest('g.node');
-  downPos = { x: e.clientX, y: e.clientY };
-});
-svg.addEventListener('pointerup', e => {
-  // 放開時還有其他手指按著（雙指縮放中途放開一指），不算一次點選；
-  // 這裡讀到的 touches 已經先被上面雙指觸控段落的 pointerup handler 刪掉這一指
-  // （同一元素上的 listener 依註冊順序執行，這段排在後面）。
-  if (touches.size > 0) return;
-  const moved = Math.hypot(e.clientX - downPos.x, e.clientY - downPos.y);
-  if (moved > DRAG_THRESHOLD_PX) return;
-  openNode(downTarget ? downTarget.getAttribute('data-id') : null);
-});
+// 「使用者選了一顆節點」由 controller 判定：它在 pointerdown 當下用幾何命中記下被按到的
+// 是誰、pointerup 時量位移過門檻就當拖曳不當點選（那兩件事以前寫在這裡，理由見
+// canvas-tree.ts 的檔頭，連 setPointerCapture 會改標 target 那個坑一起搬過去了）。
+// 空白處＝`id` 為 null＝清掉選取。
+// 兩個來源（畫布點擊、無障礙按鈕上按 Enter）刻意做同一件事：Enter 也要置中（E2E 的 N5）。
+tree.onSelect(id => openNode(id));
 
-// Enter／Esc 掛在 svg 上而不是 window：keydown 事件要先冒泡經過 svg 才會觸發這裡，
-// 所以只有「焦點在畫布內（節點或 svg 本身）」時才會生效。之後的搜尋框（下一個任務）
-// 不是 svg 的子節點，使用者在搜尋框按 Esc 時事件不會流經這裡，不會被這段攔截去關
-// 詳情面板，可以留給搜尋框自己處理「清空搜尋」。
-svg.addEventListener('keydown', e => {
-  const g = (e.target as Element).closest?.('g.node');
-  if (e.key === 'Enter' && g) openNode(g.getAttribute('data-id'));
+// Esc 掛在 host 上而不是 window：事件要先冒泡經過 host 才會觸發這裡，所以只有「焦點在畫布
+// 內（無障礙節點按鈕或畫布本身）」時才生效。搜尋框不是 host 的子節點，使用者在搜尋框按 Esc
+// 時事件不會流經這裡，不會被攔截去關詳情面板，留給搜尋框自己處理「清空搜尋」。
+host.addEventListener('keydown', e => {
   if (e.key === 'Escape') select(null);
 });
 
-// --- 搜尋、篩選：套用 .filtered-out、還原網址到 UI、掛事件監聽器 ---
+// --- 搜尋、篩選：算出被篩掉的節點、還原網址到 UI、掛事件監聽器 ---
 //
-// applyFilter() 必須先把所有節點的 .filtered-out 更新完，最後才呼叫 select(currentSelected)
+// applyFilter() 必須先把 filteredOut 更新完，最後才呼叫 select(currentSelected)
 // （如果目前有選取節點的話）——這正是 spec §6.3「前置鏈高亮是獨立圖層，優先於可見度」的
 // 實作順序：淡出先算好套上去，select() 再把前置鏈上的節點/邊強制拉回全不透明＋高亮色，
 // 覆寫掉剛剛套用的淡出。對 brief 草稿的裁決：不在 applyFilter() 外面再呼叫一次
 // select(selected)——applyFilter() 內部已經呼叫過，外面重複呼叫只是多做一次一樣的事，
 // 還容易在日後改動時兩處各改一半、行為對不上，所以拿掉了。
 function applyFilter(): void {
-  // 判定算一次就好。以前這個函式會把 matchesFilter() 跑過節點一輪、248 條邊的兩端各一輪、
+  // 判定算一次就好。以前這個函式會把 matchesFilter() 跑過節點一輪、251 條邊的兩端各一輪、
   // 再一輪算 anyFiltered，updateFilterStatus() 又跑第四輪——每一次按鍵約 1,200 次呼叫，
   // 每次都要 normalizeQuery() 再對 name／description／keywords 做 includes（code review 指出）。
-  const matched = new Map(data.nodes.map(n => [n.id, matchesFilter(n, filterState)]));
-  const isMatch = (id: string) => matched.get(id) ?? false;
-
-  for (const n of data.nodes) {
-    svg.querySelector(`g.node[data-id="${n.id}"]`)?.classList.toggle('filtered-out', !isMatch(n.id));
-  }
-  // 邊也要跟著篩選淡出（上一輪審查 Minor，task-17 補漏）：一條邊如果兩端節點都被篩掉，
-  // 套用同一套 .filtered-out class 讓它一起淡出（樣式見 canvas.css 的
-  // `#tree .edge.filtered-out` 規則）。這裡刻意用「兩端都被篩掉」而不是「任一端被篩掉」
-  // ——一條邊只要還連著一個可見節點，使用者就還看得到、也還關心它的另一端在哪裡，不該
-  // 跟著淡出。前置鏈上的邊即使兩端都被篩掉也不受影響：下面如果目前有選取節點會呼叫
-  // select()，幫前置鏈上的邊補上 .in-chain，靠 CSS 的 !important 疊加規則蓋過這裡設的
-  // opacity（見 canvas.css 的說明），這裡不用另外排除前置鏈上的邊。
-  for (const [from, to] of data.edges) {
-    const bothFiltered = !isMatch(from) && !isMatch(to);
-    svg
-      .querySelector(`line.edge[data-from="${from}"][data-to="${to}"]`)
-      ?.classList.toggle('filtered-out', bothFiltered);
-  }
-  // 中央樞紐不是節點、拿不到上面那個逐節點掛的 .filtered-out，但畫面上它跟節點一樣佔位置：
-  // 只要有任何節點被篩掉（＝使用者正在縮小注意範圍），樞紐就該一起淡下去，否則它會變成
-  // 全畫面唯一還亮著的東西（樣式見 canvas.css 的 `#tree .tree-center.filtered-out`）。
-  const matchCount = [...matched.values()].filter(Boolean).length;
-  svg.querySelector('g.tree-center')?.classList.toggle('filtered-out', matchCount < data.nodes.length);
+  filteredOut = new Set(data.nodes.filter(n => !matchesFilter(n, filterState)).map(n => n.id));
+  // 邊與中央樞紐不必在這裡各算一次：painter 用同一份 filteredOut 推導——邊是「兩端都被
+  // 篩掉才淡出」（只連著一個可見節點時使用者還關心它的另一端），樞紐是「只要有任何節點
+  // 被篩掉就一起淡下去」（否則它會變成全畫面唯一還亮著的東西）。判準與數值原封不動搬進
+  // src/lib/canvas/state.ts 的 edgeAlpha()／centerAlpha()，由 tests/lib/canvas/state.test.ts 守。
+  tree.setState({ filteredOut });
+  const matchCount = data.nodes.length - filteredOut.size;
 
   updateFilterStatus(matchCount);
 
@@ -1211,12 +865,8 @@ function focusMatches(): void {
   const h = Math.max(400, Math.max(...ys) - Math.min(...ys) + PAD * 2);
   const cx = (Math.min(...xs) + Math.max(...xs)) / 2;
   const cy = (Math.min(...ys) + Math.max(...ys)) / 2;
-  vp.fitTo([cx - w / 2, cy - h / 2, w, h]);
+  tree.fitBounds([cx - w / 2, cy - h / 2, w, h]);
   applyReadabilityFloor();
-  // 鏡頭一動就會有新的節點進到畫面裡，它們還掛著 sprite 的低解析 pattern（放大後會糊）。
-  // maybeUpgradeIcons() 平常只掛在 wheel／pointerup 上，程式自己移動鏡頭時不會被觸發——
-  // 這正是 task-18 code review 抓過一次的同一個 bug，這條路徑（搜尋跳轉）當時還不存在。
-  maybeUpgradeIcons();
 }
 
 /** 把目前的篩選狀態＋選取節點寫回網址，用 replaceState（不用 pushState，見任務指示：
@@ -1415,6 +1065,24 @@ function focusView(el: HTMLElement): void {
   if (typeof el.focus === 'function') el.focus({ preventScroll: true });
 }
 
+/**
+ * 換頁動畫**收尾時**的焦點處理：焦點已經被移到面板外的其他元素上時，不要搶回來。
+ *
+ * 收尾回呼要等 `SLIDE_MS`（約 280ms）才跑，而使用者在那段時間裡是可以繼續操作的。無條件
+ * `focusView(toEl)` 會把焦點從他剛剛按下的東西上偷走——實際症狀（Task 12 報告 §5 ④，E2E 的
+ * Z6 偶發紅燈就是它）：點 `#關鍵字` 之後隨即點 `#filters-toggle` 打開篩選抽屜，280ms 後焦點
+ * 被拉回 `#detail`，而面板的 keydown 對 Escape 是無條件 `stopPropagation()` 的，於是
+ * `document` 上那條「Esc 關抽屜」永遠收不到事件，抽屜關不掉。
+ *
+ * 判準是「焦點還在面板裡，或根本沒落在任何元素上」——後者涵蓋原本要修的那件事：舊視圖一被
+ * `hidden` 起來，剛按下的那顆按鈕就消失、焦點掉回 `<body>`（在有些環境是 null／undefined），
+ * 那時仍然要把焦點移進新視圖。
+ */
+function focusViewAfterSlide(el: HTMLElement): void {
+  const active = document.activeElement;
+  if (!active || active === document.body || panel.contains(active)) focusView(el);
+}
+
 function stackEl(): HTMLElement | null {
   return panel.querySelector('.stack');
 }
@@ -1557,7 +1225,7 @@ function pushView(view: DetailView): void {
   slide(fromEl, toEl, 'forward', () => {
     fromEl.hidden = true;
     panel.scrollTop = 0;
-    focusView(toEl);
+    focusViewAfterSlide(toEl);
     // keepTop：換頁不是「換一張卡片」，是同一張卡片換內容——它不該因為變矮就重新對齊節點
     // 中心而跳一下（實測推入詞彙頁時位移 6.3px，高度落差更大時更明顯）。
     schedulePositionPanel();
@@ -1579,7 +1247,7 @@ function popView(): void {
   slide(fromEl, toEl, 'back', () => {
     fromEl.remove();
     panel.scrollTop = viewStack[viewStack.length - 1]?.scrollTop ?? 0;
-    focusView(toEl);
+    focusViewAfterSlide(toEl);
     schedulePositionPanel();
   });
 }
@@ -1718,10 +1386,10 @@ document.getElementById('filter-clear')?.addEventListener('click', () => {
   applyFilter();
 });
 
-// 搜尋框按 Esc＝清空搜尋，不是取消節點選取（那是取消選取／關閉面板，屬於上面 svg 的
-// keydown handler 的事）。兩者天然不會互相干擾：#search 不是 svg 的子節點，這裡的
-// Esc 不會冒泡到 svg 去多關一次詳情面板；stopPropagation() 純粹是防呆，避免日後
-// DOM 結構調整（例如把搜尋框移進 svg 底下）導致意外冒泡出兩套 Esc 語意打架。
+// 搜尋框按 Esc＝清空搜尋，不是取消節點選取（那是取消選取／關閉面板，屬於上面掛在
+// #canvas-host 的 keydown handler 的事）。兩者天然不會互相干擾：#search 不是 host 的
+// 子節點，這裡的 Esc 不會冒泡到 host 去多關一次詳情面板；stopPropagation() 純粹是防呆，
+// 避免日後 DOM 結構調整（例如把搜尋框移進 host 底下）導致意外冒泡出兩套 Esc 語意打架。
 searchEl.addEventListener('keydown', e => {
   if (e.key !== 'Escape') return;
   e.stopPropagation();

@@ -16,14 +16,19 @@ const QUALITY = 80;
 /**
  * 每張 tile 四周留的透明邊（像素）。
  *
- * 圖示是用 `<pattern>` 填進 `<rect class="icon">` 的（見 src/lib/render.ts）。pattern 的
+ * **原始成因（SVG 時期）**：圖示是用 `<pattern>` 填進 `<rect class="icon">` 的。pattern 的
  * tile 尺寸剛好等於那個 rect，畫面上只鋪一格、看不出重複——但**取樣器在 tile 邊界是繞回的**：
  * 瀏覽器把 tile 放大時，最底那一列會被當成最頂那一列的鄰居取樣進去。骰子與角色的圖底部
  * 是不透明的底板邊，於是 rect 的**上緣**多出一條極淡的橫線；平常看不出來，但前置鏈的金色
  * 光暈是描 alpha 輪廓的，一描就把那條線放大成一條淡金色的橫槓（Yuki 2026-08-22 回報）。
  *
  * 修法是標準的 sprite gutter：把圖縮 2px 置中，四周就一定有一圈全透明的像素，繞回取樣
- * 取到的是透明。sprite 那邊順便也解掉相鄰格子互相滲色的問題。
+ * 取到的是透明。
+ *
+ * ⚠️ **`<pattern>` 那條路徑已經沒有了**（2026-09-06 起兩頁都改用 Canvas 2D，見
+ * src/lib/canvas/painter.ts 的 drawNodeImage()），但**這圈透明邊不可以拿掉**：canvas 走的是
+ * `drawImage(sprite, sx, sy, sw, sh, …)`，縮放時的雙線性取樣照樣會取到格子邊界外，沒有 gutter
+ * 就變成相鄰格子互相滲色——同一個症狀換一條路徑再來一次。
  * ⚠️ 不要改成「把最外一圈的 alpha 清成 0」——那是硬切，圖本身若有內容就會被削掉一圈。
  */
 const GUTTER = 1;

@@ -98,8 +98,9 @@ const TYPES: Array<[string, string]> = [
 </Base>
 
 <style is:global>
-  /* ⚠️ 畫布頁的版面（body／main／#canvas-host／#tree／#viewport 升層）**在 src/styles/canvas.css**，
-     不在這裡——`/sim` 用的是同一套骨架，複製第二份出去就一定漂移（CLAUDE.md 記過三次同一件事）。
+  /* ⚠️ 畫布頁的版面（body／main／#canvas-host 與畫布本身的兩張 <canvas>）**在
+     src/styles/canvas.css**，不在這裡——`/sim` 用的是同一套骨架，複製第二份出去就一定
+     漂移（CLAUDE.md 記過三次同一件事）。
      這個檔案只留 `/tree` 專屬的東西：工具列、篩選面板、詳情卡片、分支導覽。 */
 
   /* #tree-controls：#toolbar 與 #branch-nav 共用的 fixed 定位容器，用 flex column
@@ -225,7 +226,7 @@ const TYPES: Array<[string, string]> = [
      留一條 id 具體度的規則在這裡的話，會把共用樣式蓋掉一半，兩頁的篩選器又長得不一樣。 */
 
   /* ⚠️ 節點／邊／標籤／focus 外框的樣式**在 src/styles/canvas.css**（「畫布內容」那一節），
-     不在這裡——`/sim` 畫的是同一份 renderTree() 產物，兩頁共用一份。
+     不在這裡——`/sim` 與 `/tree` 共用同一個 canvas controller（`mountCanvasTree`），兩頁共用一份。
      2026-08-23 搬過去時抓到一個真 bug：`/sim` 完全沒有 `.node .label` 的樣式，標籤吃 SVG
      預設的 16px（使用者座標），**別的節點的標籤蓋住了 10 顆節點的圖示中心**，點下去打到的
      是那個標籤所屬的節點。症狀是「點某幾顆完全沒反應」。
