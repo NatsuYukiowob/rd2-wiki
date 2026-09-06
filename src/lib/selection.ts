@@ -77,7 +77,7 @@ export interface Selection {
  *
  * @param tables 玩家被動／支援與特例節點的升級費用表（`data/passive-upgrade-cost.json`）。
  *   只有「前置練等」那一段用得到，但**刻意必填**：傳一份空表進來的話 `levelTableFor()` 會讓
- *   1601 這種「在 special 裡的 50 級符文」掉回通用符文表，算出一個看起來很專業的錯數字，
+ *   1601 這種「在 special 裡的骰子符文」掉回通用符文表，算出一個看起來很專業的錯數字，
  *   而畫面上完全沒有東西說話（同 NodeDetail 那段「練滿累計」的理由）。
  */
 export function computeSelection(id: string, data: TreeData, tables: PassiveUpgradeCost): Selection {
