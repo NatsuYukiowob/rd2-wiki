@@ -9,8 +9,8 @@ import type { DiceStatsTable } from '../../src/lib/types';
 const table = JSON.parse(readFileSync('data/dice-stats.json', 'utf8')) as DiceStatsTable;
 
 describe('data/dice-stats.json', () => {
-  it('42 顆骰子，每顆至少有攻擊力、攻擊速度、目標三項', () => {
-    expect(Object.keys(table)).toHaveLength(42);
+  it('43 顆骰子，每顆至少有攻擊力、攻擊速度、目標三項', () => {
+    expect(Object.keys(table)).toHaveLength(43);
     for (const [gameId, entry] of Object.entries(table)) {
       expect(entry.stats.map(s => s.label).slice(0, 3), gameId).toEqual(['攻擊力', '攻擊速度', '目標']);
     }
@@ -20,9 +20,10 @@ describe('data/dice-stats.json', () => {
   // 1.1.2（2026-09-18）拿掉 D102 審判骰子的攻擊速度（客戶端 AttackInterval 是 0，拳擊不是一般子彈）。
   // 這個數字是那張分頁完整落地的唯一證據——少一列的症狀是「那一項在切檔時不會變」，
   // 而那跟「它本來就是固定值」在畫面上一模一樣。
-  it('帶四個檔位的項目正好 98 個＝官方強化分頁的 97 列＋太陽骰子 2 項－審判骰子攻擊速度', () => {
+  // 1.1.2 的齒輪二階骰子（D209）取自客戶端表，多 5 項（攻擊力、攻擊速度與三項齒輪能力值）。
+  it('帶四個檔位的項目正好 103 個＝官方強化分頁的 97 列＋太陽骰子 2 項－審判骰子攻擊速度＋齒輪二階骰子 5 項', () => {
     const scaling = Object.values(table).flatMap(e => e.stats).filter(s => s.dice7 !== undefined);
-    expect(scaling).toHaveLength(98);
+    expect(scaling).toHaveLength(103);
   });
 
   // 官方表自己空著的格子照原文寫成「待實測」。刻意逐格釘住而不是只數個數：上游哪天補了值，
@@ -48,11 +49,12 @@ describe('data/dice-stats.json', () => {
   // （`D401` 吞噬骰子的「原始目標文本：範圍前」——官方原文寫「範圍前」，那一欄被正規化成
   // 「範圍內」，和 nodes.json 的「擊殺範圍內怪物時」一致）。校訂記錄是給維護者看的，
   // 印在卡片上對玩家沒有意義，只會像個錯字。
-  it('備註只收解釋機制的那 7 條，不收資料表自己的校訂記錄', () => {
+  it('備註只收解釋機制的那 8 條，不收資料表自己的校訂記錄', () => {
     const noted = Object.entries(table).filter(([, e]) => e.note !== undefined);
     // D008 太陽骰子的備註是登場條件（3 骰點火骰子 3 個以上時超越），來源是 1.1.0 客戶端的
     // `Local_Appearance`，性質同機制說明。
-    expect(noted.map(([g]) => g).sort()).toEqual(['D005', 'D008', 'D102', 'D104', 'D201', 'D204', 'D208']);
+    // D209 齒輪二階骰子同理（1.1.2 客戶端 `MythicTranscendTable` 的超越條件＋召喚時的齒輪種類）。
+    expect(noted.map(([g]) => g).sort()).toEqual(['D005', 'D008', 'D102', 'D104', 'D201', 'D204', 'D208', 'D209']);
     for (const [gameId, e] of noted) {
       expect(e.note, `${gameId} 的備註看起來是校訂記錄不是機制說明`).not.toMatch(/^原始.*文本/);
     }

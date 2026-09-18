@@ -20,6 +20,7 @@ export interface MythicCoreDef {
 
 export const MYTHIC_CORES: readonly MythicCoreDef[] = [
   { kind: 'solar', label: '太陽核心', goodsType: 'CORE_SOLAR' },
+  { kind: 'gearSecond', label: '齒輪二階核心', goodsType: 'CORE_GEAR_SECOND' },
 ];
 
 const BY_KIND = new Map(MYTHIC_CORES.map(d => [d.kind, d]));

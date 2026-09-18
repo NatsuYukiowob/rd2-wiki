@@ -72,11 +72,11 @@ describe('初始狀態', () => {
     expect(simTotals(s0, ctx).total).toEqual({ core: 0, gold: 0 });
   });
 
-  it('真實資料：初始狀態 5 顆已取得、236 顆未取得、資源 0', () => {
+  it('真實資料：初始狀態 5 顆已取得、238 顆未取得、資源 0', () => {
     const real = buildSimContext(realData, realTables);
     const s = initialSimState(real);
     expect(ownedIds(s, real).size).toBe(5);
-    expect(realData.nodes.length - ownedIds(s, real).size).toBe(236);
+    expect(realData.nodes.length - ownedIds(s, real).size).toBe(238);
     expect(simTotals(s, real).total).toEqual({ core: 0, gold: 0 });
   });
 });

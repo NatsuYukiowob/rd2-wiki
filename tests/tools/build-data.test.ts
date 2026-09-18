@@ -30,8 +30,8 @@ const data = buildTreeData(svg, opts);
 
 describe('buildTreeData', () => {
   it('節點與邊數量正確', () => {
-    expect(data.nodes).toHaveLength(241);
-    expect(data.edges).toHaveLength(251);
+    expect(data.nodes).toHaveLength(243);
+    expect(data.edges).toHaveLength(254);
   });
   it('edges 方向為 [前置, 被解鎖]', () => {
     const fromRoot = data.edges.filter(([from]) => from === '1001');
@@ -48,7 +48,7 @@ describe('buildTreeData', () => {
   // 2026-09-06 依 1.1.0 客戶端加了太陽骰子 1501（金幣 100,000／太陽核心 2,000）與太陽強化 1601
   // （金幣 50,000／太陽核心 100）：金幣 +150,000、太陽核心 +2,100（→ 1842／7,056,000／2,100）。
   it('全樹解鎖成本總和釘住正本（成本一動這裡就要跟著動）', () => {
-    expect(data.meta.totalUnlockCost).toEqual({ core: 1842, gold: 7056000, mythic: { solar: 2100 } });
+    expect(data.meta.totalUnlockCost).toEqual({ core: 1842, gold: 7206000, mythic: { solar: 2100, gearSecond: 2100 } });
   });
   // 太陽核心（v1.1.0）也要進全樹總和。光靠上面那條釘住的總和證明不了加總會動（上面那個數字
   // 也可能是某一顆直接指派的結果）。所以這裡合成兩顆帶太陽核心
@@ -124,7 +124,7 @@ describe('buildTreeData', () => {
 
   it('41 顆骰子都有覺醒，其他 198 個節點都沒有', () => {
     const withAwakening = data.nodes.filter(n => n.awakening !== undefined);
-    expect(withAwakening).toHaveLength(42);
+    expect(withAwakening).toHaveLength(43);
     expect(withAwakening.every(n => n.type === 'dice')).toBe(true);
     expect(withAwakening.every(n => (n.awakening ?? '').length > 0)).toBe(true);
   });
@@ -185,7 +185,7 @@ describe('buildTreeData', () => {
   it('樞紐不佔節點名額：nodes 裡沒有它，成本總和也不含它', () => {
     const c = data.meta.center!;
     expect(data.nodes.some(n => n.x === c.x && n.y === c.y)).toBe(false);
-    expect(data.nodes).toHaveLength(241);
+    expect(data.nodes).toHaveLength(243);
   });
 
   // prereqRanks 是「只在有值的節點上才放」的欄位（同 wip／category／unlockNote）。
@@ -193,10 +193,12 @@ describe('buildTreeData', () => {
   // 而下面那兩條預算斷言是硬上限——「順手補齊欄位」在這裡是會讓 CI 紅的改動。
   it('前置等級條件只出現在真的有條件的節點上', () => {
     const withRanks = data.nodes.filter(n => n.prereqRanks !== undefined);
-    expect(withRanks.map(n => n.id)).toEqual(['1501']);
+    expect(withRanks.map(n => n.id)).toEqual(['1501', '2503']);
     expect(withRanks[0]!.prereqRanks).toEqual({ '1201': 50 });
-    // 反向：1201／1301／1401 自己身上不該有這個欄位（條件是掛在 1501 身上的）
-    for (const id of ['1201', '1301', '1401', '1601']) {
+    // 1.1.2 齒輪二階骰子：NeedNode 2203|2303|2403、NeedNodeRank 50|1|1
+    expect(withRanks[1]!.prereqRanks).toEqual({ '2203': 50 });
+    // 反向：前置自己身上不該有這個欄位（條件是掛在神話骰子身上的）
+    for (const id of ['1201', '1301', '1401', '1601', '2203', '2303', '2403', '2603']) {
       expect(data.nodes.find(n => n.id === id)!.prereqRanks).toBeUndefined();
     }
   });

@@ -208,3 +208,22 @@ describe('MYTHIC_CORES 登記表', () => {
     expect(new Set(MYTHIC_CORES.map(d => d.label)).size).toBe(MYTHIC_CORES.length);
   });
 });
+
+// 1.1.2 齒輪二階骰子帶進第二種超越核心：走的是同一條路，不是另寫一份。
+describe('parseCost 的齒輪二階核心', () => {
+  it('金幣搭齒輪二階核心（2503／2603 的寫法）', () => {
+    expect(parseCost('金幣 100,000／齒輪二階核心 2,000').cost).toEqual({ core: 0, gold: 100000, mythic: { gearSecond: 2000 } });
+    expect(parseCost('金幣 50,000／齒輪二階核心 100').cost).toEqual({ core: 0, gold: 50000, mythic: { gearSecond: 100 } });
+  });
+
+  // 遊戲一個節點只有一種 RankUpGoodsType：兩種超越核心同時出現不是合法成本。
+  it('兩種超越核心不可同時出現', () => {
+    expect(() => parseCost('金幣 1,000／太陽核心 1／齒輪二階核心 1')).toThrow(/重複/);
+  });
+
+  it('兩種加總時各自保留、照登記順序排', () => {
+    const sum = addCost(parseCost('金幣 50,000／齒輪二階核心 100').cost, parseCost('金幣 50,000／太陽核心 100').cost);
+    expect(Object.keys(sum.mythic!)).toEqual(['solar', 'gearSecond']);
+    expect(sum).toEqual({ core: 0, gold: 100000, mythic: { solar: 100, gearSecond: 100 } });
+  });
+});
