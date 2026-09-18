@@ -109,7 +109,7 @@ npm run compare -- <beforeURL> <afterURL>  # computed-style 逐元素比對，�
 | `unlockPaid` ／ `bypassPrereq` | 1 個（`5002`）／ 2 個（`5006` `5008`） | 同上；`unlockVia` 只說「靠什麼開門」，這兩個才說「要不要付錢」「要不要解前置」 |
 | 可升級節點 | 86 ＝ 50 級符文 43 ＋ `4303` ＋ `1601`／`2603`（20 級、超越核心特例表）＋ 玩家被動／支援 40 | 其餘 157 個 `maxLevel` 是 1 |
 | 升級 tier ↔ 節點 | 6 個 tier 對 40 個節點，**雙向零殘餘** | `data/passive-upgrade-cost.json`，規則 22 |
-| 骰子數值 ↔ 節點 | 43 顆骰子雙向零殘餘；帶四個檔位的項目 **103 個**＝官方強化分頁 97 列＋太陽骰子 2 項－審判骰子攻擊速度（1.1.2 改「—」）＋齒輪二階骰子 5 項 | `data/dice-stats.json`，規則 23 ＋ `tests/data/dice-stats.test.ts` |
+| 骰子數值 ↔ 節點 | 43 顆骰子雙向零殘餘；帶四個檔位的項目 **133 個**＝官方強化分頁 97 列＋太陽骰子 2 項－審判骰子攻擊速度（1.1.2 改「—」）＋齒輪二階骰子 5 項＋1.1.2 補齊的 30 項 | `data/dice-stats.json`，規則 23 ＋ `tests/data/dice-stats.test.ts` |
 | 戰術 | **60 條**（官方 74 條 − 未啟用 16 條 ＋ 1.1.2 新增 2 條）；階段 前期 23／中期 24／後期 6／終盤 4／選項 3；`mode === '對戰'` 的 **9 條** ⟺ 沒有 `coop`（1.1.0 把 6／21／22／24 開放合作；1.1.2 新增的 127／128 是對戰專用） | `data/tactics.json`，規則 24 |
 | Boss | **21 條**（一般 10 ＋ 困難 11，`difficulty` 欄），圖示雙向零殘餘 | `data/boss.json`，規則 25 |
 | 裂縫效果 | **55 條**（一般 13 ／稀有 23 ／傳說 19）；階級 ⟺ 權重（30／20／10）；圖示 **35 張對 55 筆**（同名三檔共用） | `data/rift-shop.json`，規則 27 |
@@ -280,7 +280,20 @@ npm run compare -- <beforeURL> <afterURL>  # computed-style 逐元素比對，�
      怪物時」一致，正規化是對的）。**校訂記錄是給維護者看的，印在卡片上對玩家只會像個錯字**
      （Yuki 2026-08-24 回報）。判準是 `/^原始.*文本/`，由 `tests/data/dice-stats.test.ts` 釘住
      那 7 個 gameId（含 1.1.0 太陽骰子 `D008` 的登場條件）。⚠️ **CI 擋不到這件事**——`note` 是自由文字，規則 23 只驗型別與長度。
-  4. **官方自己空著的格子照原文寫 `待實測`**（目前 **0 格**：原本唯一的 `D208` 原子旋轉速度 Lv.15
+  4. **四檔的算法（2026-09-18 起全部改用客戶端表計算，不再抄 xlsx）**：`base`／`dice7 = base+6·LvAdd`／
+     `lv15 = base+14·UpAdd`／`lv15dice7` 兩者疊加；攻擊速度另算（`dice7 = base÷7`、`lv15 = base+14·UpAdd`）。
+     `_LvAdd` 是骰點成長、`_UpAdd` 是局內 SP 強化成長。來源欄：`DefenderTable`（Attack／AttackInterval／
+     BossAttackPer）、`DefenderSkillTable`（PowerConstant／Range／CastCount／Interval）、
+     `ProjectileAbilityTable`（Value／Duration／Range／StackMax），以 `Local_*` 的 zh-tw 名稱對到 `label`。
+     2026-09-18 拿 1.1.0 客戶端驗過既有 99 項四檔：98 項逐格吻合、1 項（`D102` 攻擊速度，客戶端 0）無法比、
+     0 差異；成長文字 62 項也 0 不符。1.1.0 時只寫了 base 的 **30 項**依這個公式補成四檔（1.1.2 客戶端值）。
+     ⚠️ **其中 6 項的來源欄位型別在那 99 項裡沒有樣本，是公式外推、未獨立驗證**：
+     `ProjectileAbilityTable.Duration`（`D002` 持續時間、`D003` 中毒持續時間、`D400` 僵硬時間）、
+     `.StackMax`（`D400` 需要攻擊次數）、`DefenderSkillTable.CastCount`（`D100` 直排傷害增加量、
+     `D302` 魔彈發射數量）；`D209` 的動力齒輪傷害增益量（CastCount）同理。有實機截圖時優先拿這幾格去對。
+     秒單位的成長文字一律帶 `s`（`每提升1骰點：-0.5s`），跟 `%` 帶 `%` 同一個慣例（2026-09-18 統一，
+     之前有 5 格沒帶）。
+  5. **官方自己空著的格子照原文寫 `待實測`**（目前 **0 格**：原本唯一的 `D208` 原子旋轉速度 Lv.15
      兩檔，PR #61 依客戶端解包表補上 `7s`／`4.6s`，成長其實在骰點軸不在 SP 軸）。省略的話那一項
      會被判成「固定值」，畫面上跟「它本來就不會變」一模一樣。
      ⚠️ **這件事刻意不用 CI 警告記錄**——validate 的黃金樣本斷言 warnings 必須為零，一條永遠不會
