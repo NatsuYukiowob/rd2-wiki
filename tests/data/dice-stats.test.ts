@@ -17,11 +17,12 @@ describe('data/dice-stats.json', () => {
   });
 
   // 官方「骰子強化數據」分頁是 97 列（1.0.3），每一列在這裡就是一個帶四個檔位的項目；1.1.0 的太陽骰子取自客戶端表，多 2 項。
+  // 1.1.2（2026-09-18）拿掉 D102 審判骰子的攻擊速度（客戶端 AttackInterval 是 0，拳擊不是一般子彈）。
   // 這個數字是那張分頁完整落地的唯一證據——少一列的症狀是「那一項在切檔時不會變」，
   // 而那跟「它本來就是固定值」在畫面上一模一樣。
-  it('帶四個檔位的項目正好 99 個＝官方強化分頁的 97 列＋太陽骰子的攻擊力與攻擊速度', () => {
+  it('帶四個檔位的項目正好 98 個＝官方強化分頁的 97 列＋太陽骰子 2 項－審判骰子攻擊速度', () => {
     const scaling = Object.values(table).flatMap(e => e.stats).filter(s => s.dice7 !== undefined);
-    expect(scaling).toHaveLength(99);
+    expect(scaling).toHaveLength(98);
   });
 
   // 官方表自己空著的格子照原文寫成「待實測」。刻意逐格釘住而不是只數個數：上游哪天補了值，
@@ -62,8 +63,9 @@ describe('data/dice-stats.json', () => {
     const all = Object.values(table).flatMap(e => e.stats);
     expect(all.filter(isFixed).length).toBeGreaterThan(0);
     expect(all.filter(s => !isFixed(s)).length).toBeGreaterThan(0);
-    // 陰陽骰子的攻擊力：官方寫「骰點不變」＋「無變化」，四檔全等但表裡真的有這一列。
-    const flat = table['D100']!.stats.find(s => s.label === '攻擊力')!;
+    // 破滅骰子的攻擊力：官方寫「骰點不變」＋「無變化」，四檔全等但表裡真的有這一列。
+    // （原本的樣本是陰陽骰子，1.1.2 起它的攻擊力會成長了。）
+    const flat = table['D408']!.stats.find(s => s.label === '攻擊力')!;
     expect(flat.dice7).toBeDefined();
     expect(isFixed(flat)).toBe(true);
   });
