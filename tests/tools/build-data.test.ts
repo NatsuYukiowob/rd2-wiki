@@ -213,6 +213,13 @@ describe('buildTreeData', () => {
     expect(wire.nodes.every(n => n.label === undefined || n.label !== n.name)).toBe(true);
     expect(wire.nodes.every(n => Number.isInteger(n.icon))).toBe(true);
   });
+  // code review #68：認不出的形狀要原樣交回，讓 diff-summary 的 looksLikeTree 判成 schemaChanged，
+  // 而不是在 decode 這一層丟 TypeError 把那層防護跳過。
+  it('decodeTree 碰到缺 meta／sprite 的形狀原樣交回，不丟錯', () => {
+    for (const bad of [{ nodes: [], edges: [] }, { meta: {}, nodes: [], edges: [] }, null]) {
+      expect(decodeTree(bad)).toBe(bad);
+    }
+  });
   it('decodeTree 吃舊形狀原封不動（CI diff-summary 的 base 端）', () => {
     const old = JSON.parse(JSON.stringify(data));
     expect(decodeTree(old)).toBe(old);

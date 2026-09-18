@@ -41,8 +41,11 @@ export function encodeTree(data: TreeData): TreeWire {
 /** 傳輸形狀（或舊形狀）→ TreeData。欄位順序還原成 buildTreeData 的順序，JSON.stringify 比對才不會誤報。 */
 export function decodeTree(raw: unknown): TreeData {
   const w = raw as { meta: { sprite: Record<string, unknown> } & Record<string, unknown>; nodes: Record<string, unknown>[]; edges: TreeData['edges'] };
-  const s = w.meta.sprite;
-  if (!Array.isArray(s.icons)) return raw as TreeData; // 舊形狀：本來就是 TreeData
+  // 認不出是傳輸形狀（舊形狀，或缺 meta／sprite／nodes 的任何東西）就原樣交回：
+  // 判斷「這還是不是一棵樹」是呼叫端的事（diff-summary 的 looksLikeTree → schemaChanged），
+  // 這裡丟錯會把那層防護整個跳過（code review #68）。
+  const s = w?.meta?.sprite;
+  if (!s || !Array.isArray(s.icons) || !Array.isArray(s.cells) || !Array.isArray(w.nodes)) return raw as TreeData;
   const icons = s.icons as string[];
   const cells = s.cells as Cell[];
   const { icons: _i, cells: _c, ...sprite } = s;
