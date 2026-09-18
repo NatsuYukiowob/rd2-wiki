@@ -141,7 +141,7 @@
   {
     "id": "23",
     "name": "蛇怪",
-    "stage": "後期",
+    "stage": "終盤",
     "mode": "對戰",
     "versus": "首領怪物登場時，額外登場1個",
     "gameId": "BossWaveDoubleSpawn",
@@ -180,7 +180,7 @@
   {
     "id": "27",
     "name": "迅速",
-    "stage": "後期",
+    "stage": "終盤",
     "mode": "對戰／合作",
     "versus": "怪物移動速度增加2倍",
     "coop": "怪物移動速度增加2倍",
@@ -572,5 +572,23 @@
     "coop": "立即使1個最低骰點的骰子骰點+2",
     "gameId": "WaveStartLowestEyeUp2",
     "icon": "133e24603303"
+  },
+  {
+    "id": "127",
+    "name": "腎上腺素",
+    "stage": "終盤",
+    "mode": "對戰",
+    "versus": "從現在起，首領將以狂暴化登場",
+    "gameId": "SpawnEnragedImmune",
+    "icon": "d474644e88e6"
+  },
+  {
+    "id": "128",
+    "name": "痛苦哀嚎",
+    "stage": "終盤",
+    "mode": "對戰",
+    "versus": "從現在起，部分首領擊殺時使用技能",
+    "gameId": "CastOnBossDeath",
+    "icon": "1cded1bf6149"
   }
 ]

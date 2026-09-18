@@ -31,7 +31,7 @@
 - **`data/nodes.json`**——全部**文案**：`name` `label` `type` `category?` `gameId` `cost`
   `maxLevel` `description` `awakening?`。
 - 外加 `data/icons/`（240 張 PNG，檔名＝內容 sha256 前 12 碼）、`data/tree-center.png`、
-  `data/board-icons/`（42 張純骰子圖，見 `/board`）、`data/tactic-icons/`（58 張，見 `/tactic`）、
+  `data/board-icons/`（42 張純骰子圖，見 `/board`）、`data/tactic-icons/`（60 張，見 `/tactic`）、
   `data/boss-icons/`（21 張，見 `/boss`）、`data/rift-shop-icons/`（35 張，見 `/rift-shop`）。
   由社群發 PR 維護，**CI 是唯一防線**（維護者不可能逐行 review SVG 的 diff）。
   ⚠️ **五條資產路徑彼此獨立**：`data/icons/` 由正本 SVG 引用（規則 7）、`board-icons` 另有一份
@@ -110,7 +110,7 @@ npm run compare -- <beforeURL> <afterURL>  # computed-style 逐元素比對，�
 | 可升級節點 | 85 ＝ 50 級符文 43 ＋ `4303` ＋ `1601`（20 級、太陽核心特例表）＋ 玩家被動／支援 40 | 其餘 156 個 `maxLevel` 是 1 |
 | 升級 tier ↔ 節點 | 6 個 tier 對 40 個節點，**雙向零殘餘** | `data/passive-upgrade-cost.json`，規則 22 |
 | 骰子數值 ↔ 節點 | 42 顆骰子雙向零殘餘；帶四個檔位的項目 **98 個**＝官方強化分頁 97 列＋太陽骰子 2 項－審判骰子攻擊速度（1.1.2 改「—」） | `data/dice-stats.json`，規則 23 ＋ `tests/data/dice-stats.test.ts` |
-| 戰術 | **58 條**（官方 74 條 − 未啟用 16 條）；階段 23／24／8／3；`mode === '對戰'` 的 **7 條** ⟺ 沒有 `coop`（1.1.0 把 6／21／22／24 開放合作） | `data/tactics.json`，規則 24 |
+| 戰術 | **60 條**（官方 74 條 − 未啟用 16 條 ＋ 1.1.2 新增 2 條）；階段 前期 23／中期 24／後期 6／終盤 4／選項 3；`mode === '對戰'` 的 **9 條** ⟺ 沒有 `coop`（1.1.0 把 6／21／22／24 開放合作；1.1.2 新增的 127／128 是對戰專用） | `data/tactics.json`，規則 24 |
 | Boss | **21 條**（一般 10 ＋ 困難 11，`difficulty` 欄），圖示雙向零殘餘 | `data/boss.json`，規則 25 |
 | 裂縫效果 | **55 條**（一般 13 ／稀有 23 ／傳說 19）；階級 ⟺ 權重（30／20／10）；圖示 **35 張對 55 筆**（同名三檔共用） | `data/rift-shop.json`，規則 27 |
 | 初始就可解鎖的節點 | 11 個（前置只有起始骰子） | `/sim` 的測試挑節點時要從這裡挑 |
@@ -273,7 +273,7 @@ npm run compare -- <beforeURL> <afterURL>  # computed-style 逐元素比對，�
      ⚠️ **這件事刻意不用 CI 警告記錄**——validate 的黃金樣本斷言 warnings 必須為零，一條永遠不會
      消失的警告會讓那個基線失效。改用 `tests/data/dice-stats.test.ts` 逐格釘住（現在釘的是空清單），
      上游再空一格就會紅；`tests/e2e/codex.spec.ts` 的 C7 反向守「待實測」不得回到畫面上。
-- **`data/tactics.json`（58 條）與 `data/boss.json`（21 條）**＝`/tactic` 與 `/boss` 兩頁的全部
+- **`data/tactics.json`（60 條）與 `data/boss.json`（21 條）**＝`/tactic` 與 `/boss` 兩頁的全部
   內容，由**規則 24／25** 守。來源是官方資料表 v1.0.3-v2 的 `戰術`（sheet8）與 `Boss`（sheet9）
   兩個分頁，圖來自素材包的 `戰術/`／`Boss/`（檔名與分頁的「圖示檔名」欄一對一，Boss 10/10、
   啟用戰術 58/58 全中）。三件匯入時做過的裁決，重新產生這兩份檔案時要照做：
@@ -299,6 +299,12 @@ npm run compare -- <beforeURL> <afterURL>  # computed-style 逐元素比對，�
      撞號，屆時要決定的是「兩筆共用同一張圖是否允許」，不是隨便換掉其中一張。
   5. 戰術 1.1.0 起 `6`／`21`／`22`／`24` 開放合作模式（`mode` 改「對戰／合作」並補 `coop`），
      `mode === '對戰'` 剩 7 條。
+  6. **1.1.2（2026-09-18）新增階段「終盤」**（客戶端 `TacticPhase` 的 `Final`；中文名是 Yuki 裁決的本站命名，
+     客戶端 localization 裡沒有任何階段名稱）。⚠️ 上游有兩列寫成 `'Final  '`（**帶兩個尾隨空白**），
+     對帳時一定要先 trim，否則會被當成第六種階段。`23` 蛇怪與 `27` 迅速從「後期」改到「終盤」；新增
+     `127` 腎上腺素、`128` 痛苦哀嚎（`Use=True`、`Coop=False`＝對戰專用，編號＝上游 `Index`，圖是同名 sprite）。
+     階段清單有四份要一起改：`src/lib/types.ts` 的 `TacticStage`、`tactic.astro` 的 `STAGES`（＝篩選鈕順序）、
+     規則 24(e) 的 `STAGES`、`tests/e2e/battle.spec.ts` 的 T6／T6b。
   ⚠️ 兩份都**不進 tree.json**（同 `dice-stats.json` 的理由），所以規則 24／25 是它們唯一的防線。
 
 - **`data/rift-shop.json`（55 條）＝裂縫商店**（`/rift-shop`），由**規則 27** 守。來源是 1.1.0 客戶端
@@ -834,7 +840,7 @@ PNG，檔名＝內容 sha256 前 12 碼，`addIcon()` 直接重用）＋ `data/b
 
 ### `/tactic` 戰術與 `/boss`
 
-官方資料表 `戰術`（58 條已啟用）與 Boss（一般 10 ＋ 困難 11）的內容。`/boss` 分成「一般」「困難」兩組，各一個 h2 ＋
+官方資料表 `戰術`（58 條已啟用，1.1.2 客戶端再加 2 條）與 Boss（一般 10 ＋ 困難 11）的內容。`/boss` 分成「一般」「困難」兩組，各一個 h2 ＋
 各自的 `.battle-list`，Boss 名稱因此是 **h3**（`/tactic` 仍是 h2；兩邊共用 `.battle-name` 這個 class，
 所以字級不隨標籤變）。**lede 的兩個數量從資料算**，不寫死。B1／B1b 守。**兩者都不是骰子樹的節點**
 （不花錢解鎖、沒有前置、不進成本計算），資料與圖示各走一條平行路徑，見上面「幾份沒有自動來源

@@ -1260,9 +1260,9 @@ describe('規則 23：骰子基本能力值', () => {
 // 底下每一條各是一種「壞掉但看不出來」的寫法，改壞前 CI 全綠。
 
 describe('規則 24：戰術', () => {
-  /** 正本那 58 筆的深拷貝，給「只改一個地方」的破壞測試用。 */
+  /** 正本那 60 筆的深拷貝，給「只改一個地方」的破壞測試用。 */
   const rows = () => structuredClone(tactics) as Record<string, unknown>[];
-  /** 把正本那 58 張戰術圖複製到暫存目錄，讓每條測試各自破壞自己那份。 */
+  /** 把正本那 60 張戰術圖複製到暫存目錄，讓每條測試各自破壞自己那份。 */
   const copyIcons = () => {
     const dir = mkdtempSync(join(tmpdir(), 'rd2-tactic-icons-'));
     for (const f of readdirSync(tacticIconsDir)) writeFileSync(join(dir, f), readFileSync(join(tacticIconsDir, f)));
@@ -1383,11 +1383,21 @@ describe('規則 24：戰術', () => {
     expect(result.warnings.some(w => /規則 24\(d\).*未被任何節點引用/.test(w))).toBe(true);
   });
 
-  it('stage 不是四個階段之一會被擋', () => {
+  it('stage 不是五個階段之一會被擋', () => {
     const data = rows();
     data[0]!.stage = '初期';
     const result = validate(svg, withTactics(data));
-    expect(result.errors.some(e => /規則 24\(e\).*stage "初期" 不是四個階段之一/.test(e))).toBe(true);
+    expect(result.errors.some(e => /規則 24\(e\).*stage "初期" 不是五個階段之一/.test(e))).toBe(true);
+  });
+
+  // 上游 1.1.2 有兩列的 TacticPhase 是 'Final  '（帶尾隨空白）。照抄進來（沒 trim、或沒翻成「終盤」）
+  // 都要擋——不擋的話篩選鈕上沒有這個值，那兩條戰術只在「全部」底下才看得到。
+  it('stage 帶尾隨空白或照抄英文 Final 會被擋', () => {
+    for (const bad of ['終盤  ', 'Final', 'Final  ']) {
+      const data = rows();
+      data[0]!.stage = bad;
+      expect(validate(svg, withTactics(data)).errors.some(e => /規則 24\(e\).*不是五個階段之一/.test(e)), bad).toBe(true);
+    }
   });
 
   it('把「未啟用」那一批貼回來時，訊息要說出「刻意不落地」而不是「不是合法模式」', () => {

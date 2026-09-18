@@ -329,8 +329,12 @@ export interface DiceStatEntry {
 /** `data/dice-stats.json`：以 gameId 為鍵。刻意不進 tree.json，見該檔的說明。 */
 export type DiceStatsTable = Record<string, DiceStatEntry>;
 
-/** 戰術的階段（官方資料表「階段」欄）。`選項` 是 69 號「選擇由我決定」底下的三個子選項。 */
-export type TacticStage = '前期' | '中期' | '後期' | '選項';
+/**
+ * 戰術的階段（客戶端 `TacticsEffectTable.TacticPhase`：Early／Mid／Late／Final）。`選項` 是 69 號
+ * 「選擇由我決定」底下的三個子選項。`終盤`（Final）是 1.1.2 新增的第四個階段，中文名是本站的命名
+ * （Yuki 2026-09-18 裁決；客戶端 localization 裡沒有階段名稱）。
+ */
+export type TacticStage = '前期' | '中期' | '後期' | '終盤' | '選項';
 /**
  * 戰術的適用模式（官方資料表「適用模式」欄）。
  *

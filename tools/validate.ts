@@ -1394,14 +1394,14 @@ export function validate(svgText: string, opts: ValidateOpts): ValidateResult {
     scan.errors.forEach(push);
     scan.warnings.forEach(warn);
 
-    const STAGES = new Set(['前期', '中期', '後期', '選項']);
+    const STAGES = new Set(['前期', '中期', '後期', '終盤', '選項']);
     const MODES = new Set(['對戰', '對戰／合作']);
     const ids = new Set(scan.records.map(r => r.id as string));
     for (const rec of scan.records) {
       const id = rec.id as string;
       const stage = rec.stage as string;
       const mode = rec.mode as string;
-      if (!STAGES.has(stage)) push(`規則 24(e): data/tactics.json 的 ${id} 的 stage ${JSON.stringify(stage)} 不是四個階段之一`);
+      if (!STAGES.has(stage)) push(`規則 24(e): data/tactics.json 的 ${id} 的 stage ${JSON.stringify(stage)} 不是五個階段之一`);
       // ⚠️ `未啟用` 要指名道姓地擋。它是官方資料表真有的第三個值，複製一筆未啟用的資料
       // 進來時「不是合法模式」這種泛用訊息會讓人以為是打錯字，而真正的答案是「這一批
       // 刻意不收」——那件事只寫在註解與 CLAUDE.md 裡，錯誤訊息得自己說出來。
