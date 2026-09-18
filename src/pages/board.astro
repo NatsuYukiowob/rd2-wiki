@@ -17,7 +17,7 @@
 // 不讀 tree.json 的 `icon` 欄位：那是骰子樹節點圖（帶底板），/board 刻意要換掉的正是它。
 import Base from '../layouts/Base.astro';
 import '../styles/board.css';
-import data from '../generated/tree.json';
+import { treeData as data } from '../lib/tree-data';
 import boardIconsRaw from '../../data/board-icons.json';
 import { CELLS, DECK_SIZE } from '../lib/board';
 import { BRANCH_ZH } from '../lib/labels';

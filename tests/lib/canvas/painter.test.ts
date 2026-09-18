@@ -1,6 +1,5 @@
 // painter 是唯一碰 Canvas 2D 的檔；這裡用假 ctx（Proxy 記錄呼叫）測，不需要真的 <canvas>。
 import { describe, it, expect } from 'vitest';
-import { readFileSync } from 'node:fs';
 import { buildScene } from '../../../src/lib/canvas/scene';
 import { CanvasView } from '../../../src/lib/canvas/view';
 import { DEFAULT_THEME } from '../../../src/lib/canvas/theme';
@@ -8,8 +7,9 @@ import { emptyPaintState } from '../../../src/lib/canvas/state';
 import { drawStatic, drawOverlay, type Ctx2D } from '../../../src/lib/canvas/painter';
 import type { AssetStore } from '../../../src/lib/canvas/assets';
 import type { TreeData } from '../../../src/lib/types';
+import { readTree } from '../../helpers/read-tree';
 
-const data = JSON.parse(readFileSync('src/generated/tree.json', 'utf8')) as TreeData;
+const data = readTree() as TreeData;
 const scene = buildScene(data);
 function fakeCtx() {
   const calls: { op: string; args: unknown[]; alpha: number; dash: number[]; shadowBlur: number }[] = [];

@@ -5,6 +5,7 @@
 import { test, expect } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import { cellRect } from '../../src/lib/board-image';
+import { readTree } from '../helpers/read-tree';
 
 /**
  * B8／B8b／B8c／B8d 專用的較寬時限。
@@ -25,9 +26,7 @@ import { cellRect } from '../../src/lib/board-image';
  */
 const EXPORT_TIMEOUT = 15000;
 
-const tree = JSON.parse(
-  readFileSync(new URL('../../src/generated/tree.json', import.meta.url), 'utf8'),
-) as { nodes: { id: string; type: string; name: string; icon: string }[] };
+const tree = readTree() as { nodes: { id: string; type: string; name: string; icon: string }[] };
 
 const dice = tree.nodes.filter(n => n.type === 'dice');
 

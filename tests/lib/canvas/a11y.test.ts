@@ -4,7 +4,8 @@ import { readFileSync } from 'node:fs';
 import { buildScene } from '../../../src/lib/canvas/scene';
 import { mountNodeButtons } from '../../../src/lib/canvas/a11y';
 import type { TreeData } from '../../../src/lib/types';
-const scene = buildScene(JSON.parse(readFileSync('src/generated/tree.json', 'utf8')) as TreeData);
+import { readTree } from '../../helpers/read-tree';
+const scene = buildScene(readTree() as TreeData);
 
 // linkedom 沒有可用的 KeyboardEvent 建構子（建得出來也沒有 key），
 // 用 Event 手動掛一個 key 屬性頂替，斷言標的不變：defaultPrevented 與呼叫次數。

@@ -5,8 +5,9 @@ import { renderDetail, termViewHtml, awakeningViewHtml } from '../../src/compone
 import { computeSelection } from '../../src/lib/selection';
 import { formatCost } from '../../src/lib/format';
 import type { PassiveUpgradeCost, TreeData } from '../../src/lib/types';
+import { readTree } from '../helpers/read-tree';
 
-const data: TreeData = JSON.parse(readFileSync('src/generated/tree.json', 'utf8'));
+const data: TreeData = readTree();
 const tables: PassiveUpgradeCost = JSON.parse(readFileSync('data/passive-upgrade-cost.json', 'utf8'));
 const byId = new Map(data.nodes.map(n => [n.id, n]));
 

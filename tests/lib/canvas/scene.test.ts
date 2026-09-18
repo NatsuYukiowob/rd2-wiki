@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { readFileSync } from 'node:fs';
 import { buildScene } from '../../../src/lib/canvas/scene';
 import type { TreeData } from '../../../src/lib/types';
-const data = JSON.parse(readFileSync('src/generated/tree.json', 'utf8')) as TreeData;
+import { readTree } from '../../helpers/read-tree';
+const data = readTree() as TreeData;
 
 describe('buildScene（真實資料）', () => {
   const scene = buildScene(data);

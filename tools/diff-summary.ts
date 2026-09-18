@@ -1,6 +1,7 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import type { TreeData } from '../src/lib/types.js';
+import { decodeTree } from '../src/lib/tree-wire.js';
 
 /**
  * 這則留言的識別標記。pr-comment.yml 靠它找出「上一次貼的那則」並就地更新，
@@ -295,8 +296,9 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
     console.error('用法: npx tsx tools/diff-summary.ts <base.json> <head.json>');
     process.exit(1);
   }
-  const base = JSON.parse(readFileSync(basePath, 'utf8'));
-  const head = JSON.parse(readFileSync(headPath, 'utf8'));
+  // decodeTree 兩種形狀都吃：改成傳輸形狀的那個 PR 裡，base 分支建出來的還是舊形狀。
+  const base = decodeTree(JSON.parse(readFileSync(basePath, 'utf8')));
+  const head = decodeTree(JSON.parse(readFileSync(headPath, 'utf8')));
   const data = computeDiff(base, head);
   // 給 CI 上傳的是**資料**不是版面：留言長什麼樣由 default branch 的渲染器決定。
   writeFileSync('diff-summary.json', JSON.stringify(data));

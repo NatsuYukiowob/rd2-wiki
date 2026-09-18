@@ -5,13 +5,11 @@
 // 畫面長得一模一樣），只有去讀伺服器回的原始 HTML 才會說話。所以第一條測試刻意用
 // `request.get()` 而不是 `page.goto()`：後者拿到的是 JS 跑完之後的 DOM，驗不到這件事。
 import { test, expect } from '@playwright/test';
-import { readFileSync } from 'node:fs';
 import sharp from 'sharp';
 import { resolveColor, settleEnter } from './probe';
+import { readTree } from '../helpers/read-tree';
 
-const tree = JSON.parse(
-  readFileSync(new URL('../../src/generated/tree.json', import.meta.url), 'utf8'),
-) as {
+const tree = readTree() as {
   nodes: { id: string; type: string; branch: string; name: string; description: string }[];
   meta: { gameVersion: string; gameBundle: string; updated: string };
 };

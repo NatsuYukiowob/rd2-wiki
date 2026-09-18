@@ -12,6 +12,7 @@ import { branchOfId, categoryOfZh, elementOfStroke, typeOfZh } from '../src/lib/
 import { buildAdjacency, findRoots } from '../src/lib/graph.js';
 import { isGlossaryAlias } from '../src/lib/types.js';
 import type { Branch, Edge, GlossaryDisplay, GlossaryRecord, TreeData, TreeNode, UnlockVia, UpgradeCostTable } from '../src/lib/types.js';
+import { encodeTree } from '../src/lib/tree-wire.js';
 
 interface BuildOpts {
   /** `data/keywords.json` 的內容：key ＝不含 `#` 的詞，同時是規則 8 的白名單與玩家看的解釋。 */
@@ -284,7 +285,8 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
   }
 
   const data = buildTreeData(svgText, { keywords, nodeText, unlockExceptions, prereqRanks, upgradeCostTable, spriteIndex: index, spriteSize: size });
-  const json = JSON.stringify(data);
+  // 寫出去的是傳輸形狀（label 去重、icon 改索引，見 src/lib/tree-wire.ts），預算量的也是它。
+  const json = JSON.stringify(encodeTree(data));
   writeFileSync('src/generated/tree.json', json);
 
   console.log(`tree.json ${(Buffer.byteLength(json) / 1024).toFixed(1)} KB, sprite ${(sprite.length / 1024).toFixed(0)} KB`);

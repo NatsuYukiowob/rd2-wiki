@@ -6,7 +6,7 @@
 // 這裡只留 `/tree` 專屬的東西：搜尋、篩選、網址狀態同步、詳情卡片的擺位與視圖堆疊、
 // 分支跳轉。畫面狀態（選取、前置鏈、被篩掉的節點）一律用 `tree.setState()` 交出去，
 // 不再自己往 DOM 掛 class——canvas 裡什麼都不是元素，沒有 classList 可掛。
-import rawData from '../generated/tree.json';
+import { treeData as rawData } from '../lib/tree-data.js';
 // ⚠️ **這份費用表刻意不進 tree.json**（tier 是 (maxLevel, unlockCost.gold) 的純函數，見
 // PassiveUpgradeCost 的說明），所以走頁面 import 直接進 /tree 的 JS bundle，不吃那 20 KB
 // 的 gzip 預算。`/sim` 用的是同一份檔案、同一種載法。詳情面板有兩個地方需要它：

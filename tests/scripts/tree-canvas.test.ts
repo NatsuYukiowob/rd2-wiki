@@ -16,7 +16,6 @@
 // `#canvas-host` 的 getBoundingClientRect 上（controller 的 measure() 讀的就是它）。
 // **stub 必須在 import 之前掛**：初始視角是在模組執行期算的，晚一步就量到 0×0。
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { readFileSync } from 'node:fs';
 import { parseHTML, Event as LinkedomEvent } from 'linkedom';
 import {
   CanvasView,
@@ -25,8 +24,9 @@ import {
   minReadableScale,
 } from '../../src/lib/canvas/view';
 import type { Branch, TreeData } from '../../src/lib/types';
+import { readTree } from '../helpers/read-tree';
 
-const treeData: TreeData = JSON.parse(readFileSync('src/generated/tree.json', 'utf8'));
+const treeData: TreeData = readTree();
 
 /** 偵錯介面裝在 globalThis（瀏覽器＝window），測試也從 globalThis 讀。 */
 interface TreeState {

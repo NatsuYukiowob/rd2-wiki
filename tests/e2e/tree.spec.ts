@@ -29,8 +29,8 @@
 // 重錄，**重錄之後一定要肉眼看過那四張 PNG 再 commit**（CLAUDE.md：純視覺的改動測試綠
 // 不等於做對）。
 import { test, expect, type Page } from '@playwright/test';
-import { readFileSync } from 'node:fs';
 import { resolveColor } from './probe';
+import { readTree } from '../helpers/read-tree';
 
 /** `window.__tree` 的形狀（見 src/lib/canvas/debug-api.ts 與 canvas-tree.ts 的 debugApi）。 */
 interface TreeState {
@@ -58,9 +58,7 @@ declare global {
  * 寫死的話，只改 `data/dice-tree.svg` 增減一顆節點就會冒出看起來無關的
  * `expected 241, received 242`；而真正該擋的（畫布少畫了節點）反而測不出來。
  */
-const treeData = JSON.parse(
-  readFileSync(new URL('../../src/generated/tree.json', import.meta.url), 'utf8'),
-) as {
+const treeData = readTree() as {
   nodes: { id: string; type: string; bypassPrereq?: true }[];
   edges: [string, string][];
   meta: { viewBox: [number, number, number, number]; gameVersion: string; gameBundle: string; updated: string };
@@ -1465,9 +1463,7 @@ test('S. 連結預覽卡片：標題全站固定，網址與圖片都是絕對�
 test('T. 首頁的版本資訊全部來自資料正本，不是寫死在頁面上', async ({ page }) => {
   // 期望值從建置產物現讀，不寫死——寫死的話下次改版本又要回頭改測試，而真正該擋的
   // （頁面沒跟著資料變）反而測不出來。
-  const meta = JSON.parse(
-    readFileSync(new URL('../../src/generated/tree.json', import.meta.url), 'utf8'),
-  ).meta as { gameVersion: string; gameBundle: string; updated: string };
+  const meta = readTree().meta as { gameVersion: string; gameBundle: string; updated: string };
 
   await page.goto('/');
   // 綁 id 不綁 `section`：首頁在 2026-08-22 多了更新日誌區塊，`locator('section')` 會
