@@ -3,6 +3,7 @@
 // 三種來源在這裡收斂成同一個形狀（逐級表）：骰子符文 50 級走 tree.json 的 meta.upgradeCostTable、
 // 4303 走特例表、玩家被動與支援走 6 個 tier。呼叫端只要 levelTableFor() ＋ upgradeExtraCost()
 // 兩步，不必知道這顆節點的費用是從哪一張表來的。
+import { addCost, zeroCost } from './cost.js';
 import type { Cost, LevelCost, NodeType, PassiveUpgradeCost, UnlockVia, UpgradeCostTable, UpgradeTier } from './types.js';
 
 /** tierKeyOf 與 levelTableFor 需要的節點欄位，刻意收窄成這幾個好讓測試不必造整顆 TreeNode。 */
@@ -27,10 +28,9 @@ export function expandTier(tier: UpgradeTier): LevelCost[] {
   for (const b of [...tier.bands].sort((x, y) => x.from - y.from)) {
     if (b.from !== expect) throw new Error(`升級區間必須連續：Lv.${expect} 之後接到的是 Lv.${b.from}`);
     if (b.to < b.from) throw new Error(`升級區間的 to 不可小於 from：${b.from}~${b.to}`);
-    // solar 固定 0：tier 制只服務玩家被動與支援，太陽核心是骰子分支的貨幣（見 UpgradeBand）。
-    // 明寫出來而不是省略，是為了讓「這張表確實沒有太陽核心」在產物上看得見。
+    // 不帶 mythic：tier 制只服務玩家被動與支援，超越核心是骰子分支的貨幣（見 UpgradeBand）。
     for (let lv = b.from; lv <= b.to; lv++) {
-      rows.push({ level: lv, gold: b.gold, core: lv === b.from ? b.core : 0, solar: 0 });
+      rows.push({ level: lv, gold: b.gold, core: lv === b.from ? b.core : 0 });
     }
     expect = b.to + 1;
   }
@@ -94,14 +94,12 @@ export function levelTableFor(
  */
 export function upgradeExtraCost(levels: LevelCost[], toLevel: number): Cost | null {
   if (!Number.isInteger(toLevel) || toLevel < 1) return null;
-  const cost: Cost = { core: 0, gold: 0, solar: 0 };
+  let cost: Cost = zeroCost();
   for (let lv = 2; lv <= toLevel; lv++) {
     const row = levels.find(r => r.level === lv);
     if (!row) return null;
-    cost.core += row.core;
-    cost.gold += row.gold;
-    // 缺席當 0：兩份費用表 JSON 的既有列都沒有 solar 欄位（見 LevelCost）。
-    cost.solar += row.solar ?? 0;
+    // mythic 缺席＝這一級不花超越核心（見 LevelCost）；addCost 自己處理。
+    cost = addCost(cost, row.mythic ? { core: row.core, gold: row.gold, mythic: row.mythic } : { core: row.core, gold: row.gold });
   }
   return cost;
 }

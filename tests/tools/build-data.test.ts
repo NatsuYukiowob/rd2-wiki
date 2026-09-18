@@ -3,6 +3,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { gzipSync } from 'node:zlib';
 import { buildTreeData } from '../../tools/build-data';
 import { decodeTree, encodeTree } from '../../src/lib/tree-wire';
+import { mythicAmount } from '../../src/lib/cost';
 import { buildSprite, type IconEntry } from '../../tools/lib/icons';
 import { parseTree } from '../../tools/lib/svg-parse';
 import type { NodeTextMap } from '../../tools/lib/node-text';
@@ -47,10 +48,10 @@ describe('buildTreeData', () => {
   // 2026-09-06 依 1.1.0 客戶端加了太陽骰子 1501（金幣 100,000／太陽核心 2,000）與太陽強化 1601
   // （金幣 50,000／太陽核心 100）：金幣 +150,000、太陽核心 +2,100（→ 1842／7,056,000／2,100）。
   it('全樹解鎖成本總和釘住正本（成本一動這裡就要跟著動）', () => {
-    expect(data.meta.totalUnlockCost).toEqual({ core: 1842, gold: 7056000, solar: 2100 });
+    expect(data.meta.totalUnlockCost).toEqual({ core: 1842, gold: 7056000, mythic: { solar: 2100 } });
   });
-  // 太陽核心（v1.1.0）也要進全樹總和。正本目前 239 顆的 solar 全是 0，光靠上面那條
-  // 「solar: 0」證明不了加總會動——0 加 0 在任何寫法下都是 0。所以這裡合成兩顆帶太陽核心
+  // 太陽核心（v1.1.0）也要進全樹總和。光靠上面那條釘住的總和證明不了加總會動（上面那個數字
+  // 也可能是某一顆直接指派的結果）。所以這裡合成兩顆帶太陽核心
   // 的節點再建一次；**兩顆**是為了同時驗到「有累加」而不只是「有讀到」。
   it('全樹解鎖成本會把太陽核心加總起來', () => {
     const nodeText = structuredClone(opts.nodeText);
@@ -58,8 +59,8 @@ describe('buildTreeData', () => {
     nodeText['1202']!.cost = '金幣 2,000／太陽核心 2,000';
     const withSolar = buildTreeData(svg, { ...opts, nodeText });
     // 真實資料自 2026-09-06 起本來就有太陽骰子那 2,100 太陽核心，這裡量的是**增量**。
-    expect(withSolar.meta.totalUnlockCost.solar).toBe(data.meta.totalUnlockCost.solar + 2100);
-    expect(withSolar.nodes.find(x => x.id === '1201')!.unlockCost.solar).toBe(100);
+    expect(mythicAmount(withSolar.meta.totalUnlockCost, 'solar')).toBe(mythicAmount(data.meta.totalUnlockCost, 'solar') + 2100);
+    expect(withSolar.nodes.find(x => x.id === '1201')!.unlockCost).toEqual({ core: 0, gold: 2000, mythic: { solar: 100 } });
   });
   it('玩家被動的等級上限來自 title', () => {
     const n = data.nodes.find(x => x.id === '1101')!;

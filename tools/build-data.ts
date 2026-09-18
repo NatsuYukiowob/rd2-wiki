@@ -5,7 +5,7 @@ import sharp from 'sharp';
 import { parseTree, COORD_TOLERANCE } from './lib/svg-parse.js';
 import { MAX_TEXT_LENGTH, loadNodeText, mergeNodes, type NodeTextMap } from './lib/node-text.js';
 import { buildSprite, buildHiRes, buildBoardIcon, type IconEntry } from './lib/icons.js';
-import { parseCost } from '../src/lib/cost.js';
+import { addCost, parseCost, zeroCost } from '../src/lib/cost.js';
 import { parseGrowth } from '../src/lib/growth.js';
 import { extractKeywords } from '../src/lib/keywords.js';
 import { branchOfId, categoryOfZh, elementOfStroke, typeOfZh } from '../src/lib/taxonomy.js';
@@ -117,13 +117,7 @@ export function buildTreeData(svgText: string, opts: BuildOpts): TreeData {
   // 但 wip 節點要排除：它們的語意是「這顆之後才會接進樹裡」，還沒接線就先把成本算進「全樹解鎖
   // 成本」，等於讓一個佔位節點去動首頁上那個數字。目前正本沒有 wip 節點，所以這條不改變現值。
   const totalUnlockCost = nodes.filter(n => !wipIds.has(n.id)).reduce(
-    (acc, n) => ({
-      core: acc.core + n.unlockCost.core,
-      gold: acc.gold + n.unlockCost.gold,
-      solar: acc.solar + n.unlockCost.solar,
-    }),
-    { core: 0, gold: 0, solar: 0 }
-  );
+    (acc, n) => addCost(acc, n.unlockCost), zeroCost());
 
   const bounds = {} as Record<Branch, [number, number, number, number]>;
   for (const b of ['nature', 'engineering', 'magic', 'order', 'chaos'] as Branch[]) {

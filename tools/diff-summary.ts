@@ -1,6 +1,8 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
-import type { TreeData } from '../src/lib/types.js';
+import type { Cost, TreeData } from '../src/lib/types.js';
+import { costFromJson, mythicAmount, zeroCost } from '../src/lib/cost.js';
+import { MYTHIC_CORES } from '../src/lib/currency.js';
 import { decodeTree } from '../src/lib/tree-wire.js';
 
 /**
@@ -48,10 +50,8 @@ export interface DiffSummaryData {
   /** 被加上／取消 `data-wip="1"` 的節點 id。這個標記會讓節點豁免圖結構檢查，改動它要留下痕跡。 */
   wipAdded: string[];
   wipRemoved: string[];
-  cost: {
-    base: { core: number; gold: number; solar: number };
-    head: { core: number; gold: number; solar: number };
-  };
+  /** 全樹解鎖成本。1.1.0 以前的 base 是 `{core, gold, solar}`，進來時經 `costFromJson()` 正規化。 */
+  cost: { base: Cost; head: Cost };
 }
 
 /**
@@ -116,7 +116,7 @@ export function computeDiff(base: unknown, head: unknown): DiffSummaryData {
     edgesRewired: false,
     wipAdded: [],
     wipRemoved: [],
-    cost: { base: { core: 0, gold: 0, solar: 0 }, head: { core: 0, gold: 0, solar: 0 } },
+    cost: { base: zeroCost(), head: zeroCost() },
   };
   if (!looksLikeTree(base) || !looksLikeTree(head)) return empty;
 
@@ -165,7 +165,7 @@ export function computeDiff(base: unknown, head: unknown): DiffSummaryData {
     counts: { added: added.length, removed: removed.length, changed: changed.length },
     removedIds: removed,
     changed: changed.map(n => ({ id: n.id, name: n.name })),
-    cost: { base: base.meta.totalUnlockCost, head: head.meta.totalUnlockCost },
+    cost: { base: costFromJson(base.meta.totalUnlockCost, safeInt), head: costFromJson(head.meta.totalUnlockCost, safeInt) },
   };
 }
 
@@ -216,10 +216,9 @@ export function renderDiffComment(raw: unknown): string {
     removed: safeInt(d.counts!.removed),
     changed: safeInt(d.counts!.changed),
   };
-  const cost = {
-    base: { core: safeInt(d.cost!.base.core), gold: safeInt(d.cost!.base.gold), solar: safeInt(d.cost!.base.solar) },
-    head: { core: safeInt(d.cost!.head.core), gold: safeInt(d.cost!.head.gold), solar: safeInt(d.cost!.head.solar) },
-  };
+  // 超越核心的鍵來自輸入端，**只印登記過的種類的名稱**（`mythicAmount` 查的是 MYTHIC_CORES 的
+  // kind），沒登記的鍵一個字都不會進留言——不然 fork 的 PR 可以用一個鍵名塞任意字串進來。
+  const cost = { base: costFromJson(d.cost!.base, safeInt), head: costFromJson(d.cost!.head, safeInt) };
   const nodes = [safeInt(d.nodes![0]), safeInt(d.nodes![1])];
   const edges = [safeInt(d.edges![0]), safeInt(d.edges![1])];
 
@@ -265,11 +264,12 @@ export function renderDiffComment(raw: unknown): string {
     `- 邊：${edges[0]} → ${edges[1]}`,
     `- 新增 ${counts.added}｜刪除 ${counts.removed}｜修改 ${counts.changed}`,
     `- 全樹解鎖成本：核心 ${cost.base.core} → ${cost.head.core}，金幣 ${cost.base.gold.toLocaleString('en-US')} → ${cost.head.gold.toLocaleString('en-US')}`
-      // 太陽核心只在兩邊任一有值時才接上去：這則留言貼在每一個資料 PR 上，為一個大多數 PR
+      // 超越核心只在兩邊任一有值時才接上去：這則留言貼在每一個資料 PR 上，為一個大多數 PR
       // 都動不到的貨幣固定多印「0 → 0」，只會稀釋掉真正改了的那幾個數字。
-      + (cost.base.solar > 0 || cost.head.solar > 0
-        ? `，太陽核心 ${cost.base.solar.toLocaleString('en-US')} → ${cost.head.solar.toLocaleString('en-US')}`
-        : ''),
+      + MYTHIC_CORES.map(def => {
+        const [b, h] = [mythicAmount(cost.base, def.kind), mythicAmount(cost.head, def.kind)];
+        return b > 0 || h > 0 ? `，${def.label} ${b.toLocaleString('en-US')} → ${h.toLocaleString('en-US')}` : '';
+      }).join(''),
     removedLine,
     d.edgesRewired === true
       ? '\n⚠️ **邊數不變但前置關係被改動**——解鎖成本可能已經改變，請逐條確認下面的清單。'

@@ -5,6 +5,8 @@
 // 要連帶取消後續、清掉等級、扣回兩種成本）。239 個節點的 Set 複製一次是幾微秒的事。
 import { buildAdjacency, sumUnlockCost } from './graph.js';
 import { levelTableFor, upgradeExtraCost } from './upgrade-tiers.js';
+import { addCost, mythicAmount, zeroCost } from './cost.js';
+import { MYTHIC_CORES } from './currency.js';
 import type {
   Branch, Cost, GrowthUnit, PassiveUpgradeCost, TreeData, TreeNode, UpgradeCostTable,
 } from './types.js';
@@ -342,11 +344,17 @@ export function pathTo(id: string, state: SimState, ctx: SimContext): SimPlan {
 
 export interface SimTotals { unlock: Cost; upgrade: Cost; total: Cost }
 
+/**
+ * 玩家在 `/sim` 填的資源上限，`null`＝沒填。超越核心每一種各一格（`sim-limit-<kind>`），
+ * 鍵是 `MYTHIC_CORES[].kind`；表裡沒有的 kind 等同沒填。
+ */
+export interface SimLimits { core: number | null; gold: number | null; mythic: Readonly<Record<string, number | null>> }
+
 export function simTotals(state: SimState, ctx: SimContext): SimTotals {
   // 起始骰子與勾選的初始骰子不在 state.unlocked 裡，所以這裡自然不會算到它們；
   // sumUnlockCost 另外擋掉「靠成就開門又不用付錢」的節點（同 /tree 的前置鏈成本）。
   const { cost: unlock } = sumUnlockCost(state.unlocked, ctx.byId);
-  const upgrade: Cost = { core: 0, gold: 0, solar: 0 };
+  let upgrade: Cost = zeroCost();
   for (const [id, level] of state.levels) {
     if (level <= 1) continue;
     const node = ctx.byId.get(id);
@@ -354,19 +362,9 @@ export function simTotals(state: SimState, ctx: SimContext): SimTotals {
     const table = levelTableFor(node, ctx.tables, ctx.runeTable);
     const extra = table ? upgradeExtraCost(table, level) : null;
     if (!extra) continue;
-    upgrade.core += extra.core;
-    upgrade.gold += extra.gold;
-    upgrade.solar += extra.solar;
+    upgrade = addCost(upgrade, extra);
   }
-  return {
-    unlock,
-    upgrade,
-    total: {
-      core: unlock.core + upgrade.core,
-      gold: unlock.gold + upgrade.gold,
-      solar: unlock.solar + upgrade.solar,
-    },
-  };
+  return { unlock, upgrade, total: addCost(unlock, upgrade) };
 }
 
 /**
@@ -380,7 +378,7 @@ export function simTotals(state: SimState, ctx: SimContext): SimTotals {
  */
 export function exceedsLimit(
   total: Cost,
-  limits: { core: number | null; gold: number | null; solar: number | null },
+  limits: SimLimits,
   previous?: Cost,
 ): string[] {
   const out: string[] = [];
@@ -392,10 +390,14 @@ export function exceedsLimit(
   if (limits.gold !== null && total.gold > limits.gold && worse(total.gold, previous?.gold)) {
     out.push(`金幣 ${fmt(total.gold)} / ${fmt(limits.gold)}`);
   }
-  // 太陽核心走同一條路徑（含「只擋會變貴的方向」那條語意）——三種貨幣任一種超出都要擋，
-  // 不然玩家設了太陽核心上限卻照樣買得下去，而畫面上完全沒有東西說話。
-  if (limits.solar !== null && total.solar > limits.solar && worse(total.solar, previous?.solar)) {
-    out.push(`太陽核心 ${fmt(total.solar)} / ${fmt(limits.solar)}`);
+  // 超越核心走同一條路徑（含「只擋會變貴的方向」那條語意）——任一種貨幣超出都要擋，
+  // 不然玩家設了太陽核心上限卻照樣買得下去，而畫面上完全沒有東西說話。順序照 MYTHIC_CORES。
+  for (const def of MYTHIC_CORES) {
+    const limit = limits.mythic[def.kind] ?? null;
+    const now = mythicAmount(total, def.kind);
+    if (limit !== null && now > limit && worse(now, previous && mythicAmount(previous, def.kind))) {
+      out.push(`${def.label} ${fmt(now)} / ${fmt(limit)}`);
+    }
   }
   return out;
 }

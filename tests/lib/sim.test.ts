@@ -16,7 +16,7 @@ const realData = readTree() as TreeData;
 const n = (id: string, over: Partial<TreeNode> = {}): TreeNode => ({
   id, branch: 'nature', element: 'nature', type: 'passive', name: `n${id}`, label: id,
   shape: 'circle', size: [1, 1], x: 0, y: 0,
-  unlockCost: { core: 1, gold: 1000, solar: 0 }, unlockVia: 'cost',
+  unlockCost: { core: 1, gold: 1000 }, unlockVia: 'cost',
   maxLevel: 1, prereqMode: null, upgradeCost: null, description: '',
   keywords: [], growth: null, dataIssue: null, icon: 'x', ...over,
 } as TreeNode);
@@ -27,12 +27,12 @@ const fakeData = {
   nodes: [
     // default 的那 5 顆在真實資料裡都是骰子；設成 passive 的話「初始狀態沒有任何能力」那條
     // 測試會被自己的假圖推翻。
-    n('A', { type: 'dice', unlockVia: 'default', unlockCost: { core: 5, gold: 0, solar: 0 } }),
+    n('A', { type: 'dice', unlockVia: 'default', unlockCost: { core: 5, gold: 0 } }),
     n('B'), n('C'), n('D'),
-    n('E', { type: 'dice', unlockVia: 'achievement', bypassPrereq: true, unlockCost: { core: 8, gold: 0, solar: 0 } }),
+    n('E', { type: 'dice', unlockVia: 'achievement', bypassPrereq: true, unlockCost: { core: 8, gold: 0 } }),
     n('F'),
     // 可升級的玩家被動：maxLevel 10 ＋ 解鎖金幣 12000 ＝ tier A
-    n('G', { maxLevel: 10, unlockCost: { core: 0, gold: 12000, solar: 0 }, growth: { base: 10, perLevel: 2, unit: '%' } }),
+    n('G', { maxLevel: 10, unlockCost: { core: 0, gold: 12000 }, growth: { base: 10, perLevel: 2, unit: '%' } }),
   ],
   edges,
 } as unknown as TreeData;
@@ -69,7 +69,7 @@ describe('初始狀態', () => {
   });
 
   it('總資源是 0（default 節點玩家沒付過那筆錢）', () => {
-    expect(simTotals(s0, ctx).total).toEqual({ core: 0, gold: 0, solar: 0 });
+    expect(simTotals(s0, ctx).total).toEqual({ core: 0, gold: 0 });
   });
 
   it('真實資料：初始狀態 5 顆已取得、236 顆未取得、資源 0', () => {
@@ -77,7 +77,7 @@ describe('初始狀態', () => {
     const s = initialSimState(real);
     expect(ownedIds(s, real).size).toBe(5);
     expect(realData.nodes.length - ownedIds(s, real).size).toBe(236);
-    expect(simTotals(s, real).total).toEqual({ core: 0, gold: 0, solar: 0 });
+    expect(simTotals(s, real).total).toEqual({ core: 0, gold: 0 });
   });
 });
 
@@ -93,7 +93,7 @@ describe('解鎖與取消', () => {
   it('解鎖會把成本加進總資源', () => {
     const s = unlockNode(s0, ctx, 'B')!;
     expect(ownedIds(s, ctx).has('B')).toBe(true);
-    expect(simTotals(s, ctx).total).toEqual({ core: 1, gold: 1000, solar: 0 });
+    expect(simTotals(s, ctx).total).toEqual({ core: 1, gold: 1000 });
   });
 
   it('前置沒齊的節點解不開', () => {
@@ -110,10 +110,10 @@ describe('解鎖與取消', () => {
     let s = unlockNode(s0, ctx, 'B')!;
     s = unlockNode(s, ctx, 'C')!;
     s = unlockNode(s, ctx, 'D')!;
-    expect(simTotals(s, ctx).total).toEqual({ core: 3, gold: 3000, solar: 0 });
+    expect(simTotals(s, ctx).total).toEqual({ core: 3, gold: 3000 });
     const after = removeNode(s, ctx, 'B')!;
     expect([...ownedIds(after, ctx)].sort()).toEqual(['A', 'C']);
-    expect(simTotals(after, ctx).total).toEqual({ core: 1, gold: 1000, solar: 0 });
+    expect(simTotals(after, ctx).total).toEqual({ core: 1, gold: 1000 });
   });
 
   it('取消時連帶清掉被取消節點的等級', () => {
@@ -142,7 +142,7 @@ describe('初始骰子勾選', () => {
   it('勾了就取得，而且不花錢', () => {
     const s = setInitialDice(s0, ctx, 'E', true)!;
     expect(ownedIds(s, ctx).has('E')).toBe(true);
-    expect(simTotals(s, ctx).total).toEqual({ core: 0, gold: 0, solar: 0 });
+    expect(simTotals(s, ctx).total).toEqual({ core: 0, gold: 0 });
   });
 
   it('勾掉會連帶取消依賴它的節點', () => {
@@ -181,7 +181,7 @@ describe('一鍵點亮到這裡', () => {
     const plan = pathTo('D', s0, ctx);
     const s = unlockMany(s0, ctx, plan);
     expect([...ownedIds(s, ctx)].sort()).toEqual(['A', 'B', 'C', 'D']);
-    expect(simTotals(s, ctx).total).toEqual({ core: 3, gold: 3000, solar: 0 });
+    expect(simTotals(s, ctx).total).toEqual({ core: 3, gold: 3000 });
   });
 
   // 這是 /tree 已經在算的同一件事，兩邊算出不同答案就代表其中一邊錯了。
@@ -194,7 +194,7 @@ describe('一鍵點亮到這裡', () => {
     const plan = pathTo('5201', withInitial, real);
     expect(plan.blocked).toEqual([]);
     const s = unlockMany(withInitial, real, plan);
-    expect(simTotals(s, real).unlock).toEqual({ core: 42, gold: 20000, solar: 0 });
+    expect(simTotals(s, real).unlock).toEqual({ core: 42, gold: 20000 });
   });
 });
 
@@ -222,15 +222,15 @@ describe('等級與升級費用', () => {
     let s = unlockNode(s0, ctx, 'G')!;
     s = setNodeLevel(s, ctx, 'G', 6)!;
     const t = simTotals(s, ctx);
-    expect(t.unlock).toEqual({ core: 0, gold: 12000, solar: 0 });
-    expect(t.upgrade).toEqual({ core: 6, gold: 48000, solar: 0 });
-    expect(t.total).toEqual({ core: 6, gold: 60000, solar: 0 });
+    expect(t.unlock).toEqual({ core: 0, gold: 12000 });
+    expect(t.upgrade).toEqual({ core: 6, gold: 48000 });
+    expect(t.total).toEqual({ core: 6, gold: 60000 });
   });
 
   it('解鎖時等級預設是 1，不花升級費用', () => {
     const s = unlockNode(s0, ctx, 'G')!;
     expect(s.levels.get('G')).toBe(1);
-    expect(simTotals(s, ctx).upgrade).toEqual({ core: 0, gold: 0, solar: 0 });
+    expect(simTotals(s, ctx).upgrade).toEqual({ core: 0, gold: 0 });
   });
 
   // 符文表自己帶著 level 1（金額＝符文的解鎖金幣），不跳過的話每顆符文的解鎖費用會被算兩次。
@@ -289,9 +289,9 @@ describe('前置節點的等級條件', () => {
     //       ＋ 1501 金幣 100,000／太陽核心 2,000
     // 升級：1201 Lv.1 → Lv.50 追加＝金幣 463,700 ／核心 99
     const t = simTotals(s, real);
-    expect(t.unlock).toEqual({ core: 30, gold: 132000, solar: 2000 });
-    expect(t.upgrade).toEqual({ core: 99, gold: 463700, solar: 0 });
-    expect(t.total).toEqual({ core: 129, gold: 595700, solar: 2000 });
+    expect(t.unlock).toEqual({ core: 30, gold: 132000, mythic: { solar: 2000 } });
+    expect(t.upgrade).toEqual({ core: 99, gold: 463700 });
+    expect(t.total).toEqual({ core: 129, gold: 595700, mythic: { solar: 2000 } });
   });
 
   // 遊戲裡做不到「把 1201 降回 49 級但保留太陽骰子」，模擬器也不該做得到。
@@ -324,23 +324,23 @@ describe('前置節點的等級條件', () => {
 
 describe('資源上限', () => {
   it('沒設定上限時不擋', () => {
-    expect(exceedsLimit({ core: 999, gold: 999, solar: 999 }, { core: null, gold: null, solar: null })).toEqual([]);
+    expect(exceedsLimit({ core: 999, gold: 999, mythic: { solar: 999 } }, { core: null, gold: null, mythic: {} })).toEqual([]);
   });
 
   it('超出時回報是哪一種、差多少', () => {
-    const over = exceedsLimit({ core: 10, gold: 5000, solar: 0 }, { core: 8, gold: null, solar: null });
+    const over = exceedsLimit({ core: 10, gold: 5000 }, { core: 8, gold: null, mythic: {} });
     expect(over).toHaveLength(1);
     expect(over[0]).toMatch(/核心.*10.*8/);
   });
 
   it('剛好等於上限不算超出', () => {
-    expect(exceedsLimit({ core: 8, gold: 100, solar: 50 }, { core: 8, gold: 100, solar: 50 })).toEqual([]);
+    expect(exceedsLimit({ core: 8, gold: 100, mythic: { solar: 50 } }, { core: 8, gold: 100, mythic: { solar: 50 } })).toEqual([]);
   });
 
   // 太陽核心（v1.1.0）走的是跟核心／金幣同一條路徑。漏掉它的話玩家設了上限卻照樣買得下去，
   // 而畫面上沒有任何地方說話——這是這一頁最貴的一種沉默。
   it('太陽核心超出時也會被擋，訊息指名是哪一種貨幣', () => {
-    const over = exceedsLimit({ core: 0, gold: 0, solar: 2500 }, { core: null, gold: null, solar: 2000 });
+    const over = exceedsLimit({ core: 0, gold: 0, mythic: { solar: 2500 } }, { core: null, gold: null, mythic: { solar: 2000 } });
     expect(over).toHaveLength(1);
     expect(over[0]).toMatch(/太陽核心.*2,500.*2,000/);
   });
@@ -348,15 +348,15 @@ describe('資源上限', () => {
   it('太陽核心也只擋會變貴的方向', () => {
     // 從 3,000 降到 2,500（仍超過上限 2,000）＝在往好的方向走，不擋
     expect(exceedsLimit(
-      { core: 0, gold: 0, solar: 2500 },
-      { core: null, gold: null, solar: 2000 },
-      { core: 0, gold: 0, solar: 3000 },
+      { core: 0, gold: 0, mythic: { solar: 2500 } },
+      { core: null, gold: null, mythic: { solar: 2000 } },
+      { core: 0, gold: 0, mythic: { solar: 3000 } },
     )).toEqual([]);
     // 從 2,100 漲到 2,500 ＝變更貴，擋
     expect(exceedsLimit(
-      { core: 0, gold: 0, solar: 2500 },
-      { core: null, gold: null, solar: 2000 },
-      { core: 0, gold: 0, solar: 2100 },
+      { core: 0, gold: 0, mythic: { solar: 2500 } },
+      { core: null, gold: null, mythic: { solar: 2000 } },
+      { core: 0, gold: 0, mythic: { solar: 2100 } },
     )).toHaveLength(1);
   });
 
@@ -364,16 +364,16 @@ describe('資源上限', () => {
   // 這時若連「取消節點」「降等級」這些會讓成本下降的操作都一起擋掉，他除了 undo 或整份
   // 重置之外沒有出路——上限欄位反而把人鎖死在自己想改掉的那份規劃裡。
   it('傳入 previous 時，降成本的操作即使仍超上限也不算超出', () => {
-    expect(exceedsLimit({ core: 5, gold: 0, solar: 0 }, { core: 1, gold: null, solar: null }, { core: 10, gold: 0, solar: 0 })).toEqual([]);
+    expect(exceedsLimit({ core: 5, gold: 0 }, { core: 1, gold: null, mythic: {} }, { core: 10, gold: 0 })).toEqual([]);
   });
 
   it('傳入 previous 時，只有「超上限而且比之前更貴」才算超出', () => {
-    expect(exceedsLimit({ core: 5, gold: 0, solar: 0 }, { core: 1, gold: null, solar: null }, { core: 3, gold: 0, solar: 0 })).toHaveLength(1);
+    expect(exceedsLimit({ core: 5, gold: 0 }, { core: 1, gold: null, mythic: {} }, { core: 3, gold: 0 })).toHaveLength(1);
   });
 
   it('傳入 previous 時，逐幣別分開判斷', () => {
     // 核心變便宜、金幣變貴：只該擋金幣那一項
-    const over = exceedsLimit({ core: 5, gold: 900, solar: 0 }, { core: 1, gold: 100, solar: null }, { core: 10, gold: 200, solar: 0 });
+    const over = exceedsLimit({ core: 5, gold: 900 }, { core: 1, gold: 100, mythic: {} }, { core: 10, gold: 200 });
     expect(over).toHaveLength(1);
     expect(over[0]).toMatch(/金幣/);
   });
