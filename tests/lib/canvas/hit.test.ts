@@ -1,12 +1,12 @@
 // tests/lib/canvas/hit.test.ts
 import { describe, it, expect } from 'vitest';
-import { readFileSync } from 'node:fs';
 import { buildScene } from '../../../src/lib/canvas/scene';
 import { buildHitIndex, hitTest } from '../../../src/lib/canvas/hit';
 import type { Scene, SceneNode } from '../../../src/lib/canvas/scene';
 import type { TreeData } from '../../../src/lib/types';
+import { readTree } from '../../helpers/read-tree';
 
-const scene = buildScene(JSON.parse(readFileSync('src/generated/tree.json', 'utf8')) as TreeData);
+const scene = buildScene(readTree() as TreeData);
 const index = buildHitIndex(scene);
 
 describe('hitTest（真實資料）', () => {

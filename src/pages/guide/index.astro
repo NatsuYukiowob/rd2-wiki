@@ -2,7 +2,7 @@
 // 遊戲介紹的索引頁。導覽列的下拉選單直接列得出每一頁，這一頁的作用是給每一組一句說明與
 // 條數——下拉選單塞不下這些，而「召喚物與投射物」這種本站自取的組名，光看名字猜不出範圍。
 import Base from '../../layouts/Base.astro';
-import data from '../../generated/tree.json';
+import { treeData as data } from '../../lib/tree-data';
 import keywordsRaw from '../../../data/keywords.json';
 import { buildGlossary, GROUPS, GUIDE_PAGES } from '../../lib/glossary-groups';
 import tacticsRaw from '../../../data/tactics.json';

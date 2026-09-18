@@ -21,7 +21,7 @@
 // （「只有 owned 且 maxLevel>1 才畫牌、牌上文字是當前/上限」），畫面上的等級則改讀側欄的
 // `.sim-level-value`——那是玩家真正看數字的地方。
 import { test, expect, type Page } from '@playwright/test';
-import { readFileSync } from 'node:fs';
+import { readTree } from '../helpers/read-tree';
 
 /** `window.__tree` 的形狀（見 src/lib/canvas/debug-api.ts）。 */
 interface SimPaintState {
@@ -44,9 +44,7 @@ declare global {
   interface Window { __tree: TreeDebug }
 }
 
-const tree = JSON.parse(
-  readFileSync(new URL('../../src/generated/tree.json', import.meta.url), 'utf8'),
-) as {
+const tree = readTree() as {
   nodes: { id: string; name: string; type: string; maxLevel: number; unlockVia: string; unlockCost: { core: number; gold: number }; unlockPaid?: true }[];
 };
 

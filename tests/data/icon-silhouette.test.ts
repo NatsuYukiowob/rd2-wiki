@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { readFileSync } from 'node:fs';
 import sharp from 'sharp';
+import { readTree } from '../helpers/read-tree';
 
 /**
  * 角色圖示的底板必須自己收邊（2026-08-22）。
@@ -16,9 +16,7 @@ import sharp from 'sharp';
  *
  * 骰子（矩形卡）與符文（六邊形）本來就有寬的平底，那是它們的形狀，不是缺陷，所以這條只看角色。
  */
-const tree = JSON.parse(
-  readFileSync(new URL('../../src/generated/tree.json', import.meta.url), 'utf8'),
-) as { nodes: { id: string; name: string; type: string; icon: string }[] };
+const tree = readTree() as { nodes: { id: string; name: string; type: string; icon: string }[] };
 
 const characters = tree.nodes.filter(n => n.type === 'support');
 

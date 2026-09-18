@@ -9,7 +9,7 @@
 // SVG 渲染器（src/lib/render.ts）與 Viewport，平移縮放、點選判定、等級牌各寫了第二份——
 // 那正是這個 repo 反覆被咬的「複製第二份出去」（規則 21 複製規則 7、FILTERS_MS 複製 --t-med）。
 // 模擬器的差異全部收斂成 state.ts 的 `SimPaint`，controller 內沒有第二條繪圖路徑。
-import rawData from '../generated/tree.json';
+import { treeData as rawData } from '../lib/tree-data.js';
 import rawTables from '../../data/passive-upgrade-cost.json';
 import { mountCanvasTree } from '../lib/canvas/canvas-tree.js';
 import { edgeKey } from '../lib/canvas/state.js';

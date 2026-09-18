@@ -2,8 +2,9 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { computeSelection } from '../../src/lib/selection';
 import type { PassiveUpgradeCost, TreeData } from '../../src/lib/types';
+import { readTree } from '../helpers/read-tree';
 
-const data: TreeData = JSON.parse(readFileSync('src/generated/tree.json', 'utf8'));
+const data: TreeData = readTree();
 const tables: PassiveUpgradeCost = JSON.parse(readFileSync('data/passive-upgrade-cost.json', 'utf8'));
 
 describe('computeSelection', () => {

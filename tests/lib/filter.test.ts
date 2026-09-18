@@ -6,6 +6,7 @@ import {
 import { computeSelection } from '../../src/lib/selection';
 import type { PassiveUpgradeCost, TreeNode, TreeData } from '../../src/lib/types';
 import type { FilterState } from '../../src/lib/filter';
+import { readTree } from '../helpers/read-tree';
 
 const n = (p: Partial<TreeNode>) =>
   ({ branch: 'nature', type: 'dice', name: '火骰子', description: '造成傷害', keywords: [], ...p } as TreeNode);
@@ -102,7 +103,7 @@ describe('isTypingTarget（搜尋框/篩選核取方塊 focus 時，畫布方向
 // 一致）。只勾類型=dice 時，3 個 passive 節點（1102/1103/1109）被篩掉、3 個 dice 節點
 // （1001/1002/1006，含選取節點本身）仍可見，hiddenByFilter 應為 3。
 describe('1002 hiddenByFilter 真實資料驗算', () => {
-  const data: TreeData = JSON.parse(readFileSync('src/generated/tree.json', 'utf8'));
+  const data: TreeData = readTree();
   const tables: PassiveUpgradeCost = JSON.parse(readFileSync('data/passive-upgrade-cost.json', 'utf8'));
   const byId = new Map(data.nodes.map(nd => [nd.id, nd]));
 

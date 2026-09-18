@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync, readdirSync } from 'node:fs';
 import { gzipSync } from 'node:zlib';
 import { buildTreeData } from '../../tools/build-data';
+import { decodeTree, encodeTree } from '../../src/lib/tree-wire';
 import { buildSprite, type IconEntry } from '../../tools/lib/icons';
 import { parseTree } from '../../tools/lib/svg-parse';
 import type { NodeTextMap } from '../../tools/lib/node-text';
@@ -200,7 +201,28 @@ describe('buildTreeData', () => {
   });
 
   it('gzip 後符合效能預算（≤ 20 KB）', () => {
-    expect(gzipSync(Buffer.from(JSON.stringify(data))).length).toBeLessThanOrEqual(20 * 1024);
+    expect(gzipSync(Buffer.from(JSON.stringify(encodeTree(data)))).length).toBeLessThanOrEqual(20 * 1024);
+  });
+
+  // 傳輸形狀（issue #63）必須無損：解回來要跟 buildTreeData 的輸出逐字元相同，含欄位順序——
+  // diff-summary 用 JSON.stringify 比節點，順序一變就是 241 顆全部「有變動」。
+  it('encodeTree → decodeTree 無損還原（含欄位順序）', () => {
+    const wire = encodeTree(data);
+    expect(JSON.stringify(decodeTree(JSON.parse(JSON.stringify(wire))))).toBe(JSON.stringify(data));
+    // 去重真的有發生：label 只留在跟 name 不同的節點上，icon 是索引
+    expect(wire.nodes.every(n => n.label === undefined || n.label !== n.name)).toBe(true);
+    expect(wire.nodes.every(n => Number.isInteger(n.icon))).toBe(true);
+  });
+  // code review #68：認不出的形狀要原樣交回，讓 diff-summary 的 looksLikeTree 判成 schemaChanged，
+  // 而不是在 decode 這一層丟 TypeError 把那層防護跳過。
+  it('decodeTree 碰到缺 meta／sprite 的形狀原樣交回，不丟錯', () => {
+    for (const bad of [{ nodes: [], edges: [] }, { meta: {}, nodes: [], edges: [] }, null]) {
+      expect(decodeTree(bad)).toBe(bad);
+    }
+  });
+  it('decodeTree 吃舊形狀原封不動（CI diff-summary 的 base 端）', () => {
+    const old = JSON.parse(JSON.stringify(data));
+    expect(decodeTree(old)).toBe(old);
   });
 
   // ⚠️ 上面那條量的是這支測試自己組出來的產物，而它的 spriteIndex 是 238 筆全同值 [0,0,48,52]
@@ -211,7 +233,7 @@ describe('buildTreeData', () => {
     const shipped = gzipSync(readFileSync('src/generated/tree.json')).length;
     expect(shipped).toBeLessThanOrEqual(20 * 1024);
     // 替身版本不得反過來比實際大，否則上面那條就不是「寬鬆版」而是另一個數字
-    expect(gzipSync(Buffer.from(JSON.stringify(data))).length).toBeLessThanOrEqual(shipped);
+    expect(gzipSync(Buffer.from(JSON.stringify(encodeTree(data)))).length).toBeLessThanOrEqual(shipped);
   });
   // 追加 1：spec §11 的 sprite 400 KB 預算，過去只有 CLI（build-data.ts 的 CLI 區塊）在檢查、
   // 本機跑 `npm test` 抓不到；這裡用 data/icons/ 的真實圖示組出真正的 sprite（不是替身

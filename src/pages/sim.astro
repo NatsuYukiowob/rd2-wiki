@@ -16,7 +16,7 @@
 // costTier 欄位進去只是拿 gzip 預算換一個推得出來的值。
 import Base from '../layouts/Base.astro';
 import '../styles/canvas.css';
-import data from '../generated/tree.json';
+import { treeData as data } from '../lib/tree-data';
 import tablesRaw from '../../data/passive-upgrade-cost.json';
 import { buildSimContext } from '../lib/sim';
 import type { PassiveUpgradeCost, TreeData } from '../lib/types';

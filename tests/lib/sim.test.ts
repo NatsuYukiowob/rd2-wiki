@@ -7,9 +7,10 @@ import {
   edgeWasUsed, edgeIsLinked,
 } from '../../src/lib/sim';
 import type { Edge, PassiveUpgradeCost, TreeData, TreeNode } from '../../src/lib/types';
+import { readTree } from '../helpers/read-tree';
 
 const realTables: PassiveUpgradeCost = JSON.parse(readFileSync('data/passive-upgrade-cost.json', 'utf8'));
-const realData = JSON.parse(readFileSync('src/generated/tree.json', 'utf8')) as TreeData;
+const realData = readTree() as TreeData;
 
 /** 小假圖：A（default）→ B → D，A → C → D，另加一顆 E 是「可選初始骰子」、F 要 E 當前置。 */
 const n = (id: string, over: Partial<TreeNode> = {}): TreeNode => ({

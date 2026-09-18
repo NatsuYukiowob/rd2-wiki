@@ -16,7 +16,7 @@ import Base from '../layouts/Base.astro';
 import '../styles/battle.css';
 import tacticsRaw from '../../data/tactics.json';
 import keywordsRaw from '../../data/keywords.json';
-import treeData from '../generated/tree.json';
+import { treeData } from '../lib/tree-data';
 import { buildGlossary, displayGlossary } from '../lib/glossary-groups';
 import { renderStaticText } from '../lib/static-markup';
 import type { GlossaryRecord, Tactic, TreeData } from '../lib/types';

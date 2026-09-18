@@ -1,7 +1,7 @@
 ---
 // 首頁：版本與更新日期全部從 src/generated/tree.json 讀出，不寫死，資料改版時自動同步。
 import Base from '../layouts/Base.astro';
-import data from '../generated/tree.json';
+import { treeData as data } from '../lib/tree-data';
 import changelogRaw from '../../data/changelog.json';
 import type { Changelog } from '../lib/changelog';
 

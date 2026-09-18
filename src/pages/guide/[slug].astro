@@ -4,7 +4,7 @@
 // 那幾份幾乎一樣的版面會各自漂移，而且多一頁就要複製貼上一次。
 import Base from '../../layouts/Base.astro';
 import GlossaryEntry from '../../components/GlossaryEntry.astro';
-import data from '../../generated/tree.json';
+import { treeData as data } from '../../lib/tree-data';
 import keywordsRaw from '../../../data/keywords.json';
 import { buildGlossary, displayGlossary, GROUPS, GUIDE_PAGES } from '../../lib/glossary-groups';
 import type { GlossaryRecord, TreeData } from '../../lib/types';

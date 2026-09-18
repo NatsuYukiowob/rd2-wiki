@@ -1,9 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import { parseHTML } from 'linkedom';
-import { readFileSync } from 'node:fs';
 import { mountCanvasTree } from '../../../src/lib/canvas/canvas-tree';
 import type { TreeData } from '../../../src/lib/types';
-const data = JSON.parse(readFileSync('src/generated/tree.json', 'utf8')) as TreeData;
+import { readTree } from '../../helpers/read-tree';
+const data = readTree() as TreeData;
 
 // linkedom 沒有 2D context、沒有版面引擎（getBoundingClientRect 全 0），所以這裡只驗
 // 「掛得起來、狀態進得去、查詢介面裝得上」，實際繪圖由瀏覽器 smoke 與 E2E 驗。

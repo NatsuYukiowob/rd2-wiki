@@ -3,9 +3,10 @@ import { readFileSync } from 'node:fs';
 import { buildSimContext, initialSimState, unlockMany, setInitialDice, setNodeLevel, pathTo } from '../../src/lib/sim';
 import { serializeSim, deserializeSim, simReport, SIM_STORAGE_KEY } from '../../src/lib/sim-io';
 import type { PassiveUpgradeCost, TreeData } from '../../src/lib/types';
+import { readTree } from '../helpers/read-tree';
 
 const tables: PassiveUpgradeCost = JSON.parse(readFileSync('data/passive-upgrade-cost.json', 'utf8'));
-const data = JSON.parse(readFileSync('src/generated/tree.json', 'utf8')) as TreeData;
+const data = readTree() as TreeData;
 const ctx = buildSimContext(data, tables);
 
 /** 解到某顆 50 級符文並練到 Lv.3，外加勾一顆初始骰子——三種狀態都覆蓋到。 */

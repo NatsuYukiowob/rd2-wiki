@@ -115,7 +115,7 @@ npm run compare -- <beforeURL> <afterURL>  # computed-style 逐元素比對，�
 | 裂縫效果 | **55 條**（一般 13 ／稀有 23 ／傳說 19）；階級 ⟺ 權重（30／20／10）；圖示 **35 張對 55 筆**（同名三檔共用） | `data/rift-shop.json`，規則 27 |
 | 初始就可解鎖的節點 | 11 個（前置只有起始骰子） | `/sim` 的測試挑節點時要從這裡挑 |
 | 畫布 viewBox | `0 0 2000 1700` | |
-| 效能預算（硬斷言） | `tree.json` gzip ≤ 20KB（目前 19.5KB）／sprite ≤ 400KB（目前 126KB） | 數字每次 `build:data` 都會印，不要照抄這一格 |
+| 效能預算（硬斷言） | `tree.json` gzip ≤ 20KB（目前 17.5KB）／sprite ≤ 400KB（目前 126KB） | 數字每次 `build:data` 都會印，不要照抄這一格 |
 
 - **版本欄位有三個、意義不同**：`data-game-version`（玩家看得到的遊戲版本，1.1.0）、
   `<metadata>` 的 `resource bundle`（資料抄自哪一版資源包；2026-09-06 起直接寫遊戲版本 1.1.0——
@@ -1145,6 +1145,11 @@ colors 重新著色，那張樹本來就看得見，等於用自己的無障礙�
 
 - **`src/generated/tree.json` 是 gitignored 的建置產物**，多個測試會讀它 → `pretest`／`pree2e`
   已補上，**不要拿掉**。
+- ⚠️ **tree.json 是「傳輸形狀」，不是 `TreeData`**（issue #63，gzip 19.6 → 17.5 KB）：`label` 只在
+  ≠ `name` 時才寫、`icon` 是 `meta.sprite.icons` 的索引。讀它一律經過 `decodeTree()`
+  （`src/lib/tree-wire.ts`）——站台 `import { treeData } from 'src/lib/tree-data'`，測試用
+  `tests/helpers/read-tree.ts` 的 `readTree()`。**直接 `JSON.parse(...) as TreeData` 型別擋不住**，
+  拿到的 `label` 是 undefined、`icon` 是數字。`decodeTree` 也吃舊形狀（CI diff-summary 的 base 端）。
 - ⚠️ **E2E 不量畫布內的 DOM 幾何，一律問 `window.__tree`。** canvas 裡什麼都不是元素，
   `querySelector('.node')` 回 null、隱形按鈕清單被 `clip-path` 裁成 1px（拿去 `boundingBox()`
   只會得到左上角那 1px，而且**不會報錯**）。渲染器自己包了一個查詢介面（`src/lib/canvas/debug-api.ts`）：
