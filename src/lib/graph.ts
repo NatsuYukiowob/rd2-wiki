@@ -1,3 +1,4 @@
+import { addCost, zeroCost } from './cost.js';
 import type { Cost, Edge, TreeNode } from './types.js';
 
 /**
@@ -152,15 +153,13 @@ export function requiredPrereqRanks(ids: Iterable<string>, byId: Map<string, Tre
  * @returns 物件包含：`cost` 為聚合成本、`skipped` 為被排除的節點 id 陣列
  */
 export function sumUnlockCost(ids: Iterable<string>, byId: Map<string, TreeNode>): { cost: Cost; skipped: string[] } {
-  const cost: Cost = { core: 0, gold: 0, solar: 0 };
+  let cost: Cost = zeroCost();
   const skipped: string[] = [];
   for (const id of ids) {
     const n = byId.get(id);
     if (!n) continue;
     if (n.unlockVia !== 'cost' && !n.unlockPaid) { skipped.push(id); continue; }
-    cost.core += n.unlockCost.core;
-    cost.gold += n.unlockCost.gold;
-    cost.solar += n.unlockCost.solar;
+    cost = addCost(cost, n.unlockCost);
   }
   return { cost, skipped };
 }

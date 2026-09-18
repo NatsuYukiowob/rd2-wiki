@@ -65,7 +65,7 @@ test('T1b. 編號與內部ID 一個都不准出現在畫面上', async ({ page }
     // ⚠️ **編號要另外驗**：`t.id` 是 `6`／`69-1` 這種短數字，直接拿去比對整頁文字會被
     // 「持續60秒」這類效果文字誤判（第一版只驗了 gameId，把編號印回標題列照樣是綠的
     // ——2026-08-26 code review 抓到）。改成驗標題列**一個數字都不准有**：
-    // 標題列只放名稱與階段／模式標籤，而 58＋10 個名稱裡沒有任何一個含數字（實測）。
+    // 標題列只放名稱與階段／模式標籤，而 60＋21 個名稱裡沒有任何一個含數字（實測）。
     const headsWithDigits = await page.locator('.battle-head').evaluateAll(
       els => els.map(el => (el as HTMLElement).innerText).filter(t => /\d/.test(t)),
     );
@@ -139,10 +139,10 @@ test('T5. 切到合作模式：對戰專用的那幾條整條消失，剩下的�
 test('T6. 階段篩選：只留一個階段時，計數與可見條數一致', async ({ page }) => {
   await page.goto('/tactic');
   const boxes = page.locator('#tactic-filters input[name=stage]');
-  await expect(boxes).toHaveCount(4);
+  await expect(boxes).toHaveCount(5);
 
-  // 只留「後期」：取消其餘三個。
-  for (const stage of ['前期', '中期', '選項']) {
+  // 只留「後期」：取消其餘四個。
+  for (const stage of ['前期', '中期', '終盤', '選項']) {
     await page.locator(`#tactic-filters label:has-text("${stage}") input`).uncheck();
   }
   const late = tactics.filter(t => t.stage === '後期').length;
@@ -159,7 +159,7 @@ test('T6b. 母條目被篩掉時，子選項也跟著收掉（不留孤兒箭頭
   // 69「選擇由我決定」是前期，它底下三個子選項的階段是「選項」——只勾「選項」的話，
   // 畫面上會出現三條縮排、掛著 `↳` 卻找不到母條目的孤兒（編號拿掉之後更看不出屬於誰）。
   await page.goto('/tactic');
-  for (const stage of ['前期', '中期', '後期']) {
+  for (const stage of ['前期', '中期', '後期', '終盤']) {
     await page.locator(`#tactic-filters label:has-text("${stage}") input`).uncheck();
   }
   const subs = tactics.filter(t => t.id.includes('-'));
@@ -178,7 +178,7 @@ test('T7. 篩到零筆時要說話，不是留一片空白', async ({ page }) =>
   await page.goto('/tactic');
   await expect(page.locator('#tactic-empty')).toBeHidden();
 
-  // ⚠️ **目前的資料走不到零筆**：四個階段在合作模式下各自都還有東西（最少的「選項」也有 3 條），
+  // ⚠️ **目前的資料走不到零筆**：五個階段在合作模式下各自都還有東西（最少的「終盤」也有 1 條），
   // 所以只靠點按鈕到不了這個狀態。這裡直接把每一條的 data-stage 改成一個不存在的值再重新
   // 套用篩選——測的是「shown 為 0 時畫面會說話」這條分支，不是某個使用者操作序列。
   // 資料哪天真的出現空組合（例如某個階段的戰術全變成對戰專用），那時使用者看到的就是這一段。

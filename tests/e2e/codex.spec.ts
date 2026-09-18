@@ -23,7 +23,7 @@ test('C1. /dice 的骰子名稱與效果是伺服器輸出的 HTML，不是瀏�
 
   // 這是 #22 要解掉的症狀：2026-08-20 實測 dist/tree/index.html 的可索引文字只有 194 個
   // 字元，239 個節點名一個字都沒進 HTML。圖鑑必須把 42 顆骰子全部寫進去。
-  expect(dice.length).toBe(42);
+  expect(dice.length).toBe(43);
   const missing = dice.filter(d => !html.includes(d.name));
   expect(missing.map(d => d.name)).toEqual([]);
 
@@ -375,7 +375,7 @@ test('C8. 切檔只換數字：41 張卡片的 pill 區塊高度在四個檔位�
 
   // 前提斷言：真的掃到 41 張，而且四個檔位真的有值在變。少了這兩行，選擇器哪天改名之後
   // 這條測試會掃到 0 張卡片、然後「通過」。
-  expect(result.measured, '應該掃到 42 張卡片').toBe(42);
+  expect(result.measured, '應該掃到 43 張卡片').toBe(43);
   expect(result.anyValueChanged, '四個檔位應該真的有值不一樣，否則這條在量一個不會動的東西').toBe(true);
   expect(result.bad, 'pill 區塊高度隨檔位改變的卡片').toEqual([]);
 });

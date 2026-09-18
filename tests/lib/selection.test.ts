@@ -1,3 +1,4 @@
+import { addCost, zeroCost } from '../../src/lib/cost';
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { computeSelection } from '../../src/lib/selection';
@@ -22,11 +23,7 @@ describe('computeSelection', () => {
     const manual = [...sel.chain]
       .map(id => byId.get(id)!)
       .filter(n => n.unlockVia === 'cost')
-      .reduce((acc, n) => ({
-        core: acc.core + n.unlockCost.core,
-        gold: acc.gold + n.unlockCost.gold,
-        solar: acc.solar + n.unlockCost.solar,
-      }), { core: 0, gold: 0, solar: 0 });
+      .reduce((acc, n) => addCost(acc, n.unlockCost), zeroCost());
     expect(sel.cost).toEqual(manual);
   });
   it('非成本解鎖的節點被排除並列入 skipped', () => {
@@ -40,14 +37,14 @@ describe('computeSelection', () => {
     expect([...sel.chain]).toEqual(['5006']);
     // 原本的鏈是 5002 → 5007 → 5006，跳掉 5007 與 5002 兩個
     expect(sel.bypassed).toBe(2);
-    expect(sel.cost).toEqual({ core: 0, gold: 0, solar: 0 });
+    expect(sel.cost).toEqual({ core: 0, gold: 0 });
   });
 
   it('可跳過前置的下游節點：鏈停在那顆，成本不含被跳過的祖先', () => {
     const sel = computeSelection('5206', data, tables);
     expect([...sel.chain].sort()).toEqual(['5006', '5206']);
     expect(sel.bypassed).toBe(2);
-    expect(sel.cost).toEqual({ core: 0, gold: 2000, solar: 0 });
+    expect(sel.cost).toEqual({ core: 0, gold: 2000 });
   });
 
   it('沒有可跳過前置時 bypassed 為 0', () => {
@@ -76,21 +73,21 @@ describe('computeSelection', () => {
   it('unlockPaid 的節點成本要算進去，且不列進 skipped', () => {
     const sel = computeSelection('5002', data, tables);
     expect([...sel.chain]).toEqual(['5002']);
-    expect(sel.cost).toEqual({ core: 8, gold: 0, solar: 0 });
+    expect(sel.cost).toEqual({ core: 8, gold: 0 });
     expect(sel.skipped).toEqual([]);
   });
 
   // 這是全站最常被引用的那組不變量。5109（金幣 3,000）原本靠 5008 的前置鏈被算進來，
   // 5008 改成可直接領之後就不該再算了；核心不變是因為拿掉 5007 的 8 核與加回 5002 的 8 核抵消。
   it('5201 的前置鏈成本＝核心 42 ／金幣 20,000', () => {
-    expect(computeSelection('5201', data, tables).cost).toEqual({ core: 42, gold: 20000, solar: 0 });
+    expect(computeSelection('5201', data, tables).cost).toEqual({ core: 42, gold: 20000 });
   });
 
   // 沒有等級條件的節點：三個欄位要維持「什麼都沒發生」的樣子，總計＝解鎖費用。
   it('沒有前置等級條件時 totalCost 就是 cost', () => {
     const sel = computeSelection('5201', data, tables);
     expect(sel.prereqRanks).toEqual([]);
-    expect(sel.prereqRankCost).toEqual({ core: 0, gold: 0, solar: 0 });
+    expect(sel.prereqRankCost).toEqual({ core: 0, gold: 0 });
     expect(sel.totalCost).toEqual(sel.cost);
   });
 
@@ -104,12 +101,12 @@ describe('computeSelection', () => {
   it('1501 太陽骰子：前置鏈成本要含 1201 練到 Lv.50 的追加費用', () => {
     const sel = computeSelection('1501', data, tables);
     expect([...sel.chain].sort()).toEqual(['1001', '1201', '1301', '1401', '1501']);
-    expect(sel.cost).toEqual({ core: 30, gold: 132000, solar: 2000 });
+    expect(sel.cost).toEqual({ core: 30, gold: 132000, mythic: { solar: 2000 } });
     expect(sel.prereqRanks).toEqual([
-      { id: '1201', name: '子彈傷害%增加', rank: 50, cost: { core: 99, gold: 463700, solar: 0 } },
+      { id: '1201', name: '子彈傷害%增加', rank: 50, cost: { core: 99, gold: 463700 } },
     ]);
-    expect(sel.prereqRankCost).toEqual({ core: 99, gold: 463700, solar: 0 });
-    expect(sel.totalCost).toEqual({ core: 129, gold: 595700, solar: 2000 });
+    expect(sel.prereqRankCost).toEqual({ core: 99, gold: 463700 });
+    expect(sel.totalCost).toEqual({ core: 129, gold: 595700, mythic: { solar: 2000 } });
   });
 
   // 條件掛在 1501 身上，不是掛在 1201／1301／1401 身上——選到那三顆自己時完全不受影響。
@@ -135,7 +132,7 @@ describe('computeSelection', () => {
     const noRuneTable = { ...data, meta: { ...data.meta, upgradeCostTable: null } };
     const sel = computeSelection('1501', noRuneTable, tables);
     expect(sel.prereqRanks).toEqual([{ id: '1201', name: '子彈傷害%增加', rank: 50, cost: null }]);
-    expect(sel.prereqRankCost).toEqual({ core: 0, gold: 0, solar: 0 });
+    expect(sel.prereqRankCost).toEqual({ core: 0, gold: 0 });
     expect(sel.totalCost).toEqual(sel.cost);
   });
 });

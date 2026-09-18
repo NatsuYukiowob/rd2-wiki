@@ -1,5 +1,6 @@
 // 成本與成長值的顯示格式化：把資料層的原始數字轉成使用者看得懂的中文字串。
 // 純函式，不碰 DOM——DOM 組裝在 src/components/NodeDetail.ts。
+import { mythicEntries } from './cost.js';
 import { maxLevelValue } from './growth.js';
 import type { Cost, GrowthUnit, TreeNode } from './types.js';
 
@@ -19,15 +20,15 @@ const UNIT_TEXT: Record<GrowthUnit, string> = {
  * 把解鎖成本格式化成含千分位的顯示字串，例：「核心 26 ＋ 金幣 12,000」。
  * 沒有值的貨幣整段不顯示；三者皆為 0 顯示「免費」。
  *
- * ⚠️ 太陽核心（v1.1.0）**只在有值時才印**，而不是無條件補一段「太陽核心 0」：全樹 239 顆
- * 節點裡只有太陽骰子那一支花得到它，每個面板都印一段 0 等於讓一個 2 顆節點的貨幣佔掉
- * 每一顆節點的版面。
+ * ⚠️ 超越核心（太陽核心、齒輪二階核心……）**只在有值時才印**，而不是無條件補一段「太陽核心 0」：
+ * 全樹只有神話骰子那幾支花得到它們，每個面板都印一段 0 等於讓兩顆節點的貨幣佔掉每一顆節點的
+ * 版面。多種同時出現時照 `MYTHIC_CORES` 的順序。
  */
 export function formatCost(c: Cost): string {
   const parts: string[] = [];
   if (c.core > 0) parts.push(`核心 ${c.core.toLocaleString('en-US')}`);
   if (c.gold > 0) parts.push(`金幣 ${c.gold.toLocaleString('en-US')}`);
-  if (c.solar > 0) parts.push(`太陽核心 ${c.solar.toLocaleString('en-US')}`);
+  for (const [def, n] of mythicEntries(c)) parts.push(`${def.label} ${n.toLocaleString('en-US')}`);
   return parts.length > 0 ? parts.join(' ＋ ') : '免費';
 }
 

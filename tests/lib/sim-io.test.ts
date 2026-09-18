@@ -105,14 +105,14 @@ describe('文字報告', () => {
   });
 
   // 太陽核心（v1.1.0）只在這份規劃真的用得到時才進報告——用不到就一個字都不多印，
-  // 既有格式逐位元組不變。⚠️ 正本目前 239 顆的 solar 全是 0，所以這裡得合成一份資料：
+  // 既有格式逐位元組不變。⚠️ 正本的符文都不花太陽核心，所以這裡得合成一份資料：
   // 拿真實資料驗只會驗到「沒有多印」那一半。
   it('用得到太陽核心時三行都多一段，用不到時一個字都不提', () => {
     expect(simReport(sampleState().s, ctx)).not.toContain('太陽核心');
 
     const clone = structuredClone(data) as TreeData;
     const rune = clone.nodes.find(x => x.type === 'rune' && x.maxLevel === 50)!;
-    rune.unlockCost = { ...rune.unlockCost, solar: 2000 };
+    rune.unlockCost = { ...rune.unlockCost, mythic: { solar: 2000 } };
     const solarCtx = buildSimContext(clone, tables);
     const s0 = initialSimState(solarCtx);
     const s = unlockMany(s0, solarCtx, pathTo(rune.id, s0, solarCtx));

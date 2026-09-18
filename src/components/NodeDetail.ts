@@ -7,6 +7,7 @@
 // 這裡只負責產生每一種視圖的 HTML；堆疊、動畫、瀏覽器上一頁的接線都在 tree-canvas.ts。
 import { formatGrowth, formatUnlockVia } from '../lib/format.js';
 import { costHtml } from '../lib/cost-html.js';
+import { addCost } from '../lib/cost.js';
 import { levelTableFor, upgradeExtraCost } from '../lib/upgrade-tiers.js';
 import type { Cost, GlossaryDisplay, PassiveUpgradeCost, TreeNode, UpgradeCostTable } from '../lib/types.js';
 import type { Selection } from '../lib/selection.js';
@@ -78,11 +79,7 @@ function nodeBody(
   // 判準不變：`levelTableFor()` 明確讓 special 優先，兩張表的優先順序只有那一份實作。
   const levels = levelTableFor(node, tables, upgradeCostTable);
   const extra = levels ? upgradeExtraCost(levels, node.maxLevel) : null;
-  const maxUpgrade: Cost | null = extra && {
-    core: extra.core + node.unlockCost.core,
-    gold: extra.gold + node.unlockCost.gold,
-    solar: extra.solar + node.unlockCost.solar,
-  };
+  const maxUpgrade: Cost | null = extra && addCost(extra, node.unlockCost);
 
   // 兩欄：左欄是「這個節點是什麼」，右欄是「要花多少才走得到」，
   // 最後那句重置警告（spec §2.1 強制要求，永遠是卡片最後一段）**跨兩欄**放底部——

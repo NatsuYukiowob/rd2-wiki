@@ -3,6 +3,7 @@
 // 這裡不重寫任何圖遍歷邏輯，只是把兩者組成畫面需要的形狀。
 import { buildAdjacency, prerequisiteChain, requiredPrereqRanks, sumUnlockCost } from './graph.js';
 import { levelTableFor, upgradeExtraCost } from './upgrade-tiers.js';
+import { addCost, zeroCost } from './cost.js';
 import type { Cost, PassiveUpgradeCost, TreeData } from './types.js';
 
 /**
@@ -92,7 +93,7 @@ export function computeSelection(id: string, data: TreeData, tables: PassiveUpgr
   const bypassNodes = [...chain].filter(x => bypass.has(x)).length;
 
   // 必要練等。⚠️ 掃的是整條鏈而不是選到的那一顆，見 requiredPrereqRanks() 的說明。
-  const prereqRankCost: Cost = { core: 0, gold: 0, solar: 0 };
+  let prereqRankCost: Cost = zeroCost();
   const prereqRanks: PrereqRankCost[] = [...requiredPrereqRanks(chain, byId)]
     .sort(([a], [b]) => a.localeCompare(b))
     .flatMap(([prereqId, rank]) => {
@@ -100,11 +101,7 @@ export function computeSelection(id: string, data: TreeData, tables: PassiveUpgr
       if (!node) return [];
       const table = levelTableFor(node, tables, data.meta.upgradeCostTable);
       const extra = table ? upgradeExtraCost(table, rank) : null;
-      if (extra) {
-        prereqRankCost.core += extra.core;
-        prereqRankCost.gold += extra.gold;
-        prereqRankCost.solar += extra.solar;
-      }
+      if (extra) prereqRankCost = addCost(prereqRankCost, extra);
       return [{ id: prereqId, name: node.name, rank, cost: extra }];
     });
 
@@ -112,10 +109,6 @@ export function computeSelection(id: string, data: TreeData, tables: PassiveUpgr
     chain, cost, skipped, bypassed, bypassNodes, hiddenByFilter: 0,
     prereqRanks,
     prereqRankCost,
-    totalCost: {
-      core: cost.core + prereqRankCost.core,
-      gold: cost.gold + prereqRankCost.gold,
-      solar: cost.solar + prereqRankCost.solar,
-    },
+    totalCost: addCost(cost, prereqRankCost),
   };
 }

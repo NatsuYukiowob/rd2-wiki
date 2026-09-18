@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { parseTree, COORD_TOLERANCE } from './lib/svg-parse.js';
 import { MAX_TEXT_LENGTH, checkNodeTextRecord, mergeNodes, type NodeTextMap, type RawNode } from './lib/node-text.js';
 import { parseCost } from '../src/lib/cost.js';
+import { mythicCoreByKind } from '../src/lib/currency.js';
 import { maxLevelValue, parseGrowth } from '../src/lib/growth.js';
 import { extractKeywords } from '../src/lib/keywords.js';
 import { checkChangelog } from '../src/lib/changelog.js';
@@ -1206,11 +1207,29 @@ export function validate(svgText: string, opts: ValidateOpts): ValidateResult {
         else if (!(['gold', 'core'] as const).every(f => Number.isInteger(r[f]) && (r[f] as number) >= 0)) {
           push(`規則 22: special 的 ${id} 的 Lv.${i + 2} 的 gold／core 不是非負整數：${JSON.stringify(r)}`);
         }
-        // solar（太陽核心）是**選填**的：既有的 special 表一列都沒有，缺席由 `upgradeExtraCost()`
-        // 當 0 處理。但寫了就要能算——`undefined` 與 `"2000"` 在 `+=` 之後都是 NaN，而 NaN
-        // 會沿著加總一路傳到「總資源」那一行，畫面上只會看到一個 NaN，看不出是哪一列寫壞的。
-        else if (r['solar'] !== undefined && (!Number.isInteger(r['solar']) || (r['solar'] as number) < 0)) {
-          push(`規則 22: special 的 ${id} 的 Lv.${i + 2} 的 solar 不是非負整數：${JSON.stringify(r['solar'])}`);
+        // 未知欄位要擋：1.1.0 的寫法是 `"solar": 200`，1.1.2 起改成 `"mythic": {"solar": 200}`。
+        // 留一個舊寫法在這裡不會有任何錯誤——那一列的太陽核心只是安靜地從練等費用裡消失。
+        else if (Object.keys(r).some(k => !['level', 'gold', 'core', 'mythic'].includes(k))) {
+          const bad = Object.keys(r).filter(k => !['level', 'gold', 'core', 'mythic'].includes(k));
+          push(`規則 22: special 的 ${id} 的 Lv.${i + 2} 有未知欄位 ${bad.join('、')}`
+            + (bad.includes('solar') ? '（超越核心寫成 "mythic": {"solar": N}）' : ''));
+        }
+        // mythic（超越核心）是**選填**的：只有神話骰子符文的 special 表用得到。但寫了就要能算——
+        // 沒登記的 kind 在顯示端印不出名字，`"2000"` 這種字串在加總之後是 NaN，而 NaN 會沿著
+        // 加總一路傳到「總資源」那一行，畫面上只會看到一個 NaN，看不出是哪一列寫壞的。
+        else if (r['mythic'] !== undefined) {
+          const m = r['mythic'];
+          if (!isPlainObject(m) || Object.keys(m).length === 0) {
+            push(`規則 22: special 的 ${id} 的 Lv.${i + 2} 的 mythic 必須是非空物件（鍵是超越核心種類）：${JSON.stringify(m)}`);
+          } else {
+            for (const [kind, n] of Object.entries(m)) {
+              if (!mythicCoreByKind(kind)) {
+                push(`規則 22: special 的 ${id} 的 Lv.${i + 2} 的 mythic 有沒登記的超越核心「${kind}」（見 src/lib/currency.ts 的 MYTHIC_CORES）`);
+              } else if (!Number.isInteger(n) || (n as number) <= 0) {
+                push(`規則 22: special 的 ${id} 的 Lv.${i + 2} 的 mythic.${kind} 不是正整數：${JSON.stringify(n)}`);
+              }
+            }
+          }
         }
       });
       if (!contiguous) {
@@ -1375,14 +1394,14 @@ export function validate(svgText: string, opts: ValidateOpts): ValidateResult {
     scan.errors.forEach(push);
     scan.warnings.forEach(warn);
 
-    const STAGES = new Set(['前期', '中期', '後期', '選項']);
+    const STAGES = new Set(['前期', '中期', '後期', '終盤', '選項']);
     const MODES = new Set(['對戰', '對戰／合作']);
     const ids = new Set(scan.records.map(r => r.id as string));
     for (const rec of scan.records) {
       const id = rec.id as string;
       const stage = rec.stage as string;
       const mode = rec.mode as string;
-      if (!STAGES.has(stage)) push(`規則 24(e): data/tactics.json 的 ${id} 的 stage ${JSON.stringify(stage)} 不是四個階段之一`);
+      if (!STAGES.has(stage)) push(`規則 24(e): data/tactics.json 的 ${id} 的 stage ${JSON.stringify(stage)} 不是五個階段之一`);
       // ⚠️ `未啟用` 要指名道姓地擋。它是官方資料表真有的第三個值，複製一筆未啟用的資料
       // 進來時「不是合法模式」這種泛用訊息會讓人以為是打錯字，而真正的答案是「這一批
       // 刻意不收」——那件事只寫在註解與 CLAUDE.md 裡，錯誤訊息得自己說出來。

@@ -39,8 +39,8 @@ const withTiers = (over: unknown) => ({ ...opts, passiveUpgradeCost: over });
 /** 真實資料的深拷貝，給「只改一個地方」的破壞測試用。 */
 const tiers = () => structuredClone(passiveUpgradeCost) as {
   tiers: Record<string, { maxLevel: number; unlockGold: number; bands: { from: number; to: number; gold: number; core: number }[] }>;
-  // solar 是選填的（見 LevelCost）：既有的 special 表一列都沒有，寫了才驗。
-  special: Record<string, { maxLevel: number; levels: { level: number; gold: number; core: number; solar?: number }[] }>;
+  // mythic（超越核心）是選填的（見 LevelCost）：只有神話骰子符文的 special 表用得到，寫了才驗。
+  special: Record<string, { maxLevel: number; levels: { level: number; gold: number; core: number; mythic?: Record<string, number> }[] }>;
 };
 
 /**
@@ -376,7 +376,7 @@ describe('validate', () => {
     const t = tiers();
     t.special['1201'] = {
       maxLevel: 50,
-      levels: Array.from({ length: 49 }, (_, i) => ({ level: i + 2, gold: 100000, core: 0, solar: 200 })),
+      levels: Array.from({ length: 49 }, (_, i) => ({ level: i + 2, gold: 100000, core: 0, mythic: { solar: 200 } })),
     };
     expect(rule15of({ ...withCost, passiveUpgradeCost: t })).toEqual([]);
   });
@@ -1077,19 +1077,28 @@ describe('validate：邊與座標的守門（P2）', () => {
       expect(errors.filter(e => e.includes(passive[0]))).toEqual([]);
     });
 
-    // solar 是選填的：既有的 special 表一列都沒有，缺席由 upgradeExtraCost() 當 0 處理。
-    // 但寫了就要能算——`undefined` 與 `"2000"` 在 `+=` 之後都是 NaN，而 NaN 會沿著加總一路
-    // 傳到「總資源」那一行，畫面上只看得到一個 NaN，看不出是哪一列寫壞的。
-    it('special 的 levels 可以帶 solar，但寫壞了要擋', () => {
+    // mythic 是選填的：只有神話骰子符文的 special 表用得到，缺席＝這一級不花超越核心。
+    // 但寫了就要能算——`"2000"` 在加總之後是 NaN，而 NaN 會沿著加總一路傳到「總資源」那一行，
+    // 畫面上只看得到一個 NaN，看不出是哪一列寫壞的；沒登記的種類則在顯示端印不出名字。
+    it('special 的 levels 可以帶 mythic，但寫壞了要擋', () => {
       const good = tiers();
-      good.special['4303']!.levels[0]!.solar = 2000;
+      good.special['4303']!.levels[0]!.mythic = { solar: 2000 };
       expect(validate(svg, withTiers(good)).errors.filter(e => /規則 22/.test(e))).toEqual([]);
 
-      for (const bad of [-1, 1.5, '2000', null]) {
+      for (const bad of [{ solar: -1 }, { solar: 0 }, { solar: 1.5 }, { solar: '2000' }, { solar: null }, {}, null, 5, { moon: 5 }]) {
         const t = tiers();
-        (t.special['4303']!.levels[0] as Record<string, unknown>)['solar'] = bad;
-        expect(validate(svg, withTiers(t)).errors.some(e => /規則 22.*4303.*solar/.test(e))).toBe(true);
+        (t.special['4303']!.levels[0] as Record<string, unknown>)['mythic'] = bad;
+        expect(validate(svg, withTiers(t)).errors.some(e => /規則 22.*4303.*mythic/.test(e)), JSON.stringify(bad)).toBe(true);
       }
+    });
+
+    // 1.1.0 的寫法 `"solar": 200` 留在表裡不會有任何錯誤——那一列的太陽核心只是安靜地從練等
+    // 費用裡消失。未知欄位一律擋，舊寫法另外指路。
+    it('special 的 levels 有未知欄位（含舊寫法 solar）要擋', () => {
+      const t = tiers();
+      (t.special['4303']!.levels[0] as Record<string, unknown>)['solar'] = 2000;
+      const errs = validate(svg, withTiers(t)).errors.filter(e => /規則 22.*4303/.test(e));
+      expect(errs.some(e => /未知欄位 solar.*mythic/.test(e))).toBe(true);
     });
 
     // 兩張表同時對得到不是錯（`levelTableFor()` 明確讓 special 優先），但很可能其中一張
@@ -1251,9 +1260,9 @@ describe('規則 23：骰子基本能力值', () => {
 // 底下每一條各是一種「壞掉但看不出來」的寫法，改壞前 CI 全綠。
 
 describe('規則 24：戰術', () => {
-  /** 正本那 58 筆的深拷貝，給「只改一個地方」的破壞測試用。 */
+  /** 正本那 60 筆的深拷貝，給「只改一個地方」的破壞測試用。 */
   const rows = () => structuredClone(tactics) as Record<string, unknown>[];
-  /** 把正本那 58 張戰術圖複製到暫存目錄，讓每條測試各自破壞自己那份。 */
+  /** 把正本那 60 張戰術圖複製到暫存目錄，讓每條測試各自破壞自己那份。 */
   const copyIcons = () => {
     const dir = mkdtempSync(join(tmpdir(), 'rd2-tactic-icons-'));
     for (const f of readdirSync(tacticIconsDir)) writeFileSync(join(dir, f), readFileSync(join(tacticIconsDir, f)));
@@ -1374,11 +1383,21 @@ describe('規則 24：戰術', () => {
     expect(result.warnings.some(w => /規則 24\(d\).*未被任何節點引用/.test(w))).toBe(true);
   });
 
-  it('stage 不是四個階段之一會被擋', () => {
+  it('stage 不是五個階段之一會被擋', () => {
     const data = rows();
     data[0]!.stage = '初期';
     const result = validate(svg, withTactics(data));
-    expect(result.errors.some(e => /規則 24\(e\).*stage "初期" 不是四個階段之一/.test(e))).toBe(true);
+    expect(result.errors.some(e => /規則 24\(e\).*stage "初期" 不是五個階段之一/.test(e))).toBe(true);
+  });
+
+  // 上游 1.1.2 有兩列的 TacticPhase 是 'Final  '（帶尾隨空白）。照抄進來（沒 trim、或沒翻成「終盤」）
+  // 都要擋——不擋的話篩選鈕上沒有這個值，那兩條戰術只在「全部」底下才看得到。
+  it('stage 帶尾隨空白或照抄英文 Final 會被擋', () => {
+    for (const bad of ['終盤  ', 'Final', 'Final  ']) {
+      const data = rows();
+      data[0]!.stage = bad;
+      expect(validate(svg, withTactics(data)).errors.some(e => /規則 24\(e\).*不是五個階段之一/.test(e)), bad).toBe(true);
+    }
   });
 
   it('把「未啟用」那一批貼回來時，訊息要說出「刻意不落地」而不是「不是合法模式」', () => {

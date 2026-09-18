@@ -8,12 +8,12 @@ const ATK: DiceStat = {
   base: '150', dice7: '750', lv15: '2250', lv15dice7: '2850',
   diceGrowth: '每提升1骰點：+100', spGrowth: '每強化1級：+150',
 };
-// 火骰子的範圍傷害：sheet3 完全沒收錄，代表它不隨骰點或 SP 改變。
-const FIXED: DiceStat = { label: '範圍傷害', base: '50%' };
-// 陰陽骰子的攻擊力：sheet3 有收錄，但「骰點不變＋無變化」讓四檔值全等。
+// 毒骰子的最大疊加：客戶端表沒有成長參數，代表它不隨骰點或 SP 改變。
+const FIXED: DiceStat = { label: '最大疊加', base: '3' };
+// 破滅骰子的攻擊力：表裡有收錄，但「骰點不變＋無變化」讓四檔值全等。
 const FLAT: DiceStat = {
   label: '攻擊力',
-  base: '100', dice7: '100', lv15: '100', lv15dice7: '100',
+  base: '500', dice7: '500', lv15: '500', lv15dice7: '500',
   diceGrowth: '骰點不變', spGrowth: '無變化',
 };
 
@@ -39,7 +39,7 @@ describe('statValue', () => {
   // 這條是「切檔時 pill 數量不變」的地基：固定項目沒有其他檔位的值，退回 base 才不會
   // 在畫面上留下一顆空白的 pill（那看起來像資料掉了）。
   it('沒有該檔位的值時退回基礎值', () => {
-    for (const m of STAT_MODES) expect(statValue(FIXED, m.key)).toBe('50%');
+    for (const m of STAT_MODES) expect(statValue(FIXED, m.key)).toBe('3');
   });
 });
 
@@ -48,7 +48,7 @@ describe('isFixed', () => {
     expect(isFixed(FIXED)).toBe(true);
   });
 
-  // 「表裡有這一列」不等於「它會變」——陰陽骰子的攻擊力四檔全等，標成會成長是騙人的。
+  // 「表裡有這一列」不等於「它會變」——破滅骰子的攻擊力四檔全等，標成會成長是騙人的。
   it('四檔值全等時也算固定', () => {
     expect(isFixed(FLAT)).toBe(true);
   });

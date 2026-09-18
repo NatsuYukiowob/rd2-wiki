@@ -1,5 +1,6 @@
 // `/sim` 的存檔與文字報告。純函式——`localStorage` 的實際讀寫在 src/scripts/sim.ts，
 // 這裡只負責「狀態 ↔ 字串」，才測得動（jsdom 的 storage 替身跟真的瀏覽器行為不完全一樣）。
+import { mythicAmount, mythicEntries } from './cost.js';
 import { maxSelectableLevel, minSelectableLevel, ownedIds, simTotals } from './sim.js';
 import type { SimContext, SimState } from './sim.js';
 import type { Cost } from './types.js';
@@ -85,12 +86,12 @@ const num = (n: number) => n.toLocaleString('en-US');
 /** 可貼進聊天室的純文字報告。刻意不含表格或色碼——它會被貼到哪裡我們控制不了。 */
 export function simReport(state: SimState, ctx: SimContext): string {
   const t = simTotals(state, ctx);
-  // 太陽核心只在這份規劃真的用得到時才進報告——沒用到就一個字都不多印，既有的報告格式
+  // 超越核心只在這份規劃真的用得到時才進報告——沒用到就一個字都不多印，既有的報告格式
   // 逐位元組不變。⚠️ 判準是**總計**而不是逐行：三行是同一個區塊，只有其中一行多一段的話
   // 讀報告的人得自己去推「另外兩行是 0 還是這個欄位不適用」。
-  const showSolar = t.total.solar > 0;
+  const shown = mythicEntries(t.total).map(([def]) => def);
   const money = (c: Cost) =>
-    `核心 ${num(c.core)} ／金幣 ${num(c.gold)}` + (showSolar ? ` ／太陽核心 ${num(c.solar)}` : '');
+    `核心 ${num(c.core)} ／金幣 ${num(c.gold)}` + shown.map(d => ` ／${d.label} ${num(mythicAmount(c, d.kind))}`).join('');
   const owned = ownedIds(state, ctx);
   const initialNames = [...state.initial].map(id => ctx.byId.get(id)?.name ?? id);
   // 起始骰子不列進清單：玩家沒有為它們做過任何選擇，列出來只是稀釋掉真正的規劃內容。

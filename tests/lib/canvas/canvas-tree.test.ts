@@ -11,7 +11,7 @@ const data = readTree() as TreeData;
 type DebugHost = { __tree?: { count(): { nodes: number; edges: number }; scale(): number; hitAt(x: number, y: number): string | null } };
 
 describe('mountCanvasTree（linkedom：沒有 2D context，只驗掛載與狀態）', () => {
-  it('掛出兩張 canvas 與 241 顆按鈕；setState 後 getState 反映；nodeScreenRect 在沒版面時回 null 而不是丟', () => {
+  it('掛出兩張 canvas 與 243 顆按鈕；setState 後 getState 反映；nodeScreenRect 在沒版面時回 null 而不是丟', () => {
     const { document, window } = parseHTML('<div id="host"></div>');
     globalThis.document = document as never; globalThis.window = window as never;
     const host = document.getElementById('host') as HTMLElement;
@@ -210,7 +210,7 @@ describe('平移之後的靜態層補畫', () => {
     h.destroy(); env.restore();
   });
 
-  it('平移 10% 視口寬（邊距內）：沿用舊位圖，241 顆一顆都不重畫', () => {
+  it('平移 10% 視口寬（邊距內）：沿用舊位圖，243 顆一顆都不重畫', () => {
     const env = paintedHost();
     const h = mountCanvasTree(env.host, data);
     env.flush(3); env.reset();

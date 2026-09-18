@@ -320,115 +320,234 @@
           "level": 2,
           "gold": 100000,
           "core": 0,
-          "solar": 200
+          "mythic": { "solar": 200 }
         },
         {
           "level": 3,
           "gold": 150000,
           "core": 0,
-          "solar": 300
+          "mythic": { "solar": 300 }
         },
         {
           "level": 4,
           "gold": 200000,
           "core": 0,
-          "solar": 400
+          "mythic": { "solar": 400 }
         },
         {
           "level": 5,
           "gold": 250000,
           "core": 0,
-          "solar": 500
+          "mythic": { "solar": 500 }
         },
         {
           "level": 6,
           "gold": 300000,
           "core": 0,
-          "solar": 600
+          "mythic": { "solar": 600 }
         },
         {
           "level": 7,
           "gold": 350000,
           "core": 0,
-          "solar": 700
+          "mythic": { "solar": 700 }
         },
         {
           "level": 8,
           "gold": 400000,
           "core": 0,
-          "solar": 800
+          "mythic": { "solar": 800 }
         },
         {
           "level": 9,
           "gold": 450000,
           "core": 0,
-          "solar": 900
+          "mythic": { "solar": 900 }
         },
         {
           "level": 10,
           "gold": 500000,
           "core": 0,
-          "solar": 1000
+          "mythic": { "solar": 1000 }
         },
         {
           "level": 11,
           "gold": 550000,
           "core": 0,
-          "solar": 1100
+          "mythic": { "solar": 1100 }
         },
         {
           "level": 12,
           "gold": 600000,
           "core": 0,
-          "solar": 1200
+          "mythic": { "solar": 1200 }
         },
         {
           "level": 13,
           "gold": 650000,
           "core": 0,
-          "solar": 1300
+          "mythic": { "solar": 1300 }
         },
         {
           "level": 14,
           "gold": 700000,
           "core": 0,
-          "solar": 1400
+          "mythic": { "solar": 1400 }
         },
         {
           "level": 15,
           "gold": 750000,
           "core": 0,
-          "solar": 1500
+          "mythic": { "solar": 1500 }
         },
         {
           "level": 16,
           "gold": 800000,
           "core": 0,
-          "solar": 1600
+          "mythic": { "solar": 1600 }
         },
         {
           "level": 17,
           "gold": 850000,
           "core": 0,
-          "solar": 1700
+          "mythic": { "solar": 1700 }
         },
         {
           "level": 18,
           "gold": 900000,
           "core": 0,
-          "solar": 1800
+          "mythic": { "solar": 1800 }
         },
         {
           "level": 19,
           "gold": 950000,
           "core": 0,
-          "solar": 1900
+          "mythic": { "solar": 1900 }
         },
         {
           "level": 20,
           "gold": 1000000,
           "core": 0,
-          "solar": 2000
+          "mythic": { "solar": 2000 }
+        }
+      ]
+    },
+    "2603": {
+      "maxLevel": 20,
+      "levels": [
+        {
+          "level": 2,
+          "gold": 100000,
+          "core": 0,
+          "mythic": { "gearSecond": 200 }
+        },
+        {
+          "level": 3,
+          "gold": 150000,
+          "core": 0,
+          "mythic": { "gearSecond": 300 }
+        },
+        {
+          "level": 4,
+          "gold": 200000,
+          "core": 0,
+          "mythic": { "gearSecond": 400 }
+        },
+        {
+          "level": 5,
+          "gold": 250000,
+          "core": 0,
+          "mythic": { "gearSecond": 500 }
+        },
+        {
+          "level": 6,
+          "gold": 300000,
+          "core": 0,
+          "mythic": { "gearSecond": 600 }
+        },
+        {
+          "level": 7,
+          "gold": 350000,
+          "core": 0,
+          "mythic": { "gearSecond": 700 }
+        },
+        {
+          "level": 8,
+          "gold": 400000,
+          "core": 0,
+          "mythic": { "gearSecond": 800 }
+        },
+        {
+          "level": 9,
+          "gold": 450000,
+          "core": 0,
+          "mythic": { "gearSecond": 900 }
+        },
+        {
+          "level": 10,
+          "gold": 500000,
+          "core": 0,
+          "mythic": { "gearSecond": 1000 }
+        },
+        {
+          "level": 11,
+          "gold": 550000,
+          "core": 0,
+          "mythic": { "gearSecond": 1100 }
+        },
+        {
+          "level": 12,
+          "gold": 600000,
+          "core": 0,
+          "mythic": { "gearSecond": 1200 }
+        },
+        {
+          "level": 13,
+          "gold": 650000,
+          "core": 0,
+          "mythic": { "gearSecond": 1300 }
+        },
+        {
+          "level": 14,
+          "gold": 700000,
+          "core": 0,
+          "mythic": { "gearSecond": 1400 }
+        },
+        {
+          "level": 15,
+          "gold": 750000,
+          "core": 0,
+          "mythic": { "gearSecond": 1500 }
+        },
+        {
+          "level": 16,
+          "gold": 800000,
+          "core": 0,
+          "mythic": { "gearSecond": 1600 }
+        },
+        {
+          "level": 17,
+          "gold": 850000,
+          "core": 0,
+          "mythic": { "gearSecond": 1700 }
+        },
+        {
+          "level": 18,
+          "gold": 900000,
+          "core": 0,
+          "mythic": { "gearSecond": 1800 }
+        },
+        {
+          "level": 19,
+          "gold": 950000,
+          "core": 0,
+          "mythic": { "gearSecond": 1900 }
+        },
+        {
+          "level": 20,
+          "gold": 1000000,
+          "core": 0,
+          "mythic": { "gearSecond": 2000 }
         }
       ]
     }

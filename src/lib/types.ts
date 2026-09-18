@@ -30,14 +30,22 @@ export type UnlockVia = 'cost' | 'quest' | 'default' | 'achievement';
 export type GrowthUnit = '%' | 's' | 'count' | 'x' | '';
 
 /**
- * 一筆花費。三種貨幣，`solar` 是 v1.1.0 太陽骰子帶進來的第三種（遊戲 GoodsType `CORE_SOLAR`，
- * 顯示名「太陽核心」）。
+ * 一筆花費：骰子核心、金幣，加上零到多種**超越核心**（`mythic`）。
  *
- * ⚠️ **三個欄位都是必填**，缺席不當成 0：`Cost` 是算出來的東西（加總、差額、上限比對），
- * 讓其中一個欄位可以是 undefined 等於讓每個加法都得先寫一次 `?? 0`，而漏寫的那一處會安靜
- * 地把整筆總額變成 NaN。「缺席視為 0」只發生在**讀 JSON 那一層**（見 LevelCost.solar）。
+ * 超越核心是每顆神話骰子各自專屬的貨幣（1.1.0 太陽核心、1.1.2 齒輪二階核心……），鍵是
+ * `src/lib/currency.ts` 的 `MYTHIC_CORES[].kind`，值是數量。**新增一顆神話骰子不改這個型別**，
+ * 只在那份登記表加一筆。
+ *
+ * ⚠️ **`mythic` 缺席＝沒有任何超越核心**，有的話裡面每個值都 > 0（`cost.ts` 的 `addCost`／
+ * `subCost` 負責維持這個正規形）。它是選填的理由是 tree.json：241 顆節點裡只有神話骰子那幾顆
+ * 花得到超越核心，每顆都背一個空物件（或一個 `"solar":0`，1.1.0 的寫法）是白佔 gzip 預算。
+ * 代價是**不可以對 `mythic` 裡的數字直接做加減**——一律走 `cost.ts` 的 `addCost()`／`subCost()`／
+ * `mythicAmount()`，型別上 `c.mythic?.solar` 是 `number | undefined`，直接相加編譯不過，正是要的效果。
+ * `core`／`gold` 仍然必填：它們是每一顆節點都有的東西，缺席當 0 會讓漏寫的那一處安靜地變 NaN。
  */
-export interface Cost { core: number; gold: number; solar: number }
+export interface Cost { core: number; gold: number; mythic?: MythicCores }
+/** 超越核心的數量表，鍵是 `MYTHIC_CORES[].kind`。 */
+export type MythicCores = Readonly<Record<string, number>>;
 export interface Growth { base: number; perLevel: number; unit: GrowthUnit }
 export interface ParsedCost { cost: Cost }
 
@@ -167,18 +175,17 @@ export function isGlossaryAlias(r: GlossaryRecord): r is GlossaryAlias {
  */
 export interface UpgradeCostTable {
   appliesTo: { type: NodeType; maxLevel: number };
-  levels: { level: number; gold: number; core: number; solar?: number }[];
+  levels: LevelCost[];
 }
 
 /**
  * 一張逐級升級表的一列。`level 1` 是解鎖那一次，算升級追加花費時一律跳過（見 upgradeExtraCost）。
  *
- * ⚠️ `solar` 是**選填**的，這是它跟 `Cost` 唯一不同的地方：這個形狀直接對應社群維護的兩份
- * JSON（`data/upgrade-cost.json`／`data/passive-upgrade-cost.json`），而那兩份既有的幾百列
- * 一個 solar 欄位都沒有。要求必填等於逼一次無關的全檔改寫，所以缺席一律當 0（`?? 0`），
- * 由讀取端在算成 `Cost` 的那一步補上。
+ * ⚠️ `mythic`（超越核心）是**選填**的，缺席＝這一級不花任何超越核心：這個形狀直接對應社群維護的兩份
+ * JSON（`data/upgrade-cost.json`／`data/passive-upgrade-cost.json`），只有神話骰子符文那幾張 special
+ * 表才用得到它。`upgradeExtraCost()` 一律走 `addCost()` 累加，不必寫 `?? 0`。
  */
-export interface LevelCost { level: number; gold: number; core: number; solar?: number }
+export interface LevelCost { level: number; gold: number; core: number; mythic?: MythicCores }
 
 /**
  * 官方升級費用表的一個區間：`from`~`to` 每一級都花 `gold`，而 `core` **只在 `from` 那一級收一次**。
@@ -187,9 +194,8 @@ export interface LevelCost { level: number; gold: number; core: number; solar?: 
  * 並在表頭註明「等級5以後未說明之等級費用以前一級所需金幣資源相同」。照逐級展開存進 JSON 的話，
  * 那 100 級的 tier F 要寫 99 列，而且沒有任何地方看得出「這一段是同一個區間」。
  *
- * ⚠️ **刻意沒有 solar 欄位**：太陽核心只出現在太陽骰子與它的符文上，那是骰子分支的東西，
- * 而 tier 制只服務玩家被動與支援。留一個永遠是 0 的欄位在這裡，只會讓下一個人以為它有用。
- * `expandTier()` 產出的每一列因此固定帶 `solar: 0`。
+ * ⚠️ **刻意沒有超越核心欄位**：超越核心只出現在神話骰子與它的符文上，那是骰子分支的東西，
+ * 而 tier 制只服務玩家被動與支援。留一個永遠是空的欄位在這裡，只會讓下一個人以為它有用。
  */
 export interface UpgradeBand { from: number; to: number; gold: number; core: number }
 
@@ -323,8 +329,12 @@ export interface DiceStatEntry {
 /** `data/dice-stats.json`：以 gameId 為鍵。刻意不進 tree.json，見該檔的說明。 */
 export type DiceStatsTable = Record<string, DiceStatEntry>;
 
-/** 戰術的階段（官方資料表「階段」欄）。`選項` 是 69 號「選擇由我決定」底下的三個子選項。 */
-export type TacticStage = '前期' | '中期' | '後期' | '選項';
+/**
+ * 戰術的階段（客戶端 `TacticsEffectTable.TacticPhase`：Early／Mid／Late／Final）。`選項` 是 69 號
+ * 「選擇由我決定」底下的三個子選項。`終盤`（Final）是 1.1.2 新增的第四個階段，中文名是本站的命名
+ * （Yuki 2026-09-18 裁決；客戶端 localization 裡沒有階段名稱）。
+ */
+export type TacticStage = '前期' | '中期' | '後期' | '終盤' | '選項';
 /**
  * 戰術的適用模式（官方資料表「適用模式」欄）。
  *

@@ -23,16 +23,18 @@ import {
   simTotals, maxSelectableLevel, minSelectableLevel, summarizeAbilities, exceedsLimit,
   edgeWasUsed, edgeIsLinked,
 } from '../lib/sim.js';
-import type { AbilityGroup, SimState } from '../lib/sim.js';
+import type { AbilityGroup, SimLimits, SimState } from '../lib/sim.js';
 import { SIM_STORAGE_KEY, deserializeSim, serializeSim, simReport } from '../lib/sim-io.js';
 import { levelTableFor, upgradeExtraCost } from '../lib/upgrade-tiers.js';
 import { costHtml, simCostHtml } from '../lib/cost-html.js';
+import { mythicAmount, subCost, zeroCost } from '../lib/cost.js';
+import { MYTHIC_CORES } from '../lib/currency.js';
 import { typeLabel } from '../lib/labels.js';
 import { renderTaggedText } from '../lib/markup.js';
 import type { Cost, PassiveUpgradeCost, TreeData, TreeNode } from '../lib/types.js';
 
-/** 「這一級沒有追加花費」的零成本。三種貨幣都要寫齊，Cost 的欄位刻意全是必填（見 types.ts）。 */
-const ZERO_COST: Cost = { core: 0, gold: 0, solar: 0 };
+/** 「這一級沒有追加花費」的零成本。 */
+const ZERO_COST: Cost = zeroCost();
 
 const data = rawData as unknown as TreeData;
 const tables = rawTables as unknown as PassiveUpgradeCost;
@@ -159,11 +161,14 @@ function readLimit(el: HTMLInputElement): number | null {
   return Number.isFinite(v) && v >= 0 ? Math.floor(v) : null;
 }
 
-function limits(): { core: number | null; gold: number | null; solar: number | null } {
+// 超越核心的上限欄由 sim.astro 依 MYTHIC_CORES 逐種產生（`sim-limit-<kind>`）。
+const MYTHIC_LIMIT_IDS = MYTHIC_CORES.map(d => [d.kind, `sim-limit-${d.kind}`] as const);
+
+function limits(): SimLimits {
   return {
     core: readLimit($<HTMLInputElement>('sim-limit-core')),
     gold: readLimit($<HTMLInputElement>('sim-limit-gold')),
-    solar: readLimit($<HTMLInputElement>('sim-limit-solar')),
+    mythic: Object.fromEntries(MYTHIC_LIMIT_IDS.map(([kind, id]) => [kind, readLimit($<HTMLInputElement>(id))])),
   };
 }
 
@@ -228,7 +233,10 @@ function renderTotals(): void {
   const lim = limits();
   $<HTMLInputElement>('sim-limit-core').classList.toggle('over-limit', lim.core !== null && t.total.core > lim.core);
   $<HTMLInputElement>('sim-limit-gold').classList.toggle('over-limit', lim.gold !== null && t.total.gold > lim.gold);
-  $<HTMLInputElement>('sim-limit-solar').classList.toggle('over-limit', lim.solar !== null && t.total.solar > lim.solar);
+  for (const [kind, id] of MYTHIC_LIMIT_IDS) {
+    const l = lim.mythic[kind] ?? null;
+    $<HTMLInputElement>(id).classList.toggle('over-limit', l !== null && mythicAmount(t.total, kind) > l);
+  }
 
   $<HTMLButtonElement>('sim-undo').disabled = undoStack.length === 0;
   $<HTMLButtonElement>('sim-redo').disabled = redoStack.length === 0;
@@ -254,7 +262,7 @@ function levelInfo(node: TreeNode) {
   const extra = table ? upgradeExtraCost(table, lv) : null;
   const next = table && lv < cap ? upgradeExtraCost(table, lv + 1) : null;
   const step: Cost | null = next && extra
-    ? { core: next.core - extra.core, gold: next.gold - extra.gold, solar: next.solar - extra.solar }
+    ? subCost(next, extra)
     : null;
   return { cap, floor, lv, extra, step };
 }
@@ -519,7 +527,8 @@ for (const el of document.querySelectorAll<HTMLInputElement>('[data-initial]')) 
   });
 }
 
-for (const id of ['sim-limit-core', 'sim-limit-gold']) {
+// 超越核心的上限欄也要掛：以前只掛了核心與金幣，太陽核心那格改了數字要等下一個操作才重算。
+for (const id of ['sim-limit-core', 'sim-limit-gold', ...MYTHIC_LIMIT_IDS.map(([, x]) => x)]) {
   $<HTMLInputElement>(id).addEventListener('input', () => { renderTotals(); });
 }
 
