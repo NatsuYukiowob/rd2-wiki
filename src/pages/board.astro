@@ -1,9 +1,14 @@
 ---
 // 骰盤擺放編輯器。
 //
-// 做什麼：選 5 顆骰子當隊伍，把它們拖進 5×3 的骰盤，產生一張分享圖。
-// **刻意不做**：戰鬥模擬、機率模擬、合成、網址編碼、localStorage（Yuki 2026-08-22 指定）。
-// 重新整理會回到空骰盤，那是已知且刻意的行為。
+// 做什麼：選 5 顆骰子當隊伍，把它們拖進 5×3 的骰盤，產生一張分享圖；點骰盤上的骰子看它目前的
+// 面板數值（依該格骰點與同種骰子的局內強化 Lv 計算，src/lib/dice-calc.ts）。
+// **刻意不做**：戰鬥模擬（DPS、隊伍合計）、機率模擬、合成、網址編碼、**寫入** localStorage
+// （Yuki 2026-08-22 指定；2026-09-19 加數值卡片時重申：只算單顆骰子的面板數值）。
+// 局外加成（骰子樹符文／玩家被動）**唯讀** /sim 的存檔（localStorage 鍵 rd2-sim-v1），這一頁自己仍然
+// 什麼都不存（Yuki 2026-09-19 核可鬆綁讀取的那一半）。疊加規則見 src/lib/offgame-calc.ts；骰子之間的
+// 盤面加成見 src/lib/board-buffs.ts（排序方向／齒輪二階種類由格子角標指定，一樣不存）。
+// 重新整理會回到空骰盤、強化 Lv 回到 1、局外加成切換回到預設，那是已知且刻意的行為。
 // ⚠️ 註解不要指向 docs/ 底下的檔案：`.gitignore` 有 `docs/`，那是維護者本機的東西，
 // 公開 repo 的讀者永遠打不開。
 //
@@ -19,9 +24,17 @@ import Base from '../layouts/Base.astro';
 import '../styles/board.css';
 import { treeData as data } from '../lib/tree-data';
 import boardIconsRaw from '../../data/board-icons.json';
+import nodeTextRaw from '../../data/nodes.json';
+import diceStatsRaw from '../../data/dice-stats.json';
 import { CELLS, DECK_SIZE } from '../lib/board';
 import { BRANCH_ZH } from '../lib/labels';
-import type { TreeData, TreeNode } from '../lib/types';
+import { deriveTable, type StatParams } from '../lib/dice-calc';
+import offgameRaw from '../../data/offgame-effects.json';
+import passiveTablesRaw from '../../data/passive-upgrade-cost.json';
+import { namedEffects, type OffgameFile } from '../lib/offgame';
+import { buildSimContext } from '../lib/sim';
+import { encodeSaveContext } from '../lib/sim-save-lite';
+import type { DiceStatsTable, PassiveUpgradeCost, TreeData, TreeNode } from '../lib/types';
 
 const tree = data as unknown as TreeData;
 const boardIcons = boardIconsRaw as Record<string, string>;
@@ -33,6 +46,29 @@ const dice = tree.nodes
 
 const cells = [...Array(CELLS).keys()];
 const slots = [...Array(DECK_SIZE).keys()];
+
+// 數值卡片的計算參數（src/lib/dice-calc.ts），以節點 id 為鍵——骰盤上的 diceId 就是節點 id，
+// 而 dice-stats.json 以 gameId 為鍵，對照走 data/nodes.json（同 /dice；tree.json 刻意沒有 gameId）。
+// deriveTable() 對壞資料直接丟例外＝建置失敗；validate 的規則 23(i) 會更早擋下同一件事。
+const gameIds = new Map(
+  Object.entries(nodeTextRaw as Record<string, { gameId?: string }>).map(([id, v]) => [id, v.gameId]),
+);
+const derived = deriveTable(diceStatsRaw as DiceStatsTable);
+const statPayload: Record<string, StatParams[]> = Object.fromEntries(
+  dice.map(d => [d.id, derived[gameIds.get(d.id) ?? ''] ?? []]),
+);
+
+// 局外加成（src/lib/offgame-calc.ts）：語意表只留 /board 用得到的 target（namedEffects），外加每顆骰子的
+// 分支（系別被動靠它判斷），以及讀 /sim 存檔用的精簡 context——整份 tree.json 太大，不為了讀一份存檔
+// 整包送進這一頁（src/lib/sim-save-lite.ts）。
+const offgamePayload = {
+  effects: namedEffects(
+    offgameRaw as unknown as OffgameFile,
+    nodeTextRaw as Record<string, { name: string; description: string }>,
+  ),
+  branches: Object.fromEntries(dice.map(d => [d.id, d.branch])),
+  save: encodeSaveContext(buildSimContext(tree, passiveTablesRaw as unknown as PassiveUpgradeCost)),
+};
 ---
 
 <Base title="骰盤">
@@ -45,6 +81,18 @@ const slots = [...Array(DECK_SIZE).keys()];
     <!-- 組合列。每一槽自帶等級選擇器：等級是「這一槽」的屬性，拖進骰盤時直接沿用，
          格子上不再改（設計決策 5）。要改單一格就重拖一次。 -->
     <h2 class="board-h2">我的隊伍</h2>
+    <!-- 局外加成切換：卡片數值要不要疊上骰子樹的符文／玩家被動。「我的 /sim」唯讀 /sim 的存檔，
+         這一頁仍然不寫任何東西。預設值由 src/scripts/board.ts 依「讀不讀得到存檔」決定。
+         三顆按鈕永遠都在、文字固定（寬度不跳），沒有存檔時「我的 /sim」只是 aria-disabled——
+         不用 disabled：那會讓它退出 Tab 順序，鍵盤使用者看不到它為什麼不能按。
+         沒有存檔的提示是這一列的最後一個子元素，跟按鈕同一行（放不下時換行，見 board.css）。 -->
+    <div id="offgame-mode" role="group" aria-label="局外加成">
+      <span class="offgame-label" aria-hidden="true">局外加成</span>
+      <button type="button" data-mode="none" aria-pressed="true">不含</button>
+      <button type="button" data-mode="sim" aria-pressed="false">我的 /sim</button>
+      <button type="button" data-mode="max" aria-pressed="false">全滿</button>
+      <span id="offgame-nosave" hidden>沒有找到 <a href="/sim">/sim</a> 的存檔</span>
+    </div>
     <div id="deck-row" role="group" aria-label="我的隊伍">
       {slots.map(slot => (
         <div class="deck-slot" data-slot={slot}>
@@ -64,9 +112,22 @@ const slots = [...Array(DECK_SIZE).keys()];
             <span class="pips-value" data-slot={slot}>1</span>
             <button type="button" class="pips-inc" data-slot={slot} disabled aria-label={`第 ${slot + 1} 槽提高骰面點數`}>▶</button>
           </div>
+          <!-- 強化列：局內 SP 強化 Lv（1–15），以骰子種類為單位共用——同一種骰子放在兩槽時兩槽同步，
+               換掉槽裡的骰子後，骰盤上留下的舊骰子保留它最後的 Lv（src/scripts/board.ts 的 spLevels）。
+               三個元素永遠都在、沒有骰子時只是 disabled，理由同上面的等級列。
+               手機版只顯示數字（.sp-prefix 隱藏），哪一排是什麼交給下方的 #deck-legend。 -->
+          <div class="sp-row">
+            <button type="button" class="sp-dec" data-slot={slot} disabled aria-label={`第 ${slot + 1} 槽降低強化等級`}>◀</button>
+            <span class="sp-value" data-slot={slot}><span class="sp-prefix">Lv.</span><span class="sp-num">1</span></span>
+            <button type="button" class="sp-inc" data-slot={slot} disabled aria-label={`第 ${slot + 1} 槽提高強化等級`}>▶</button>
+          </div>
         </div>
       ))}
     </div>
+
+    <!-- 手機版的強化列只顯示數字（放不下「Lv.15」），靠這一行說明哪一排是什麼。桌機不顯示：
+         桌機的強化值帶「Lv.」前綴，自己說得清楚。aria-hidden：按鈕的 aria-label 已經講完整。 -->
+    <p id="deck-legend" aria-hidden="true">上排：骰點　下排：強化 Lv</p>
 
     <!-- 挑選網格。預設收起來（hidden），點組合列的槽才展開。
          41 顆全部輸出在 HTML 裡，不是點下去才抓——這一頁沒有任何資料請求。 -->
@@ -91,6 +152,9 @@ const slots = [...Array(DECK_SIZE).keys()];
       </div>
     </div>
 
+    <!-- 骰盤這一段：寬桌機排成三欄（1fr｜骰盤｜1fr），明細面板在右欄；手機是 display: contents，
+         裡面四個元素直接參與 .board-page 的 flex order（見 board.css）。 -->
+    <div class="board-stage">
     <h2 class="board-h2">骰盤</h2>
     <!-- 5 欄 3 列。每一格是 button：它要能 Tab、能按 Enter，鍵盤路徑是這一頁的硬需求
          （設計時就是因為 canvas 方案給不了這個才選 DOM）。 -->
@@ -108,6 +172,42 @@ const slots = [...Array(DECK_SIZE).keys()];
       <button type="button" id="board-export">產生分享圖</button>
       <button type="button" id="board-hide-pips" aria-pressed="false">隱藏星數</button>
     </div>
+
+      <!-- 明細面板：卡片只放數值，來源拆解放這裡（Yuki 2026-09-19：避免卡片過大）。內容由
+           src/scripts/board.ts 填；卡片收起後保留最後那顆骰子的明細。 -->
+      <section id="dice-detail" aria-label="加成明細">
+        <div class="detail-box">
+          <h2 class="detail-h">加成明細</h2>
+          <p class="detail-empty">點骰盤上的骰子看加成來源</p>
+          <div class="detail-body" hidden>
+            <p class="detail-title"></p>
+            <p class="detail-nothing" hidden></p>
+            <h3 class="detail-offgame-h" hidden>局外</h3>
+            <ul class="detail-offgame" hidden></ul>
+            <h3 class="detail-mechanic-h" hidden>機制</h3>
+            <ul class="detail-mechanic" hidden></ul>
+            <h3 class="detail-board-h" hidden>盤面</h3>
+            <ul class="detail-board" hidden></ul>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <!-- 數值卡片：點骰盤上的骰子（或鍵盤焦點停在上面）才出現，內容由 src/scripts/board.ts 填。
+         position: fixed 的浮層，開合不推動版面（同 #dice-picker）；pointer-events: none，
+         不擋底下的格子與隊伍列（見 board.css）。 -->
+    <div id="dice-card" hidden role="region" aria-label="骰子數值">
+      <p class="dice-card-title"></p>
+      <dl class="dice-card-rows"></dl>
+      <p class="dice-card-note">未含骰子樹（符文／被動）加成</p>
+    </div>
+
+    <!-- 卡片的計算參數。⚠️ 用 div 的文字內容而不是 application/json 腳本標籤，理由同 /dice 的
+         #codex-terms：Astro 會自動逃逸，textContent 讀回來就是原本的 JSON。 -->
+    <div id="board-stats" hidden>{JSON.stringify(statPayload)}</div>
+
+    <!-- 局外加成的語意表與讀存檔用的精簡 context（理由同上面的 #board-stats）。 -->
+    <div id="board-offgame" hidden>{JSON.stringify(offgamePayload)}</div>
 
     <p id="board-live" class="sr-only" role="status" aria-live="polite"></p>
 

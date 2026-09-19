@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { CELLS, DECK_SIZE } from '../../src/lib/board';
-import { IMAGE_H, IMAGE_W, cellRect, deckRect, iconRect } from '../../src/lib/board-image';
+import { IMAGE_H, IMAGE_W, badgeRect, cellRect, deckRect, iconRect } from '../../src/lib/board-image';
 
 describe('輸出尺寸', () => {
   it('固定 1200×900，跟螢幕 dpr 無關', () => {
@@ -142,6 +142,24 @@ describe('iconRect', () => {
  * ⚠️ `.drag-ghost` 也在清單裡——它是第四個顯示點（拖曳時跟在指標下方的那張圖），
  * review 之前 CLAUDE.md 的清單漏了它。
  */
+describe('badgeRect', () => {
+  it('15 格的角標都落在自己格子的左上四分之一裡（跟畫面上的 .cell-badge 同一個角，不碰右下角的骰點）', () => {
+    for (let i = 0; i < 15; i++) {
+      const c = cellRect(i);
+      const b = badgeRect(i);
+      expect(b.w, `第 ${i} 格`).toBeGreaterThan(0);
+      expect(b.x).toBeGreaterThanOrEqual(c.x);
+      expect(b.y).toBeGreaterThanOrEqual(c.y);
+      expect(b.x + b.w).toBeLessThanOrEqual(c.x + c.w / 2);
+      expect(b.y + b.h).toBeLessThanOrEqual(c.y + c.h / 2);
+    }
+  });
+  it('越界的 index 回 0 尺寸的框', () => {
+    expect(badgeRect(15)).toEqual({ x: 0, y: 0, w: 0, h: 0 });
+    expect(badgeRect(-1)).toEqual({ x: 0, y: 0, w: 0, h: 0 });
+  });
+});
+
 describe('/board 骰子圖示的 object-fit 不變量', () => {
   const DISPLAY_POINTS = [
     ['.board-cell img', '骰盤格'],

@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
-  CELLS, COLS, DECK_SIZE, MAX_PIPS, ROWS,
-  cellPos, clampPips, clear, emptyBoard, emptyDeck, inBoard, place, setDeckSlot, swap,
+  ALIGNMENT_ID, CELLS, COLS, DECK_SIZE, GEAR_SECOND_ID, MAX_PIPS, MAX_SP_LEVEL, ROWS,
+  badgeKind, badgeText, cellPos, clampPips, clampSp, clear, cycleBadge, emptyBoard, emptyDeck, inBoard, place,
+  setDeckSlot, swap,
+  type Board, type Dir, type GearKind, type Placed,
 } from '../../src/lib/board';
 
 const fire = { diceId: '1001', pips: 3 };
@@ -32,6 +34,22 @@ describe('clampPips', () => {
 
   it('NaN 夾成 1 而不是傳出去污染狀態', () => {
     expect(clampPips(Number.NaN)).toBe(1);
+  });
+});
+
+describe('clampSp', () => {
+  it('局內強化上限是 15', () => {
+    expect(MAX_SP_LEVEL).toBe(15);
+  });
+
+  it.each([
+    [0, 1], [1, 1], [9, 9], [15, 15], [16, 15], [-3, 1], [3.7, 3],
+  ])('clampSp(%s) === %s', (input, expected) => {
+    expect(clampSp(input)).toBe(expected);
+  });
+
+  it('NaN 夾成 1 而不是傳出去污染狀態', () => {
+    expect(clampSp(Number.NaN)).toBe(1);
   });
 });
 
@@ -182,4 +200,79 @@ describe('cellPos', () => {
     [5, { row: 1, col: 0 }],
     [14, { row: 2, col: 4 }],
   ])('cellPos(%s)', (i, expected) => expect(cellPos(i)).toEqual(expected));
+});
+
+describe('角標（排序方向／齒輪二階種類）', () => {
+  const align = (pips: number): Placed => ({ diceId: ALIGNMENT_ID, pips });
+  const gear2 = (pips: number): Placed => ({ diceId: GEAR_SECOND_ID, pips });
+  const at = (p: Placed, i = 7): Board => place(emptyBoard(), i, p);
+
+  it('只有 7 骰點以下的排序／齒輪二階要角標', () => {
+    expect(badgeKind(align(1))).toBe('dir');
+    expect(badgeKind(align(6))).toBe('dir');
+    expect(badgeKind(align(7))).toBeNull();
+    expect(badgeKind(gear2(3))).toBe('gear');
+    expect(badgeKind(gear2(7))).toBeNull();
+    expect(badgeKind(fire)).toBeNull();
+    expect(badgeKind(null)).toBeNull();
+  });
+
+  it('方向循環 ? → ↑ → → → ↓ → ← → ?；回到「?」時整個欄位拿掉', () => {
+    let b = at(align(3));
+    const seen: (Dir | undefined)[] = [];
+    for (let k = 0; k < 5; k++) {
+      b = cycleBadge(b, 7);
+      seen.push(b[7]!.dir);
+    }
+    expect(seen).toEqual([0, 1, 2, 3, undefined]);
+    expect(b[7]).toEqual(align(3));
+    expect('dir' in b[7]!).toBe(false);
+  });
+
+  it('齒輪循環 ? → 強 → 動 → 變 → ?', () => {
+    let b = at(gear2(2));
+    const seen: (GearKind | undefined)[] = [];
+    for (let k = 0; k < 4; k++) {
+      b = cycleBadge(b, 7);
+      seen.push(b[7]!.gear);
+    }
+    expect(seen).toEqual(['reinforce', 'power', 'speed', undefined]);
+    expect('gear' in b[7]!).toBe(false);
+  });
+
+  it('沒有角標的格子、空格、越界都 no-op（回原陣列）', () => {
+    for (const p of [align(7), gear2(7), fire]) {
+      const b = at(p);
+      expect(cycleBadge(b, 7)).toBe(b);
+    }
+    const b = at(align(1));
+    expect(cycleBadge(b, 0)).toBe(b);
+    expect(cycleBadge(b, CELLS)).toBe(b);
+    expect(cycleBadge(b, -1)).toBe(b);
+  });
+
+  it('角標跟著骰子走：交換後在新位置；放下別的骰子（或從組合列再放同一種）就清掉', () => {
+    const b = cycleBadge(cycleBadge(at(align(3), 0), 0), 0);
+    expect(b[0]!.dir).toBe(1);
+    const s = swap(place(b, 1, fire), 0, 1);
+    expect(s[1]).toEqual({ diceId: ALIGNMENT_ID, pips: 3, dir: 1 });
+    expect(s[0]).toEqual(fire);
+    expect(place(b, 0, fire)[0]).toEqual(fire);
+    expect(place(b, 0, align(3))[0]).toEqual(align(3));
+  });
+
+  it('badgeText：格子上的字、aria-label 的尾巴、切換後的播報', () => {
+    expect(badgeText(align(3))).toEqual({ glyph: '?', spoken: '方向未指定', announce: '排序改為未指定' });
+    expect(badgeText({ ...align(3), dir: 1 })).toEqual({ glyph: '→', spoken: '方向朝右', announce: '排序改為朝右' });
+    expect(badgeText({ ...align(3), dir: 0 })!.glyph).toBe('↑');
+    expect(badgeText({ ...align(3), dir: 2 })!.glyph).toBe('↓');
+    expect(badgeText({ ...align(3), dir: 3 })!.glyph).toBe('←');
+    expect(badgeText(gear2(1))).toEqual({ glyph: '?', spoken: '種類未指定', announce: '齒輪二階改為未指定' });
+    expect(badgeText({ ...gear2(1), gear: 'speed' }))
+      .toEqual({ glyph: '變', spoken: '種類：變速齒輪', announce: '齒輪二階改為變速齒輪' });
+    expect(badgeText({ ...gear2(1), gear: 'reinforce' })!.glyph).toBe('強');
+    expect(badgeText({ ...gear2(1), gear: 'power' })!.glyph).toBe('動');
+    expect(badgeText(fire)).toBeNull();
+    expect(badgeText(align(7))).toBeNull();
+  });
 });

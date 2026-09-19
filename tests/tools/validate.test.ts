@@ -28,10 +28,11 @@ const bossIconsDir = 'data/boss-icons';
 const prereqRanks: unknown = JSON.parse(readFileSync('data/prereq-ranks.json', 'utf8'));
 const riftShop: unknown = JSON.parse(readFileSync('data/rift-shop.json', 'utf8'));
 const riftShopIconsDir = 'data/rift-shop-icons';
+const offgameEffects: unknown = JSON.parse(readFileSync('data/offgame-effects.json', 'utf8'));
 const opts = {
   keywords, nodeText, upgradeCostTable, maxLevelOfficial, unlockExceptions, changelog, iconsDir, dataDir,
   boardIcons, boardIconsDir, passiveUpgradeCost, diceStats,
-  tactics, tacticIconsDir, boss, bossIconsDir, prereqRanks, riftShop, riftShopIconsDir,
+  tactics, tacticIconsDir, boss, bossIconsDir, prereqRanks, riftShop, riftShopIconsDir, offgameEffects,
 };
 
 /** 換掉升級費用表、其餘照舊。深拷貝理由同 patch()。 */
@@ -391,7 +392,11 @@ describe('validate', () => {
       '3201': { ...nodeText['3201'], description: desc },
     });
     const only17 = (o: ReturnType<typeof bothRunes>) => validate(svg, o).errors.filter(e => /規則 17/.test(e));
-    const others = (o: ReturnType<typeof bothRunes>) => validate(svg, o).errors.filter(e => !/規則 17/.test(e));
+    // ⚠️ 規則 28（Task 1）也拿同一段描述的「基礎(+每級)」對 offgame-effects.json 的 value／rankAdd，
+    // 1201／3201 兩顆都在它的覆蓋範圍內，所以描述壞掉時規則 28 會跟規則 17 一起說話——這是兩條規則
+    // 各自讀到同一個真的錯誤，不是誤報。這裡驗的仍是「規則 1–16 一條都不會報」，只是把新加入的
+    // 規則 28 也一併排除，不代表它與規則 17 有耦合。
+    const others = (o: ReturnType<typeof bothRunes>) => validate(svg, o).errors.filter(e => !/規則 (17|28)/.test(e));
 
     // (a) 描述漏寫「(+每級增量)」→ growth 變成 null，面板那行「1 級 X → 50 級 Y」整條消失，
     //     而正本看起來完全正常。1201 與 3201 共用同一段描述，所以兩顆都會報。
@@ -539,6 +544,77 @@ describe('validate', () => {
     expect(withRanks(null)).toEqual([]);
     expect(validate(svg, { ...opts, prereqRanks: null }).warnings.some(w => /規則 26/.test(w))).toBe(true);
     expect(validate(svg, opts).errors.filter(e => /規則 26/.test(e))).toEqual([]);
+  });
+
+  it('規則 28：局外加成語意表的形狀、雙向覆蓋、數字與描述、列名與詞彙寫壞都會被擋', () => {
+    const with28 = (v: unknown) =>
+      validate(svg, { ...opts, offgameEffects: v }).errors.filter(x => /規則 28/.test(x));
+    /** 真實資料的深拷貝，給「只改一個地方」的破壞測試用（同 tiers()）。 */
+    const fx = () => structuredClone(offgameEffects) as {
+      note: string; source: string; effects: Record<string, Record<string, unknown>>;
+    };
+    const hit = (v: unknown, re: RegExp) => expect(with28(v).some(e => re.test(e)), String(re)).toBe(true);
+
+    // 形狀
+    hit([], /最外層必須是物件/);
+    hit({ ...fx(), effect: {} }, /未知的最外層欄位 "effect"/);
+    hit({ ...fx(), effects: [] }, /effects 必須是以節點 id 為鍵的物件/);
+
+    // 雙向：漏一顆（遊戲改版新增節點）＝那顆的加成安靜地永遠不算
+    { const f = fx(); delete f.effects['1201']; hit(f, /1201（子彈傷害%增加）是骰子符文，但 data\/offgame-effects\.json 沒有它/); }
+    // 孤兒 id、收錯節點種類
+    { const f = fx(); f.effects['12O1'] = f.effects['1201']!; hit(f, /12O1 不是（或已不是）節點 id/); }
+    { const f = fx(); f.effects['1001'] = f.effects['1201']!; hit(f, /1001 是骰子，這份表只收骰子符文與玩家被動/); }
+
+    // 詞彙與 scope
+    { const f = fx(); f.effects['1201']!['target'] = 'bulletPercent'; hit(f, /target "bulletPercent" 不在詞彙內/); }
+    { const f = fx(); f.effects['1201']!['scope'] = 'dice:1201'; hit(f, /scope "dice:1201" 不合法/); }
+    { const f = fx(); f.effects['1102']!['scope'] = 'faction:fire'; hit(f, /scope "faction:fire" 不合法/); }
+    { const f = fx(); f.effects['1201']!['scope'] = 'all'; hit(f, /1201 是骰子符文，scope 必須是 dice:<骰子節點 id>/); }
+    // 改列的 target 帶 label，而 label 只對得到一顆骰子的列：scope 是 all／faction 時 label 等於沒驗
+    {
+      const f = fx();
+      f.effects['1103'] = { ...f.effects['1103']!, target: 'statAdd', scope: 'faction:nature', label: '不存在的列' };
+      hit(f, /1103 是 statAdd，scope 必須是 dice:<骰子節點 id>（label 要對得到那顆骰子的列）/);
+    }
+    // 規則 1 的地盤：nodes.json 的 1001 多一個未知欄位 → 1001 退出 withText，scope "dice:1001" 的
+    // 1201／1301／1401 查不到骰子。那是規則 1 要說的事（它自己會報），規則 28 不跟著噴三條假錯誤。
+    {
+      const nt = structuredClone(nodeText);
+      nt['1001']!['bogus'] = 1;
+      expect(validate(svg, { ...opts, nodeText: nt }).errors.filter(x => /規則 28/.test(x))).toEqual([]);
+    }
+
+    // 數字
+    { const f = fx(); f.effects['1201']!['maxLevel'] = 20; hit(f, /maxLevel 20 與 nodes\.json 的 50 不一致/); }
+    { const f = fx(); f.effects['1201']!['value'] = 21; hit(f, /value／rankAdd 是 21／4，描述寫的是 20\(\+4\)/); }
+    { const f = fx(); f.effects['1202']!['rankAdd2'] = 0.3; hit(f, /value2／rankAdd2 是 5／0\.3，描述寫的是 5\(\+0\.2\)/); }
+    { const f = fx(); delete f.effects['1202']!['rankAdd2']; hit(f, /value2 與 rankAdd2 要嘛都有、要嘛都沒有/); }
+    { const f = fx(); f.effects['1201']!['value'] = '20'; hit(f, /1201 的 value 必須是有限數/); }
+
+    // 列名、列專屬欄位
+    { const f = fx(); f.effects['1206']!['label'] = '攻速增益'; hit(f, /label「攻速增益」不是骰子 1006 在 dice-stats\.json 的列/); }
+    { const f = fx(); delete f.effects['1206']!['label']; hit(f, /1206 是 statAdd，必須有 label/); }
+    { const f = fx(); delete f.effects['1208']!['setBase']; hit(f, /1208 是 statSet，必須有 setBase/); }
+    { const f = fx(); f.effects['1201']!['label'] = '攻擊力'; hit(f, /1201 的 label 只給 statAdd／statSet／statMul 用/); }
+    { const f = fx(); f.effects['2202']!['sign'] = 1; hit(f, /2202 的 sign 只能是 -1/); }
+
+    // reason／template
+    { const f = fx(); delete f.effects['1207']!['reason']; hit(f, /1207 是 conditional，必須寫 reason/); }
+    { const f = fx(); f.effects['1201']!['reason'] = 'x'; hit(f, /1201 的 reason 只給 none／conditional 用/); }
+    { const f = fx(); delete f.effects['1202']!['template']; hit(f, /1202 是等級會成長的 mechanic，必須有 template/); }
+    { const f = fx(); f.effects['1202']!['template'] = '{V3} 個'; hit(f, /template 有未知的佔位 \{V3\}/); }
+    { const f = fx(); f.effects['2204']!['template'] = '{V2}'; hit(f, /2204 的 template 用了 \{V2\}，但這筆沒有 value2/); }
+    { const f = fx(); f.effects['1201']!['template'] = '{V}'; hit(f, /1201 的 template 只給 mechanic 用/); }
+
+    // 未知欄位
+    { const f = fx(); f.effects['1201']!['bonus'] = 1; hit(f, /1201 有未知欄位 "bonus"/); }
+
+    // 沒有這份資料時只警告；真實資料零錯誤零警告
+    expect(with28(null)).toEqual([]);
+    expect(validate(svg, { ...opts, offgameEffects: null }).warnings.some(w => /規則 28/.test(w))).toBe(true);
+    expect(validate(svg, opts).errors.filter(e => /規則 28/.test(e))).toEqual([]);
+    expect(validate(svg, opts).warnings.filter(w => /規則 28/.test(w))).toEqual([]);
   });
 
   it('規則 16：管理 ID 重複／格式錯／漏填，與細分類放錯位置，都會被擋', () => {
@@ -1241,6 +1317,30 @@ describe('規則 23：骰子基本能力值', () => {
     const t3 = stats();
     (t3['D000'] as Record<string, unknown>)['target'] = '前方';
     expect(validate(svg, withStats(t3)).errors.some(e => /規則 23\(h\).*target/.test(e))).toBe(true);
+  });
+
+  // (i) /board 的數值卡片用四檔反推成長參數、算中間值（src/lib/dice-calc.ts）。四檔各自是合法的
+  // 非空字串、(e)(g)(h) 全部沉默，但兩軸不可加時，卡片會在中間點安靜地算錯——所以擋在這裡。
+  it('四檔兩軸不可加會被擋，訊息指得出是哪一顆的哪一項', () => {
+    const t = stats();
+    t['D000']!.stats[0]!.lv15dice7 = '9999';
+    const errors = validate(svg, withStats(t)).errors.filter(e => /規則 23/.test(e));
+    expect(errors.some(e => /規則 23\(i\)/.test(e) && e.includes('D000') && e.includes('攻擊力'))).toBe(true);
+  });
+
+  it('攻擊間隔不符「÷ 骰點」會被擋', () => {
+    const t = stats();
+    t['D000']!.stats.find(s => s.label === '攻擊速度')!.dice7 = '0.5 秒/次';
+    expect(validate(svg, withStats(t)).errors.some(e => /規則 23\(i\)/.test(e) && e.includes('攻擊速度'))).toBe(true);
+  });
+
+  // 讓路：形狀已經壞了的那一項由 (g) 說話，(i) 不可以再疊一條把原因埋掉。
+  it('四檔缺一檔時只有 (g) 說話，(i) 不重複報', () => {
+    const t = stats();
+    delete t['D000']!.stats[0]!.lv15;
+    const errors = validate(svg, withStats(t)).errors.filter(e => /規則 23/.test(e));
+    expect(errors.some(e => /規則 23\(g\)/.test(e))).toBe(true);
+    expect(errors.some(e => /規則 23\(i\)/.test(e))).toBe(false);
   });
 
   // 讓路測試，同規則 21(h) 的教訓：nodes.json 漏一筆文案時，說話的必須只有規則 19，

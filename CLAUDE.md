@@ -79,7 +79,7 @@ CSS 也碰不到它們（在 `canvas.css` 加 `.node` 規則不會有作用，�
 ## 指令
 
 ```bash
-npm run validate    # 資料驗證（規則 0–27，CI 守門員）
+npm run validate    # 資料驗證（規則 0–28，CI 守門員）
 npm run typecheck   # tsc --noEmit（含 noUnusedLocals）
 npm run normalize   # 攤平圖層/matrix/相對路徑、清掉 <text> 與註解（送 PR 前必跑）
 npm run preview     # 把標籤注回幾何，產出 data/dice-tree.preview.svg（不進版控）
@@ -299,6 +299,11 @@ npm run compare -- <beforeURL> <afterURL>  # computed-style 逐元素比對，�
      ⚠️ **這件事刻意不用 CI 警告記錄**——validate 的黃金樣本斷言 warnings 必須為零，一條永遠不會
      消失的警告會讓那個基線失效。改用 `tests/data/dice-stats.test.ts` 逐格釘住（現在釘的是空清單），
      上游再空一格就會紅；`tests/e2e/codex.spec.ts` 的 C7 反向守「待實測」不得回到畫面上。
+  6. **四檔必須反推得出成長參數**（規則 23(i)，2026-09-19）：`/board` 的數值卡片用
+     `src/lib/dice-calc.ts` 的 `deriveParams()` 從四檔還原「每骰點」「每級強化」兩個 Δ 算中間值——
+     線性項要求 `lv15dice7 = dice7 + lv15 − base`、攻擊間隔（`diceGrowth` 寫「基礎值 ÷ 骰點」）要求
+     `dice7 ≈ base÷7`、Δ 在 3 位小數內。validate 與 `board.astro` 共用同一支，不要複製第二份。
+     `待實測` 不觸發這條（卡片上 (1,1) 以外印「待實測」）。
 - **`data/tactics.json`（60 條）與 `data/boss.json`（21 條）**＝`/tactic` 與 `/boss` 兩頁的全部
   內容，由**規則 24／25** 守。來源是官方資料表 v1.0.3-v2 的 `戰術`（sheet8）與 `Boss`（sheet9）
   兩個分頁，圖來自素材包的 `戰術/`／`Boss/`（檔名與分頁的「圖示檔名」欄一對一，Boss 10/10、
@@ -367,6 +372,15 @@ npm run compare -- <beforeURL> <afterURL>  # computed-style 逐元素比對，�
   `upgradeTableApplies()` 只給通用符文表用——1601 太陽強化的費用在 `special`（只有金幣＋太陽核心）。
   它 2026-09-06 從 50 級改成 20 級後不再撞到通用表的 `maxLevel === 50`，但判準不因此放寬：當時
   用通用表印出過「核心 99 ＋ 金幣 465,700」這種差兩個數量級的錯數字，下一顆 special 節點照樣會踩。
+- **`data/offgame-effects.json`＝骰子樹符文／玩家被動對 `/board` 數值卡片的語意**，由**規則 28** 守。
+  以節點 id 為鍵；數字（`value`／`rankAdd`／`value2`／`rankAdd2`／`maxLevel`）取自客戶端 `RuneTable`／
+  `PlayerPassiveTable`，「改哪一列、怎麼疊」（`target`）是依客戶端逆向結果人工標的。整份由維護者本機的產生
+  腳本從客戶端表重產（腳本跟解包工具一樣不進版控）——**不要手改數字**，改版時重跑腳本、讓規則 28 對描述。
+  每一種 `target` 的語意與疊加順序寫在 `src/lib/offgame-calc.ts` 檔頭。⚠️ 兩種 target 刻意不顯示也不計算：
+  `conditional`（對冰凍／首領／菁英…，Yuki 2026-09-19 裁決不顯示）、`none`（開局 SP、合成機率、支援冷卻）。
+  `board`（光增益範圍、霓虹、齒輪連接、三重共鳴、排序疊加）要看骰盤擺位，由 `src/lib/board-buffs.ts` 消費、
+  不進單顆骰子的局外加成。⚠️ **施加者自己那一列的加值（1206／3202／4207／4208／4308）是 `statAdd` 不是 `board`**
+  ——盤面加成讀的就是施加者那一列在局外加成之後的值，標成 `board` 的話那個加值會從卡片與盤面兩邊一起消失。
 - **`data/unlock-exceptions.json`＝解鎖例外表**，由**規則 18** 守。它不是 SVG 的一部分，
   `build-data` 讀它時只有一個 `as` 斷言＝執行期零檢查。三種寫壞法在規則 18 之前全部 CI 全綠：
   key 打錯（那顆骰子安靜地變回要花核心買）、`unlockVia` 打錯（成本照樣排除，但面板印出字面的
@@ -428,7 +442,8 @@ npm run compare -- <beforeURL> <afterURL>  # computed-style 逐元素比對，�
 | 26 | `data/prereq-ranks.json`（前置節點的等級條件，客戶端 `NeedNode`／`NeedNodeRank`）：最外層只有 note／source／ranks；外層鍵與內層鍵都是節點 id，內層必須是外層那顆的**祖先**、不得是自己；rank 是整數且 2 ≤ rank ≤ 該前置的 `maxLevel`（rank 1 就是解鎖，邊已表達）。⚠️ `TreeNode.prereqRanks` **只在有值的節點上放欄位**——tree.json 餘裕不到 1 KB，241 顆各多一個空物件會爆 |
 | 25 | `data/boss.json`：通用檢查與規則 24／27 同一支 `checkIconedRecordList()`（含 (h) 的 `gameId` 撞號）。⚠️ **自己只寫一條**：`difficulty` 必須是「一般」或「困難」（同規則 24(e) 那一類的資料自身語意）。除此之外仍然一條都不要加——複製通用檢查的第二份出去就一定漂移 |
 | 27 | `data/rift-shop.json`（裂縫商店）：通用檢查與規則 24／25 同一支 `checkIconedRecordList()`，但**傳 `sharedIconKey: 'name'`**——同名的三個檔位共用一張圖是設計（客戶端只給 `*Low` 畫圖）。⚠️ **(g) 因此是雙向的**：跨不同名字共用是錯，**同名卻指向不同的圖也是錯**（2026-09-06 code review 抓到後補的反方向；少了它 `sharedIconKey` 就是個單向放行條款，`add-icon --rift-shop 73` 只換一筆、同名兄弟留在舊雜湊，實測零錯誤零警告而畫面上一個效果出現兩種圖）。自己只寫三條語意檢查：(e) `grade` 必須是三個合法值之一、`cost`／`weight` 必須是正整數（`requiredText` 只認非空字串，驗不到數字欄位）／(i) **同一階級的 `weight` 必須一致**（刻意不寫死 30／20／10：上游調價不該整片紅，真正會壞畫面的是階級與權重的對應崩掉）／(j) **同名的多筆階級必須互異**（那是 (g) 抓不到的：同名共用圖合法，複製一筆只改編號會全程沉默，畫面上是同一組出現兩張同名同圖的卡片） |
-| 23 | `data/dice-stats.json`：(a) 骰子漏一筆／(b) 表自己的孤兒 entry／(c) `name` 與正本節點不符／(d) entry 結構／(e) stat 欄位型別（含 `diceGrowth`／`spGrowth`，空字串不放行——`growthNote()` 用 `??`，`""` 會印成「骰點：／強化：…」）／(f) 同一顆骰子的 `label` 撞號／(g) 四個檔位的值要嘛全有要嘛全無／(h) 未知欄位。⚠️ 以 **gameId** 為鍵，規則 19 抓不到它的殘餘。⚠️ **(h) 是 (g) 的補完不是潔癖**：三個檔位鍵**全部**打錯時 (g) 完全沉默，那一項被判成固定值，畫面上跟「它本來就不會變」一模一樣。⚠️ (b) 的「找不到節點」那一半要先讓路給規則 19／規則 1，否則 `nodes.json` 漏一筆文案會多噴假錯誤 |
+| 28 | `data/offgame-effects.json`（骰子樹符文／玩家被動 → `/board` 數值卡片的語意）：最外層只有 note／source／effects；**雙向**——每一顆骰子符文／玩家被動都要有一筆（沒影響的寫 `target: "none"` 附 reason），表裡的孤兒 id 也擋；`target` 在 `src/lib/offgame.ts` 的詞彙內、`scope` 指得到骰子或分支（符文必須是 `dice:<id>`）、`maxLevel` 等於 nodes.json；等級會成長的那一筆，`value`／`rankAdd`（或 `value2`／`rankAdd2`）要跟描述的「基礎(+每級)」一致（`parseGrowth`，同規則 17；比絕對值）；`statAdd`／`statSet`／`statMul` 的 scope 必須是 `dice:<id>`、`label` 要是那顆骰子在 dice-stats.json 真的有的列；`none`／`conditional` 必填 reason、等級會成長的 `mechanic` 必填 template（只認 `{V}`／`{V2}`）；未知欄位一律擋。⚠️ 不進 tree.json（`/board` 建置期直接讀），規則 28 是它唯一的防線 |
+| 23 | `data/dice-stats.json`：(a) 骰子漏一筆／(b) 表自己的孤兒 entry／(c) `name` 與正本節點不符／(d) entry 結構／(e) stat 欄位型別（含 `diceGrowth`／`spGrowth`，空字串不放行——`growthNote()` 用 `??`，`""` 會印成「骰點：／強化：…」）／(f) 同一顆骰子的 `label` 撞號／(g) 四個檔位的值要嘛全有要嘛全無／(h) 未知欄位／(i) 四個檔位反推得出成長參數（`/board` 數值卡片用，`src/lib/dice-calc.ts`；形狀已壞的項目讓給 (e)(g) 說話）。⚠️ 以 **gameId** 為鍵，規則 19 抓不到它的殘餘。⚠️ **(h) 是 (g) 的補完不是潔癖**：三個檔位鍵**全部**打錯時 (g) 完全沉默，那一項被判成固定值，畫面上跟「它本來就不會變」一模一樣。⚠️ (b) 的「找不到節點」那一半要先讓路給規則 19／規則 1，否則 `nodes.json` 漏一筆文案會多噴假錯誤 |
 
 ⚠️ **幾何規則吃 `nodes`，文案規則吃 `withText`**。`withText` 是「兩邊都在、結構又合法」的過濾集合；
 把它餵給幾何規則的話，`nodes.json` 漏一筆會被翻譯成幾十條指向 SVG 的假錯誤（實測：刪掉 `1001`
@@ -837,9 +852,36 @@ J（手機抽屜不蓋住工具列）是這三條防線。
 ### `/board` 骰盤擺放編輯器
 
 內容**不可索引**（拖曳擺放，畫面上沒有可搜尋文字），價值全在互動。它容易被下一個人「順手補回」
-某些看起來像漏掉的功能，所以把裁決寫下來——**刻意不做**：戰鬥模擬、機率模擬、合成（骰子升級／融合）、
-網址編碼、`localStorage`（Yuki 2026-08-22 指定，`src/pages/board.astro` 開頭有同一份注解）。
-重新整理會回到空骰盤，這是已知且刻意的行為，不是待補的持久化。
+某些看起來像漏掉的功能，所以把裁決寫下來——**刻意不做**：戰鬥模擬（DPS、隊伍合計）、機率模擬、
+合成（骰子升級／融合）、網址編碼、**寫入** `localStorage`（Yuki 2026-08-22 指定，`src/pages/board.astro` 開頭有
+同一份注解）。重新整理會回到空骰盤、強化 Lv 回到 1，這是已知且刻意的行為，不是待補的持久化。局外加成**唯讀** `/sim` 的存檔（Yuki 2026-09-19 核可鬆綁讀取的那一半）。
+
+**數值卡片（2026-09-19）**：點骰盤上的骰子浮出單顆骰子的面板數值，依「該格骰點 × 同種骰子的局內
+強化 Lv」計算。三件讀程式碼不容易看出來的事：
+1. **計算參數是從 `dice-stats.json` 四檔反推的**（`src/lib/dice-calc.ts`），不另存一份；規則 23(i) 守
+   「四檔反推得出來」。
+2. **強化 Lv 以骰子種類為鍵**（`spLevels`），不是槽位：挑選網格沒擋重複、換槽不清骰盤上的舊骰子。
+   手機版強化列只顯示數字＋`#deck-legend` 圖例（320px 放不下「Lv.15」，Yuki 2026-09-19 裁決）。
+3. **開卡片不綁 click**，在 `endDrag()` 判斷「從格子起手、沒超過位移門檻」；鍵盤走 `focusin`＋
+   `:focus-visible`。卡片 `pointer-events: none`——它會蓋在格子與隊伍列上，接事件的話底下拖不動。
+4. **局外加成（二期 2a）**：`#offgame-mode` 三段切換「不含｜我的 /sim｜全滿」。「我的 /sim」走 `/sim` 同一支
+   `deserializeSim()`——它吃的是 `SaveContext`（`SimContext` 的子集），`/board` 建置期用
+   `src/lib/sim-save-lite.ts` 壓成索引編碼嵌進頁面（整份 tree.json 太大）。⚠️ `/sim` 的存檔一換鍵名，
+   `/board` 就讀不到、退回「不含」——那是預期行為。攻擊力照遊戲局內面板：`局內值 (+加成)`（被動同池只乘一次），
+   子彈%符文另起一行「子彈實際」；「不含」且那一格沒有盤面加成時，整張卡片跟一期逐字相同（單元測試對全部骰子釘住）。
+   存檔在頁面開著時被 `/sim` 改了（bfcache 回上一頁、兩個分頁）會跟上，但不會自動切到「我的 /sim」（B33）。
+5. **明細面板 `#dice-detail`**：卡片只放數值，來源拆解放面板（Yuki 2026-09-19：避免卡片過大）。寬桌機在骰盤
+   右側，手機在頁面最底。⚠️ `.board-stage` 在手機是 `display: contents`——包那一層 div 之後，骰盤與工具列仍要
+   參與 `.board-page` 的 flex `order`，拿掉這一行手機版面整個亂掉。⚠️ 寬桌機的面板 `contain: size`，否則它一
+   長高就撐開骰盤那幾列、工具列被往下推。寬桌機的 `.detail-box` 用 `max-height: min(100%, …)`，否則內容比
+   容器高時 sticky 失效（B32 守）。
+6. **盤面加成（二期 2b）**：`src/lib/board-buffs.ts` 依擺位算光／排序／共鳴／陰陽／齒輪／齒輪二階／霓虹給每一格的
+   加成，合進卡片同一個 `(+x)`（`bonusCardModel()` 的第 6 參數 `BoardBonus`）、來源列進明細面板「盤面」區塊、卡片開著時
+   來源格 `.buff-src`／目標格 `.buff-dst`。**不受局外加成「不含」影響**（擺位是局內），但盤面符文跟著模式。
+   ⚠️ **施加者的數值一律讀施加者自己那一列在局外加成之後的值**（`rowValue()`），不另寫成長式。
+   7 骰點以下的排序方向／齒輪二階種類在遊戲裡是隨機的：格子左上角的角標（`.cell-badge`，格子按鈕裡的 span、不是
+   按鈕）點一下或按 R 循環，判定跟開卡片同一條路（`endDrag()` 的 `onBadge`）；「?」＝不套用。⚠️ 切換角標走
+   `cycleAt()`（`renderCells()` ＋卡片原地重算），不可以走 `renderBoard()`——那會把卡片收掉。
 
 **骰子圖示是「純骰子圖」（不含底板），跟骰子樹節點圖是兩條平行的資產路徑。** 正本管線（規則 7）
 只處理 SVG 引用到的圖示，純骰子圖完全不在正本裡，所以另立一條：`data/board-icons/`（41 張來源
@@ -945,6 +987,9 @@ PNG，檔名＝內容 sha256 前 12 碼，`addIcon()` 直接重用）＋ `data/b
   `src/lib/upgrade-tiers.ts`（費用查表）。`src/scripts/sim.ts` 只做「把狀態畫成畫面、把事件翻成
   狀態轉換」。**每個操作都回傳新狀態而不是就地改**——undo／redo 直接把整份狀態推進堆疊，不必為
   每種操作各寫一次反向操作（而反向操作正是最容易漏掉連帶效果的地方）。
+- ⚠️ **`deserializeSim()` 吃的是 `SaveContext`（`SimContext` 的子集）**，`/board` 也用它讀同一份存檔
+  （見 `/board` 一節）。`maxSelectableLevel()` 只查 `ctx.caps`（`buildSimContext()` 預先用 `levelTableFor()`
+  算好）——要改「哪些節點能升級」改 `levelTableFor()`，兩頁會一起跟上。
 - **畫布跟 `/tree` 共用同一個 controller**：兩頁都是 `mountCanvasTree(host, data)`，**沒有
   「這是 /sim」的參數**。平移／縮放／命中測試／隱形按鈕清單／兩層 canvas 全部只有一份實作，
   `/sim` 只多傳一個 `PaintState.sim`（`SimPaint`：owned／available／selected／linked／active／
@@ -1226,6 +1271,9 @@ colors 重新著色，那張樹本來就看得見，等於用自己的無障礙�
   `painter.ts` 的單元測試因此用 Proxy 假造 `Ctx2D` 記錄呼叫（`tests/lib/canvas/painter.test.ts`），
   驗的是「畫了幾次、用什麼 alpha／dash／shadowBlur 畫的」，**不是畫出來長什麼樣**。
 - 臨時的 Playwright 腳本要放在 **repo 目錄下**才 import 得到 `@playwright/test`。
+- ⚠️ **手機 project 截 `fullPage: true` 會把觸控版面換掉，而且回不來。** 2026-09-19 實測：Pixel 7 project 截一張
+  fullPage 之後，`matchMedia('(hover: none) and (pointer: coarse)')` 從 true 變 false 並一直維持，截到的圖與之後的
+  幾何全是非觸控版（`/board` 的組合列跑回骰盤上方）。看手機版面要截視窗（先捲到該區塊），截完不要在同一頁做幾何斷言。
 - ⚠️ **備份檔名要帶上路徑，不要只用 `basename`。** 這個 repo 有好幾組同名不同路徑的檔案
   （`src/lib/sim.ts` 與 `src/scripts/sim.ts`、`src/lib/board.ts` 與 `src/scripts/board.ts`）。
   2026-08-23 用 `for f in …; do cp "$f" "$SCRATCH/$(basename $f).bak"; done` 備份三個檔去跑反例，

@@ -3,8 +3,8 @@
 // 為什麼不共用畫面上那份 DOM 渲染：畫面是響應式的（格子尺寸跟著視窗走），分享圖必須是
 // 固定尺寸才在別人的裝置上長得一樣。兩份渲染各自很短，共用反而要引進一層抽象去吸收
 // 「有沒有視窗」的差別。
-import { CELLS, DECK_SIZE, type Board, type Deck } from '../lib/board.js';
-import { IMAGE_H, IMAGE_W, cellRect, deckRect, iconRect, type Rect } from '../lib/board-image.js';
+import { CELLS, DECK_SIZE, badgeText, type Board, type Deck } from '../lib/board.js';
+import { IMAGE_H, IMAGE_W, badgeRect, cellRect, deckRect, iconRect, type Rect } from '../lib/board-image.js';
 
 export interface ExportInput {
   board: Board;
@@ -36,6 +36,8 @@ function palette() {
   return {
     bg: cssVar('--bg', '#17161a'),
     surface: cssVar('--surface-1', '#26252b'),
+    chip: cssVar('--surface-2', '#302f37'),
+    borderStrong: cssVar('--border-strong', '#575563'),
     border: cssVar('--border', '#3f3e49'),
     fg: cssVar('--fg', '#f3f1f6'),
     muted: cssVar('--muted', '#a5a2ae'),
@@ -131,6 +133,22 @@ export async function renderShareImage(input: ExportInput): Promise<HTMLCanvasEl
       ctx.font = `600 26px ${FONT_STACK}`;
       ctx.textAlign = 'right';
       ctx.fillText(String(p.pips), box.x + box.w - 10, box.y + box.h - 18);
+      ctx.textAlign = 'left';
+    }
+    // 角標：只畫設定過的（「?」不畫——沒指定就是沒有資訊）。不看 hidePips：方向是擺位資訊，不是星數。
+    const badge = badgeText(p);
+    if (badge && badge.glyph !== '?') {
+      const r = badgeRect(i);
+      ctx.fillStyle = COLORS.chip;
+      roundRect(ctx, r, 8);
+      ctx.fill();
+      ctx.strokeStyle = COLORS.borderStrong;
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      ctx.fillStyle = COLORS.gold;
+      ctx.font = `600 26px ${FONT_STACK}`;
+      ctx.textAlign = 'center';
+      ctx.fillText(badge.glyph, r.x + r.w / 2, r.y + r.h / 2);
       ctx.textAlign = 'left';
     }
   }

@@ -50,9 +50,23 @@ export interface SimContext {
    * 但那是一個 O(節點數) 的動作掛在滑桿的每一次 input 上。
    */
   rankHolders: Map<string, { id: string; rank: number }[]>;
+  /**
+   * 節點 id → 可選的等級上限（查不到費用表的節點是 1）。`buildSimContext()` 算一次，
+   * `maxSelectableLevel()` 只查這張表——`/board` 讀 `/sim` 存檔時帶的是精簡版 context
+   * （src/lib/sim-save-lite.ts），沒有費用表可查。
+   */
+  caps: Map<string, number>;
   tables: PassiveUpgradeCost;
   runeTable: UpgradeCostTable | null;
 }
+
+/**
+ * `deserializeSim()` 真正用到的那一部分 context。`/sim` 傳完整的 `SimContext`（它本來就滿足這個形狀），
+ * `/board` 傳建置期壓好的精簡版——整份 tree.json 太大，不該為了讀一份存檔整包送進 `/board`。
+ */
+export type SaveContext = Pick<SimContext, 'parents' | 'free' | 'optional' | 'rankHolders' | 'caps'> & {
+  byId: ReadonlyMap<string, { id: string }>;
+};
 
 export type AbilityGroup = 'global' | Branch;
 
@@ -99,8 +113,9 @@ export function buildSimContext(data: TreeData, tables: PassiveUpgradeCost): Sim
       rankHolders.get(prereqId)!.push({ id: x.id, rank });
     }
   }
+  const caps = new Map(data.nodes.map(x => [x.id, levelTableFor(x, tables, data.meta.upgradeCostTable) ? x.maxLevel : 1]));
   return {
-    byId, parents, children, free, optional, globalNames, rankHolders,
+    byId, parents, children, free, optional, globalNames, rankHolders, caps,
     tables, runeTable: data.meta.upgradeCostTable,
   };
 }
@@ -112,7 +127,7 @@ export function initialSimState(ctx: SimContext): SimState {
 }
 
 /** 玩家現在手上有的全部節點＝起始骰子 ∪ 勾選的初始骰子 ∪ 自己解開的。 */
-export function ownedIds(state: SimState, ctx: SimContext): Set<string> {
+export function ownedIds(state: SimState, ctx: Pick<SimContext, 'free'>): Set<string> {
   return new Set([...ctx.free, ...state.initial, ...state.unlocked]);
 }
 
@@ -166,9 +181,9 @@ export function missingPrereqRanks(id: string, state: SimState, ctx: SimContext)
   return out.sort((a, b) => a.id.localeCompare(b.id));
 }
 
-/** 這顆節點的等級能調到多少？查不到費用表就是不能升級。 */
-export function maxSelectableLevel(node: TreeNode, ctx: SimContext): number {
-  return levelTableFor(node, ctx.tables, ctx.runeTable) ? node.maxLevel : 1;
+/** 這顆節點的等級能調到多少？查不到費用表就是不能升級（`caps` 由 `buildSimContext()` 預先查好）。 */
+export function maxSelectableLevel(node: { id: string }, ctx: Pick<SimContext, 'caps'>): number {
+  return ctx.caps.get(node.id) ?? 1;
 }
 
 /**
@@ -178,7 +193,7 @@ export function maxSelectableLevel(node: TreeNode, ctx: SimContext): number {
  * 的。模擬器要是讓玩家降下去，那份規劃的總資源會少算一段，而它對應的是一個遊戲裡不存在的
  * 局面。所以下限＝所有**已取得**的後續節點對它的要求裡最大的那一個。
  */
-export function minSelectableLevel(node: TreeNode, state: SimState, ctx: SimContext): number {
+export function minSelectableLevel(node: { id: string }, state: SimState, ctx: Pick<SimContext, 'free' | 'rankHolders'>): number {
   const owned = ownedIds(state, ctx);
   let floor = 1;
   for (const holder of ctx.rankHolders.get(node.id) ?? []) {

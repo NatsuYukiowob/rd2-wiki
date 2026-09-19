@@ -256,7 +256,7 @@ describe('import 順序＝層疊順序', () => {
  * 這條立刻紅並指出 `--bg fallback #2f2942 ≠ tokens.css 的 #17161a`。
  */
 describe('board-export 的色票 fallback', () => {
-  it('六條 fallback 跟 tokens.css 的值一字不差', () => {
+  it('八條 fallback 跟 tokens.css 的值一字不差', () => {
     const tokens = stripComments(readFileSync(TOKENS_FILE, 'utf8'));
     // 只認縮排兩格的自訂屬性宣告，跟上面那條 var() 解析測試同一套規則。
     const defined = new Map(
@@ -270,7 +270,7 @@ describe('board-export 的色票 fallback', () => {
     // 先確認真的抓到了：正則寫壞會讓 pairs 變空陣列，然後底下的迴圈一次都不跑、測試全綠。
     // 數量寫死也守另一個方向：多一條 cssVar() 沒被納入時同樣會紅（2026-08-26 code review
     // 抓到原本的訊息只講「正則過期」，把「新增了呼叫點」那半邊的成因指錯了）。
-    expect(pairs.length, 'board-export.ts 的 cssVar(…) 呼叫數不是 6——正則過期，或新增／刪除了呼叫點').toBe(6);
+    expect(pairs.length, 'board-export.ts 的 cssVar(…) 呼叫數不是 8——正則過期，或新增／刪除了呼叫點').toBe(8);
 
     for (const { token, fallback } of pairs) {
       expect(defined.has(token), `tokens.css 沒有定義 ${token}`).toBe(true);

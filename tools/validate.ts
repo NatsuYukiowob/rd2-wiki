@@ -6,7 +6,7 @@ import { parseTree, COORD_TOLERANCE } from './lib/svg-parse.js';
 import { MAX_TEXT_LENGTH, checkNodeTextRecord, mergeNodes, type NodeTextMap, type RawNode } from './lib/node-text.js';
 import { parseCost } from '../src/lib/cost.js';
 import { mythicCoreByKind } from '../src/lib/currency.js';
-import { maxLevelValue, parseGrowth } from '../src/lib/growth.js';
+import { maxLevelValue, parseGrowth, round2 } from '../src/lib/growth.js';
 import { extractKeywords } from '../src/lib/keywords.js';
 import { checkChangelog } from '../src/lib/changelog.js';
 import { groupOfColor } from '../src/lib/glossary-groups.js';
@@ -15,7 +15,10 @@ import { buildAdjacency, detectCycle, findRoots, prerequisiteChain, unreachableF
 import { readPngSize } from './lib/png.js';
 import { isGlossaryAlias } from '../src/lib/types.js';
 import { expandTier } from '../src/lib/upgrade-tiers.js';
-import type { Edge, GlossaryRecord, MaxLevelOfficial, UpgradeCostTable, UpgradeTier } from '../src/lib/types.js';
+import { deriveParams } from '../src/lib/dice-calc.js';
+import { BRANCH_ZH } from '../src/lib/labels.js';
+import { OFFGAME_TARGETS, ROW_TARGETS } from '../src/lib/offgame.js';
+import type { DiceStat, Edge, GlossaryRecord, Growth, MaxLevelOfficial, UpgradeCostTable, UpgradeTier } from '../src/lib/types.js';
 
 /**
  * 資料樹的預期根節點（各分支的第一個骰子）。
@@ -474,6 +477,12 @@ export interface ValidateOpts {
   riftShop: unknown;
   /** `data/rift-shop-icons/` 所在目錄。⚠️ 這一份是 35 張圖對 55 筆，見規則 27 的說明。 */
   riftShopIconsDir: string;
+  /**
+   * `data/offgame-effects.json`：骰子樹符文／玩家被動對 /board 數值卡片的語意（規則 28）。
+   * 型別刻意用 `unknown`（同 `diceStats`／`prereqRanks`）：規則 28 要擋的正是不合法的那些。
+   * 沒有這份資料時傳 `null`，規則 28 只警告——/board 的局外加成跟著全部算 0。
+   */
+  offgameEffects: unknown;
 }
 
 export interface ValidateResult {
@@ -1260,7 +1269,8 @@ export function validate(svgText: string, opts: ValidateOpts): ValidateResult {
   // 對這張表的殘餘視而不見。
   //
   // 子規則：(a) 骰子漏一筆／(b) 表自己的孤兒 entry／(c) name 與節點不符／(d) entry 結構／
-  // (e) stat 欄位型別／(f) 同一顆骰子的 label 撞號／(g) 四檔值要嘛全有要嘛全無。
+  // (e) stat 欄位型別／(f) 同一顆骰子的 label 撞號／(g) 四檔值要嘛全有要嘛全無／(h) 未知欄位／
+  // (i) 四檔反推得出成長參數（/board 數值卡片靠它算中間值，src/lib/dice-calc.ts）。
   const diceStats = opts.diceStats;
   if (diceStats === null || diceStats === undefined) {
     warn('規則 23: 沒有提供 data/dice-stats.json，骰子基本能力值未檢查');
@@ -1363,6 +1373,19 @@ export function validate(svgText: string, opts: ValidateOpts): ValidateResult {
         const KNOWN = new Set(['label', 'base', ...MODES, 'diceGrowth', 'spGrowth']);
         for (const k of Object.keys(st)) {
           if (!KNOWN.has(k)) push(`規則 23(h): ${gameId} 的 ${JSON.stringify(label)} 有未知欄位 ${JSON.stringify(k)}`);
+        }
+
+        // (i) 四檔必須反推得出成長參數。/board 的數值卡片用 deriveParams() 從四檔還原「每骰點」
+        // 「每級強化」兩個 Δ 來算中間值；四檔各自是合法字串、上面每一條都沉默，但兩軸不可加或
+        // 攻擊間隔不是 ÷7 時，卡片會在四個角以外安靜地算錯。
+        // ⚠️ 只在形狀完好時才驗：(e)(g) 已經說話的那一項再疊一條只會把真正的原因埋掉。
+        const tiers = [st['base'], ...MODES.map(k => st[k])];
+        if (typeof label === 'string' && tiers.every(v => typeof v === 'string' && v.length > 0)) {
+          try {
+            deriveParams(st as unknown as DiceStat);
+          } catch (err) {
+            push(`規則 23(i): ${gameId} 的 ${JSON.stringify(label)} 四個檔位反推不出成長參數：${(err as Error).message}`);
+          }
         }
       }
     }
@@ -1633,6 +1656,188 @@ export function validate(svgText: string, opts: ValidateOpts): ValidateResult {
     }
   }
 
+  // 規則 28：骰子樹局外加成的語意表（`data/offgame-effects.json`，/board 數值卡片用）。
+  //
+  // 這份表的數字抄自客戶端表、語意（改哪一列、怎麼疊）是依逆向結果人工標的，而 /board 讀它時沒有
+  // 任何執行期檢查。會安靜出錯的寫壞法：
+  //
+  // 1. **漏一顆節點**（遊戲改版新增符文／被動）→ 那顆的加成永遠不算，卡片上跟「它本來就沒加成」
+  //    一模一樣。所以這條是**雙向**的：每一顆骰子符文／玩家被動都要有一筆，沒影響的也要寫
+  //    `target: "none"` 並說理由（跟 dice_stats_diff 那支比對腳本「一邊沒值就當通過」漏報 30 項同一個教訓）。
+  // 2. **數字抄錯或改版沒跟上** → 拿節點描述裡的「基礎(+每級)」對 value／rankAdd（parseGrowth，跟規則 17
+  //    同一支解析器）；描述與表只要有一邊改了另一邊沒改就紅。比絕對值：正本把負值成長正規化成正數。
+  // 3. **列名打錯**（statAdd 的 label 對不到 dice-stats.json 的列）→ 那個加成安靜消失。
+  // 4. **target／scope 打錯** → 整筆被計算層跳過。
+  const rawOffgame = opts.offgameEffects;
+  if (rawOffgame === null) {
+    warn('規則 28: 沒有提供 data/offgame-effects.json，局外加成語意表未檢查');
+  } else if (!isPlainObject(rawOffgame)) {
+    push('規則 28: data/offgame-effects.json 的最外層必須是物件（含 note／source／effects 三個欄位）');
+  } else {
+    const TOP_28 = ['note', 'source', 'effects'];
+    for (const key of Object.keys(rawOffgame)) {
+      if (!TOP_28.includes(key)) {
+        push(`規則 28: data/offgame-effects.json 有未知的最外層欄位 ${JSON.stringify(key)}，合法欄位只有 ${TOP_28.join('／')}`);
+      }
+    }
+    const effects = rawOffgame['effects'];
+    if (!isPlainObject(effects)) {
+      push('規則 28: data/offgame-effects.json 的 effects 必須是以節點 id 為鍵的物件');
+    } else {
+      const byId28 = new Map(withText.map(n => [n.id, n]));
+      const diceTable = isPlainObject(opts.diceStats) ? opts.diceStats : {};
+      const labelsOf = (diceId: string): string[] => {
+        const entry = diceTable[byId28.get(diceId)?.gameId ?? ''];
+        const stats = isPlainObject(entry) && Array.isArray(entry['stats']) ? entry['stats'] : [];
+        return stats.flatMap(s => (isPlainObject(s) && typeof s['label'] === 'string' ? [s['label']] : []));
+      };
+      const KNOWN_28 = [
+        'kind', 'target', 'scope', 'value', 'rankAdd', 'value2', 'rankAdd2', 'maxLevel',
+        'label', 'sign', 'int', 'min', 'setBase', 'template', 'reason',
+      ];
+      const ROW_ONLY = ['label', 'sign', 'int', 'min', 'setBase'];
+      const branches = Object.keys(BRANCH_ZH);
+      const at = (id: string) => `規則 28: data/offgame-effects.json 的 ${id}`;
+      const finite = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
+
+      for (const n of withText) {
+        if ((n.typeZh === '骰子符文' || n.typeZh === '玩家被動') && !(n.id in effects)) {
+          push(`規則 28: ${n.id}（${n.name}）是${n.typeZh}，但 data/offgame-effects.json 沒有它——沒有影響也要寫一筆 target "none" 並附 reason`);
+        }
+      }
+
+      for (const [id, raw] of Object.entries(effects)) {
+        const node = byId28.get(id);
+        if (!node) {
+          // 規則 19／規則 1 的地盤不重複報（同規則 26）。
+          if (textIds.has(id) !== geomIds.has(id) || structurallyBad.has(id)) continue;
+          push(`${at(id)} 不是（或已不是）節點 id，這筆是孤兒`);
+          continue;
+        }
+        if (node.typeZh !== '骰子符文' && node.typeZh !== '玩家被動') {
+          push(`${at(id)} 是${node.typeZh}，這份表只收骰子符文與玩家被動`);
+          continue;
+        }
+        if (!isPlainObject(raw)) {
+          push(`${at(id)} 必須是物件`);
+          continue;
+        }
+        for (const key of Object.keys(raw)) {
+          if (!KNOWN_28.includes(key)) push(`${at(id)} 有未知欄位 ${JSON.stringify(key)}`);
+        }
+        if (typeof raw['kind'] !== 'string' || raw['kind'] === '') push(`${at(id)} 的 kind 必須是非空字串（客戶端 Kind，追溯用）`);
+        const target = raw['target'];
+        if (typeof target !== 'string' || !(OFFGAME_TARGETS as readonly string[]).includes(target)) {
+          push(`${at(id)} 的 target ${JSON.stringify(target)} 不在詞彙內（${OFFGAME_TARGETS.join('／')}）`);
+          continue;
+        }
+
+        const scope = raw['scope'];
+        let scopeDice: string | null = null;
+        /** scope 的問題已經有人說過（判成不合法，或讓路給規則 19／1）：下面列目標那條不再重複報同一個成因。 */
+        let scopeSettled = false;
+        if (typeof scope === 'string' && scope.startsWith('dice:')) {
+          const refId = scope.slice('dice:'.length);
+          if (byId28.get(refId)?.typeZh === '骰子') {
+            scopeDice = refId;
+          } else if (textIds.has(refId) !== geomIds.has(refId) || structurallyBad.has(refId)) {
+            // 規則 19／規則 1 的地盤不重複報（同上面孤兒 id 那條）：refId 只在文案或只在幾何裡出現、
+            // 或它在 nodes.json 的那一筆結構壞掉（因此不在 withText 裡），都是那兩條規則要說的事，
+            // 這裡再報一次只是同一個成因的第二種話術。
+            scopeSettled = true;
+          } else {
+            push(`${at(id)} 的 scope ${JSON.stringify(scope)} 不合法（all／faction:<分支>／dice:<骰子節點 id>）`);
+            scopeSettled = true;
+          }
+        } else if (!(scope === 'all' || (typeof scope === 'string' && scope.startsWith('faction:') && branches.includes(scope.slice('faction:'.length))))) {
+          push(`${at(id)} 的 scope ${JSON.stringify(scope)} 不合法（all／faction:<分支>／dice:<骰子節點 id>）`);
+          scopeSettled = true;
+        }
+        if (node.typeZh === '骰子符文' && scopeDice === null && typeof scope === 'string' && (scope === 'all' || scope.startsWith('faction:'))) {
+          push(`${at(id)} 是骰子符文，scope 必須是 dice:<骰子節點 id>`);
+          scopeSettled = true;
+        }
+
+        for (const k of ['value', 'rankAdd']) if (!finite(raw[k])) push(`${at(id)} 的 ${k} 必須是有限數`);
+        if ((raw['value2'] === undefined) !== (raw['rankAdd2'] === undefined)) {
+          push(`${at(id)} 的 value2 與 rankAdd2 要嘛都有、要嘛都沒有`);
+        }
+        for (const k of ['value2', 'rankAdd2', 'min', 'setBase']) {
+          if (raw[k] !== undefined && !finite(raw[k])) push(`${at(id)} 的 ${k} 必須是有限數`);
+        }
+        if (raw['maxLevel'] !== node.maxLevel) {
+          push(`${at(id)} 的 maxLevel ${JSON.stringify(raw['maxLevel'])} 與 nodes.json 的 ${node.maxLevel} 不一致`);
+        }
+
+        // 等級會成長的那一筆：跟描述的「基礎(+每級)」對。成長寫在 Value2 的符文（尖刺+3、魔彈+3）對 value2。
+        if (node.maxLevel > 1 && finite(raw['value']) && finite(raw['rankAdd'])) {
+          const second = raw['rankAdd'] === 0 && finite(raw['rankAdd2']) && raw['rankAdd2'] !== 0;
+          const [wb, wp] = second
+            ? [raw['value2'] as number, raw['rankAdd2'] as number]
+            : [raw['value'] as number, raw['rankAdd'] as number];
+          // ⚠️ 格式壞掉（拋例外）讓規則 9 說話；`{n}` 佔位符是「上游還沒填值」，跟規則 17
+          // 同一個理由不能在這裡報錯——否則上游同步一放回佔位符，這條規則就會用「描述對不起來」
+          // 這句錯誤的診斷把 PR 擋死，跟規則 9「只警告、不擋 PR」的政策互相矛盾。
+          let g: Growth | null = null;
+          let skip28 = false;
+          try {
+            const parsed = parseGrowth(node.description);
+            if (parsed.dataIssue === 'placeholder') skip28 = true;
+            else g = parsed.growth;
+          } catch { skip28 = true; /* 規則 9 會說話 */ }
+          if (!skip28) {
+            if (!g) {
+              push(`${at(id)} 等級會成長，但描述裡找不到「基礎(+每級)」可以對照：${node.description}`);
+            } else if (round2(Math.abs(g.base)) !== round2(Math.abs(wb)) || round2(Math.abs(g.perLevel)) !== round2(Math.abs(wp))) {
+              push(`${at(id)} 的 ${second ? 'value2／rankAdd2' : 'value／rankAdd'} 是 ${wb}／${wp}，描述寫的是 ${g.base}(+${g.perLevel})`);
+            }
+          }
+        }
+
+        if ((ROW_TARGETS as readonly string[]).includes(target)) {
+          const label = raw['label'];
+          if (typeof label !== 'string' || label === '') push(`${at(id)} 是 ${target}，必須有 label`);
+          else if (scopeDice !== null && !labelsOf(scopeDice).includes(label)) {
+            push(`${at(id)} 的 label「${label}」不是骰子 ${scopeDice} 在 dice-stats.json 的列`);
+          }
+          // label 只對得到「一顆」骰子的列：scope 是 all／faction 時上面那條整個沉默，label 打錯也驗不到，
+          // 而計算層會拿它去對範圍內每一顆骰子的列名（對不到的安靜跳過）。
+          if (scopeDice === null && !scopeSettled) {
+            push(`${at(id)} 是 ${target}，scope 必須是 dice:<骰子節點 id>（label 要對得到那顆骰子的列）`);
+          }
+          if (target === 'statSet' && !finite(raw['setBase'])) push(`${at(id)} 是 statSet，必須有 setBase`);
+        } else {
+          for (const k of ROW_ONLY) {
+            if (raw[k] !== undefined) push(`${at(id)} 的 ${k} 只給 statAdd／statSet／statMul 用，${target} 不該有`);
+          }
+        }
+        if (raw['sign'] !== undefined && raw['sign'] !== -1) push(`${at(id)} 的 sign 只能是 -1（不寫＝加）`);
+        if (raw['int'] !== undefined && raw['int'] !== true) push(`${at(id)} 的 int 只能是 true（不寫＝不取整）`);
+
+        const needsReason = target === 'none' || target === 'conditional';
+        if (needsReason && (typeof raw['reason'] !== 'string' || raw['reason'] === '')) {
+          push(`${at(id)} 是 ${target}，必須寫 reason 說明為什麼不算進卡片`);
+        }
+        if (!needsReason && raw['reason'] !== undefined) push(`${at(id)} 的 reason 只給 none／conditional 用`);
+
+        const tpl = raw['template'];
+        if (target === 'mechanic' && node.maxLevel > 1 && (typeof tpl !== 'string' || tpl === '')) {
+          push(`${at(id)} 是等級會成長的 mechanic，必須有 template（等級不會變的才直接用描述）`);
+        }
+        if (tpl !== undefined) {
+          if (target !== 'mechanic') {
+            push(`${at(id)} 的 template 只給 mechanic 用`);
+          } else if (typeof tpl === 'string') {
+            for (const ph of tpl.match(/\{[^}]*\}/g) ?? []) {
+              if (ph !== '{V}' && ph !== '{V2}') push(`${at(id)} 的 template 有未知的佔位 ${ph}（只認 {V}／{V2}）`);
+              if (ph === '{V2}' && raw['value2'] === undefined) push(`${at(id)} 的 template 用了 {V2}，但這筆沒有 value2`);
+            }
+          }
+        }
+      }
+    }
+  }
+
   return { errors, warnings };
 }
 
@@ -1690,6 +1895,7 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
     prereqRanks: readDataFile('data/prereq-ranks.json', true),
     riftShop: readDataFile('data/rift-shop.json', true),
     riftShopIconsDir: 'data/rift-shop-icons',
+    offgameEffects: readDataFile('data/offgame-effects.json', true),
   };
 
   // 有資料檔讀不到時就停在這裡：接下來每一條規則都會拿著一份空殼在猜，噴出來的幾百條錯誤
