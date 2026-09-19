@@ -1,0 +1,1682 @@
+{
+  "note": "骰子樹符文／玩家被動對 /board 數值卡片的語意（規則 28 守）。數字取自客戶端表，語意依逆向結果人工標註；維護方式見 CLAUDE.md。",
+  "source": "遊戲 1.1.2 客戶端 DiceTreeNodeTable／RuneTable／PlayerPassiveTable",
+  "effects": {
+    "1101": {
+      "kind": "NatureAttackUpPerV2",
+      "target": "attackPct",
+      "scope": "faction:nature",
+      "value": 20,
+      "rankAdd": 5,
+      "maxLevel": 15
+    },
+    "1102": {
+      "kind": "DiceAttackUpPerV2",
+      "target": "attackPct",
+      "scope": "all",
+      "value": 10,
+      "rankAdd": 1.2,
+      "maxLevel": 50
+    },
+    "1103": {
+      "kind": "NatureAtkSpeedUpPerV2",
+      "target": "intervalPct",
+      "scope": "faction:nature",
+      "value": 10,
+      "rankAdd": 1,
+      "maxLevel": 15
+    },
+    "1104": {
+      "kind": "NatureAtkSpeedUpPer",
+      "target": "intervalPct",
+      "scope": "faction:nature",
+      "value": 5,
+      "rankAdd": 0.5,
+      "maxLevel": 20
+    },
+    "1105": {
+      "kind": "NatureCritPerUpPer",
+      "target": "critPct",
+      "scope": "faction:nature",
+      "value": 0.5,
+      "rankAdd": 0.45,
+      "maxLevel": 10
+    },
+    "1106": {
+      "kind": "NatureMergeLevelUpBonus",
+      "target": "none",
+      "scope": "faction:nature",
+      "value": 2,
+      "rankAdd": 0,
+      "maxLevel": 1,
+      "reason": "合成時的機率效果"
+    },
+    "1107": {
+      "kind": "NatureMergeLevelUpBonusV2",
+      "target": "none",
+      "scope": "faction:nature",
+      "value": 3,
+      "rankAdd": 0,
+      "maxLevel": 1,
+      "reason": "合成時的機率效果"
+    },
+    "1108": {
+      "kind": "NatureMergeLevelUpBonusV3",
+      "target": "none",
+      "scope": "faction:nature",
+      "value": 5,
+      "rankAdd": 0,
+      "maxLevel": 1,
+      "reason": "合成時的機率效果"
+    },
+    "1109": {
+      "kind": "DiceAttackUpPerV1",
+      "target": "attackPct",
+      "scope": "all",
+      "value": 5,
+      "rankAdd": 0.6,
+      "maxLevel": 100
+    },
+    "1110": {
+      "kind": "NatureAttackUpPer",
+      "target": "attackPct",
+      "scope": "faction:nature",
+      "value": 10,
+      "rankAdd": 1,
+      "maxLevel": 20
+    },
+    "1111": {
+      "kind": "DiceAttackUpPerV3",
+      "target": "attackPct",
+      "scope": "all",
+      "value": 15,
+      "rankAdd": 3,
+      "maxLevel": 20
+    },
+    "1112": {
+      "kind": "PlayerStartSpUpV1",
+      "target": "none",
+      "scope": "faction:nature",
+      "value": 40,
+      "rankAdd": 0,
+      "maxLevel": 1,
+      "reason": "開局 SP，不是骰子數值"
+    },
+    "1113": {
+      "kind": "PlayerStartHpUpV1",
+      "target": "none",
+      "scope": "faction:nature",
+      "value": 10,
+      "rankAdd": 0,
+      "maxLevel": 1,
+      "reason": "玩家生命值，不是骰子數值"
+    },
+    "1115": {
+      "kind": "TrashDelay01",
+      "target": "none",
+      "scope": "faction:nature",
+      "value": 30,
+      "rankAdd": 0,
+      "maxLevel": 1,
+      "reason": "支援技能冷卻"
+    },
+    "1201": {
+      "kind": "BulletAtkPercentUp",
+      "target": "bulletPct",
+      "scope": "dice:1001",
+      "value": 20,
+      "rankAdd": 4,
+      "maxLevel": 50
+    },
+    "1202": {
+      "kind": "TrapDefenderExtraTrapSpawn",
+      "target": "mechanic",
+      "scope": "dice:1002",
+      "value": 3,
+      "rankAdd": 0,
+      "value2": 5,
+      "rankAdd2": 0.2,
+      "maxLevel": 50,
+      "template": "{V2}% 機率額外產生 {V} 個尖刺"
+    },
+    "1203": {
+      "kind": "FlowerBloomDmgBonus",
+      "target": "hitAttackMul",
+      "scope": "dice:1003",
+      "value": 50,
+      "rankAdd": 10,
+      "maxLevel": 50
+    },
+    "1204": {
+      "kind": "PillarCooldownMinus1Sec",
+      "target": "statAdd",
+      "scope": "dice:1004",
+      "value": -0.5,
+      "rankAdd": -0.2,
+      "maxLevel": 50,
+      "label": "技能冷卻時間"
+    },
+    "1205": {
+      "kind": "BulletAtkPercentUp",
+      "target": "bulletPct",
+      "scope": "dice:1005",
+      "value": 30,
+      "rankAdd": 6,
+      "maxLevel": 50
+    },
+    "1206": {
+      "kind": "LightBuffAtkSpdUpPer",
+      "target": "statAdd",
+      "scope": "dice:1006",
+      "value": 5,
+      "rankAdd": 0.2,
+      "maxLevel": 50,
+      "label": "攻擊速度增益"
+    },
+    "1207": {
+      "kind": "FreezeDamageUpPercent",
+      "target": "conditional",
+      "scope": "dice:1007",
+      "value": 20,
+      "rankAdd": 1,
+      "maxLevel": 50,
+      "reason": "只對冰凍狀態的目標"
+    },
+    "1208": {
+      "kind": "PoisonDefenderMaxPoisonStackUp",
+      "target": "statSet",
+      "scope": "dice:1008",
+      "value": 2,
+      "rankAdd": 1,
+      "maxLevel": 50,
+      "label": "最大疊加",
+      "setBase": 3,
+      "int": true
+    },
+    "1301": {
+      "kind": "FireDefenderRangeUp",
+      "target": "mechanic",
+      "scope": "dice:1001",
+      "value": 0,
+      "rankAdd": 0,
+      "value2": 0.3,
+      "rankAdd2": 0,
+      "maxLevel": 1
+    },
+    "1302": {
+      "kind": "TrapSummonLevel7Chance",
+      "target": "mechanic",
+      "scope": "dice:1002",
+      "value": 20,
+      "rankAdd": 0,
+      "maxLevel": 1
+    },
+    "1303": {
+      "kind": "TriggerRebloomOnNewFlower",
+      "target": "mechanic",
+      "scope": "dice:1003",
+      "value": 1,
+      "rankAdd": 0,
+      "maxLevel": 1
+    },
+    "1304": {
+      "kind": "PillarSpawnAreaDamage",
+      "target": "mechanic",
+      "scope": "dice:1004",
+      "value": 10,
+      "rankAdd": 0,
+      "maxLevel": 1
+    },
+    "1305": {
+      "kind": "WindDefender7thBulletCritical",
+      "target": "mechanic",
+      "scope": "dice:1005",
+      "value": 7,
+      "rankAdd": 0,
+      "maxLevel": 1
+    },
+    "1306": {
+      "kind": "LightDefenderBuffAreaExpansion",
+      "target": "board",
+      "scope": "dice:1006",
+      "value": 0,
+      "rankAdd": 0,
+      "maxLevel": 1
+    },
+    "1307": {
+      "kind": "IceDefenderPeriodicBlizzard",
+      "target": "mechanic",
+      "scope": "dice:1007",
+      "value": 0,
+      "rankAdd": 0,
+      "maxLevel": 1
+    },
+    "1308": {
+      "kind": "PoisonBulletStackPlus1",
+      "target": "mechanic",
+      "scope": "dice:1008",
+      "value": 3,
+      "rankAdd": 0,
+      "maxLevel": 1
+    },
+    "1401": {
+      "kind": "FireDiceBurnUpTo7",
+      "target": "mechanic",
+      "scope": "dice:1001",
+      "value": 5,
+      "rankAdd": 0,
+      "maxLevel": 1
+    },
+    "1402": {
+      "kind": "TrapDefenderReturnToEntranceOnTrap",
+      "target": "mechanic",
+      "scope": "dice:1002",
+      "value": 1,
+      "rankAdd": 0,
+      "value2": 30,
+      "rankAdd2": 0,
+      "maxLevel": 1
+    },
+    "1403": {
+      "kind": "FlowerMinTierToBloom",
+      "target": "mechanic",
+      "scope": "dice:1003",
+      "value": 3,
+      "rankAdd": 0,
+      "maxLevel": 1
+    },
+    "1404": {
+      "kind": "LineSkillAdditionalShot",
+      "target": "mechanic",
+      "scope": "dice:1004",
+      "value": 50,
+      "rankAdd": 0,
+      "value2": 1,
+      "rankAdd2": 0,
+      "maxLevel": 1
+    },
+    "1405": {
+      "kind": "WindDefenderBulletMultiShot",
+      "target": "mechanic",
+      "scope": "dice:1005",
+      "value": 50,
+      "rankAdd": 0,
+      "maxLevel": 1
+    },
+    "1406": {
+      "kind": "LightDefenderKillSPGain",
+      "target": "mechanic",
+      "scope": "dice:1006",
+      "value": 10,
+      "rankAdd": 0,
+      "maxLevel": 1
+    },
+    "1407": {
+      "kind": "IceDefenderAllMinionsFreezeOnSpawn",
+      "target": "mechanic",
+      "scope": "dice:1007",
+      "value": 1,
+      "rankAdd": 0,
+      "maxLevel": 1
+    },
+    "1408": {
+      "kind": "PoisonDefenderMergeStackDouble",
+      "target": "mechanic",
+      "scope": "dice:1008",
+      "value": 2,
+      "rankAdd": 0,
+      "maxLevel": 1
+    },
+    "1601": {
+      "kind": "SolarMaxStackUp",
+      "target": "statAdd",
+      "scope": "dice:1501",
+      "value": 2,
+      "rankAdd": 2,
+      "maxLevel": 20,
+      "label": "太陽之力階段",
+      "int": true
+    },
+    "2101": {
+      "kind": "EngineeringAttackUpPer",
+      "target": "attackPct",
+      "scope": "faction:engineering",
+      "value": 10,
+      "rankAdd": 1,
+      "maxLevel": 20
+    },
+    "2102": {
+      "kind": "DiceAttackUpPerV5",
+      "target": "attackPct",
+      "scope": "all",
+      "value": 10,
+      "rankAdd": 1.2,
+      "maxLevel": 50
+    },
+    "2103": {
+      "kind": "EngineeringAtkSpeedUpPerV2",
+      "target": "intervalPct",
+      "scope": "faction:engineering",
+      "value": 10,
+      "rankAdd": 1,
+      "maxLevel": 15
+    },
+    "2104": {
+      "kind": "EngineeringAtkSpeedUpPer",
+      "target": "intervalPct",
+      "scope": "faction:engineering",
+      "value": 5,
+      "rankAdd": 0.5,
+      "maxLevel": 20
+    },
+    "2105": {
+      "kind": "EngineeringCritPerUpPer",
+      "target": "critPct",
+      "scope": "faction:engineering",
+      "value": 0.5,
+      "rankAdd": 0.45,
+      "maxLevel": 10
+    },
+    "2106": {
+      "kind": "EngineeringUpgradeSPDiscount",
+      "target": "none",
+      "scope": "faction:engineering",
+      "value": 5,
+      "rankAdd": 5,
+      "maxLevel": 1,
+      "reason": "強化 SP 折扣，不改骰子數值"
+    },
+    "2107": {
+      "kind": "EngineeringUpgradeSPDiscountV2",
+      "target": "none",
+      "scope": "faction:engineering",
+      "value": 4,
+      "rankAdd": 0,
+      "maxLevel": 1,
+      "reason": "強化 SP 折扣，不改骰子數值"
+    },
+    "2108": {
+      "kind": "EngineeringUpgradeSPDiscountV3",
+      "target": "none",
+      "scope": "faction:engineering",
+      "value": 7,
+      "rankAdd": 0,
+      "maxLevel": 1,
+      "reason": "強化 SP 折扣，不改骰子數值"
+    },
+    "2109": {
+      "kind": "DiceAttackUpPerV4",
+      "target": "attackPct",
+      "scope": "all",
+      "value": 5,
+      "rankAdd": 0.6,
+      "maxLevel": 100
+    },
+    "2110": {
+      "kind": "EngineeringAttackUpPerV2",
+      "target": "attackPct",
+      "scope": "faction:engineering",
+      "value": 20,
+      "rankAdd": 5,
+      "maxLevel": 15
+    },
+    "2111": {
+      "kind": "DiceAttackUpPerV6",
+      "target": "attackPct",
+      "scope": "all",
+      "value": 15,
+      "rankAdd": 3,
+      "maxLevel": 20
+    },
+    "2112": {
+      "kind": "PlayerStartSpUpV2",
+      "target": "none",
+      "scope": "faction:engineering",
+      "value": 40,
+      "rankAdd": 0,
+      "maxLevel": 1,
+      "reason": "開局 SP，不是骰子數值"
+    },
+    "2113": {
+      "kind": "PlayerStartHpUpV2",
+      "target": "none",
+      "scope": "faction:engineering",
+      "value": 10,
+      "rankAdd": 0,
+      "maxLevel": 1,
+      "reason": "玩家生命值，不是骰子數值"
+    },
+    "2115": {
+      "kind": "RerollDelay01",
+      "target": "none",
+      "scope": "faction:engineering",
+      "value": 20,
+      "rankAdd": 0,
+      "maxLevel": 1,
+      "reason": "支援技能冷卻"
+    },
+    "2201": {
+      "kind": "IronBulletBossDamageUpPercent",
+      "target": "conditional",
+      "scope": "dice:2001",
+      "value": 20,
+      "rankAdd": 5,
+      "maxLevel": 50,
+      "reason": "只對首領，且與首領傷害倍率連乘"
+    },
+    "2202": {
+      "kind": "SwitchDiceCooldownMinusHalfSec",
+      "target": "statAdd",
+      "scope": "dice:2002",
+      "value": 0.5,
+      "rankAdd": 0.2,
+      "value2": 1,
+      "rankAdd2": 0,
+      "maxLevel": 50,
+      "label": "技能冷卻時間",
+      "sign": -1,
+      "min": 0
+    },
+    "2203": {
+      "kind": "GearBulletAtkUpPlus",
+      "target": "hitAttackFlat",
+      "scope": "dice:2003",
+      "value": 50,
+      "rankAdd": 20,
+      "maxLevel": 50
+    },
+    "2204": {
+      "kind": "ElementDiceMinDamageUpPercent",
+      "target": "mechanic",
+      "scope": "dice:2004",
+      "value": 1000,
+      "rankAdd": 100,
+      "maxLevel": 50,
+      "template": "原子最低傷害 {V}"
+    },
+    "2205": {
+      "kind": "NeonActiveAtkSpeedUpPercent",
+      "target": "board",
+      "scope": "dice:2005",
+      "value": 20,
+      "rankAdd": 2,
+      "maxLevel": 50
+    },
+    "2206": {
+      "kind": "SawMoveSpeedUpPercent",
+      "target": "mechanic",
+      "scope": "dice:2006",
+      "value": 1.5,
+      "rankAdd": 0.6,
+      "maxLevel": 50,
+      "template": "鋸齒移動速度 +{V}%"
+    },
+    "2207": {
+      "kind": "SPGainPercentUp",
+      "target": "statAdd",
+      "scope": "dice:2007",
+      "value": 10,
+      "rankAdd": 1,
+      "maxLevel": 50,
+      "label": "SP獲得量"
+    },
+    "2208": {
+      "kind": "SniperDmgPerDistance",
+      "target": "statAdd",
+      "scope": "dice:2008",
+      "value": 50,
+      "rankAdd": 10,
+      "maxLevel": 50,
+      "label": "最大距離倍率"
+    },
+    "2209": {
+      "kind": "BulletAtkSpeedPercentUp",
+      "target": "bulletIntervalPct",
+      "scope": "dice:2009",
+      "value": 10,
+      "rankAdd": 0.4,
+      "maxLevel": 50
+    },
+    "2301": {
+      "kind": "IronDefenderBossAttackDamageUpPerHit",
+      "target": "conditional",
+      "scope": "dice:2001",
+      "value": 0,
+      "rankAdd": 0,
+      "value2": 5,
+      "rankAdd2": 0,
+      "maxLevel": 1,
+      "reason": "打擊首領時逐次疊加，首領消失即重置"
+    },
+    "2302": {
+      "kind": "SwitchDefenderAttackSpeedUpOnSwitch",
+      "target": "mechanic",
+      "scope": "dice:2002",
+      "value": 80,
+      "rankAdd": 0,
+      "maxLevel": 1
+    },
+    "2303": {
+      "kind": "GearDefenderCrossAttack",
+      "target": "mechanic",
+      "scope": "dice:2003",
+      "value": 0,
+      "rankAdd": 0,
+      "value2": 50,
+      "rankAdd2": 0,
+      "maxLevel": 1
+    },
+    "2304": {
+      "kind": "ElementDefenderRotationSpeedIncrease",
+      "target": "mechanic",
+      "scope": "dice:2004",
+      "value": 3,
+      "rankAdd": 0,
+      "value2": -0.5,
+      "rankAdd2": 0,
+      "maxLevel": 1
+    },
+    "2305": {
+      "kind": "NeonActivateWithOne",
+      "target": "board",
+      "scope": "dice:2005",
+      "value": 2,
+      "rankAdd": 0,
+      "maxLevel": 1
+    },
+    "2306": {
+      "kind": "SawMultiHitPlus2",
+      "target": "mechanic",
+      "scope": "dice:2006",
+      "value": 2,
+      "rankAdd": 0,
+      "maxLevel": 1
+    },
+    "2307": {
+      "kind": "MineDefenderSPMiningIncreasePerMine",
+      "target": "mechanic",
+      "scope": "dice:2007",
+      "value": 2,
+      "rankAdd": 0,
+      "value2": 100,
+      "rankAdd2": 0,
+      "maxLevel": 1
+    },
+    "2308": {
+      "kind": "SniperCritPerDistance",
+      "target": "mechanic",
+      "scope": "dice:2008",
+      "value": 100,
+      "rankAdd": 0,
+      "maxLevel": 1
+    },
+    "2309": {
+      "kind": "RayDefenderFullChargeCrit",
+      "target": "mechanic",
+      "scope": "dice:2009",
+      "value": 5,
+      "rankAdd": 0,
+      "maxLevel": 1
+    },
+    "2401": {
+      "kind": "IronDefenderBulletPowerUp",
+      "target": "conditional",
+      "scope": "dice:2001",
+      "value": 50,
+      "rankAdd": 0,
+      "maxLevel": 1,
+      "reason": "只對巨大怪物與 SP 魔像"
+    },
+    "2402": {
+      "kind": "SwitchDefenderCooldownIgnore",
+      "target": "mechanic",
+      "scope": "dice:2002",
+      "value": 50,
+      "rankAdd": 0,
+      "maxLevel": 1
+    },
+    "2403": {
+      "kind": "GearLinkAtkSpeedBonus",
+      "target": "board",
+      "scope": "dice:2003",
+      "value": 5,
+      "rankAdd": 0,
+      "maxLevel": 1
+    },
+    "2404": {
+      "kind": "ElementDefenderLargeAtomAddition",
+      "target": "mechanic",
+      "scope": "dice:2004",
+      "value": 0,
+      "rankAdd": 0,
+      "value2": 2,
+      "rankAdd2": 0,
+      "maxLevel": 1
+    },
+    "2405": {
+      "kind": "NeonActiveDamagePercentUpByCount",
+      "target": "conditional",
+      "scope": "dice:2005",
+      "value": 50,
+      "rankAdd": 0,
+      "maxLevel": 1,
+      "reason": "命中時依啟用中的霓虹顆數另加"
+    },
+    "2406": {
+      "kind": "LineSkillAdditionalShot",
+      "target": "mechanic",
+      "scope": "dice:2006",
+      "value": 30,
+      "rankAdd": 0,
+      "value2": 1,
+      "rankAdd2": 0,
+      "maxLevel": 1
+    },
+    "2407": {
+      "kind": "MineDefenderCreateMineTileOnSpawnOrMerge",
+      "target": "mechanic",
+      "scope": "dice:2007",
+      "value": 50,
+      "rankAdd": 0,
+      "maxLevel": 1
+    },
+    "2408": {
+      "kind": "HeadshotCritMultiplier",
+      "target": "mechanic",
+      "scope": "dice:2008",
+      "value": 10,
+      "rankAdd": 0,
+      "maxLevel": 1
+    },
+    "2409": {
+      "kind": "RayDefenderFullChargeAreaDamage",
+      "target": "mechanic",
+      "scope": "dice:2009",
+      "value": 3,
+      "rankAdd": 0,
+      "maxLevel": 1
+    },
+    "2603": {
+      "kind": "GearSecAtkUpPlus",
+      "target": "conditional",
+      "scope": "dice:2503",
+      "value": 20,
+      "rankAdd": 10,
+      "maxLevel": 20,
+      "reason": "命中時依相連的動力齒輪另加"
+    },
+    "3101": {
+      "kind": "DiceAttackUpPerV8",
+      "target": "attackPct",
+      "scope": "all",
+      "value": 10,
+      "rankAdd": 1.2,
+      "maxLevel": 50
+    },
+    "3102": {
+      "kind": "MagicAttackUpPer",
+      "target": "attackPct",
+      "scope": "faction:magic",
+      "value": 10,
+      "rankAdd": 1,
+      "maxLevel": 20
+    },
+    "3103": {
+      "kind": "MagicAtkSpeedUpPer",
+      "target": "intervalPct",
+      "scope": "faction:magic",
+      "value": 5,
+      "rankAdd": 0.5,
+      "maxLevel": 20
+    },
+    "3104": {
+      "kind": "MagicAtkSpeedUpPerV2",
+      "target": "intervalPct",
+      "scope": "faction:magic",
+      "value": 10,
+      "rankAdd": 1,
+      "maxLevel": 15
+    },
+    "3105": {
+      "kind": "MagicCritPerUpPer",
+      "target": "critPct",
+      "scope": "faction:magic",
+      "value": 0.5,
+      "rankAdd": 0.45,
+      "maxLevel": 10
+    },
+    "3106": {
+      "kind": "InvaderSummonDefenderOnMerge",
+      "target": "none",
+      "scope": "faction:magic",
+      "value": 2,
+      "rankAdd": 0,
+      "maxLevel": 1,
+      "reason": "合成時的機率效果"
+    },
+    "3107": {
+      "kind": "InvaderSummonDefenderOnMergeV2",
+      "target": "none",
+      "scope": "faction:magic",
+      "value": 3,
+      "rankAdd": 0,
+      "maxLevel": 1,
+      "reason": "合成時的機率效果"
+    },
+    "3108": {
+      "kind": "InvaderSummonDefenderOnMergeV3",
+      "target": "none",
+      "scope": "faction:magic",
+      "value": 5,
+      "rankAdd": 0,
+      "maxLevel": 1,
+      "reason": "合成時的機率效果"
+    },
+    "3109": {
+      "kind": "DiceAttackUpPerV7",
+      "target": "attackPct",
+      "scope": "all",
+      "value": 5,
+      "rankAdd": 0.6,
+      "maxLevel": 100
+    },
+    "3110": {
+      "kind": "MagicAttackUpPerV2",
+      "target": "attackPct",
+      "scope": "faction:magic",
+      "value": 20,
+      "rankAdd": 5,
+      "maxLevel": 15
+    },
+    "3111": {
+      "kind": "DiceAttackUpPerV9",
+      "target": "attackPct",
+      "scope": "all",
+      "value": 15,
+      "rankAdd": 3,
+      "maxLevel": 20
+    },
+    "3112": {
+      "kind": "PlayerStartSpUpV3",
+      "target": "none",
+      "scope": "faction:magic",
+      "value": 40,
+      "rankAdd": 0,
+      "maxLevel": 1,
+      "reason": "開局 SP，不是骰子數值"
+    },
+    "3113": {
+      "kind": "PlayerStartHpUpV3",
+      "target": "none",
+      "scope": "faction:magic",
+      "value": 10,
+      "rankAdd": 0,
+      "maxLevel": 1,
+      "reason": "玩家生命值，不是骰子數值"
+    },
+    "3115": {
+      "kind": "TsunamiDelay01",
+      "target": "none",
+      "scope": "faction:magic",
+      "value": 20,
+      "rankAdd": 0,
+      "maxLevel": 1,
+      "reason": "支援技能冷卻"
+    },
+    "3201": {
+      "kind": "BulletAtkPercentUp",
+      "target": "bulletPct",
+      "scope": "dice:3001",
+      "value": 20,
+      "rankAdd": 4,
+      "maxLevel": 50
+    },
+    "3202": {
+      "kind": "ResonanceBaseBuff",
+      "target": "statAdd",
+      "scope": "dice:3002",
+      "value": 5,
+      "rankAdd": 0.2,
+      "maxLevel": 50,
+      "label": "攻擊速度增益量"
+    },
+    "3203": {
+      "kind": "ShurikenThrowCountPlus1",
+      "target": "mechanic",
+      "scope": "dice:3003",
+      "value": 3,
+      "rankAdd": 0,
+      "value2": 10,
+      "rankAdd2": 0.8,
+      "maxLevel": 50,
+      "template": "發動魔彈時，{V2}% 機率額外發射 {V} 個"
+    },
+    "3204": {
+      "kind": "BulletAtkPercentUp",
+      "target": "bulletPct",
+      "scope": "dice:3004",
+      "value": 5,
+      "rankAdd": 2.5,
+      "maxLevel": 50
+    },
+    "3205": {
+      "kind": "ComboDamagePerStackPercent",
+      "target": "statAdd",
+      "scope": "dice:3005",
+      "value": 250,
+      "rankAdd": 22,
+      "maxLevel": 50,
+      "label": "每次連擊傷害增加"
+    },
+    "3206": {
+      "kind": "BulletAtkPercentUp",
+      "target": "bulletPct",
+      "scope": "dice:3006",
+      "value": 5,
+      "rankAdd": 2.5,
+      "maxLevel": 50
+    },
+    "3207": {
+      "kind": "PotionStackDoubleChancePercent",
+      "target": "mechanic",
+      "scope": "dice:3007",
+      "value": 10,
+      "rankAdd": 1,
+      "maxLevel": 50,
+      "template": "投擲藥水時，{V}% 機率套用 2 疊加"
+    },
+    "3301": {
+      "kind": "ElectricChainUpgrade",
+      "target": "mechanic",
+      "scope": "dice:3001",
+      "value": 0,
+      "rankAdd": 0,
+      "maxLevel": 1
+    },
+    "3302": {
+      "kind": "ResonanceGolemSpdUp",
+      "target": "mechanic",
+      "scope": "dice:3002",
+      "value": 10,
+      "rankAdd": 0,
+      "maxLevel": 1
+    },
+    "3303": {
+      "kind": "ShurikenDefenderUniqueRune",
+      "target": "mechanic",
+      "scope": "dice:3003",
+      "value": 0,
+      "rankAdd": 0,
+      "value2": 30,
+      "rankAdd2": 0,
+      "maxLevel": 1
+    },
+    "3304": {
+      "kind": "SummonDiceMergeExtraChance",
+      "target": "mechanic",
+      "scope": "dice:3004",
+      "value": 30,
+      "rankAdd": 0,
+      "maxLevel": 1
+    },
+    "3305": {
+      "kind": "ComboDefenderMergeComboAdjust",
+      "target": "mechanic",
+      "scope": "dice:3005",
+      "value": 30,
+      "rankAdd": 0,
+      "maxLevel": 1
+    },
+    "3306": {
+      "kind": "AdjustMergeEyeUp",
+      "target": "mechanic",
+      "scope": "dice:3006",
+      "value": 30,
+      "rankAdd": 0,
+      "maxLevel": 1
+    },
+    "3307": {
+      "kind": "PotionMaxStackValuePlus",
+      "target": "mechanic",
+      "scope": "dice:3007",
+      "value": 2,
+      "rankAdd": 0,
+      "maxLevel": 1
+    },
+    "3401": {
+      "kind": "ElectricChainCriticalBullet",
+      "target": "mechanic",
+      "scope": "dice:3001",
+      "value": 20,
+      "rankAdd": 0,
+      "maxLevel": 1
+    },
+    "3402": {
+      "kind": "ResonanceTrioDmgUp",
+      "target": "board",
+      "scope": "dice:3002",
+      "value": 10,
+      "rankAdd": 0,
+      "maxLevel": 1
+    },
+    "3403": {
+      "kind": "ShurikenDefenderCloneOnMerge",
+      "target": "mechanic",
+      "scope": "dice:3003",
+      "value": 0,
+      "rankAdd": 0,
+      "maxLevel": 1
+    },
+    "3404": {
+      "kind": "SummonMergeSpChance",
+      "target": "mechanic",
+      "scope": "dice:3004",
+      "value": 50,
+      "rankAdd": 0,
+      "maxLevel": 1
+    },
+    "3405": {
+      "kind": "ComboIncreaseRange",
+      "target": "mechanic",
+      "scope": "dice:3005",
+      "value": 3,
+      "rankAdd": 0,
+      "maxLevel": 1
+    },
+    "3406": {
+      "kind": "AdjustCooldownIgnore",
+      "target": "mechanic",
+      "scope": "dice:3006",
+      "value": 0,
+      "rankAdd": 0,
+      "maxLevel": 1
+    },
+    "3407": {
+      "kind": "PotionBounceToOtherDice",
+      "target": "mechanic",
+      "scope": "dice:3007",
+      "value": 1,
+      "rankAdd": 0,
+      "maxLevel": 1
+    },
+    "4101": {
+      "kind": "DiceAttackUpPerV11",
+      "target": "attackPct",
+      "scope": "all",
+      "value": 10,
+      "rankAdd": 1.2,
+      "maxLevel": 50
+    },
+    "4102": {
+      "kind": "GuardianAttackUpPer",
+      "target": "attackPct",
+      "scope": "faction:order",
+      "value": 10,
+      "rankAdd": 1,
+      "maxLevel": 20
+    },
+    "4103": {
+      "kind": "GuardianAtkSpeedUpPer",
+      "target": "intervalPct",
+      "scope": "faction:order",
+      "value": 5,
+      "rankAdd": 0.5,
+      "maxLevel": 20
+    },
+    "4104": {
+      "kind": "GuardianAtkSpeedUpPerV2",
+      "target": "intervalPct",
+      "scope": "faction:order",
+      "value": 10,
+      "rankAdd": 1,
+      "maxLevel": 15
+    },
+    "4105": {
+      "kind": "GuardianCritPerUpPer",
+      "target": "critPct",
+      "scope": "faction:order",
+      "value": 0.5,
+      "rankAdd": 0.45,
+      "maxLevel": 10
+    },
+    "4106": {
+      "kind": "GuardianDefenderPowerUpChain",
+      "target": "none",
+      "scope": "faction:order",
+      "value": 1,
+      "rankAdd": 0,
+      "maxLevel": 1,
+      "reason": "強化時的機率效果"
+    },
+    "4107": {
+      "kind": "GuardianDefenderPowerUpChainV2",
+      "target": "none",
+      "scope": "faction:order",
+      "value": 2,
+      "rankAdd": 0,
+      "maxLevel": 1,
+      "reason": "強化時的機率效果"
+    },
+    "4108": {
+      "kind": "GuardianDefenderPowerUpChainV3",
+      "target": "none",
+      "scope": "faction:order",
+      "value": 5,
+      "rankAdd": 0,
+      "maxLevel": 1,
+      "reason": "強化時的機率效果"
+    },
+    "4109": {
+      "kind": "DiceAttackUpPerV10",
+      "target": "attackPct",
+      "scope": "all",
+      "value": 5,
+      "rankAdd": 0.6,
+      "maxLevel": 100
+    },
+    "4110": {
+      "kind": "GuardianAttackUpPerV2",
+      "target": "attackPct",
+      "scope": "faction:order",
+      "value": 20,
+      "rankAdd": 5,
+      "maxLevel": 15
+    },
+    "4111": {
+      "kind": "DiceAttackUpPerV12",
+      "target": "attackPct",
+      "scope": "all",
+      "value": 15,
+      "rankAdd": 3,
+      "maxLevel": 20
+    },
+    "4112": {
+      "kind": "PlayerStartSpUpV4",
+      "target": "none",
+      "scope": "faction:order",
+      "value": 40,
+      "rankAdd": 0,
+      "maxLevel": 1,
+      "reason": "開局 SP，不是骰子數值"
+    },
+    "4113": {
+      "kind": "PlayerStartHpUpV4",
+      "target": "none",
+      "scope": "faction:order",
+      "value": 10,
+      "rankAdd": 0,
+      "maxLevel": 1,
+      "reason": "玩家生命值，不是骰子數值"
+    },
+    "4115": {
+      "kind": "CannonDelay01",
+      "target": "none",
+      "scope": "faction:order",
+      "value": 20,
+      "rankAdd": 0,
+      "maxLevel": 1,
+      "reason": "支援技能冷卻"
+    },
+    "4201": {
+      "kind": "BubbleEmitPerCooldown",
+      "target": "mechanic",
+      "scope": "dice:4001",
+      "value": 0,
+      "rankAdd": 0,
+      "maxLevel": 1
+    },
+    "4202": {
+      "kind": "LockDurationIncrease",
+      "target": "statAdd",
+      "scope": "dice:4002",
+      "value": 1,
+      "rankAdd": 0.08,
+      "maxLevel": 50,
+      "label": "持續時間"
+    },
+    "4203": {
+      "kind": "PunchExtraHitsInRange",
+      "target": "mechanic",
+      "scope": "dice:4003",
+      "value": 2,
+      "rankAdd": 1,
+      "maxLevel": 50,
+      "template": "攻擊時額外打擊範圍內 {V} 個怪物（70% 攻擊力）"
+    },
+    "4204": {
+      "kind": "BrokenGrowthSuccessRateUpPercent",
+      "target": "statAdd",
+      "scope": "dice:4004",
+      "value": 5,
+      "rankAdd": 0.4,
+      "maxLevel": 50,
+      "label": "成長機率"
+    },
+    "4205": {
+      "kind": "ExecutionerSkillDmgUp",
+      "target": "statMul",
+      "scope": "dice:4005",
+      "value": 50,
+      "rankAdd": 10,
+      "maxLevel": 50,
+      "label": "執行劍傷害"
+    },
+    "4206": {
+      "kind": "LegendaryBlessingChanceBonus",
+      "target": "mechanic",
+      "scope": "dice:4006",
+      "value": 1,
+      "rankAdd": 0.1,
+      "maxLevel": 50,
+      "template": "傳說祝福登場機率 +{V}%"
+    },
+    "4207": {
+      "kind": "AlignmentBaseBuff",
+      "target": "statAdd",
+      "scope": "dice:4007",
+      "value": 5,
+      "rankAdd": 0.5,
+      "maxLevel": 50,
+      "label": "傷害增益量"
+    },
+    "4208": {
+      "kind": "BingoRowEnhance",
+      "target": "statAdd",
+      "scope": "dice:4008",
+      "value": 3,
+      "rankAdd": 0.5,
+      "maxLevel": 50,
+      "label": "橫排攻擊速度增加量"
+    },
+    "4301": {
+      "kind": "BubbleCooldownMinus1Sec",
+      "target": "mechanic",
+      "scope": "dice:4001",
+      "value": 10,
+      "rankAdd": 1,
+      "maxLevel": 50,
+      "template": "泡泡產生冷卻時間 −{V} 秒（最低 1 秒）"
+    },
+    "4302": {
+      "kind": "DoubleSpOnLockedKill",
+      "target": "mechanic",
+      "scope": "dice:4002",
+      "value": 0,
+      "rankAdd": 0,
+      "maxLevel": 1
+    },
+    "4303": {
+      "kind": "PunchMaxChargeTimePlusSec",
+      "target": "statAdd",
+      "scope": "dice:4003",
+      "value": 5,
+      "rankAdd": 3,
+      "maxLevel": 3,
+      "label": "拳擊最大補充量"
+    },
+    "4304": {
+      "kind": "BrokenGrowthSafeBelow1Star",
+      "target": "mechanic",
+      "scope": "dice:4004",
+      "value": 0,
+      "rankAdd": 0,
+      "maxLevel": 1
+    },
+    "4305": {
+      "kind": "MaxExecutionerSlot",
+      "target": "mechanic",
+      "scope": "dice:4005",
+      "value": 1,
+      "rankAdd": 0,
+      "maxLevel": 1
+    },
+    "4306": {
+      "kind": "HiddenBlessingChance",
+      "target": "mechanic",
+      "scope": "dice:4006",
+      "value": 1,
+      "rankAdd": 0,
+      "maxLevel": 1
+    },
+    "4307": {
+      "kind": "AlignmentBuffPerStack",
+      "target": "board",
+      "scope": "dice:4007",
+      "value": 10,
+      "rankAdd": 0,
+      "maxLevel": 1
+    },
+    "4308": {
+      "kind": "BingoColEnhance",
+      "target": "statAdd",
+      "scope": "dice:4008",
+      "value": 7,
+      "rankAdd": 1,
+      "maxLevel": 50,
+      "label": "直排傷害增加量"
+    },
+    "4401": {
+      "kind": "BubbleDiceCritChanceUpPercent",
+      "target": "mechanic",
+      "scope": "dice:4001",
+      "value": 30,
+      "rankAdd": 0,
+      "maxLevel": 1
+    },
+    "4402": {
+      "kind": "PermanentLockChance",
+      "target": "mechanic",
+      "scope": "dice:4002",
+      "value": 20,
+      "rankAdd": 0,
+      "maxLevel": 1
+    },
+    "4403": {
+      "kind": "PunchChanceExtraHit",
+      "target": "mechanic",
+      "scope": "dice:4003",
+      "value": 50,
+      "rankAdd": 0,
+      "maxLevel": 1
+    },
+    "4404": {
+      "kind": "BrokenGrowthDefenderTransformAt7",
+      "target": "mechanic",
+      "scope": "dice:4004",
+      "value": 0,
+      "rankAdd": 0,
+      "maxLevel": 1
+    },
+    "4405": {
+      "kind": "ExecutionerMissingHpDmgUp",
+      "target": "mechanic",
+      "scope": "dice:4005",
+      "value": 50,
+      "rankAdd": 0,
+      "value2": 2,
+      "rankAdd2": 0,
+      "maxLevel": 1
+    },
+    "4406": {
+      "kind": "BonusBlessingPointChance",
+      "target": "mechanic",
+      "scope": "dice:4006",
+      "value": 50,
+      "rankAdd": 0,
+      "maxLevel": 1
+    },
+    "4407": {
+      "kind": "AlignmentEliteDmgUp",
+      "target": "conditional",
+      "scope": "dice:4007",
+      "value": 200,
+      "rankAdd": 0,
+      "maxLevel": 1,
+      "reason": "只對菁英怪物"
+    },
+    "4408": {
+      "kind": "BingoEffectEnhance",
+      "target": "statMul",
+      "scope": "dice:4008",
+      "value": 10,
+      "rankAdd": 2,
+      "maxLevel": 50,
+      "label": "極致和諧傷害"
+    },
+    "5101": {
+      "kind": "DiceAttackUpPerV14",
+      "target": "attackPct",
+      "scope": "all",
+      "value": 10,
+      "rankAdd": 1.2,
+      "maxLevel": 50
+    },
+    "5102": {
+      "kind": "InvaderAttackUpPer",
+      "target": "attackPct",
+      "scope": "faction:chaos",
+      "value": 10,
+      "rankAdd": 1,
+      "maxLevel": 20
+    },
+    "5103": {
+      "kind": "InvaderAtkSpeedUpPer",
+      "target": "intervalPct",
+      "scope": "faction:chaos",
+      "value": 5,
+      "rankAdd": 0.5,
+      "maxLevel": 20
+    },
+    "5104": {
+      "kind": "InvaderAtkSpeedUpPerV2",
+      "target": "intervalPct",
+      "scope": "faction:chaos",
+      "value": 10,
+      "rankAdd": 1,
+      "maxLevel": 15
+    },
+    "5105": {
+      "kind": "InvaderCritPerUpPer",
+      "target": "critPct",
+      "scope": "faction:chaos",
+      "value": 0.5,
+      "rankAdd": 0.45,
+      "maxLevel": 10
+    },
+    "5106": {
+      "kind": "MagicSpawnLevel2DefenderOnSpawn",
+      "target": "none",
+      "scope": "faction:chaos",
+      "value": 2,
+      "rankAdd": 5,
+      "maxLevel": 1,
+      "reason": "召喚時的機率效果"
+    },
+    "5107": {
+      "kind": "MagicSpawnLevel2DefenderOnSpawnV2",
+      "target": "none",
+      "scope": "faction:chaos",
+      "value": 3,
+      "rankAdd": 0,
+      "maxLevel": 1,
+      "reason": "召喚時的機率效果"
+    },
+    "5108": {
+      "kind": "MagicSpawnLevel2DefenderOnSpawnV3",
+      "target": "none",
+      "scope": "faction:chaos",
+      "value": 5,
+      "rankAdd": 0,
+      "maxLevel": 1,
+      "reason": "召喚時的機率效果"
+    },
+    "5109": {
+      "kind": "DiceAttackUpPerV13",
+      "target": "attackPct",
+      "scope": "all",
+      "value": 5,
+      "rankAdd": 0.6,
+      "maxLevel": 100
+    },
+    "5110": {
+      "kind": "InvaderAttackUpPerV2",
+      "target": "attackPct",
+      "scope": "faction:chaos",
+      "value": 20,
+      "rankAdd": 5,
+      "maxLevel": 15
+    },
+    "5111": {
+      "kind": "DiceAttackUpPerV15",
+      "target": "attackPct",
+      "scope": "all",
+      "value": 15,
+      "rankAdd": 3,
+      "maxLevel": 20
+    },
+    "5112": {
+      "kind": "PlayerStartSpUpV5",
+      "target": "none",
+      "scope": "faction:chaos",
+      "value": 40,
+      "rankAdd": 0,
+      "maxLevel": 1,
+      "reason": "開局 SP，不是骰子數值"
+    },
+    "5113": {
+      "kind": "PlayerStartHpUpV5",
+      "target": "none",
+      "scope": "faction:chaos",
+      "value": 10,
+      "rankAdd": 0,
+      "maxLevel": 1,
+      "reason": "玩家生命值，不是骰子數值"
+    },
+    "5115": {
+      "kind": "LavaDelay01",
+      "target": "none",
+      "scope": "faction:chaos",
+      "value": 10,
+      "rankAdd": 0,
+      "maxLevel": 1,
+      "reason": "支援技能冷卻"
+    },
+    "5201": {
+      "kind": "BulletAtkPercentUp",
+      "target": "bulletPct",
+      "scope": "dice:5001",
+      "value": 10,
+      "rankAdd": 5,
+      "maxLevel": 50
+    },
+    "5202": {
+      "kind": "BulletAtkSpeedPercentUp",
+      "target": "bulletIntervalPct",
+      "scope": "dice:5002",
+      "value": 10,
+      "rankAdd": 0.4,
+      "maxLevel": 50
+    },
+    "5203": {
+      "kind": "TyrantSkillDmgBonus",
+      "target": "statMul",
+      "scope": "dice:5003",
+      "value": 50,
+      "rankAdd": 50,
+      "maxLevel": 50,
+      "label": "暴君化傷害"
+    },
+    "5204": {
+      "kind": "DoomEliteDmgBonus",
+      "target": "conditional",
+      "scope": "dice:5004",
+      "value": 3,
+      "rankAdd": 1,
+      "maxLevel": 50,
+      "reason": "只對菁英怪物"
+    },
+    "5205": {
+      "kind": "MutationSpawnRateUp",
+      "target": "statAdd",
+      "scope": "dice:5005",
+      "value": 10,
+      "rankAdd": 0.5,
+      "maxLevel": 50,
+      "label": "變種登場機率"
+    },
+    "5206": {
+      "kind": "BoxCoopSpGain",
+      "target": "statAdd",
+      "scope": "dice:5006",
+      "value": 10,
+      "rankAdd": 5,
+      "maxLevel": 50,
+      "label": "SP獲得量"
+    },
+    "5207": {
+      "kind": "PredatorDmgPerStack",
+      "target": "statAdd",
+      "scope": "dice:5007",
+      "value": 5,
+      "rankAdd": 5,
+      "maxLevel": 50,
+      "label": "吞噬增加量"
+    },
+    "5208": {
+      "kind": "BulletAtkSpeedPercentUp",
+      "target": "bulletIntervalPct",
+      "scope": "dice:5008",
+      "value": 5,
+      "rankAdd": 0.4,
+      "maxLevel": 50
+    },
+    "5209": {
+      "kind": "DecayAmplificationPercentUp",
+      "target": "statAdd",
+      "scope": "dice:5009",
+      "value": 10,
+      "rankAdd": 0.4,
+      "maxLevel": 50,
+      "label": "腐敗增幅量"
+    },
+    "5301": {
+      "kind": "Solitude8WayDmg",
+      "target": "conditional",
+      "scope": "dice:5001",
+      "value": 0,
+      "rankAdd": 0,
+      "maxLevel": 1,
+      "reason": "周遭 8 格皆空時才生效"
+    },
+    "5302": {
+      "kind": "StunRangeBonus",
+      "target": "statMul",
+      "scope": "dice:5002",
+      "value": 30,
+      "rankAdd": 0,
+      "maxLevel": 1,
+      "label": "僵硬範圍"
+    },
+    "5303": {
+      "kind": "TyrantCooldownReduction",
+      "target": "statAdd",
+      "scope": "dice:5003",
+      "value": -3,
+      "rankAdd": 0,
+      "maxLevel": 1,
+      "label": "攻擊週期",
+      "min": 0.1
+    },
+    "5304": {
+      "kind": "DoomKillSpBonus",
+      "target": "mechanic",
+      "scope": "dice:5004",
+      "value": 3,
+      "rankAdd": 0,
+      "maxLevel": 1
+    },
+    "5305": {
+      "kind": "IncludeFailureDot",
+      "target": "mechanic",
+      "scope": "dice:5005",
+      "value": 1,
+      "rankAdd": 0,
+      "maxLevel": 1
+    },
+    "5306": {
+      "kind": "SpMonsterHpDecrease",
+      "target": "mechanic",
+      "scope": "dice:5006",
+      "value": 50,
+      "rankAdd": 0,
+      "maxLevel": 1
+    },
+    "5307": {
+      "kind": "BonusPredatorChance",
+      "target": "mechanic",
+      "scope": "dice:5007",
+      "value": 30,
+      "rankAdd": 0,
+      "value2": 2,
+      "rankAdd2": 0,
+      "maxLevel": 1
+    },
+    "5308": {
+      "kind": "DoubleSpOnInstaKill",
+      "target": "mechanic",
+      "scope": "dice:5008",
+      "value": 1.2,
+      "rankAdd": 0,
+      "maxLevel": 1
+    },
+    "5309": {
+      "kind": "DecayPoolCreation",
+      "target": "mechanic",
+      "scope": "dice:5009",
+      "value": 0,
+      "rankAdd": 0,
+      "maxLevel": 1
+    },
+    "5401": {
+      "kind": "SolitudeEmptyDmgBonus",
+      "target": "conditional",
+      "scope": "dice:5001",
+      "value": 30,
+      "rankAdd": 0,
+      "maxLevel": 1,
+      "reason": "命中時依骰盤空格數另加"
+    },
+    "5402": {
+      "kind": "AtkCountDecrease",
+      "target": "statAdd",
+      "scope": "dice:5002",
+      "value": -10,
+      "rankAdd": 0,
+      "maxLevel": 1,
+      "label": "需要攻擊次數",
+      "int": true,
+      "min": 1
+    },
+    "5403": {
+      "kind": "TyrantConsumeDmgPerStack",
+      "target": "mechanic",
+      "scope": "dice:5003",
+      "value": 30,
+      "rankAdd": 0,
+      "value2": 100,
+      "rankAdd2": 0,
+      "maxLevel": 1
+    },
+    "5404": {
+      "kind": "DoomDotSavePercent",
+      "target": "mechanic",
+      "scope": "dice:5004",
+      "value": 30,
+      "rankAdd": 0,
+      "maxLevel": 1
+    },
+    "5405": {
+      "kind": "ConvertFailureOnSpawn",
+      "target": "mechanic",
+      "scope": "dice:5005",
+      "value": 50,
+      "rankAdd": 0,
+      "maxLevel": 1
+    },
+    "5406": {
+      "kind": "BoxMergeSummonMinionDoubleChance",
+      "target": "mechanic",
+      "scope": "dice:5006",
+      "value": 100,
+      "rankAdd": 0,
+      "maxLevel": 1
+    },
+    "5407": {
+      "kind": "InstaPredatorHpThreshold",
+      "target": "mechanic",
+      "scope": "dice:5007",
+      "value": 5,
+      "rankAdd": 0,
+      "maxLevel": 1
+    },
+    "5408": {
+      "kind": "SpeedBigInstantKillChance",
+      "target": "mechanic",
+      "scope": "dice:5008",
+      "value": 10,
+      "rankAdd": 0,
+      "value2": 3,
+      "rankAdd2": 0,
+      "maxLevel": 1
+    },
+    "5409": {
+      "kind": "DecayBossDamageAmplification",
+      "target": "conditional",
+      "scope": "dice:5009",
+      "value": 200,
+      "rankAdd": 0,
+      "maxLevel": 1,
+      "reason": "只對首領"
+    }
+  }
+}

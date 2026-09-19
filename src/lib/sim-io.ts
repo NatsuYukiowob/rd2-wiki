@@ -2,7 +2,7 @@
 // 這裡只負責「狀態 ↔ 字串」，才測得動（jsdom 的 storage 替身跟真的瀏覽器行為不完全一樣）。
 import { mythicAmount, mythicEntries } from './cost.js';
 import { maxSelectableLevel, minSelectableLevel, ownedIds, simTotals } from './sim.js';
-import type { SimContext, SimState } from './sim.js';
+import type { SaveContext, SimContext, SimState } from './sim.js';
 import type { Cost } from './types.js';
 
 /**
@@ -28,8 +28,10 @@ export function serializeSim(state: SimState): string {
  * （丟掉那筆）、等級上限被調低（夾回上限）、前置邊被拿掉（連帶清掉前置不齊的節點）、
  * **新增了「祖先要練到某等級」的條件**（把那顆祖先的等級補到門檻）。
  * 不收的話玩家會看到一份算錯的資源總額，而畫面上不會有任何地方說話。
+ *
+ * `ctx` 只要 `SaveContext`（`SimContext` 的子集）：`/board` 用建置期壓好的精簡版讀同一份存檔。
  */
-export function deserializeSim(text: string | null, ctx: SimContext): SimState | null {
+export function deserializeSim(text: string | null, ctx: SaveContext): SimState | null {
   if (text === null) return null;
   let raw: unknown;
   try { raw = JSON.parse(text); } catch { return null; }

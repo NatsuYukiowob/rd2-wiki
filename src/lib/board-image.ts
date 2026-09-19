@@ -51,6 +51,16 @@ export function deckRect(slot: number): Rect {
   };
 }
 
+/** 角標（排序方向／齒輪二階種類）在分享圖上的框：格子左上角內縮 10px 的 40×40，跟畫面上的 .cell-badge 同一個角。 */
+const BADGE_INSET = 10;
+const BADGE = 40;
+
+export function badgeRect(index: number): Rect {
+  const cell = cellRect(index);
+  if (cell.w === 0) return { ...EMPTY };
+  return { x: cell.x + BADGE_INSET, y: cell.y + BADGE_INSET, w: BADGE, h: BADGE };
+}
+
 /**
  * 圖示在一個框裡等比縮放置中。
  *

@@ -4,7 +4,7 @@
 // 是「拖曳之後狀態對不對」與「不用滑鼠也能用」，而不是 HTML 裡有沒有字。
 import { test, expect } from '@playwright/test';
 import { readFileSync } from 'node:fs';
-import { cellRect } from '../../src/lib/board-image';
+import { badgeRect, cellRect } from '../../src/lib/board-image';
 import { readTree } from '../helpers/read-tree';
 
 /**
@@ -1028,4 +1028,1072 @@ test('B14. 分享圖等比：長寬比最極端的骰子（0.847）畫出來不�
   expect(ratio, `寬高比 ${ratio.toFixed(3)}——太接近 1 代表圖被拉伸貼滿了內框，不是等比縮放`).toBeLessThan(0.93);
   // 也不能矯枉過正縮到跟來源比例（0.847）差太遠，那代表掃描量到了別的東西。
   expect(ratio).toBeGreaterThan(0.6);
+});
+
+// ── 局內強化列（2026-09-19）──────────────────────────────────────────────
+// 強化 Lv 以「骰子種類」為單位（spLevels 以骰子 id 為鍵），不是以槽位：挑選網格沒擋重複，
+// 換掉槽裡的骰子也不會清掉骰盤上的舊骰子——兩件事都要有斷言，否則改成以槽位為鍵會全綠。
+test('B15. 強化列：空槽 disabled、夾在 1–15、同種骰子共用、換槽保留、清空骰盤不重置', async ({ page }) => {
+  await page.goto('/board');
+  await expect(page.locator('.sp-inc[data-slot="0"]')).toBeDisabled();
+  await expect(page.locator('.sp-value[data-slot="0"]')).toHaveText('Lv.1');
+
+  const fire = dice[0]!;
+  const other = dice[1]!;
+  await pickInto(page, 0, fire.id, 1);
+  await pickInto(page, 1, fire.id, 1); // 同一種骰子放兩槽（挑選網格沒擋，現況）
+  await expect(page.locator('.sp-inc[data-slot="0"]')).toBeEnabled();
+
+  for (let i = 0; i < 20; i++) await page.locator('.sp-inc[data-slot="0"]').click();
+  await expect(page.locator('.sp-value[data-slot="0"]')).toHaveText('Lv.15');
+  await expect(page.locator('.sp-value[data-slot="1"]')).toHaveText('Lv.15');
+  for (let i = 0; i < 20; i++) await page.locator('.sp-dec[data-slot="1"]').click();
+  await expect(page.locator('.sp-value[data-slot="0"]')).toHaveText('Lv.1');
+
+  // 調到 Lv.5 → 第 1 槽換成別顆（它自己是 Lv.1）→ 第 2 槽的火骰子仍是 Lv.5 → 換回來 Lv.5 還在。
+  for (let i = 1; i < 5; i++) await page.locator('.sp-inc[data-slot="0"]').click();
+  await pickInto(page, 0, other.id, 1);
+  await expect(page.locator('.sp-value[data-slot="0"]')).toHaveText('Lv.1');
+  await expect(page.locator('.sp-value[data-slot="1"]')).toHaveText('Lv.5');
+  await pickInto(page, 0, fire.id, 1);
+  await expect(page.locator('.sp-value[data-slot="0"]')).toHaveText('Lv.5');
+
+  await page.locator('#board-clear').click();
+  await expect(page.locator('.sp-value[data-slot="0"]')).toHaveText('Lv.5');
+});
+
+test('B15b. 強化 Lv.1 → Lv.15 組合列尺寸不變（min-width 容得下 Lv.15）', async ({ page }) => {
+  await page.goto('/board');
+  await pickInto(page, 0, dice[0]!.id, 1);
+  const d0 = (await page.locator('#deck-row').boundingBox())!;
+  for (let i = 0; i < 14; i++) await page.locator('.sp-inc[data-slot="0"]').click();
+  await expect(page.locator('.sp-value[data-slot="0"]')).toHaveText('Lv.15');
+  const d1 = (await page.locator('#deck-row').boundingBox())!;
+  expect(Math.round(d1.width)).toBe(Math.round(d0.width));
+  expect(Math.round(d1.height)).toBe(Math.round(d0.height));
+});
+
+// 手機版 320px 每槽約 51px，扣掉 ◀ ▶ 後值只剩約 19px，放不下「Lv.15」→ 只顯示數字＋圖例
+// （Yuki 2026-09-19）。只在 mobile project 跑，理由同 B13。
+test('B15c. 手機版強化列只顯示數字＋圖例，320px 下不溢出槽寬、按得到', async ({ page, isMobile }) => {
+  test.skip(!isMobile, '僅手機版（CSS 用 hover:none/pointer:coarse 判斷）');
+  await page.goto('/board');
+  await page.setViewportSize({ width: 320, height: 900 });
+  await pickInto(page, 0, dice[0]!.id, 1);
+  for (let i = 0; i < 14; i++) await page.locator('.sp-inc[data-slot="0"]').click();
+  await expect(page.locator('.sp-value[data-slot="0"] .sp-num')).toHaveText('15');
+  await expect(page.locator('.sp-value[data-slot="0"] .sp-prefix')).toBeHidden();
+  await expect(page.locator('#deck-legend')).toBeVisible();
+  await expect(page.locator('#deck-legend')).toHaveText('上排：骰點　下排：強化 Lv');
+
+  const rows = await page.locator('.sp-row').evaluateAll(els => els.map(e => {
+    const r = e.getBoundingClientRect();
+    const s = e.parentElement!.getBoundingClientRect();
+    return { left: r.left - s.left, right: s.right - r.right, overflow: e.scrollWidth - e.clientWidth };
+  }));
+  for (const [i, r] of rows.entries()) {
+    expect(r.left, `第 ${i + 1} 槽強化列超出左緣`).toBeGreaterThanOrEqual(-0.5);
+    expect(r.right, `第 ${i + 1} 槽強化列超出右緣`).toBeGreaterThanOrEqual(-0.5);
+    expect(r.overflow, `第 ${i + 1} 槽強化列內容溢出`).toBeLessThanOrEqual(0);
+  }
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+  expect(overflow, '320px 出現橫向捲動').toBeLessThanOrEqual(0);
+});
+
+test('B15d. 桌機版強化值帶「Lv.」前綴、不顯示圖例', async ({ page, isMobile }) => {
+  test.skip(isMobile, '僅桌機版');
+  await page.goto('/board');
+  await expect(page.locator('.sp-value[data-slot="0"] .sp-prefix')).toBeVisible();
+  await expect(page.locator('#deck-legend')).toBeHidden();
+});
+
+// ── 數值卡片（2026-09-19）────────────────────────────────────────────────
+// 開卡片刻意不綁 click，改在 endDrag() 判斷「從格子起手、沒超過位移門檻」（見 src/scripts/board.ts
+// 的 cardIndex 說明）。這一頁的真 bug 全出在滑鼠／觸控／鍵盤三條路徑的交互，所以每條路徑各自有斷言。
+
+/** 卡片上某一項的值：label 完全相符的 dt 的下一個 dd。 */
+function cardValue(page: import('@playwright/test').Page, label: string) {
+  return page.locator('#dice-card dt')
+    .filter({ hasText: new RegExp(`^${label}$`) })
+    .locator('xpath=following-sibling::dd[1]');
+}
+
+test('B16. 點骰盤上的骰子開數值卡片：依該格骰點與同種骰子的強化 Lv 計算，只開在被點的那一格', async ({ page }) => {
+  await page.goto('/board');
+  const fire = dice[0]!;
+  expect(fire.name, '下面的數字是火骰子（D000）的').toBe('火骰子');
+  await pickInto(page, 0, fire.id, 3);
+  for (let i = 1; i < 5; i++) await page.locator('.sp-inc[data-slot="0"]').click();
+  await drag(page, '.deck-dice[data-slot="0"]', '.board-cell[data-index="6"]');
+  await expect(page.locator('#dice-card'), '從組合列拖進骰盤不開卡片').toBeHidden();
+
+  await page.locator('.board-cell[data-index="6"]').click();
+  const card = page.locator('#dice-card');
+  await expect(card).toBeVisible();
+  await expect(card.locator('.dice-card-title')).toHaveText('火骰子 · 3 骰點 · 強化 Lv.5');
+  await expect(cardValue(page, '攻擊力')).toHaveText('950');
+  await expect(cardValue(page, '攻擊速度')).toHaveText('0.333 秒/次');
+  await expect(cardValue(page, '範圍傷害')).toHaveText('490%');
+  await expect(cardValue(page, '目標')).toHaveText('前方');
+  await expect(card.locator('.dice-card-note')).toHaveText('未含骰子樹（符文／被動）加成');
+  await expect(page.locator('.board-cell[aria-describedby="dice-card"]')).toHaveCount(1);
+  await expect(page.locator('.board-cell[data-index="6"]')).toHaveAttribute('aria-describedby', 'dice-card');
+});
+
+test('B17. 位移門檻：抖 1px 仍開卡片；拖超過 5px 收掉卡片且骰子真的移動；點空格關閉', async ({ page }) => {
+  await page.goto('/board');
+  await pickInto(page, 0, dice[0]!.id, 2);
+  await drag(page, '.deck-dice[data-slot="0"]', '.board-cell[data-index="0"]');
+  await drag(page, '.deck-dice[data-slot="0"]', '.board-cell[data-index="1"]');
+
+  const b0 = (await page.locator('.board-cell[data-index="0"]').boundingBox())!;
+  const x = b0.x + b0.width / 2;
+  const y = b0.y + b0.height / 2;
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  await page.mouse.move(x + 1, y + 1);
+  await page.mouse.up();
+  await expect(page.locator('#dice-card')).toBeVisible();
+
+  await drag(page, '.board-cell[data-index="1"]', '.board-cell[data-index="7"]');
+  await expect(page.locator('#dice-card')).toBeHidden();
+  await expect(page.locator('.board-cell[data-index="7"] img')).toBeVisible();
+  await expect(page.locator('.board-cell[data-index="1"] img')).toHaveCount(0);
+
+  await page.locator('.board-cell[data-index="0"]').click();
+  await expect(page.locator('#dice-card')).toBeVisible();
+  await page.locator('.board-cell[data-index="12"]').click(); // 空格
+  await expect(page.locator('#dice-card')).toBeHidden();
+  await expect(page.locator('.board-cell[aria-describedby]')).toHaveCount(0);
+});
+
+test('B18. 卡片開著時改強化 Lv：同種骰子即時重算且卡片不關；改別種骰子不影響', async ({ page }) => {
+  await page.goto('/board');
+  const fire = dice[0]!;
+  await pickInto(page, 0, fire.id, 1);
+  await pickInto(page, 1, dice[1]!.id, 1);
+  await drag(page, '.deck-dice[data-slot="0"]', '.board-cell[data-index="0"]');
+  await page.locator('.board-cell[data-index="0"]').click();
+  await expect(cardValue(page, '攻擊力')).toHaveText('150');
+
+  await page.locator('.sp-inc[data-slot="0"]').click();
+  await expect(page.locator('#dice-card')).toBeVisible();
+  await expect(page.locator('#dice-card .dice-card-title')).toHaveText(`${fire.name} · 1 骰點 · 強化 Lv.2`);
+  await expect(cardValue(page, '攻擊力')).toHaveText('300');
+
+  await page.locator('.sp-inc[data-slot="1"]').click();
+  await expect(page.locator('#dice-card')).toBeVisible();
+  await expect(cardValue(page, '攻擊力')).toHaveText('300');
+});
+
+test('B19. 鍵盤：焦點停在有骰子的格子顯示卡片、方向鍵換格跟著換、Escape 關閉；held 的 Escape 仍是放下', async ({ page }) => {
+  await page.goto('/board');
+  const fire = dice[0]!;
+  const other = dice[1]!;
+  await pickInto(page, 0, fire.id, 2);
+  await pickInto(page, 1, other.id, 4);
+  await drag(page, '.deck-dice[data-slot="0"]', '.board-cell[data-index="0"]');
+  await drag(page, '.deck-dice[data-slot="1"]', '.board-cell[data-index="1"]');
+
+  // 先 focus 空格（index 2）再按方向鍵：方向鍵之後 focusCell() 給的焦點是 :focus-visible。
+  await page.locator('.board-cell[data-index="2"]').focus();
+  await page.keyboard.press('ArrowLeft');
+  const card = page.locator('#dice-card');
+  await expect(card).toBeVisible();
+  await expect(card.locator('.dice-card-title')).toHaveText(`${other.name} · 4 骰點 · 強化 Lv.1`);
+  await page.keyboard.press('ArrowLeft');
+  await expect(card.locator('.dice-card-title')).toHaveText(`${fire.name} · 2 骰點 · 強化 Lv.1`);
+  await page.keyboard.press('ArrowRight');
+  await page.keyboard.press('ArrowRight'); // index 2，空格
+  await expect(card).toBeHidden();
+  await page.keyboard.press('ArrowLeft');
+  await expect(card).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(card).toBeHidden();
+
+  // held 存在時 Escape 是「放下」：不可以被卡片搶走。
+  await page.keyboard.press('ArrowLeft'); // index 0
+  await expect(card).toBeVisible();
+  await page.keyboard.press('Enter'); // 拿起
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#board-live')).toHaveText('已放下');
+  await expect(card, 'held 的 Escape 不關卡片').toBeVisible();
+});
+
+test('B20. 觸控：點一下開卡片；觸控拖曳之後，下一次點一下仍然一次就開', async ({ page, isMobile }) => {
+  // justDragged 那一族的回歸測項：觸控拖曳結束瀏覽器不送 click。開卡片不綁 click，所以不受影響——
+  // 這條守的就是「不受影響」。只在 mobile project 跑（desktop context 沒有 hasTouch）。
+  test.skip(!isMobile, '僅手機版（需要真觸控事件）');
+  await page.goto('/board');
+  await pickInto(page, 0, dice[0]!.id, 2);
+  await drag(page, '.deck-dice[data-slot="0"]', '.board-cell[data-index="6"]');
+
+  const client = await page.context().newCDPSession(page);
+  const center = async (sel: string) => {
+    const b = (await page.locator(sel).boundingBox())!;
+    return { x: b.x + b.width / 2, y: b.y + b.height / 2 };
+  };
+  const tap = async (p: { x: number; y: number }) => {
+    await client.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: p.x, y: p.y }] });
+    await client.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  };
+
+  const c6 = await center('.board-cell[data-index="6"]');
+  await tap(c6);
+  await expect(page.locator('#dice-card')).toBeVisible();
+
+  const c8 = await center('.board-cell[data-index="8"]');
+  await client.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: c6.x, y: c6.y }] });
+  const STEPS = 8;
+  for (let i = 1; i <= STEPS; i++) {
+    await client.send('Input.dispatchTouchEvent', {
+      type: 'touchMove',
+      touchPoints: [{ x: c6.x + (c8.x - c6.x) * (i / STEPS), y: c6.y + (c8.y - c6.y) * (i / STEPS) }],
+    });
+  }
+  await client.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  await expect(page.locator('.board-cell[data-index="8"] img')).toBeVisible();
+  await expect(page.locator('#dice-card')).toBeHidden();
+
+  await tap(c8);
+  await expect(page.locator('#dice-card')).toBeVisible();
+  await expect(page.locator('.board-cell[data-index="8"]')).toHaveAttribute('aria-describedby', 'dice-card');
+});
+
+test('B21. 開卡片不推動版面，四個角的格子開出的卡片都完整落在視窗內（桌機與 320px）', async ({ page, isMobile }) => {
+  await page.goto('/board');
+  if (isMobile) await page.setViewportSize({ width: 320, height: 640 });
+  await pickInto(page, 0, dice[0]!.id, 7);
+  // 桌機 1280×720 預設：局外加成切換（2026-09-19）把「骰盤」那一段往下推，最底列格子的中心點
+  // 因此落到首屏外。drag() 用的是原始滑鼠座標，不像 locator.click() 會自動捲動進可視區——
+  // 沒有這一行，拖到第 10／14 格會因為落點在畫面外而完全沒反應。
+  await page.locator('#board-grid').scrollIntoViewIfNeeded();
+  for (const i of [0, 4, 10, 14]) await drag(page, '.deck-dice[data-slot="0"]', `.board-cell[data-index="${i}"]`);
+
+  // 用頁面座標（加上捲動量）比，不用 boundingBox：點下面的格子時 Playwright 會先捲動。
+  const gridRect = () => page.locator('#board-grid').evaluate(el => {
+    const r = el.getBoundingClientRect();
+    return { x: r.left + scrollX, y: r.top + scrollY, w: r.width, h: r.height };
+  });
+  const grid0 = await gridRect();
+  for (const i of [0, 4, 10, 14]) {
+    await page.locator(`.board-cell[data-index="${i}"]`).click();
+    await expect(page.locator('#dice-card')).toBeVisible();
+    expect(await gridRect(), `開第 ${i} 格的卡片時骰盤被推動`).toEqual(grid0);
+    const c = await page.locator('#dice-card').evaluate(el => {
+      const r = el.getBoundingClientRect();
+      return {
+        left: r.left, top: r.top, right: r.right, bottom: r.bottom,
+        vw: document.documentElement.clientWidth, vh: document.documentElement.clientHeight,
+        nav: document.getElementById('site-nav')!.getBoundingClientRect().bottom,
+      };
+    });
+    // 導覽列是 sticky、z-index 40，卡片是 45：卡片上緣必須讓到導覽列之下，否則會畫在導覽列上面。
+    expect(c.top, `第 ${i} 格的卡片蓋到導覽列`).toBeGreaterThanOrEqual(c.nav);
+    expect(c.left, `第 ${i} 格的卡片超出左緣`).toBeGreaterThanOrEqual(0);
+    expect(c.top, `第 ${i} 格的卡片超出上緣`).toBeGreaterThanOrEqual(0);
+    expect(c.right, `第 ${i} 格的卡片超出右緣`).toBeLessThanOrEqual(c.vw);
+    expect(c.bottom, `第 ${i} 格的卡片超出下緣`).toBeLessThanOrEqual(c.vh);
+  }
+});
+
+test('B22. 卡片開著時用鍵盤開挑選網格：卡片先收掉，不會疊在挑選網格上', async ({ page }) => {
+  // 跨路徑回歸：鍵盤焦點開卡片 → Shift+Tab 經過強化列（刻意留著卡片）→ 組合槽按 Space 開挑選網格。
+  // 焦點離開強化列之後沒有任何 listener 會關卡片，卡片（z-index 45）就疊在挑選網格（40）上面。
+  // 滑鼠走不到這條（document 的 pointerdown 會先關），所以要用鍵盤重現。
+  // 用第 4 槽：它是 Shift+Tab 從骰盤往回走遇到的第一槽，有骰子時強化列的按鈕才可聚焦。
+  await page.goto('/board');
+  await pickInto(page, 4, dice[0]!.id, 2);
+  await drag(page, '.deck-dice[data-slot="4"]', '.board-cell[data-index="0"]');
+
+  // 同 B19：先 focus 空格再按方向鍵，焦點才是 :focus-visible。
+  await page.locator('.board-cell[data-index="1"]').focus();
+  await page.keyboard.press('ArrowLeft');
+  const card = page.locator('#dice-card');
+  await expect(card).toBeVisible();
+
+  await page.keyboard.press('Shift+Tab');
+  await expect(page.locator('.sp-inc[data-slot="4"]')).toBeFocused();
+  for (let n = 0; n < 8; n++) {
+    if (await page.locator('.deck-dice[data-slot="4"]').evaluate(el => el === document.activeElement)) break;
+    await page.keyboard.press('Shift+Tab');
+  }
+  await expect(page.locator('.deck-dice[data-slot="4"]')).toBeFocused();
+  await expect(card, '前提：焦點到組合槽時卡片還開著').toBeVisible();
+
+  await page.keyboard.press(' ');
+  await expect(page.locator('#dice-picker')).toBeVisible();
+  await expect(card, '挑選網格開著時卡片不可以同時開著').toBeHidden();
+});
+
+test('B22b. 挑選網格開著時 Tab 走進骰盤：不開數值卡片（互斥的另一個方向）', async ({ page }) => {
+  // 挑選網格沒有焦點陷阱，而它在 DOM 裡就排在骰盤前面：從最後一顆骰子按 Tab 會落在第 0 格，
+  // focusin 若照開卡片，卡片（z-index 45）就疊在網格（40）上。B22 守「開網格時收卡片」，這條守反方向。
+  await page.goto('/board');
+  await pickInto(page, 0, dice[0]!.id, 2);
+  await drag(page, '.deck-dice[data-slot="0"]', '.board-cell[data-index="0"]');
+
+  await page.locator('.deck-dice[data-slot="0"]').focus();
+  await page.keyboard.press(' ');
+  const picker = page.locator('#dice-picker');
+  await expect(picker).toBeVisible();
+
+  await page.locator('#dice-picker .picker-dice').last().focus();
+  await page.keyboard.press('Tab');
+  await expect(page.locator('.board-cell[data-index="0"]'), '前提：Tab 從網格最後一顆走進骰盤第 0 格').toBeFocused();
+  await expect(picker).toBeVisible();
+  await expect(page.locator('#dice-card'), '挑選網格開著時卡片不可以同時開著').toBeHidden();
+});
+
+test('B22c. 挑選網格開著時點骰盤上的骰子：不開數值卡片', async ({ page }) => {
+  // 指標版的 B22b：網格是貼著視窗底部的 fixed 浮層，上方露出來的格子點得到，endDrag 若照開卡片就兩個都開著。
+  await page.goto('/board');
+  await pickInto(page, 0, dice[0]!.id, 2);
+  await drag(page, '.deck-dice[data-slot="0"]', '.board-cell[data-index="0"]');
+  await page.locator('.deck-dice[data-slot="0"]').click();
+  const picker = page.locator('#dice-picker');
+  await expect(picker).toBeVisible();
+
+  // 把第 0 格捲到導覽列與網格之間露出來的那一段（桌機 1280×720 預設整個骰盤都在網格底下）。
+  await exposeAbovePicker(page, '.board-cell[data-index="0"]');
+  const cell = page.locator('.board-cell[data-index="0"]');
+  const exposed = await cell.evaluate(el => {
+    const r = el.getBoundingClientRect();
+    return el.contains(document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2));
+  });
+  expect(exposed, '前提：第 0 格的中心沒有被挑選網格或導覽列蓋住').toBe(true);
+
+  await cell.click();
+  await expect(picker).toBeVisible();
+  await expect(page.locator('#dice-card'), '挑選網格開著時卡片不可以同時開著').toBeHidden();
+});
+
+test('B17b. 開卡片的觸發點：格↔格交換之後不開卡片；門檻內放在格縫裡仍是點一下（不移除骰子）', async ({ page }) => {
+  // 守 endDrag() 那段提早 return 的兩個性質，兩半各自對應一種改壞法：
+  // (a) 改成綁 click：拖曳結束後 setPointerCapture 把 click 導回來源格（第 1 格），而交換之後那一格
+  //     正好有骰子，卡片就會被打開。
+  // (b) 把提早 return 挪到 cellUnder() 之後：門檻內的位移落在 4px 格縫裡時 cellUnder() 回 null，
+  //     走「拖到骰盤外＝移除」那一支，骰子被安靜地清掉（這個分支之前就是這樣）。
+  await page.goto('/board');
+  await pickInto(page, 0, dice[0]!.id, 2);
+  await pickInto(page, 1, dice[1]!.id, 5);
+  await drag(page, '.deck-dice[data-slot="0"]', '.board-cell[data-index="0"]');
+  await drag(page, '.deck-dice[data-slot="1"]', '.board-cell[data-index="1"]');
+
+  // (a) 真滑鼠拖曳 1 → 0，**按在格子自己的內距上**（左上角內縮 6px，不是圖示）。
+  // ⚠️ 不可以用 drag() 從格子中心起手：中心按到的是 <img>，endDrag() 的 renderBoard() 把它拆掉之後
+  // Chromium 根本不送 click（2026-09-19 插樁實測：pointerdown→IMG、pointerup→board-cell[1]、沒有 click），
+  // 綁 click 的實作也照樣全綠。按在內距上，pointerdown 的目標是格子本身（交換後仍在 DOM 裡），
+  // 就會收到被 setPointerCapture 導回第 1 格的那發 click（實測 click→board-cell[1]）。
+  const c1 = (await page.locator('.board-cell[data-index="1"]').boundingBox())!;
+  const c0 = (await page.locator('.board-cell[data-index="0"]').boundingBox())!;
+  const pressedOnCell = await page.evaluate(([px, py]) => {
+    const el = document.elementFromPoint(px!, py!);
+    return el?.matches('.board-cell[data-index="1"]') ?? false;
+  }, [c1.x + 6, c1.y + 6]);
+  expect(pressedOnCell, '前提：按下的點是第 1 格本身，不是它裡面的圖示或骰點').toBe(true);
+  await page.mouse.move(c1.x + 6, c1.y + 6);
+  await page.mouse.down();
+  await page.mouse.move(c0.x + c0.width / 2, c0.y + c0.height / 2, { steps: 12 });
+  await page.mouse.up();
+  await expect(page.locator('.board-cell[data-index="1"] img')).toHaveAttribute('src', boardIconSrc(dice[0]!.id));
+  await expect(page.locator('#dice-card'), '交換之後不開卡片').toBeHidden();
+  await expect(page.locator('.board-cell[aria-describedby]')).toHaveCount(0);
+
+  // (b) 在第 0 格右緣內 1px 按下，往右 3px（< 5px 門檻）進到格縫，放開。
+  const b0 = (await page.locator('.board-cell[data-index="0"]').boundingBox())!;
+  const x = b0.x + b0.width - 1;
+  const y = b0.y + b0.height / 2;
+  const inGap = await page.evaluate(([px, py]) => document.elementFromPoint(px!, py!)?.closest('.board-cell') ?? null, [x + 3, y]);
+  expect(inGap, '前提：放開的位置真的在格縫裡，不在任何格子上').toBeNull();
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  await page.mouse.move(x + 3, y);
+  await page.mouse.up();
+  await expect(page.locator('.board-cell[data-index="0"] img'), '門檻內放在格縫裡不可以移除骰子').toBeVisible();
+  await expect(page.locator('.board-cell[data-index="0"]')).toHaveAttribute('aria-describedby', 'dice-card');
+});
+
+test('B19b. 鍵盤 Enter 放下（交換）之後，卡片跟著焦點格的新內容重開', async ({ page }) => {
+  // 放下會 renderBoard()（收掉卡片），而焦點本來就在目標格——focus() 不會再觸發 focusin，
+  // 所以 held 放下那一段要自己 syncCardToFocus()。少了它，交換後卡片就消失、要再按一次方向鍵才回來。
+  await page.goto('/board');
+  const a = dice[0]!;
+  const b = dice[1]!;
+  await pickInto(page, 0, a.id, 2);
+  await pickInto(page, 1, b.id, 4);
+  await drag(page, '.deck-dice[data-slot="0"]', '.board-cell[data-index="0"]');
+  await drag(page, '.deck-dice[data-slot="1"]', '.board-cell[data-index="1"]');
+
+  await page.locator('.board-cell[data-index="2"]').focus();
+  await page.keyboard.press('ArrowLeft'); // 第 1 格，骰子 B
+  const card = page.locator('#dice-card');
+  await expect(card.locator('.dice-card-title')).toHaveText(`${b.name} · 4 骰點 · 強化 Lv.1`);
+  await page.keyboard.press('Enter'); // 拿起 B
+  await page.keyboard.press('ArrowLeft'); // 第 0 格，骰子 A
+  await expect(card.locator('.dice-card-title')).toHaveText(`${a.name} · 2 骰點 · 強化 Lv.1`);
+  await page.keyboard.press('Enter'); // 放下＝交換，第 0 格現在是 B
+  await expect(page.locator('.board-cell[data-index="0"]')).toBeFocused();
+  await expect(card, '放下之後卡片要跟著焦點格重開').toBeVisible();
+  await expect(card.locator('.dice-card-title')).toHaveText(`${b.name} · 4 骰點 · 強化 Lv.1`);
+});
+
+test('B15e. 組合列已經沒有這種骰子了，骰盤上留下的那顆仍然帶著最後的強化 Lv', async ({ page }) => {
+  // spLevels 以骰子種類為鍵、換槽不清（見 src/scripts/board.ts 的說明）：組合列換掉之後，
+  // 骰盤上的舊骰子是「孤兒」，它的卡片仍要算 Lv.5，不可以因為找不到所在的槽就回到 Lv.1。
+  await page.goto('/board');
+  const fire = dice[0]!;
+  const other = dice[1]!;
+  await pickInto(page, 0, fire.id, 1);
+  for (let i = 1; i < 5; i++) await page.locator('.sp-inc[data-slot="0"]').click();
+  await expect(page.locator('.sp-value[data-slot="0"]')).toHaveText('Lv.5');
+  await drag(page, '.deck-dice[data-slot="0"]', '.board-cell[data-index="6"]');
+
+  // 唯一的那一槽換成別顆：火骰子從此不在任何一槽。
+  await pickInto(page, 0, other.id, 1);
+  await expect(page.locator('.sp-value[data-slot="0"]')).toHaveText('Lv.1');
+
+  await page.locator('.board-cell[data-index="6"]').click();
+  await expect(page.locator('#dice-card .dice-card-title')).toHaveText(`${fire.name} · 1 骰點 · 強化 Lv.5`);
+});
+
+test('B23. 局外加成切換在「我的隊伍」標題下、隊伍列正上方；三顆按鈕與群組名稱', async ({ page, isMobile }) => {
+  await page.goto('/board');
+  const group = page.locator('#offgame-mode');
+  await expect(group).toHaveAttribute('role', 'group');
+  await expect(group).toHaveAttribute('aria-label', '局外加成');
+  await expect(group.locator('button[data-mode]')).toHaveText(['不含', '我的 /sim', '全滿']);
+  const g = (await group.boundingBox())!;
+  const deck = (await page.locator('#deck-row').boundingBox())!;
+  expect(g.y + g.height, '切換要在隊伍列上方').toBeLessThanOrEqual(deck.y);
+  if (isMobile) {
+    // 手機：「我的隊伍」小標不顯示，隊伍區整塊沉到骰盤下方，切換跟著一起。
+    const grid = (await page.locator('#board-grid').boundingBox())!;
+    expect(g.y, '手機：切換在骰盤下方').toBeGreaterThanOrEqual(grid.y + grid.height);
+  } else {
+    const h2 = (await page.locator('.board-h2').first().boundingBox())!;
+    expect(g.y, '切換要在「我的隊伍」標題下方').toBeGreaterThanOrEqual(h2.y + h2.height);
+  }
+});
+
+test('B24. 明細面板：寬桌機在骰盤右側且骰盤仍以 main 置中；窄視窗在工具列下方；手機在頁面最底', async ({ page, isMobile }) => {
+  await page.goto('/board');
+  const panel = page.locator('#dice-detail');
+  await expect(panel).toHaveAttribute('aria-label', '加成明細');
+  await expect(panel.locator('.detail-h')).toHaveText('加成明細');
+  await expect(panel.locator('.detail-empty')).toHaveText('點骰盤上的骰子看加成來源');
+  await expect(panel.locator('.detail-body')).toBeHidden();
+  const box = async (sel: string) => (await page.locator(sel).boundingBox())!;
+
+  if (isMobile) {
+    const p = await box('#dice-detail');
+    for (const sel of ['#board-grid', '#deck-row', '#board-tools']) {
+      const b = await box(sel);
+      expect(p.y, `手機：面板要排在 ${sel} 之後`).toBeGreaterThanOrEqual(b.y + b.height);
+    }
+    return;
+  }
+
+  // Desktop Chrome 預設 1280 寬：三欄，面板在骰盤右邊、跟骰盤同一段高度。
+  const p = await box('#dice-detail');
+  const grid = await box('#board-grid');
+  expect(p.x, '面板在骰盤右側').toBeGreaterThanOrEqual(grid.x + grid.width);
+  expect(p.y, '面板跟骰盤並排').toBeLessThan(grid.y + grid.height);
+  const main = await box('main');
+  const left = grid.x - main.x;
+  const right = main.x + main.width - (grid.x + grid.width);
+  expect(Math.abs(left - right), `骰盤仍以 <main> 置中（${left} / ${right}）`).toBeLessThanOrEqual(2);
+
+  // 窄視窗的桌機：一般區塊，面板在工具列正下方。
+  await page.setViewportSize({ width: 900, height: 800 });
+  const p2 = await box('#dice-detail');
+  const tools = await box('#board-tools');
+  expect(p2.y, '窄視窗：面板在工具列下方').toBeGreaterThanOrEqual(tools.y + tools.height);
+});
+
+/**
+ * 一份真實的 /sim 存檔：從起始骰子一路解到 1201（子彈傷害%增加）與 1102（所有骰子傷害），兩顆練到 Lv.50；
+ * 路徑上順帶解開 1006（光骰子）與 1109（所有骰子傷害，Lv.1）。用 src/lib/sim.ts 的 pathTo() 產生後照抄——
+ * 骰子樹改版讓這條路徑不成立時，deserializeSim() 會修掉它，B26 會紅，那是要重產這份存檔的訊號。
+ */
+const SIM_SAVE = JSON.stringify({ v: 1, unlocked: ['1006', '1102', '1109', '1201'], levels: { '1102': 50, '1201': 50 }, initial: [] });
+
+async function withSave(page: import('@playwright/test').Page, text: string): Promise<void> {
+  await page.addInitScript(t => { localStorage.setItem('rd2-sim-v1', t); }, text);
+}
+
+const modeBtn = (page: import('@playwright/test').Page, mode: string) =>
+  page.locator(`#offgame-mode button[data-mode="${mode}"]`);
+
+/** 火骰子 7 骰點放在第 6 格，點開它的卡片。 */
+async function openFire7(page: import('@playwright/test').Page): Promise<void> {
+  await page.goto('/board');
+  await pickInto(page, 0, dice[0]!.id, 7);
+  await drag(page, '.deck-dice[data-slot="0"]', '.board-cell[data-index="6"]');
+  await page.locator('.board-cell[data-index="6"]').click();
+  await expect(page.locator('#dice-card')).toBeVisible();
+}
+
+test('B25. 沒有 /sim 存檔：預設「不含」、「我的 /sim」停用並提示；卡片跟一期一樣沒有括號', async ({ page }) => {
+  await openFire7(page);
+  await expect(modeBtn(page, 'none')).toHaveAttribute('aria-pressed', 'true');
+  await expect(modeBtn(page, 'sim')).toHaveAttribute('aria-disabled', 'true');
+  await expect(page.locator('#offgame-nosave')).toBeVisible();
+  await expect(page.locator('#offgame-nosave a')).toHaveAttribute('href', '/sim');
+  await expect(cardValue(page, '攻擊力')).toHaveText('750');
+  await expect(page.locator('#dice-card .bonus')).toHaveCount(0);
+  await expect(page.locator('#dice-card dt.bullet')).toHaveCount(0);
+  await expect(page.locator('#dice-card .dice-card-note')).toHaveText('未含骰子樹（符文／被動）加成');
+
+  // 按停用的「我的 /sim」：不切換、播報原因、卡片不收。
+  // ⚠️ 這顆按鈕刻意用 aria-disabled 不用 disabled（board.astro 的理由：保留在 Tab 順序讓鍵盤使用者
+  // 看得到它為什麼不能按）。Playwright ≥1.36 的 actionability 檢查把 aria-disabled="true" 當成
+  // 「not enabled」，一般 .click() 會一路等到逾時；用 force 繞過那層檢查，這裡要驗的正是「原生 click
+  // 事件送達時 handler 怎麼處理」，不是「使用者能不能用滑鼠點到它」（那是別的斷言在守）。
+  await modeBtn(page, 'sim').click({ force: true });
+  await expect(modeBtn(page, 'none')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('#board-live')).toHaveText('沒有找到 /sim 的存檔');
+  await expect(page.locator('#dice-card')).toBeVisible();
+
+  // 鍵盤路徑：選 aria-disabled 不用 disabled 的理由就是它還在 Tab 順序裡、按 Enter 聽得到原因。
+  // 先清掉 live region，確定下面那句播報真的是這次 Enter 觸發的，不是上面那一下留下來的。
+  await page.locator('#board-live').evaluate(el => { el.textContent = ''; });
+  await modeBtn(page, 'sim').focus();
+  await expect(modeBtn(page, 'sim')).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(modeBtn(page, 'none')).toHaveAttribute('aria-pressed', 'true');
+  await expect(modeBtn(page, 'sim')).toHaveAttribute('aria-pressed', 'false');
+  await expect(page.locator('#board-live')).toHaveText('沒有找到 /sim 的存檔');
+});
+
+test('B26. 讀得到 /sim 存檔：預設「我的 /sim」，攻擊力照遊戲面板格式、多一行子彈實際，明細面板列出來源', async ({ page }) => {
+  await withSave(page, SIM_SAVE);
+  await openFire7(page);
+  await expect(modeBtn(page, 'sim')).toHaveAttribute('aria-pressed', 'true');
+  await expect(modeBtn(page, 'sim')).not.toHaveAttribute('aria-disabled', 'true');
+  await expect(page.locator('#offgame-nosave')).toBeHidden();
+  await expect(cardValue(page, '攻擊力')).toHaveText('750 (+554)');
+  await expect(cardValue(page, '子彈實際')).toHaveText('4121');
+  await expect(cardValue(page, '攻擊速度')).toHaveText('0.143 秒/次');
+  await expect(page.locator('#dice-card .dice-card-note')).toHaveText('局外加成：我的 /sim 存檔');
+  expect((await page.locator('#dice-card dt').allTextContents()).slice(0, 2), '子彈實際緊接在攻擊力下面')
+    .toEqual(['攻擊力', '子彈實際']);
+
+  const detail = page.locator('#dice-detail');
+  await expect(detail.locator('.detail-empty')).toBeHidden();
+  await expect(detail.locator('.detail-title')).toHaveText('火骰子 · 7 骰點 · 強化 Lv.1');
+  await expect(detail.locator('.detail-offgame li')).toHaveText(['所有骰子傷害 ×2：攻擊 +73.8%', '子彈傷害%增加 Lv.50：子彈 ×3.16']);
+  await expect(detail.locator('.detail-mechanic')).toBeHidden();
+  await expect(detail.locator('.detail-nothing')).toBeHidden();
+});
+
+test('B27. 切「全滿」：卡片不收、數字即時更新並播報；切回「不含」回到一期的數字', async ({ page }) => {
+  await withSave(page, SIM_SAVE);
+  await openFire7(page);
+  await modeBtn(page, 'max').click();
+  await expect(page.locator('#dice-card')).toBeVisible();
+  await expect(modeBtn(page, 'max')).toHaveAttribute('aria-pressed', 'true');
+  await expect(modeBtn(page, 'sim')).toHaveAttribute('aria-pressed', 'false');
+  await expect(page.locator('#board-live')).toHaveText('局外加成：全滿');
+  await expect(cardValue(page, '攻擊力')).toHaveText('750 (+8588)');
+  await expect(cardValue(page, '子彈實際')).toHaveText('29509');
+  await expect(cardValue(page, '攻擊速度')).toHaveText('0.143 秒/次 (−0.04)');
+  await expect(page.locator('#dice-card .dice-card-note')).toHaveText('局外加成：全部練滿');
+
+  const offgame = page.locator('#dice-detail .detail-offgame');
+  for (const line of [
+    '所有骰子傷害 ×15：攻擊 +1026%', '自然骰子傷害 ×2：攻擊 +119%', '自然骰子攻擊速度 ×2：攻速 +38.5%',
+    '自然骰子暴擊率 Lv.10：暴擊率 +4.55%', '子彈傷害%增加 Lv.50：子彈 ×3.16',
+  ]) await expect(offgame).toContainText(line);
+  await expect(page.locator('#dice-detail .detail-mechanic li')).toHaveText([
+    '火焰射程增加：範圍傷害套用範圍大幅增加',
+    '獲得燙傷：基本攻擊擊中時，賦予燙傷 7骰點為2倍的燙傷傷害',
+  ]);
+
+  await modeBtn(page, 'none').click();
+  await expect(cardValue(page, '攻擊力')).toHaveText('750');
+  await expect(page.locator('#dice-card dt.bullet')).toHaveCount(0);
+  await expect(page.locator('#dice-detail .detail-nothing')).toHaveText('局外加成設為「不含」');
+  await expect(page.locator('#dice-detail .detail-offgame')).toBeHidden();
+});
+
+test('B28. 鍵盤：卡片開著時焦點移到局外加成切換，卡片不收；Enter 切換後即時重算', async ({ page }) => {
+  await withSave(page, SIM_SAVE);
+  await page.goto('/board');
+  await pickInto(page, 0, dice[0]!.id, 7);
+  await drag(page, '.deck-dice[data-slot="0"]', '.board-cell[data-index="6"]');
+  await page.locator('.board-cell[data-index="5"]').focus();
+  await page.keyboard.press('ArrowRight');
+  await expect(page.locator('#dice-card')).toBeVisible();
+  await modeBtn(page, 'max').focus();
+  await expect(page.locator('#dice-card'), '焦點移到切換鈕，卡片不收').toBeVisible();
+  await page.keyboard.press('Enter');
+  await expect(cardValue(page, '攻擊力')).toHaveText('750 (+8588)');
+  await expect(page.locator('#dice-card')).toBeVisible();
+});
+
+test('B29. 存檔壞掉：當作沒有存檔，頁面照常運作', async ({ page }) => {
+  await withSave(page, '{壞掉的 JSON');
+  await openFire7(page);
+  await expect(modeBtn(page, 'none')).toHaveAttribute('aria-pressed', 'true');
+  await expect(modeBtn(page, 'sim')).toHaveAttribute('aria-disabled', 'true');
+  await expect(cardValue(page, '攻擊力')).toHaveText('750');
+});
+
+test('B29b. localStorage 一讀就丟例外（無痕模式、關掉網站資料）：沒有未捕捉的例外，照常運作', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('pageerror', e => errors.push(e.message));
+  await page.addInitScript(() => {
+    Storage.prototype.getItem = () => { throw new DOMException('blocked', 'SecurityError'); };
+  });
+  await openFire7(page);
+  await expect(modeBtn(page, 'sim')).toHaveAttribute('aria-disabled', 'true');
+  await expect(cardValue(page, '攻擊力')).toHaveText('750');
+  expect(errors).toEqual([]);
+});
+
+test('B30. 明細面板：卡片收起後保留最後那顆；改強化 Lv 跟著更新；那顆被移走就回到空狀態', async ({ page }) => {
+  await withSave(page, SIM_SAVE);
+  await openFire7(page);
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#dice-card')).toBeHidden();
+  const title = page.locator('#dice-detail .detail-title');
+  await expect(title).toHaveText('火骰子 · 7 骰點 · 強化 Lv.1');
+  await page.locator('.sp-inc[data-slot="0"]').click();
+  await expect(title).toHaveText('火骰子 · 7 骰點 · 強化 Lv.2');
+  await drag(page, '.board-cell[data-index="6"]', '.board-cell[data-index="7"]');
+  await expect(page.locator('#dice-detail .detail-empty')).toBeVisible();
+  await expect(page.locator('#dice-detail .detail-body')).toBeHidden();
+});
+
+test('B31. 條件式加成不顯示：冰骰子全滿時明細沒有「冰凍增幅」，機制符文照列', async ({ page }) => {
+  await page.goto('/board');
+  await pickInto(page, 0, '1007', 1);
+  await drag(page, '.deck-dice[data-slot="0"]', '.board-cell[data-index="0"]');
+  await page.locator('.board-cell[data-index="0"]').click();
+  await modeBtn(page, 'max').click();
+  await expect(page.locator('#dice-detail .detail-body')).toBeVisible();
+  await expect(page.locator('#dice-detail .detail-offgame')).not.toContainText('冰凍增幅');
+  await expect(page.locator('#dice-detail .detail-mechanic'))
+    .toContainText('週期性暴風雪：每5秒根據冰骰子總骰點等比產生暴風雪，對冰凍怪物造成基本攻擊力相當傷害');
+});
+
+test('B32. 寬桌機：全滿時明細再長，面板也不超出右欄（sticky 才黏得住），工具列不動', async ({ page, isMobile }) => {
+  test.skip(isMobile, '三欄版面只在寬桌機（滑鼠、68rem 以上）');
+  // 巨石骰子（1004）全滿時的明細是最長的幾顆之一：盒子若比 #dice-detail 高，sticky 黏不住，
+  // 往下捲時標題會捲到導覽列底下。
+  await page.goto('/board');
+  await pickInto(page, 0, '1004', 1);
+  await drag(page, '.deck-dice[data-slot="0"]', '.board-cell[data-index="0"]');
+  await page.locator('.board-cell[data-index="0"]').click();
+  await expect(page.locator('#dice-detail .detail-body')).toBeVisible();
+  // 頁面座標（加上捲動量）：點格子、點切換鈕時 Playwright 可能會先捲動。
+  const pageY = (sel: string) => page.locator(sel).evaluate(el => {
+    const r = el.getBoundingClientRect();
+    return { top: r.top + scrollY, bottom: r.bottom + scrollY };
+  });
+  const toolsNone = await pageY('#board-tools');
+
+  await modeBtn(page, 'max').click();
+  await expect(page.locator('#dice-detail .detail-offgame')).toBeVisible();
+  const box = await pageY('#dice-detail .detail-box');
+  const panel = await pageY('#dice-detail');
+  expect(box.bottom, `明細盒（底 ${box.bottom}）超出面板（底 ${panel.bottom}）`).toBeLessThanOrEqual(panel.bottom + 0.5);
+  const toolsMax = await pageY('#board-tools');
+  expect(Math.abs(toolsMax.top - toolsNone.top), '切到全滿，工具列被推動').toBeLessThanOrEqual(0.5);
+});
+
+test('B33. 頁面開著時 /sim 存了檔（兩個分頁、或 bfcache 回上一頁）：「我的 /sim」跟著可用，但不自動切過去', async ({ page, context }) => {
+  // A 頁：沒有存檔。
+  await page.goto('/board');
+  await expect(modeBtn(page, 'sim')).toHaveAttribute('aria-disabled', 'true');
+  await expect(page.locator('#offgame-nosave')).toBeVisible();
+
+  // B 頁（同一個 context＝同一份 localStorage）替 /sim 寫入存檔 → A 頁收到 storage 事件。
+  const other = await context.newPage();
+  await other.goto('/board');
+  await other.evaluate(t => { localStorage.setItem('rd2-sim-v1', t); }, SIM_SAVE);
+
+  await expect(modeBtn(page, 'sim')).not.toHaveAttribute('aria-disabled', 'true');
+  await expect(page.locator('#offgame-nosave')).toBeHidden();
+  await expect(modeBtn(page, 'none'), '不自動切到「我的 /sim」').toHaveAttribute('aria-pressed', 'true');
+  await expect(modeBtn(page, 'sim')).toHaveAttribute('aria-pressed', 'false');
+});
+
+test('B34. /board 永遠不寫 localStorage：挑骰、拖曳、開卡片、三種模式、改強化 Lv 都不寫', async ({ page }) => {
+  // ⚠️ Playwright 不保證多支 addInitScript 的執行順序，所以「帶存檔進頁面」與「包計數」寫在同一支裡：
+  // 先用原本的 setItem 寫存檔、再包一層——計數只看得到之後的呼叫，也就是 /board 自己的腳本。
+  // 只數 localStorage（this === localStorage）：sessionStorage 不在這條約束裡。
+  await page.addInitScript(save => {
+    localStorage.setItem('rd2-sim-v1', save);
+    const w = window as unknown as { __lsWrites: string[] };
+    w.__lsWrites = [];
+    for (const name of ['setItem', 'removeItem', 'clear'] as const) {
+      const orig = Storage.prototype[name] as (...a: unknown[]) => unknown;
+      (Storage.prototype as unknown as Record<string, unknown>)[name] = function (this: Storage, ...args: unknown[]) {
+        if (this === window.localStorage) w.__lsWrites.push(`${name}(${args.map(String).join(', ')})`);
+        return orig.apply(this, args);
+      };
+    }
+  }, SIM_SAVE);
+  await openFire7(page);
+  await expect(modeBtn(page, 'sim'), '存檔真的有帶進來').toHaveAttribute('aria-pressed', 'true');
+  for (const mode of ['none', 'sim', 'max']) {
+    await modeBtn(page, mode).click();
+    await expect(modeBtn(page, mode)).toHaveAttribute('aria-pressed', 'true');
+  }
+  await page.locator('.sp-inc[data-slot="0"]').click();
+  await expect(page.locator('#dice-card .dice-card-title')).toHaveText('火骰子 · 7 骰點 · 強化 Lv.2');
+  // 盤面加成的角標（2b）也不寫。
+  await pickInto(page, 1, ALIGN, 3);
+  await drag(page, '.deck-dice[data-slot="1"]', '.board-cell[data-index="7"]');
+  await pressBadge(page, 7);
+  await expect(badge(page, 7)).toHaveText('↑');
+  expect(await page.evaluate(() => (window as unknown as { __lsWrites: string[] }).__lsWrites)).toEqual([]);
+});
+
+// ── 盤面加成的角標（2b，2026-09-19）───────────────────────────────────────
+// 7 骰點以下的排序骰子（方向）與齒輪二階（種類）在格子左上角有一個角標：點一下（或格子有焦點時按 R）循環。
+// 判定跟開卡片同一條路：endDrag() 裡「從格子起手、沒超過門檻」，按下的點在角標上＝循環、不開卡片。
+
+const ALIGN = '4007';
+const GEAR2 = '2503';
+const LIGHT = '1006';
+
+/** 第 i 格的角標。 */
+function badge(page: import('@playwright/test').Page, i: number) {
+  return page.locator(`.board-cell[data-index="${i}"] .cell-badge`);
+}
+
+/**
+ * 在第 i 格的角標中心原地按下放開。⚠️ 先確認那個點真的是角標本身（B17b 的教訓：按到的元素不對，
+ * 測到的就不是這條路徑）；這裡用的是原始滑鼠座標，所以先把角標捲進視窗。
+ */
+async function pressBadge(page: import('@playwright/test').Page, i: number): Promise<void> {
+  await badge(page, i).scrollIntoViewIfNeeded();
+  const b = (await badge(page, i).boundingBox())!;
+  const x = b.x + b.width / 2;
+  const y = b.y + b.height / 2;
+  const onBadge = await page.evaluate(([px, py]) => document.elementFromPoint(px!, py!)?.matches('.cell-badge') ?? false, [x, y]);
+  expect(onBadge, `前提：第 ${i} 格角標的中心點按到的是角標本身`).toBe(true);
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  await page.mouse.up();
+}
+
+/** 挑選網格（貼著視窗底部的 fixed 浮層）開著時，把 sel 捲到導覽列與網格之間露出來的那一段（同 B22c）。 */
+async function exposeAbovePicker(page: import('@playwright/test').Page, sel: string): Promise<void> {
+  await page.evaluate(s => {
+    const navBottom = document.getElementById('site-nav')!.getBoundingClientRect().bottom;
+    const pickerTop = document.getElementById('dice-picker')!.getBoundingClientRect().top;
+    const r = document.querySelector(s)!.getBoundingClientRect();
+    window.scrollBy(0, r.top + r.height / 2 - (navBottom + pickerTop) / 2);
+  }, sel);
+}
+
+test('B35. 角標只在 7 骰點以下的排序／齒輪二階上；點角標循環並播報、不開卡片，點格子其他地方照舊開卡片', async ({ page }) => {
+  await page.goto('/board');
+  await pickInto(page, 0, ALIGN, 3);
+  await pickInto(page, 1, GEAR2, 2);
+  await pickInto(page, 2, ALIGN, 7);
+  await pickInto(page, 3, dice[0]!.id, 3);
+  await drag(page, '.deck-dice[data-slot="0"]', '.board-cell[data-index="7"]');
+  await drag(page, '.deck-dice[data-slot="1"]', '.board-cell[data-index="5"]');
+  await drag(page, '.deck-dice[data-slot="2"]', '.board-cell[data-index="8"]');
+  await drag(page, '.deck-dice[data-slot="3"]', '.board-cell[data-index="9"]');
+
+  await expect(badge(page, 7)).toHaveText('?');
+  await expect(badge(page, 5)).toHaveText('?');
+  await expect(badge(page, 8), '7 骰點的排序四向全開，不需要角標').toHaveCount(0);
+  await expect(badge(page, 9), '別種骰子沒有角標').toHaveCount(0);
+  const cell7 = page.locator('.board-cell[data-index="7"]');
+  await expect(cell7).toHaveAttribute('aria-label', '第 2 列第 3 格，排序骰子 3 骰點，方向未指定，按 R 切換');
+
+  for (const glyph of ['↑', '→', '↓', '←', '?']) {
+    await pressBadge(page, 7);
+    await expect(badge(page, 7)).toHaveText(glyph);
+  }
+  await expect(page.locator('#dice-card'), '點角標不開卡片').toBeHidden();
+  await pressBadge(page, 7);
+  await expect(page.locator('#board-live')).toHaveText('排序改為朝上');
+  await expect(cell7).toHaveAttribute('aria-label', '第 2 列第 3 格，排序骰子 3 骰點，方向朝上，按 R 切換');
+
+  for (const glyph of ['強', '動', '變', '?']) {
+    await pressBadge(page, 5);
+    await expect(badge(page, 5)).toHaveText(glyph);
+  }
+  await pressBadge(page, 5);
+  await expect(page.locator('#board-live')).toHaveText('齒輪二階改為強化齒輪');
+  await expect(page.locator('.board-cell[data-index="5"]')).toHaveAttribute('aria-label', '第 2 列第 1 格，齒輪二階骰子 2 骰點，種類：強化齒輪，按 R 切換');
+
+  // 點格子其他地方（中心，圖示上）：照舊開卡片，角標不動。
+  await cell7.click();
+  await expect(page.locator('#dice-card')).toBeVisible();
+  await expect(page.locator('#dice-card .dice-card-title')).toHaveText('排序骰子 · 3 骰點 · 強化 Lv.1');
+  await expect(badge(page, 7)).toHaveText('↑');
+});
+
+test('B36. 從角標起手拖超過 5px 照舊是拖曳：骰子移過去、角標跟著走；放上別的骰子角標就清掉', async ({ page }) => {
+  await page.goto('/board');
+  await pickInto(page, 0, ALIGN, 3);
+  await pickInto(page, 1, dice[0]!.id, 2);
+  await drag(page, '.deck-dice[data-slot="0"]', '.board-cell[data-index="6"]');
+  await drag(page, '.deck-dice[data-slot="1"]', '.board-cell[data-index="8"]');
+  await pressBadge(page, 6);
+  await pressBadge(page, 6);
+  await expect(badge(page, 6)).toHaveText('→');
+
+  const b = (await badge(page, 6).boundingBox())!;
+  const dst = (await page.locator('.board-cell[data-index="8"]').boundingBox())!;
+  await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(dst.x + dst.width / 2, dst.y + dst.height / 2, { steps: 12 });
+  await page.mouse.up();
+  await expect(badge(page, 8), '交換後角標跟著排序骰子到第 8 格').toHaveText('→');
+  await expect(badge(page, 6), '火骰子換到第 6 格，沒有角標').toHaveCount(0);
+  await expect(page.locator('#dice-card')).toBeHidden();
+
+  // 從組合列放一顆火骰子蓋掉第 8 格：角標消失；再放回排序＝新的一顆，回到「?」。
+  await drag(page, '.deck-dice[data-slot="1"]', '.board-cell[data-index="8"]');
+  await expect(badge(page, 8)).toHaveCount(0);
+  await drag(page, '.deck-dice[data-slot="0"]', '.board-cell[data-index="8"]');
+  await expect(badge(page, 8)).toHaveText('?');
+});
+
+test('B37. 鍵盤：格子有焦點時 R 切換角標並播報，卡片不收；Ctrl+R 不攔；沒有角標的格子 R 什麼都不做', async ({ page }) => {
+  await page.goto('/board');
+  await pickInto(page, 0, ALIGN, 2);
+  await pickInto(page, 1, dice[0]!.id, 1);
+  await drag(page, '.deck-dice[data-slot="0"]', '.board-cell[data-index="1"]');
+  await drag(page, '.deck-dice[data-slot="1"]', '.board-cell[data-index="2"]');
+  // 同 B19：先 focus 空格再按方向鍵，焦點才是 :focus-visible、卡片才會跟著開。
+  await page.locator('.board-cell[data-index="0"]').focus();
+  await page.keyboard.press('ArrowRight');
+  await expect(page.locator('#dice-card .dice-card-title')).toHaveText('排序骰子 · 2 骰點 · 強化 Lv.1');
+
+  await page.keyboard.press('r');
+  await expect(badge(page, 1)).toHaveText('↑');
+  await expect(page.locator('#board-live')).toHaveText('排序改為朝上');
+  await expect(page.locator('#dice-card'), 'R 切換角標，卡片不收').toBeVisible();
+  await expect(page.locator('.board-cell[data-index="1"]')).toBeFocused();
+  await page.keyboard.press('Shift+R');
+  await expect(badge(page, 1)).toHaveText('→');
+
+  // Ctrl+R 是重新整理：不能 preventDefault、也不能切換角標。用合成事件驗（真按下去頁面就重整了）。
+  const prevented = await page.locator('.board-cell[data-index="1"]').evaluate(el =>
+    !el.dispatchEvent(new KeyboardEvent('keydown', { key: 'r', ctrlKey: true, bubbles: true, cancelable: true })));
+  expect(prevented, 'Ctrl+R 被攔下了').toBe(false);
+  await expect(badge(page, 1)).toHaveText('→');
+
+  // 沒有角標的格子：R 不做事也不播報。
+  await page.locator('#board-live').evaluate(el => { el.textContent = ''; });
+  await page.keyboard.press('ArrowRight');
+  await page.keyboard.press('r');
+  await expect(page.locator('#board-live')).toHaveText('');
+});
+
+test('B38. 跨路徑：鍵盤拿起中按 R、挑選網格開著點角標、別格的卡片開著點角標', async ({ page }) => {
+  await page.goto('/board');
+  await pickInto(page, 0, ALIGN, 3);
+  await pickInto(page, 1, dice[0]!.id, 1);
+  await drag(page, '.deck-dice[data-slot="0"]', '.board-cell[data-index="0"]');
+  await drag(page, '.deck-dice[data-slot="1"]', '.board-cell[data-index="2"]');
+
+  // (a) held：拿起排序 → R 切換 → 移到第 2 格放下（交換）→ 角標跟著到第 2 格。
+  await page.locator('.board-cell[data-index="1"]').focus();
+  await page.keyboard.press('ArrowLeft');
+  await page.keyboard.press('Enter');
+  await page.keyboard.press('r');
+  await expect(badge(page, 0)).toHaveText('↑');
+  await page.keyboard.press('ArrowRight');
+  await page.keyboard.press('ArrowRight');
+  await page.keyboard.press('Enter');
+  await expect(badge(page, 2), '拿起後切換的方向跟著換過去').toHaveText('↑');
+  await expect(badge(page, 0)).toHaveCount(0);
+
+  // (b) 挑選網格開著：點角標照樣循環，網格不收、卡片不開。
+  await page.locator('.deck-dice[data-slot="2"]').click();
+  await expect(page.locator('#dice-picker')).toBeVisible();
+  await exposeAbovePicker(page, '.board-cell[data-index="2"] .cell-badge');
+  await pressBadge(page, 2);
+  await expect(badge(page, 2)).toHaveText('→');
+  await expect(page.locator('#dice-picker')).toBeVisible();
+  await expect(page.locator('#dice-card')).toBeHidden();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#dice-picker')).toBeHidden();
+
+  // (c) 別格（火，現在在第 0 格）的卡片開著：點排序的角標，卡片留著、仍描述火那一格。
+  await page.locator('.board-cell[data-index="0"]').click();
+  await expect(page.locator('#dice-card')).toBeVisible();
+  await pressBadge(page, 2);
+  await expect(badge(page, 2)).toHaveText('↓');
+  await expect(page.locator('#dice-card')).toBeVisible();
+  await expect(page.locator('.board-cell[data-index="0"]')).toHaveAttribute('aria-describedby', 'dice-card');
+});
+
+test('B39. 角標完整落在格子裡、不壓到骰點（桌機與 320px）；頁面不橫向捲', async ({ page, isMobile }) => {
+  await page.goto('/board');
+  if (isMobile) await page.setViewportSize({ width: 320, height: 640 });
+  await pickInto(page, 0, ALIGN, 6);
+  await drag(page, '.deck-dice[data-slot="0"]', '.board-cell[data-index="4"]');
+  const cell = (await page.locator('.board-cell[data-index="4"]').boundingBox())!;
+  const b = (await badge(page, 4).boundingBox())!;
+  const pips = (await page.locator('.board-cell[data-index="4"] .cell-pips').boundingBox())!;
+  expect(b.x, '角標超出格子左緣').toBeGreaterThanOrEqual(cell.x);
+  expect(b.y, '角標超出格子上緣').toBeGreaterThanOrEqual(cell.y);
+  expect(b.x + b.width, '角標超出格子右緣').toBeLessThanOrEqual(cell.x + cell.width);
+  expect(b.y + b.height, '角標超出格子下緣').toBeLessThanOrEqual(cell.y + cell.height);
+  const overlap = b.x < pips.x + pips.width && pips.x < b.x + b.width && b.y < pips.y + pips.height && pips.y < b.y + b.height;
+  expect(overlap, '角標壓到骰點').toBe(false);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth), '頁面橫向捲').toBe(true);
+});
+
+test('B40. 盤面加成進卡片：光照到的火骰子攻速多一個括號、明細列出來源、來源與目標格高亮；「不含」也算（擺位是局內）', async ({ page }) => {
+  await page.goto('/board');
+  await pickInto(page, 0, dice[0]!.id, 7);
+  await pickInto(page, 1, LIGHT, 1);
+  await drag(page, '.deck-dice[data-slot="0"]', '.board-cell[data-index="6"]');
+  await drag(page, '.deck-dice[data-slot="1"]', '.board-cell[data-index="7"]');
+  await expect(modeBtn(page, 'none')).toHaveAttribute('aria-pressed', 'true');
+
+  await page.locator('.board-cell[data-index="6"]').click();
+  await expect(cardValue(page, '攻擊速度')).toHaveText('0.143 秒/次 (−0.008)');
+  await expect(page.locator('#dice-card .dice-card-note')).toHaveText('未含骰子樹（符文／被動）加成；含盤面加成');
+  await expect(page.locator('#dice-detail .detail-board-h')).toBeVisible();
+  await expect(page.locator('#dice-detail .detail-board li')).toHaveText(['鄰格光 ×1：攻速 +6%']);
+  await expect(page.locator('.board-cell.buff-src')).toHaveCount(1);
+  await expect(page.locator('.board-cell[data-index="7"]')).toHaveClass(/\bbuff-src\b/);
+  await expect(page.locator('.board-cell.buff-dst')).toHaveCount(0);
+
+  // 開光：它照到的火骰子是目標；光自己沒有盤面加成 → 盤面區塊不顯示、註記沒有後綴。
+  await page.locator('.board-cell[data-index="7"]').click();
+  await expect(page.locator('.board-cell.buff-dst')).toHaveCount(1);
+  await expect(page.locator('.board-cell[data-index="6"]')).toHaveClass(/\bbuff-dst\b/);
+  await expect(page.locator('.board-cell.buff-src')).toHaveCount(0);
+  await expect(page.locator('#dice-detail .detail-board')).toBeHidden();
+  await expect(page.locator('#dice-detail .detail-board-h')).toBeHidden();
+  await expect(page.locator('#dice-card .dice-card-note')).toHaveText('未含骰子樹（符文／被動）加成');
+
+  // 卡片收起：高亮清掉。
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#dice-card')).toBeHidden();
+  await expect(page.locator('.board-cell.buff-src, .board-cell.buff-dst')).toHaveCount(0);
+
+  // 全滿：光那一列帶上 1206（20.8%），火自己的自然系攻速 38.5% 也進來 → (−0.064)。
+  await modeBtn(page, 'max').click();
+  await page.locator('.board-cell[data-index="6"]').click();
+  await expect(cardValue(page, '攻擊速度')).toHaveText('0.143 秒/次 (−0.064)');
+  await expect(page.locator('#dice-detail .detail-board li')).toHaveText(['鄰格光 ×1：攻速 +20.8%']);
+});
+
+test('B41. 切換角標時卡片不收、數字即時變：排序朝右照到火骰子 → 150 (+30)；方向未指定時明細有提示；卡片收起後明細仍跟著變', async ({ page }) => {
+  await page.goto('/board');
+  await pickInto(page, 0, ALIGN, 1);
+  await pickInto(page, 1, dice[0]!.id, 1);
+  await drag(page, '.deck-dice[data-slot="0"]', '.board-cell[data-index="0"]');
+  await drag(page, '.deck-dice[data-slot="1"]', '.board-cell[data-index="2"]');
+
+  await page.locator('.board-cell[data-index="0"]').click();
+  await expect(page.locator('#dice-detail .detail-board li')).toHaveText(['方向未指定，點左上角標切換']);
+
+  await page.locator('.board-cell[data-index="2"]').click();
+  await expect(cardValue(page, '攻擊力')).toHaveText('150');
+  await pressBadge(page, 0); // ↑
+  await pressBadge(page, 0); // →
+  await expect(page.locator('#dice-card'), '切換角標卡片不收').toBeVisible();
+  await expect(cardValue(page, '攻擊力')).toHaveText('150 (+30)');
+  await expect(page.locator('#dice-detail .detail-board li')).toHaveText(['排序（第 1 列第 1 格 →）：攻擊 +20%']);
+  await expect(page.locator('.board-cell[data-index="0"]')).toHaveClass(/\bbuff-src\b/);
+
+  await pressBadge(page, 0); // ↓：射線離開火骰子
+  await expect(cardValue(page, '攻擊力')).toHaveText('150');
+  await expect(page.locator('#dice-detail .detail-board')).toBeHidden();
+  await expect(page.locator('.board-cell.buff-src')).toHaveCount(0);
+
+  for (let k = 0; k < 4; k++) await pressBadge(page, 0); // ← ? ↑ →
+  await expect(badge(page, 0)).toHaveText('→');
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#dice-card')).toBeHidden();
+  await expect(page.locator('#dice-detail .detail-board li')).toHaveText(['排序（第 1 列第 1 格 →）：攻擊 +20%']);
+  await pressBadge(page, 0); // ↓
+  await expect(page.locator('#dice-detail .detail-title')).toHaveText('火骰子 · 1 骰點 · 強化 Lv.1');
+  await expect(page.locator('#dice-detail .detail-board')).toBeHidden();
+});
+
+test('B42. 齒輪二階：同群組的變速齒輪加攻速——群組裡另一顆 1.3 秒/次 (−0.062)，它自己還是「?」', async ({ page }) => {
+  await page.goto('/board');
+  await pickInto(page, 0, GEAR2, 1);
+  await drag(page, '.deck-dice[data-slot="0"]', '.board-cell[data-index="0"]');
+  await drag(page, '.deck-dice[data-slot="0"]', '.board-cell[data-index="1"]');
+  for (const glyph of ['強', '動', '變']) {
+    await pressBadge(page, 0);
+    await expect(badge(page, 0)).toHaveText(glyph);
+  }
+  await page.locator('.board-cell[data-index="1"]').click();
+  await expect(cardValue(page, '攻擊速度')).toHaveText('1.3 秒/次 (−0.062)');
+  await expect(page.locator('#dice-detail .detail-board li')).toHaveText(['齒輪二階變速 ×1：攻速 +5%', '種類未指定，點左上角標切換']);
+});
+
+test('B43. 改施加者的強化 Lv，被加成那顆的卡片即時重算（光 Lv.2 → 7%）', async ({ page }) => {
+  await page.goto('/board');
+  await pickInto(page, 0, dice[0]!.id, 7);
+  await pickInto(page, 1, LIGHT, 1);
+  await drag(page, '.deck-dice[data-slot="0"]', '.board-cell[data-index="6"]');
+  await drag(page, '.deck-dice[data-slot="1"]', '.board-cell[data-index="7"]');
+  await page.locator('.board-cell[data-index="6"]').click();
+  await expect(cardValue(page, '攻擊速度')).toHaveText('0.143 秒/次 (−0.008)');
+  await page.locator('.sp-inc[data-slot="1"]').click();
+  await expect(page.locator('#dice-card')).toBeVisible();
+  await expect(cardValue(page, '攻擊速度')).toHaveText('0.143 秒/次 (−0.009)');
+  await expect(page.locator('#dice-detail .detail-board li')).toHaveText(['鄰格光 ×1：攻速 +7%']);
+});
+
+test('B44. 分享圖：設定過的角標畫在格子左上角，「?」不畫', async ({ page }) => {
+  await page.goto('/board');
+  await pickInto(page, 0, ALIGN, 3);
+  await pickInto(page, 1, ALIGN, 7);
+
+  const img = page.locator('#board-export-img');
+  const r = badgeRect(0);
+  const sample = () => img.evaluate((el: HTMLImageElement, box: typeof r) => {
+    const c = document.createElement('canvas');
+    c.width = el.naturalWidth;
+    c.height = el.naturalHeight;
+    const ctx = c.getContext('2d')!;
+    ctx.drawImage(el, 0, 0);
+    return [...ctx.getImageData(box.x, box.y, box.w, box.h).data].join(',');
+  }, r);
+  let prevSrc: string | null = null;
+  /** 產一張新圖，等它真的換上、載完。 */
+  const exportImage = async (): Promise<void> => {
+    await page.locator('#board-export').click();
+    await expect.poll(() => img.getAttribute('src'), { timeout: EXPORT_TIMEOUT }).not.toBe(prevSrc);
+    await expect.poll(() => img.evaluate((el: HTMLImageElement) => (el.complete ? el.naturalWidth : 0)), { timeout: EXPORT_TIMEOUT }).toBe(1200);
+    prevSrc = await img.getAttribute('src');
+  };
+
+  // 基準：7 骰點的排序四向全開、沒有角標——同一張圖示，角標那一塊只有格子底色與圖示的一角。
+  await drag(page, '.deck-dice[data-slot="1"]', '.board-cell[data-index="0"]');
+  await expect(badge(page, 0)).toHaveCount(0);
+  await exportImage();
+  const noBadge = await sample();
+
+  // 換成 3 骰點、角標「?」：角標那一塊要跟基準一模一樣＝「?」沒有畫進分享圖。
+  await drag(page, '.deck-dice[data-slot="0"]', '.board-cell[data-index="0"]');
+  await expect(badge(page, 0)).toHaveText('?');
+  await exportImage();
+  expect(await sample(), '「?」被畫進分享圖了').toBe(noBadge);
+
+  // 設成「→」：角標那一塊跟基準不同＝設定過的角標有畫。
+  await pressBadge(page, 0);
+  await pressBadge(page, 0);
+  await expect(badge(page, 0)).toHaveText('→');
+  await exportImage();
+  const set = await sample();
+  expect(set, '設定方向之後分享圖的角標位置沒有變化＝角標沒畫').not.toBe(noBadge);
+
+  // 隱藏星數不影響角標（方向是擺位資訊）。
+  await page.locator('#board-hide-pips').click();
+  await exportImage();
+  expect(await sample(), '隱藏星數把角標也藏掉了').toBe(set);
 });

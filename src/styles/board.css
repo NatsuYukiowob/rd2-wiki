@@ -21,6 +21,40 @@
    #deck-row 這個滿版容器**內部**置中，量測 #deck-row 自己的 boundingBox 仍然是貼齊頁面
    左右邊界（0 留白）；`width: fit-content` 讓容器本身收縮成內容寬度，`margin-inline: auto`
    才有實際的等距留白可分——E2E 量的正是 #deck-row 這個元素的框，不是它裡面的槽。 */
+/* 局外加成切換（#offgame-mode）：「我的隊伍」標題下、隊伍列正上方（Yuki 2026-09-19）。
+   三顆按鈕文字固定、用 aria-pressed 表達選中（同「隱藏星數」），切換不改變寬度。
+   沒有存檔的提示（#offgame-nosave）是它的最後一個子元素、跟按鈕同一行；放不下時（手機 320px）
+   換到下一行、各行置中——那是預期的，不是跑版。 */
+#offgame-mode {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: var(--space-2);
+  width: fit-content;
+  margin: 0 auto var(--space-3);
+  font-size: var(--fs-sm);
+}
+.offgame-label { color: var(--muted); }
+#offgame-mode button {
+  padding: var(--space-1) var(--space-3);
+  background: var(--surface-1);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-pill);
+  color: var(--fg);
+  font: inherit;
+  cursor: pointer;
+}
+#offgame-mode button:not([aria-disabled="true"]):hover { background: var(--surface-3); }
+#offgame-mode button[aria-pressed="true"] { background: var(--surface-3); border-color: var(--gold); }
+/* 沒有 /sim 存檔時的「我的 /sim」：aria-disabled 不是 :disabled，外觀要自己給——hover 與按壓回饋
+   也要自己排除（上面的 :hover 與檔尾按壓那兩條的 :not([aria-disabled="true"])）。 */
+#offgame-mode button[aria-disabled="true"] { color: var(--muted); cursor: not-allowed; }
+#offgame-nosave {
+  color: var(--muted);
+  font-size: var(--fs-xs);
+}
+
 #deck-row {
   display: flex;
   gap: var(--space-3);
@@ -46,21 +80,31 @@
 }
 .deck-dice img { width: 100%; height: 100%; object-fit: contain; }
 .deck-dice-empty { font-size: var(--fs-xl); color: var(--muted); }
-.pips-row {
+:is(.pips-row, .sp-row) {
   display: flex;
   align-items: center;
   gap: var(--space-1);
   font-size: var(--fs-sm);
 }
-.pips-row button {
+:is(.pips-row, .sp-row) button {
   background: none;
   border: 0;
   color: var(--fg);
   cursor: pointer;
   padding: var(--space-h) var(--space-1);
 }
-.pips-row button:disabled { color: var(--muted); cursor: default; }
+:is(.pips-row, .sp-row) button:disabled { color: var(--muted); cursor: default; }
 .pips-value { min-width: 1.5rem; text-align: center; }
+/* 強化值：金色、等寬數字。min-width 要容得下「Lv.15」，否則 Lv.1 → Lv.15 時整條組合列變寬（B15b）。 */
+.sp-value {
+  min-width: 5ch;
+  text-align: center;
+  color: var(--gold);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+/* 圖例只在手機版出現（見下方媒體查詢）。 */
+#deck-legend { display: none; }
 
 /* ⚠️ 挑選網格是**浮層**，不是版面裡的一塊。
    它原本夾在組合列與骰盤中間、用 `hidden`（＝display:none）收放，一展開就把骰盤往下推
@@ -112,6 +156,105 @@
 }
 .picker-dice img { width: 2.5rem; height: 2.5rem; object-fit: contain; }
 
+/* 數值卡片：同 #dice-picker 是 fixed 浮層，開合不動版面。
+   ⚠️ pointer-events: none 是必要的：卡片是純資訊、沒有可操作元素，而它會蓋在格子與隊伍列上——
+   接事件的話，蓋住的格子拖不動、強化鈕按不到（E2E 用 page.mouse 座標操作的測試會整批壞）。
+   z-index 介於挑選網格（40）與拖曳影像（50）之間。
+   ⚠️ 標題刻意不加粗：小字粗體中文在非 Windows 環境會糊成一條線（issue #52）。 */
+#dice-card {
+  position: fixed;
+  z-index: 45;
+  width: max-content;
+  max-width: min(20rem, calc(100vw - 2 * var(--space-2)));
+  padding: var(--space-3);
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-3);
+  font-size: var(--fs-sm);
+  pointer-events: none;
+}
+.dice-card-title {
+  margin: 0 0 var(--space-2);
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--border);
+}
+.dice-card-rows {
+  display: grid;
+  grid-template-columns: auto auto;
+  gap: var(--space-1) var(--space-4);
+  margin: 0;
+}
+.dice-card-rows dt { color: var(--muted); }
+.dice-card-rows dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
+.dice-card-note { margin: var(--space-2) 0 0; color: var(--muted); font-size: var(--fs-xs); }
+
+/* 局外加成的貢獻（照遊戲局內面板的綠色括號）與「子彈實際」那一行（小一號、縮排，表示它附屬於攻擊力）。 */
+.dice-card-rows .bonus { color: var(--bonus); }
+.dice-card-rows .bullet { font-size: var(--fs-xs); }
+.dice-card-rows dt.bullet { padding-left: var(--space-2); }
+
+/* 明細面板（#dice-detail）。
+   - 窄視窗的桌機：.board-stage 是一般區塊，面板排在工具列正下方。
+   - 寬桌機（滑鼠、68rem 以上）：骰盤那一段排成三欄 `1fr | 骰盤 --board-w | 1fr`，面板在右欄——骰盤仍以
+     <main> 置中（E2E 的 B10 量的就是這件事），面板只吃右邊本來空著的留白。
+     ⚠️ 面板 `contain: size`，高度由那三列決定、不回頭撐開它們：面板一長高（全滿時十幾行）的話，
+     骰盤那一列會被撐高、工具列被往下推。sticky 掛在內層 .detail-box。
+   - 手機（觸控）：.board-stage 是 display: contents，面板排到頁面最底（見下方觸控媒體查詢）。 */
+#dice-detail {
+  max-width: var(--board-w);
+  margin: var(--space-5) auto 0;
+}
+.detail-box {
+  padding: var(--space-3);
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  font-size: var(--fs-sm);
+}
+.detail-h { margin: 0 0 var(--space-2); font-size: var(--fs-base); }
+.detail-empty, .detail-nothing { margin: 0; color: var(--muted); }
+.detail-title { margin: 0 0 var(--space-2); }
+.detail-box h3 { margin: var(--space-2) 0 var(--space-1); font-size: var(--fs-sm); color: var(--muted); }
+.detail-box ul { margin: 0; padding-left: var(--space-4); }
+@media (hover: hover) and (pointer: fine) and (min-width: 68rem) {
+  .board-stage {
+    display: grid;
+    grid-template-columns: 1fr minmax(0, var(--board-w)) 1fr;
+    column-gap: var(--space-5);
+    align-items: start;
+  }
+  .board-stage > :not(#dice-detail) { grid-column: 2; }
+  /* ⚠️ #board-grid 原本的 margin-inline: auto 是為了在「一般 block」版面裡自己置中（見下面
+     「置中「骰盤」本體」那段註解）；現在它是 .board-stage 這個 grid 的子項目，auto 邊界會蓋掉
+     grid 預設的 justify-self: stretch（同 CLAUDE.md 記過的「flex column 裡 auto 邊界取消
+     stretch」那個坑，這次換成踩在 grid 上）——退回用「骰盤是空的、.board-cell 沒有 img 時幾乎
+     沒有內在寬度」反推出來的 shrink-to-fit 寬度，骰盤整個縮成幾顆像素、挑選網格底下完全透空
+     （B22c 測到的正是這個：第 0 格的中心以為在骰盤上，其實骰盤已經縮沒了，點到的是網格）。
+     清成 0，讓它改用這個媒體查詢定義的欄寬（本來就是同一個 --board-w）撐滿、置中。
+     ⚠️ 選擇器要用 `.board-stage > #board-grid`（具體度 1,1,0）：這個媒體查詢區塊在檔案裡排在
+     後面「置中「骰盤」本體」那段（#board-grid 原本的 margin-inline: auto）之前，同具體度時
+     由後面那條贏，單寫 `#board-grid` 蓋不掉它。 */
+  .board-stage > #board-grid { margin-inline: 0; }
+  #dice-detail {
+    grid-column: 3;
+    grid-row: 1 / span 3;
+    align-self: stretch;
+    contain: size;
+    max-width: 18rem;
+    margin: 0;
+  }
+  /* ⚠️ max-height 要取 min(100%, …)：只寫視窗那一項的話，盒子可以比 #dice-detail 還高（全滿時明細
+     十幾行，比骰盤那三列高），sticky 元素比它的容器高就黏不住，往下捲時標題捲到導覽列底下（B32）。
+     100% 解得出來：#dice-detail 是 stretch 的 grid 項目，高度是確定的。 */
+  .detail-box {
+    position: sticky;
+    top: calc(var(--nav-h) + var(--space-3));
+    max-height: min(100%, calc(100vh - var(--nav-h) - var(--space-6)));
+    overflow: auto;
+  }
+}
+
 /* 置中「骰盤」本體（同一個理由見 #deck-row 上面那段註解：max-width 讓這個 grid 本身窄於
    頁面寬度，才有留白可以用 margin-inline: auto 分）。
    ⚠️ gap 從 --space-2（8px）降到 --space-1（4px）＝格間距減半、密度提高，但**不能再往下
@@ -124,7 +267,7 @@
   display: grid;
   grid-template-columns: repeat(5, 1fr);
   gap: var(--space-1);
-  max-width: 32rem;
+  max-width: var(--board-w);
   margin-inline: auto;
   /* ⚠️ 拖曳靠 pointermove；沒有這一行，手機上一拖就變成捲頁。 */
   touch-action: none;
@@ -148,6 +291,24 @@
   font-size: var(--fs-sm);
   color: var(--gold);
 }
+/* 角標（2b）：7 骰點以下的排序骰子（方向）與齒輪二階（種類）。它是格子按鈕裡的 span、不是另一顆按鈕
+   （不巢狀按鈕）——點它的判定在 src/scripts/board.ts 的 endDrag()：pointerdown 落在角標、沒拖動＝循環。
+   「?」＝未指定，用 --muted 跟指定過的金色分開。不受「隱藏星數」影響：方向是擺位資訊，不是星數。 */
+.board-cell .cell-badge {
+  position: absolute;
+  left: var(--space-h);
+  top: var(--space-h);
+  min-width: 1.5em;
+  padding: 0 var(--space-1);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+  color: var(--gold);
+  font-size: var(--fs-sm);
+  line-height: 1.5;
+  text-align: center;
+}
+.board-cell .cell-badge.unset { color: var(--muted); }
 /* 「隱藏星數」：用 visibility 不用 display——後者會讓 .board-cell 的 `place-items: center`
    重新分配空間，圖示跟著輕微位移。visibility: hidden 讓 .cell-pips 原地不可見，版面零位移。 */
 #board-grid.hide-pips .cell-pips { visibility: hidden; }
@@ -186,10 +347,10 @@
    ⚠️ **刻意不含 `.board-cell`**：格子的主要互動是拖曳，而 `:active` 在整段拖曳期間都成立，
    格子會從按下的那一刻一路縮著直到放開。抓起來的回饋由 .dragging 那一路負責，不是這裡。
    ⚠️ `.pips-row button:disabled` 也要排除：按不動的東西不該有按下去的回饋。 */
-:is(#board-tools button, #picker-close, .picker-dice, .pips-row button) {
+:is(#board-tools button, #picker-close, .picker-dice, .pips-row button, .sp-row button, #offgame-mode button:not([aria-disabled="true"])) {
   transition: transform var(--t-press) var(--e-out);
 }
-:is(#board-tools button, #picker-close, .picker-dice, .pips-row button):not(:disabled):active {
+:is(#board-tools button, #picker-close, .picker-dice, .pips-row button, .sp-row button, #offgame-mode button:not([aria-disabled="true"])):not(:disabled):active {
   transform: scale(var(--p-press));
 }
 
@@ -206,6 +367,14 @@
   opacity: 0.85;
 }
 .board-cell.drop-target { border-color: var(--gold); background: var(--surface-3); }
+/* 卡片開著時的盤面加成高亮（src/scripts/board.ts 的 renderHighlights()）：給這顆加成的格子畫內框實線金、
+   這顆加成到的格子畫虛線綠框（綠＝卡片括號的「拿到加成」）。兩種畫在不同層（box-shadow／outline），
+   同一格兩者都成立時（例：兩顆相鄰的光互相加）兩個都看得到。
+   ⚠️ 不動 border：border-color 是拖曳落點 .drop-target 的管道。
+   ⚠️ 虛線目標框排除 :focus-visible：它的具體度 (0,2,0) 高過焦點框 (0,1,0)，而混用輸入時（鍵盤焦點停在 B 格、
+   滑鼠點 A 格的光——pointerdown 的 preventDefault 讓焦點留在 B）目標格可能正是焦點格，焦點框不能被虛線換掉。 */
+.board-cell.buff-src { box-shadow: inset 0 0 0 var(--space-h) var(--gold); }
+.board-cell.buff-dst:not(:focus-visible) { outline: var(--space-h) dashed var(--bonus); outline-offset: calc(-1 * var(--space-1)); }
 /* ⚠️ 掛在 #deck-row 上（不是 .deck-dice）：B9 量的是這個選擇器，而且拖曳從按鈕邊緣起手時
    仍然要能攔住捲頁手勢。 */
 #deck-row { touch-action: none; }
@@ -218,7 +387,16 @@
   .board-page > h1 { order: 0; }
   .board-page > .lede { order: 1; }
   #board-grid { order: 2; }
-  #deck-row { order: 3; margin-top: var(--space-5); }
+  /* .board-stage 在手機上不成盒：裡面的骰盤／工具列／面板直接參與 .board-page 的 flex order。
+     ⚠️ 拿掉這一行，#board-grid 的 order: 2 會失效（它不再是 .board-page 的直屬子元素），手機版面整個亂掉。 */
+  .board-stage { display: contents; }
+  /* 局外加成切換（連同它裡面那行沒有存檔的提示）跟隊伍列同一個 order、DOM 在它前面 → 排在隊伍列正上方；
+     原本隊伍列的上邊距移給切換（隊伍區整塊跟骰盤之間的間距不變）。 */
+  #offgame-mode { order: 3; margin-top: var(--space-5); }
+  #deck-row { order: 3; }
+  /* 明細面板排到頁面最底（分享圖區塊之後），內容一變只推動它自己下面的東西。
+     ⚠️ margin-inline 要清成 0：flex column 裡的 auto 邊界會取消 stretch（同 #board-grid 那一條的坑）。 */
+  #dice-detail { order: 8; margin-inline: 0; max-width: none; }
   #dice-picker { order: 4; }
   #board-tools { order: 5; }
   #board-live { order: 6; }
@@ -263,15 +441,28 @@
      ⚠️ 這樣一來 ◀／▶ 的可點區塊會小於建議的 24×24 CSS px（320px 寬時整欄只剩約 51px，
      兩顆鈕加中間的數字怎麼分都到不了 24×24×2）；已實測不會小到點不到（見 layout-batch
      report 的量測數字與 E2E 斷言），但這是 320px 這個極窄寬度下的已知取捨，不是假裝達標。 */
-  .pips-row {
+  :is(.pips-row, .sp-row) {
     gap: var(--space-h);
     justify-content: center;
   }
-  .pips-row button {
+  :is(.pips-row, .sp-row) button {
     padding: var(--space-h);
   }
   .pips-value {
     min-width: 1rem;
+  }
+  /* 320px 每槽約 51px，扣掉 ◀ ▶ 後值只剩約 19px，放不下「Lv.15」（約 34px）→ 只顯示數字，
+     哪一排是什麼交給 #deck-legend（Yuki 2026-09-19 裁決）。 */
+  .sp-value { min-width: 1rem; }
+  .sp-prefix { display: none; }
+  /* 跟 #deck-row 同一個 order、DOM 緊接在它後面 → 手機版排在組合列正下方。 */
+  #deck-legend {
+    display: block;
+    order: 3;
+    margin: var(--space-2) 0 0;
+    text-align: center;
+    color: var(--muted);
+    font-size: var(--fs-xs);
   }
 }
 
@@ -283,10 +474,10 @@
      `:is()` 的具體度等於它引數裡最高的那一個——`:is(#board-tools button, …):not(:disabled):active`
      是 (1,2,1)，而攤開來寫的 `#board-tools button:active` 只有 (1,1,1)，會被壓過去。
      2026-08-26 實測踩到：reduce 之下按鈕照樣縮，是 E2E 的 D18 抓出來的。 */
-  :is(#board-tools button, #picker-close, .picker-dice, .pips-row button) {
+  :is(#board-tools button, #picker-close, .picker-dice, .pips-row button, .sp-row button, #offgame-mode button:not([aria-disabled="true"])) {
     transition: none;
   }
-  :is(#board-tools button, #picker-close, .picker-dice, .pips-row button):not(:disabled):active {
+  :is(#board-tools button, #picker-close, .picker-dice, .pips-row button, .sp-row button, #offgame-mode button:not([aria-disabled="true"])):not(:disabled):active {
     transform: none;
   }
 }
