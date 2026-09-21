@@ -171,7 +171,10 @@
   margin-bottom: 0;
 }
 
-.event-section h3 {
+/* ⚠️ 段落標題是 **h2**（頁面標題是 h1）。這條原本寫成 `h3`——那是卡片式版面留下來的，
+   改成一場一頁之後整條變成死規則，標題退回 UA 預設的 1.5em ＋ 20px 上下邊界，
+   跟 h1 幾乎一樣大而 CI 全綠（/code-review 2026-09-21 抓到）。 */
+.event-section h2 {
   margin: 0 0 var(--space-1);
   font-size: var(--fs-lg);
 }

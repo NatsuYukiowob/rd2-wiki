@@ -1903,10 +1903,31 @@ describe('規則 29：期間限定活動', () => {
     expect(only29(data).some(e => /規則 29\(j\).*caption 必須是非空字串/.test(e))).toBe(true);
   });
 
+  it('截圖尺寸不是正整數會被擋（它是 <img width/height> 的來源）', () => {
+    const data = rows();
+    (data[0]!['screenshots'] as Record<string, unknown>[])[0]!['width'] = 0;
+    expect(only29(data).some(e => /規則 29\(j\).*width 0 必須是正整數/.test(e))).toBe(true);
+  });
+
   it('截圖檔名帶路徑會被擋（它直接接在網址後面）', () => {
     const data = rows();
     (data[0]!['screenshots'] as Record<string, unknown>[])[0]!['file'] = '../../etc/passwd';
     expect(only29(data).some(e => /規則 29\(j\).*file .* 不合法/.test(e))).toBe(true);
+  });
+
+  it('截圖目錄整個讀不到時是錯，不是安靜跳過這條檢查', () => {
+    // ⚠️ /code-review 2026-09-21 抓到的真漏洞：原本讀不到目錄就把清單設成 null、整條 29(j)
+    // 變成 no-op——目錄被改名或漏提交時每一張截圖都是破圖，而 validate 全綠。
+    const result = validate(svg, { ...opts, eventShotsDir: 'public/events-DOES-NOT-EXIST' });
+    expect(result.errors.some(e => /規則 29\(j\).*讀不到 public\/events-DOES-NOT-EXIST/.test(e))).toBe(true);
+  });
+
+  it('沒有活動宣告 screenshots 時，目錄不存在不算錯', () => {
+    // 那時目錄本來就不該有東西——擋下來會變成「想加第一張截圖前得先建一個空目錄」。
+    const data = rows();
+    for (const ev of data) delete ev['screenshots'];
+    const result = validate(svg, { ...opts, events: data, eventShotsDir: 'public/events-DOES-NOT-EXIST' });
+    expect(result.errors.filter(e => /規則 29/.test(e))).toEqual([]);
   });
 
   it('沒有人引用的截圖只警告、不擋 PR', () => {

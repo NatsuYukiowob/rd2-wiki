@@ -10,11 +10,15 @@
     "screenshots": [
       {
         "file": "chuseok-2026-board.webp",
-        "caption": "活動主畫面：雙六盤面與累積完賽獎勵"
+        "caption": "活動主畫面：雙六盤面與累積完賽獎勵",
+        "width": 554,
+        "height": 1200
       },
       {
         "file": "chuseok-2026-exchange.webp",
-        "caption": "兌換所：用滿月硬幣換道具"
+        "caption": "兌換所：用滿月硬幣換道具",
+        "width": 554,
+        "height": 1200
       }
     ],
     "summary": "透過進行合作戰獲得賞月代幣吧！怪物有一定機率掉落代幣。賞月代幣可在活動中使用！透過活動獲得滿月硬幣吧！使用滿月硬幣獲得特別獎勵吧。",

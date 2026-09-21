@@ -57,7 +57,7 @@ const { ev } = Astro.props as { ev: GameEvent };
              旁邊就寫著名字的才是裝飾。點圖開原圖，讓人放大看細節。 */
           <figure>
             <a href={`/events/${shot.file}`}>
-              <img src={`/events/${shot.file}`} alt={shot.caption} loading="lazy" decoding="async" width="554" height="1200" />
+              <img src={`/events/${shot.file}`} alt={shot.caption} loading="lazy" decoding="async" width={shot.width} height={shot.height} />
             </a>
             <figcaption>{shot.caption}</figcaption>
           </figure>

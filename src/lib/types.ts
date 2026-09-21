@@ -504,6 +504,15 @@ export interface EventShot {
   file: string;
   /** 圖說，也是 `alt`——截圖是內容不是裝飾，空的 alt 等於這張圖對讀屏使用者不存在。 */
   caption: string;
+  /**
+   * 圖檔的實際像素尺寸，**由產生腳本從檔案讀出來寫進來的，不要手填**。
+   *
+   * ⚠️ 版面不可以寫死一組數字（/code-review 2026-09-21）：`<img width/height>` 的用途是讓
+   * 瀏覽器在圖載完之前先把位置空出來，寫錯比不寫更糟——先用錯的長寬比佔位、載完再跳一次。
+   * 現在兩張剛好都是 554×1200，下一張橫式截圖就會踩到。
+   */
+  width: number;
+  height: number;
 }
 
 export interface EventCurrency {

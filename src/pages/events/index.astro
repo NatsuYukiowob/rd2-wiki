@@ -35,8 +35,8 @@ const rowCount = (ev: GameEvent) => ev.sections.reduce((n, s) => n + s.rows.leng
               alt=""
               loading="lazy"
               decoding="async"
-              width="554"
-              height="1200"
+              width={ev.screenshots[0].width}
+              height={ev.screenshots[0].height}
             />
           )}
           <div class="event-card-body">

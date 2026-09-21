@@ -1871,12 +1871,19 @@ export function validate(svgText: string, opts: ValidateOpts): ValidateResult {
     push('規則 29(a): data/events.json 是空陣列');
   } else {
     const KNOWN_29 = ['id', 'name', 'version', 'period', 'screenshots', 'summary', 'currencies', 'sections'];
-    // 截圖目錄只讀一次。⚠️ 讀不到不是錯（可能整個功能還沒有截圖），是「一張都引用不到」。
+    // 截圖目錄只讀一次。
+    //
+    // ⚠️ **讀不到就是錯，不是「跳過這條檢查」**（/code-review 2026-09-21 抓到）：原本這裡
+    // 吞掉例外、把 shotFiles 設成 null，於是目錄被改名或漏提交時整條 29(j) 安靜地變成
+    // no-op——每一張截圖都是破圖，而 validate 全綠。判準跟 `checkHashNamedIconDir()` 對圖示
+    // 目錄的一樣：目錄讀不到是「有這份資料、但它壞了」。
+    // 只有「沒有任何活動宣告 screenshots」時才允許目錄不存在——那時它本來就不該有東西。
     let shotFiles: string[] | null = null;
+    let shotDirError: string | null = null;
     try {
       shotFiles = readdirSync(opts.eventShotsDir);
-    } catch {
-      shotFiles = null;
+    } catch (e) {
+      shotDirError = (e as Error).message;
     }
     const usedShots = new Set<string>();
     const seenEventIds = new Map<string, number>();
@@ -1965,7 +1972,15 @@ export function validate(svgText: string, opts: ValidateOpts): ValidateResult {
             const atk = `${at}的第 ${k + 1} 張截圖`;
             if (!isPlainObject(shot)) { push(`規則 29(j): ${atk}必須是物件`); continue; }
             for (const key of Object.keys(shot)) {
-              if (key !== 'file' && key !== 'caption') push(`規則 29(j): ${atk}有未知欄位 ${JSON.stringify(key)}`);
+              if (!['file', 'caption', 'width', 'height'].includes(key)) push(`規則 29(j): ${atk}有未知欄位 ${JSON.stringify(key)}`);
+            }
+            // 尺寸是 `<img width/height>` 的來源：缺了就沒有佔位、寫成 0 或負數會讓瀏覽器
+            // 算出一個荒謬的長寬比。產生腳本從檔案讀，這裡只擋「不是正整數」。
+            for (const key of ['width', 'height']) {
+              const v = shot[key];
+              if (!Number.isInteger(v) || (v as number) <= 0) {
+                push(`規則 29(j): ${atk}的 ${key} ${JSON.stringify(v)} 必須是正整數（圖檔的實際尺寸，由產生腳本寫入）`);
+              }
             }
             const caption = shot['caption'];
             if (typeof caption !== 'string' || caption === '') {
@@ -1978,7 +1993,9 @@ export function validate(svgText: string, opts: ValidateOpts): ValidateResult {
               continue;
             }
             usedShots.add(file);
-            if (shotFiles !== null && !shotFiles.includes(file)) {
+            if (shotFiles === null) {
+              push(`規則 29(j): ${atk}指向 ${opts.eventShotsDir}/${file}，但讀不到 ${opts.eventShotsDir}（${shotDirError}）`);
+            } else if (!shotFiles.includes(file)) {
               push(`規則 29(j): ${atk}指向 ${opts.eventShotsDir}/${file}，那個檔不存在`);
             }
           }
