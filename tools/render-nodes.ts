@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { chromium } from 'playwright';
-import { readPngSize } from './lib/png.js';
+import { readPngSize } from '../src/lib/png.js';
 import type { Shape } from '../src/lib/types.js';
 
 /**

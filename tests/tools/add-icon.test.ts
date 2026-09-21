@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, writeFileSync, readFileSync, existsSync } from 
 import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { addIcon, addBoardIcon, addRecordIcon } from '../../tools/add-icon';
+import { addIcon, addMappedIcon, addRecordIcon } from '../../tools/add-icon';
 
 /** 產生一張只有簽章 + IHDR chunk 的最小合法 PNG，足以通過 `readPngSize` 的結構性檢查。 */
 function makeMinimalPng(width: number, height: number): Buffer {
@@ -79,7 +79,7 @@ describe('addIcon', () => {
   });
 });
 
-describe('addBoardIcon', () => {
+describe('addMappedIcon', () => {
   /** 一組暫存的「data/board-icons/ ＋ data/board-icons.json」。 */
   const makeBoardDirs = (map: Record<string, string> = {}) => {
     const dir = mkdtempSync(join(tmpdir(), 'rd2-board-'));
@@ -99,7 +99,7 @@ describe('addBoardIcon', () => {
     const srcPath = join(srcDir, 'dice.png');
     writeFileSync(srcPath, png);
 
-    const result = addBoardIcon(srcPath, '1002', { boardIconsDir: iconsDir, mapPath });
+    const result = addMappedIcon(srcPath, '1002', { iconsDir, mapPath });
 
     const expectedHash = createHash('sha256').update(png).digest('hex').slice(0, 12);
     expect(result.hash).toBe(expectedHash);
@@ -114,7 +114,7 @@ describe('addBoardIcon', () => {
     const srcPath = join(srcDir, 'dice.png');
     writeFileSync(srcPath, makeMinimalPng(150, 175));
 
-    const result = addBoardIcon(srcPath, '1002', { boardIconsDir: iconsDir, mapPath });
+    const result = addMappedIcon(srcPath, '1002', { iconsDir, mapPath });
     expect(result.previousHash).toBe('bbbbbbbbbbbb');
     expect(JSON.parse(readFileSync(mapPath, 'utf8'))['1002']).toBe(result.hash);
   });
@@ -126,7 +126,7 @@ describe('addBoardIcon', () => {
     const srcPath = join(srcDir, 'dice.png');
     writeFileSync(srcPath, makeMinimalPng(150, 175));
 
-    const { hash } = addBoardIcon(srcPath, '3001', { boardIconsDir: iconsDir, mapPath });
+    const { hash } = addMappedIcon(srcPath, '3001', { iconsDir, mapPath });
     expect(readFileSync(mapPath, 'utf8')).toBe(
       `{\n  "1001": "aaaaaaaaaaaa",\n  "3001": "${hash}",\n  "5009": "cccccccccccc"\n}\n`,
     );
@@ -138,7 +138,7 @@ describe('addBoardIcon', () => {
     const srcPath = join(srcDir, 'dice.png');
     writeFileSync(srcPath, makeMinimalPng(150, 175));
 
-    expect(() => addBoardIcon(srcPath, '9999', { boardIconsDir: iconsDir, mapPath })).toThrow(/編碼規律/);
+    expect(() => addMappedIcon(srcPath, '9999', { iconsDir, mapPath })).toThrow(/編碼規律/);
     expect(readFileSync(mapPath, 'utf8')).toBe('{\n  "1001": "aaaaaaaaaaaa"\n}\n');
   });
 
@@ -152,8 +152,8 @@ describe('addBoardIcon', () => {
     const notPng = join(srcDir, 'fake.png');
     writeFileSync(notPng, Buffer.from('not a png'));
 
-    expect(() => addBoardIcon(tiny, '1002', { boardIconsDir: iconsDir, mapPath })).toThrow(/96px/);
-    expect(() => addBoardIcon(notPng, '1002', { boardIconsDir: iconsDir, mapPath })).toThrow(/不是有效的 PNG/);
+    expect(() => addMappedIcon(tiny, '1002', { iconsDir, mapPath })).toThrow(/96px/);
+    expect(() => addMappedIcon(notPng, '1002', { iconsDir, mapPath })).toThrow(/不是有效的 PNG/);
     expect(readFileSync(mapPath, 'utf8')).toBe('{\n  "1001": "aaaaaaaaaaaa"\n}\n');
   });
 });

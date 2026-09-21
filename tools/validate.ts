@@ -12,7 +12,7 @@ import { checkChangelog } from '../src/lib/changelog.js';
 import { groupOfColor } from '../src/lib/glossary-groups.js';
 import { branchOfId, categoryOfZh, elementOfStroke, typeOfZh } from '../src/lib/taxonomy.js';
 import { buildAdjacency, detectCycle, findRoots, prerequisiteChain, unreachableFrom } from '../src/lib/graph.js';
-import { readPngSize } from './lib/png.js';
+import { readPngSize } from '../src/lib/png.js';
 import { isGlossaryAlias } from '../src/lib/types.js';
 import { expandTier } from '../src/lib/upgrade-tiers.js';
 import { deriveParams } from '../src/lib/dice-calc.js';
@@ -361,6 +361,143 @@ function checkIconedRecordList(
   return { records, errors, warnings };
 }
 
+/** `checkDiceIconMap()` 的結果。錯誤與警告由呼叫端自己併進 errors／warnings。 */
+interface DiceIconMapResult {
+  errors: string[];
+  warnings: string[];
+}
+
+/**
+ * 掃一條「一顆骰子一張圖、對應表是 `{節點 id: hash}`」的資產路徑。規則 21
+ * （`/board` 的純骰子圖）與規則 30（`/dice` 的 3D 骰子圖）共用這一支。
+ *
+ * 這是跟 data/icons/ 平行的一類資產路徑——正本管線（規則 7）只處理 SVG 引用到的圖示，
+ * 這些圖完全不在正本裡，換掉節點圖示的那條規則對它們視而不見。少了這條規則，「漏了一顆
+ * 骰子沒配圖」「配到的檔案不存在」「檔名被手動改過跟內容對不上」「放進去的根本不是 PNG
+ * 或小到會糊」「留著沒人引用的孤兒檔」「兩顆骰子指到同一張圖」「對應表裡留著早就不是骰子
+ * 的 id」全部會安靜地通過 CI，直到有人真的打開那一頁才看得到破圖、缺圖或兩顆一樣的骰子。
+ *
+ * 子規則：(a) 骰子漏一筆對應／(b)(c)(d) 目錄本身，與規則 7 共用 checkHashNamedIconDir()
+ * 且字母刻意對齊（檔名≠內容雜湊／PNG 結構與解析度／孤兒檔只警告）／(e) 對應表的值格式／
+ * (f) 指向的圖不存在／(g) 兩筆指向同一張圖／(h) 對應表自己的孤兒 entry。
+ *
+ * ⚠️ **不要為第二條路徑複製第二份出去**（同 `checkHashNamedIconDir()` 的說明）：上一份
+ * 複製品漂到「不驗 PNG、孤兒檔嚴重度相反、逐 entry 重複讀檔」才被抓到。
+ */
+function checkDiceIconMap(opts: {
+  /** 規則編號，例如 `規則 21`。所有訊息都以它開頭。 */
+  rule: string;
+  /** 對應表的檔名，只用在訊息裡（測試會把資料放暫存目錄，寫死路徑等於指著別的檔說話）。 */
+  mapName: string;
+  /** 對應表的內容；`null` 代表沒有提供這份資料（該規則只警告）。 */
+  map: unknown;
+  /** 說明這條路徑是做什麼的，接在「沒有提供 X，」後面。 */
+  purpose: string;
+  /** 圖示目錄。驗證器會實際讀取此目錄下的檔案內容做 sha256 比對，並列出孤兒檔案。 */
+  iconsDir: string;
+  /** 畫面上這些圖的稱呼，用在 (g) 的訊息裡（「兩顆骰子指到同一張純骰子圖」）。 */
+  iconLabel: string;
+  /** 哪些 id 是骰子（(a) 與 (h) 共用同一個定義）。 */
+  diceIds: Set<string>;
+  /** 規則 19 的地盤：文案側與幾何側各自有哪些 id。 */
+  textIds: Set<string>;
+  geomIds: Set<string>;
+  /** 規則 1 的地盤：結構壞掉的 id。 */
+  structurallyBad: Set<string>;
+  minLongestEdge: number;
+}): DiceIconMapResult {
+  const errors: string[] = [];
+  const warnings: string[] = [];
+  // ⚠️ 訊息**不加前綴**：呼叫端的 `push` 也沒有加，`checkHashNamedIconDir()` 回來的那幾條
+  // 更是原樣轉送。加了的話同一條規則會有兩種長相，而測試多半用 regex 比對、看不出來
+  // （2026-09-21 就是這樣讓 (f) 的 `toContain` 紅掉才發現的）。
+  const push = (m: string) => errors.push(m);
+  const warn = (m: string) => warnings.push(m);
+
+  const { rule, mapName, map } = opts;
+  if (map === null) {
+    warn(`${rule}: 沒有提供 ${mapName}，${opts.purpose}未檢查`);
+    return { errors, warnings };
+  }
+  if (typeof map !== 'object' || Array.isArray(map)) {
+    // 跟規則 1 驗 nodes.json 的最外層同一個理由：整份被寫成陣列或字串時，底下每一條檢查都會
+    // 拿到空集合而「安靜地全過」。
+    push(`${rule}: ${mapName} 的最外層必須是以節點 id 為鍵的物件`);
+    return { errors, warnings };
+  }
+
+  const entries = Object.entries(map as Record<string, unknown>);
+
+  // (e) 值必須是 12 碼小寫 hex，也就是「一個圖示雜湊」。這份檔案跟 unlock-exceptions.json
+  // 一樣是社群 PR 直接改的，而 `build-data.ts` 讀它時只有一個 `as`＝執行期零檢查（規則 18
+  // 就是為了同一個理由才存在）。少了這條，值會被原封不動拿去組路徑：`{"1001": {"hash":"x"}}`
+  // 變成 `[object Object].png`，`{"1001": "../../data/nodes"}` 讓閘門去讀圖示目錄
+  // 外面的檔案（兩者實測都成立）。先過濾一次，後面每條檢查才拿得到乾淨的輸入。
+  const iconOf = new Map<string, string>();
+  for (const [id, hash] of entries) {
+    if (typeof hash === 'string' && /^[0-9a-f]{12}$/.test(hash)) iconOf.set(id, hash);
+    else push(`${rule}(e): ${mapName} 的 ${id} 對應到 ${JSON.stringify(hash)}，不是 12 碼小寫 hex 的圖示雜湊`);
+  }
+
+  // (a) 每一顆骰子節點都要在對應表裡有一筆。
+  const entryIds = new Set(entries.map(([id]) => id));
+  for (const id of opts.diceIds) {
+    if (!entryIds.has(id)) push(`${rule}(a): 骰子 ${id} 在 ${mapName} 沒有對應的圖`);
+  }
+
+  // (b)(c)(d) 目錄本身：檔名＝內容雜湊、是有效且夠大的 PNG、沒有孤兒檔或非 .png 雜檔。
+  // 以目錄實際檔案為準掃一次，而不是逐 entry 讀檔算雜湊——同一張圖被 k 個 id 共用時，
+  // 後者會把同一個檔案讀 k 次、噴 k 條一模一樣的錯（規則 7 的註解早就寫了這件事）。
+  const scan = checkHashNamedIconDir(opts.iconsDir, new Set(iconOf.values()), {
+    rule,
+    minLongestEdge: opts.minLongestEdge,
+  });
+  scan.errors.forEach(m => errors.push(m));
+  scan.warnings.forEach(warn);
+
+  // (f) 每一筆指向的圖都要真的在目錄裡。
+  //
+  // 訊息印的是**實際讀取的路徑**（`opts.iconsDir`），不是寫死的目錄名：測試會把圖示複製到
+  // 暫存目錄再驗，寫死等於指著一個檔案好端端在那裡的路徑說它不存在（規則 10 的對應訊息印的
+  // 也是真正的 centerPath）。稱呼也不寫「骰子 ${id}」——對應表裡的 id 不保證還是骰子，
+  // 那是 (h) 的事。
+  for (const [id, hash] of iconOf) {
+    const filePath = join(opts.iconsDir, `${hash}.png`);
+    if (!scan.hashes.has(hash)) push(`${rule}(f): ${mapName} 的 ${id} 指向的圖 ${filePath} 不存在`);
+  }
+
+  // (g) 兩筆不准指向同一張圖。最常見的成因是「複製上一筆、忘了換成新加進來的那張」，
+  // 而那時 (a)(d)(f) 全部沉默：每顆骰子都有對應、檔案存在、目錄裡也沒有多出來的孤兒檔
+  // （新圖從頭到尾沒被加進去過），畫面上就是兩顆長得一模一樣的骰子。
+  const idsByHash = new Map<string, string[]>();
+  for (const [id, hash] of iconOf) idsByHash.set(hash, [...(idsByHash.get(hash) ?? []), id]);
+  for (const [hash, ids] of idsByHash) {
+    if (ids.length > 1) push(`${rule}(g): 節點 ${ids.join('、')} 指向同一張${opts.iconLabel} ${hash}.png，每顆骰子要有自己的圖`);
+  }
+
+  // (h) 反方向：對應表自己不准有孤兒 entry。
+  //
+  // (a) 從骰子出發問「有沒有一筆」、(d) 從目錄出發問「有沒有被引用」，兩條都沒有人從
+  // Object.keys(map) 出發問「這個 id 還在嗎、還是骰子嗎」。少了 (h)，「某顆骰子從
+  // 正本移除，nodes.json 與 SVG 都改了、對應表忘了刪那筆」是零錯誤的——只要
+  // 那筆指向的是一張仍被別人引用的既有圖，(d) 與 (f) 都不會說話（2026-08-23 review F21-1
+  // 實測：塞一筆 "9999" 指向既有雜湊，validate 完全通過）。規則 19 抓得到 SVG↔nodes 的
+  // 殘餘，這條規則得自己抓自己的。
+  //
+  // ⚠️ 這裡要先跳過不屬於這條規則的 id：`withText` 濾掉的那些各自有規則 19 與規則 1 在
+  // 說話，照樣報下去的話，`nodes.json` 漏一筆文案就會多出一條指向對應表的假錯誤
+  // （實測：刪掉 1001 的文案 → 多一條「1001 不是骰子節點」）。只留下「兩邊都在、結構
+  // 也合法，但它就不是骰子」與「兩邊都找不到」。
+  for (const id of entryIds) {
+    if (opts.diceIds.has(id)) continue;
+    if (opts.textIds.has(id) !== opts.geomIds.has(id)) continue; // 規則 19 的地盤
+    if (opts.structurallyBad.has(id)) continue; // 規則 1 的地盤
+    push(`${rule}(h): ${mapName} 的 ${id} 不是（或已不是）骰子節點，這筆對應是孤兒`);
+  }
+
+  return { errors, warnings };
+}
+
 export interface ValidateOpts {
   /**
    * `data/keywords.json` 的內容。key ＝不含 `#` 的詞（規則 8 的白名單），值是玩家看得到的解釋。
@@ -431,6 +568,17 @@ export interface ValidateOpts {
    * 跟 iconsDir 一樣刻意分開傳入（不推導自 dataDir）：測試會把圖示複製到暫存目錄再驗。
    */
   boardIconsDir: string;
+  /**
+   * `data/dice3-icons.json`；沒有這份資料時傳 `null`。
+   *
+   * `/dice` 圖鑑的卡片用的是遊戲的 3D 立體骰子圖（3 號素材），跟 `/board` 的扁平卡片視角
+   * （2 號）與正本 SVG 引用的節點圖示（有底板）是三條互不重疊的資產路徑——同一顆骰子在三處
+   * 的圖不一樣，沒有任何既有規則守得到這一條。跟其他資料檔一樣刻意必填：可選就等於可以被
+   * 安靜地關掉。型別用 `unknown` 的理由同 `boardIcons`。
+   */
+  dice3Icons: unknown;
+  /** `data/dice3-icons/` 所在目錄；規則 30 讀取此目錄下的檔案內容做 sha256 比對，並列出孤兒檔案。 */
+  dice3IconsDir: string;
   /**
    * `data/passive-upgrade-cost.json`；沒有這份資料時傳 `null`。
    *
@@ -1014,100 +1162,46 @@ export function validate(svgText: string, opts: ValidateOpts): ValidateResult {
     for (const m of checkChangelog(opts.changelog, parsed.meta)) push(`規則 20: ${m}`);
   }
 
-  // 規則 21：/board 骰盤編輯器的純骰子圖（`data/board-icons.json` ＋ `data/board-icons/`）。
+  // 規則 21（`/board` 的純骰子圖）與規則 30（`/dice` 圖鑑的 3D 立體骰子圖）是同一種形狀的
+  // 兩條資產路徑：`{節點 id: hash}` 的對應表 ＋ 一個雜湊命名的圖示目錄，所以共用
+  // `checkDiceIconMap()`。⚠️ **不要為第二條複製第二份檢查出去**（理由見該函式與
+  // `checkHashNamedIconDir()` 的說明）。
   //
-  // 這是跟 data/icons/ 平行的一條資產路徑——正本管線（規則 7）只處理 SVG 引用到的圖示，
-  // 純骰子圖完全不在正本裡，換掉節點圖示的那條規則對它視而不見。少了這條規則，「漏了一顆
-  // 骰子沒配圖」「配到的檔案不存在」「檔名被手動改過跟內容對不上」「放進去的根本不是 PNG
-  // 或小到會糊」「留著沒人引用的孤兒檔」「兩顆骰子指到同一張圖」「對應表裡留著早就不是骰子
-  // 的 id」全部會安靜地通過 CI，直到有人真的打開 /board 才看得到破圖、缺圖或兩顆一樣的骰子。
+  // 「哪些是骰子」只算一次，(a) 與 (h) 共用同一個定義。各算各的話，日後型別名稱一改而只
+  // 改到其中一處，就會同時冒出「(a) 要求它要有圖」與「(h) 說這筆是孤兒」兩條互相矛盾的錯誤。
   //
-  // 子規則：(a) 骰子漏一筆對應／(b)(c)(d) 目錄本身，與規則 7 共用 checkHashNamedIconDir()
-  // 且字母刻意對齊（檔名≠內容雜湊／PNG 結構與解析度／孤兒檔只警告）／(e) 對應表的值格式／
-  // (f) 指向的圖不存在／(g) 兩筆指向同一張圖／(h) 對應表自己的孤兒 entry。
-  const boardIcons = opts.boardIcons;
-  if (boardIcons === null) {
-    warn('規則 21: 沒有提供 data/board-icons.json，/board 純骰子圖的對應未檢查');
-  } else if (typeof boardIcons !== 'object' || Array.isArray(boardIcons)) {
-    // 跟規則 1 驗 nodes.json 的最外層同一個理由：整份被寫成陣列或字串時，底下每一條檢查都會
-    // 拿到空集合而「安靜地全過」。
-    push('規則 21: data/board-icons.json 的最外層必須是以節點 id 為鍵的物件');
-  } else {
-    const entries = Object.entries(boardIcons as Record<string, unknown>);
-    // 「哪些是骰子」只算一次，(a) 與 (h) 共用同一個定義。各算各的話，日後型別名稱一改而只
-    // 改到其中一處，就會同時冒出「(a) 要求它要有圖」與「(h) 說這筆是孤兒」兩條互相矛盾的錯誤。
-    //
-    // ⚠️ 判斷「是不是骰子」只能用 `withText`（type 在文案那一側），而 `withText` 會把
-    // 「兩邊沒對齊」與「結構壞掉」的節點濾掉——那兩件事各自有規則 19 與規則 1 在說話，
-    // 所以 (h) 要先替它們讓路（見下面）。
-    const diceIds = new Set(withText.filter(n => n.typeZh === '骰子').map(n => n.id));
-
-    // (e) 值必須是 12 碼小寫 hex，也就是「一個圖示雜湊」。這份檔案跟 unlock-exceptions.json
-    // 一樣是社群 PR 直接改的，而 `build-data.ts` 讀它時只有一個 `as`＝執行期零檢查（規則 18
-    // 就是為了同一個理由才存在）。少了這條，值會被原封不動拿去組路徑：`{"1001": {"hash":"x"}}`
-    // 變成 `[object Object].png`，`{"1001": "../../data/nodes"}` 讓閘門去讀 board-icons 目錄
-    // 外面的檔案（兩者實測都成立）。先過濾一次，後面每條檢查才拿得到乾淨的輸入。
-    const iconOf = new Map<string, string>();
-    for (const [id, hash] of entries) {
-      if (typeof hash === 'string' && /^[0-9a-f]{12}$/.test(hash)) iconOf.set(id, hash);
-      else push(`規則 21(e): data/board-icons.json 的 ${id} 對應到 ${JSON.stringify(hash)}，不是 12 碼小寫 hex 的圖示雜湊`);
-    }
-
-    // (a) 每一顆骰子節點都要在對應表裡有一筆。
-    const entryIds = new Set(entries.map(([id]) => id));
-    for (const id of diceIds) {
-      if (!entryIds.has(id)) push(`規則 21(a): 骰子 ${id} 在 data/board-icons.json 沒有對應的圖`);
-    }
-
-    // (b)(c)(d) 目錄本身：檔名＝內容雜湊、是有效且夠大的 PNG、沒有孤兒檔或非 .png 雜檔。
-    // 以目錄實際檔案為準掃一次，而不是逐 entry 讀檔算雜湊——同一張圖被 k 個 id 共用時，
-    // 後者會把同一個檔案讀 k 次、噴 k 條一模一樣的錯（規則 7 的註解早就寫了這件事）。
-    const boardScan = checkHashNamedIconDir(opts.boardIconsDir, new Set(iconOf.values()), {
+  // ⚠️ 判斷「是不是骰子」只能用 `withText`（type 在文案那一側），而 `withText` 會把
+  // 「兩邊沒對齊」與「結構壞掉」的節點濾掉——那兩件事各自有規則 19 與規則 1 在說話，
+  // 所以 (h) 要先替它們讓路（見 checkDiceIconMap 裡的說明）。
+  const diceIds = new Set(withText.filter(n => n.typeZh === '骰子').map(n => n.id));
+  for (const spec of [
+    {
       rule: '規則 21',
+      mapName: 'data/board-icons.json',
+      map: opts.boardIcons,
+      purpose: '/board 純骰子圖的對應',
+      iconsDir: opts.boardIconsDir,
+      iconLabel: '純骰子圖',
+    },
+    {
+      rule: '規則 30',
+      mapName: 'data/dice3-icons.json',
+      map: opts.dice3Icons,
+      purpose: '/dice 圖鑑 3D 骰子圖的對應',
+      iconsDir: opts.dice3IconsDir,
+      iconLabel: '3D 骰子圖',
+    },
+  ]) {
+    const r = checkDiceIconMap({
+      ...spec,
+      diceIds,
+      textIds,
+      geomIds,
+      structurallyBad,
       minLongestEdge: MIN_ICON_LONGEST_EDGE,
     });
-    boardScan.errors.forEach(push);
-    boardScan.warnings.forEach(warn);
-
-    // (f) 每一筆指向的圖都要真的在目錄裡。
-    //
-    // 訊息印的是**實際讀取的路徑**（`opts.boardIconsDir`），不是寫死的 `data/board-icons/`：
-    // 測試會把圖示複製到暫存目錄再驗，寫死等於指著一個檔案好端端在那裡的路徑說它不存在
-    // （規則 10 的對應訊息印的也是真正的 centerPath）。稱呼也不寫「骰子 ${id}」——對應表裡
-    // 的 id 不保證還是骰子，那是 (h) 的事。
-    for (const [id, hash] of iconOf) {
-      const filePath = join(opts.boardIconsDir, `${hash}.png`);
-      if (!boardScan.hashes.has(hash)) push(`規則 21(f): data/board-icons.json 的 ${id} 指向的圖 ${filePath} 不存在`);
-    }
-
-    // (g) 兩筆不准指向同一張圖。最常見的成因是「複製上一筆、忘了換成新加進來的那張」，
-    // 而那時 (a)(d)(f) 全部沉默：每顆骰子都有對應、檔案存在、目錄裡也沒有多出來的孤兒檔
-    // （新圖從頭到尾沒被加進去過），/board 上就是兩顆長得一模一樣的骰子。
-    const idsByHash = new Map<string, string[]>();
-    for (const [id, hash] of iconOf) idsByHash.set(hash, [...(idsByHash.get(hash) ?? []), id]);
-    for (const [hash, ids] of idsByHash) {
-      if (ids.length > 1) push(`規則 21(g): 節點 ${ids.join('、')} 指向同一張純骰子圖 ${hash}.png，每顆骰子要有自己的圖`);
-    }
-
-    // (h) 反方向：對應表自己不准有孤兒 entry。
-    //
-    // (a) 從骰子出發問「有沒有一筆」、(d) 從目錄出發問「有沒有被引用」，兩條都沒有人從
-    // Object.keys(boardIcons) 出發問「這個 id 還在嗎、還是骰子嗎」。少了 (h)，「某顆骰子從
-    // 正本移除，nodes.json 與 SVG 都改了、board-icons.json 忘了刪那筆」是零錯誤的——只要
-    // 那筆指向的是一張仍被別人引用的既有圖，(d) 與 (f) 都不會說話（2026-08-23 review F21-1
-    // 實測：塞一筆 "9999" 指向既有雜湊，validate 完全通過）。規則 19 抓得到 SVG↔nodes 的
-    // 殘餘，規則 21 得自己抓自己的。
-    //
-    // ⚠️ 這裡要先跳過不屬於這條規則的 id：`withText` 濾掉的那些各自有規則 19 與規則 1 在
-    // 說話，照樣報下去的話，`nodes.json` 漏一筆文案就會多出一條指向 board-icons.json 的假
-    // 錯誤（實測：刪掉 1001 的文案 → 多一條「1001 不是骰子節點」）。只留下「兩邊都在、結構
-    // 也合法，但它就不是骰子」與「兩邊都找不到」。
-    for (const id of entryIds) {
-      if (diceIds.has(id)) continue;
-      if (textIds.has(id) !== geomIds.has(id)) continue; // 規則 19 的地盤
-      if (structurallyBad.has(id)) continue; // 規則 1 的地盤
-      push(`規則 21(h): data/board-icons.json 的 ${id} 不是（或已不是）骰子節點，這筆對應是孤兒`);
-    }
+    r.errors.forEach(m => errors.push(m));
+    r.warnings.forEach(warn);
   }
 
   // 規則 22：玩家被動／支援的升級費用表（`data/passive-upgrade-cost.json`）。
@@ -2081,7 +2175,7 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
   //
   // 「檔案不存在」與「檔案壞掉」刻意分開：`ValidateOpts` 有幾份資料檔本來就備好了一條
   // 「傳 null ＝沒有這份資料，該規則只警告」的路（upgrade-cost／maxlevel-official／
-  // unlock-exceptions／changelog／board-icons），CLI 過去走不到它。解析失敗則一律是錯——
+  // unlock-exceptions／changelog／board-icons／dice3-icons），CLI 過去走不到它。解析失敗則一律是錯——
   // 那是「有這份資料，但它壞了」，不是「沒有」。
   const fileErrors: string[] = [];
   const readDataFile = (path: string, optional: boolean): unknown => {
@@ -2119,6 +2213,8 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
     dataDir: 'data',
     boardIcons: readDataFile('data/board-icons.json', true),
     boardIconsDir: 'data/board-icons',
+    dice3Icons: readDataFile('data/dice3-icons.json', true),
+    dice3IconsDir: 'data/dice3-icons',
     passiveUpgradeCost: readDataFile('data/passive-upgrade-cost.json', true),
     diceStats: readDataFile('data/dice-stats.json', true),
     tactics: readDataFile('data/tactics.json', true),

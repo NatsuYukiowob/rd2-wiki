@@ -1,5 +1,5 @@
 ---
-// 骰子圖鑑：41 顆骰子本體一頁全開。
+// 骰子圖鑑：骰子本體一頁全開。
 //
 // 只收**骰子本體**（`type === 'dice'`，正本裡的矩形節點）。骰子符文、玩家被動、支援那 198
 // 個節點不進圖鑑：它們是加在骰子或玩家身上的強化，不是「一顆骰子」，混在同一個網格裡會讓
@@ -13,6 +13,7 @@
 // 卡片裡的 `#關鍵字` **不跳頁**：點下去在同一張卡片上就地換成那個詞的解釋（2026-08-22
 // Yuki 指定，跟 /tree 的詳情面板同一種操作感）。四組關鍵字的完整清單在 /guide 底下，
 // 那裡是「攤開來瀏覽」用的；卡片上的就地視圖是「讀到一半想起來這個詞是什麼」用的。
+import { readFileSync } from 'node:fs';
 import Base from '../layouts/Base.astro';
 import '../styles/dice.css';
 import DiceCard from '../components/DiceCard.astro';
@@ -20,6 +21,8 @@ import { treeData as data } from '../lib/tree-data';
 import keywordsRaw from '../../data/keywords.json';
 import nodeTextRaw from '../../data/nodes.json';
 import diceStatsRaw from '../../data/dice-stats.json';
+import dice3IconsRaw from '../../data/dice3-icons.json';
+import { readPngSize } from '../lib/png';
 import { buildGlossary, displayGlossary } from '../lib/glossary-groups';
 import { buildTermPayload } from '../lib/static-markup';
 import { BRANCH_ZH } from '../lib/labels';
@@ -51,6 +54,25 @@ const termPayload = buildTermPayload(index, whitelist, glossary);
 const nodes = tree.nodes
   .filter(n => n.type === 'dice')
   .sort((a, b) => a.id.localeCompare(b.id)) as TreeNode[];
+
+// 圖鑑卡片用的是遊戲的 3D 立體骰子圖（3 號素材），不是骰子樹的節點圖（有底板，那張的用途
+// 是「在樹上認得出它」）。它走自己的一條資產路徑：data/dice3-icons.json（節點 id -> 內容
+// 雜湊）＋ data/dice3-icons/（來源 PNG），build:data 轉出 /assets/dice3-icons/<hash>.webp，
+// CI 規則 30 守這份對應表。⚠️ 跟 /board 的純骰子圖（2 號，扁平卡片視角）是**兩條**路徑，
+// 同一顆骰子的兩張圖不一樣，不要互相接線（規則 30 的測試有一條專門守這件事）。
+const dice3Icons = dice3IconsRaw as Record<string, string>;
+// `<img width/height>` 寫來源圖的真實尺寸而不是節點的顯示尺寸（`node.size` 是骰子樹上那張
+// 圖的尺寸，跟這張無關）。這批來源尺寸與長寬比都不統一（384–426 × 398–437），而 build:data
+// 的 `fit: 'inside'` 保留長寬比，所以來源的比例就是輸出的比例。⚠️ 實際顯示尺寸由 CSS 的
+// 3rem 方框 ＋ `object-fit: contain` 決定，這兩個屬性只負責「CSS 生效前先把位置佔好」。
+const icon3Size = new Map<string, { width: number; height: number }>();
+for (const hash of new Set(Object.values(dice3Icons))) {
+  const size = readPngSize(readFileSync(`data/dice3-icons/${hash}.png`));
+  // 讀不到就讓建置失敗，不要退回一個猜來的尺寸：規則 30(c) 已經擋過「不是有效 PNG」，
+  // 走到這裡還讀不到代表檔案在 validate 之後才壞掉，安靜地猜一個比例只會變成版面跳動。
+  if (!size) throw new Error(`data/dice3-icons/${hash}.png 不是有效的 PNG，讀不到尺寸`);
+  icon3Size.set(hash, size);
+}
 
 const BRANCHES = Object.entries(BRANCH_ZH);
 ---
@@ -106,6 +128,7 @@ const BRANCHES = Object.entries(BRANCH_ZH);
           glossary={glossary}
           upgradeCostTable={tree.meta.upgradeCostTable}
           stats={statsOf(diceStats, gameIds.get(node.id))}
+          icon3={{ hash: dice3Icons[node.id]!, ...icon3Size.get(dice3Icons[node.id]!)! }}
         />
       ))}
     </div>
