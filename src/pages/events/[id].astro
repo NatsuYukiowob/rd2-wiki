@@ -1,0 +1,102 @@
+---
+// 一場活動的完整內容（`data/events.json` 的一筆）。索引在 `/events`。
+//
+// 資料來自那一版客戶端的活動資料表（中秋是 `Chuseok*` 五張），名稱一律取 localization 的 zh-tw。
+// ⚠️ **軸是活動、不是版本**（Yuki 2026-09-21 裁決）：解包只有 1.1.0 與 1.1.2 兩版，用版本當軸
+// 的話整頁會變成「1.1.2 多了這些表」的差異報告，而玩家要找的是「這場活動有什麼、怎麼換」。
+// 版本降成標題旁的一個徽章。
+//
+// ⚠️ **內容是通用表格**（`sections[].columns` ＋ `rows`），這一頁對每一欄的語意一無所知——
+// 新活動只加資料、不改這個檔。代價與理由寫在 `src/lib/types.ts` 的 `GameEvent`。
+//
+// 跟 /tactic、/boss、/rift-shop 一樣是靜態頁、建置期直接讀 `data/`，tree.json 一個位元組都不會變。
+import Base from '../../layouts/Base.astro';
+import '../../styles/events.css';
+import eventsRaw from '../../../data/events.json';
+import { eventCellHtml, eventIcon } from '../../lib/events';
+import type { GameEvent } from '../../lib/types';
+
+export function getStaticPaths() {
+  return (eventsRaw as GameEvent[]).map(ev => ({ params: { id: ev.id }, props: { ev } }));
+}
+
+const { ev } = Astro.props as { ev: GameEvent };
+---
+
+<Base title={ev.name}>
+  <section class="page event-page">
+    {/* 回索引的路標。這一頁可以被直接連進來（搜尋結果、別人貼的網址），沒有它就只剩導覽列。 */}
+    <p class="event-back"><a href="/events">← 活動</a></p>
+
+    <div class="event-head">
+      <h1>{ev.name}</h1>
+      {/* 徽章講的是「內含這場活動的客戶端版本」，不是活動的舉辦版本——兩者不是同一件事。 */}
+      <span class="event-badge">{ev.version} 客戶端</span>
+      {ev.period && (
+        <span class="event-period">{ev.period.begin} ～ {ev.period.finish}</span>
+      )}
+    </div>
+
+    <p class="lede">{ev.summary}</p>
+
+    <ul class="event-currencies">
+      {ev.currencies.map(c => (
+        <li>
+          {/* 圖是裝飾（`alt=""`），貨幣名稱就在旁邊——理由同 cost-html.ts 的 currencyIcon()。 */}
+          <Fragment set:html={eventIcon(c.kind)} />
+          <strong>{c.name}</strong>
+          <span class="event-currency-note">{c.note}</span>
+        </li>
+      ))}
+    </ul>
+
+    {ev.screenshots && ev.screenshots.length > 0 && (
+      <div class="event-shots">
+        {ev.screenshots.map(shot => (
+          /* 截圖是**內容**不是裝飾，所以 alt 是圖說本身（不是 `alt=""`）——貨幣圖那種
+             旁邊就寫著名字的才是裝飾。點圖開原圖，讓人放大看細節。 */
+          <figure>
+            <a href={`/events/${shot.file}`}>
+              <img src={`/events/${shot.file}`} alt={shot.caption} loading="lazy" decoding="async" width="554" height="1200" />
+            </a>
+            <figcaption>{shot.caption}</figcaption>
+          </figure>
+        ))}
+      </div>
+    )}
+
+    {ev.sections.map((sec, i) => {
+      // 哪幾欄裡有「帶貨幣圖」的格子——那幾欄裡沒有圖的格子要讓出一張圖的寬度，
+      // 文字起點才對得齊（`.pad-icon`）。CSS 選不到「同一欄的其他列」，所以在這裡算。
+      const iconCols = sec.columns.map((_, c) => sec.rows.some(r => typeof r[c] === 'object'));
+      return (
+      <section class="event-section">
+        {/* 頁面標題是 h1，段落標題因此是 h2——標題階層是讀屏的目錄。 */}
+        <h2 id={`s${i + 1}`}>{sec.title}</h2>
+        {sec.note && <p class="note">{sec.note}</p>}
+        {/* 表格自己可以橫向捲動（窄螢幕）。⚠️ 不可以讓整份文件橫捲——那是 /board 的 B13
+            已經守過的一條。捲動容器要能拿到鍵盤焦點，否則只有滑鼠使用者捲得動。 */}
+        <div class="event-table-wrap" tabindex="0" role="region" aria-labelledby={`s${i + 1}`}>
+          <table class="event-table">
+            <thead>
+              <tr>{sec.columns.map(c => <th scope="col">{c}</th>)}</tr>
+            </thead>
+            <tbody>
+              {sec.rows.map(row => (
+                <tr>
+                  {row.map((cell, c) => (
+                    c === 0
+                      // 第一欄是那一列在講什麼（格號／兌換內容／來源／完賽次數），所以是列標頭。
+                      ? <th scope="row" class={iconCols[c] && typeof cell === 'string' ? 'pad-icon' : undefined} set:html={eventCellHtml(cell)} />
+                      : <td class={iconCols[c] && typeof cell === 'string' ? 'pad-icon' : undefined} set:html={eventCellHtml(cell)} />
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+      );
+    })}
+  </section>
+</Base>

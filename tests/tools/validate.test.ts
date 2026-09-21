@@ -29,10 +29,13 @@ const prereqRanks: unknown = JSON.parse(readFileSync('data/prereq-ranks.json', '
 const riftShop: unknown = JSON.parse(readFileSync('data/rift-shop.json', 'utf8'));
 const riftShopIconsDir = 'data/rift-shop-icons';
 const offgameEffects: unknown = JSON.parse(readFileSync('data/offgame-effects.json', 'utf8'));
+const events: unknown = JSON.parse(readFileSync('data/events.json', 'utf8'));
+const eventShotsDir = 'public/events';
 const opts = {
   keywords, nodeText, upgradeCostTable, maxLevelOfficial, unlockExceptions, changelog, iconsDir, dataDir,
   boardIcons, boardIconsDir, passiveUpgradeCost, diceStats,
   tactics, tacticIconsDir, boss, bossIconsDir, prereqRanks, riftShop, riftShopIconsDir, offgameEffects,
+  events, eventShotsDir,
 };
 
 /** 換掉升級費用表、其餘照舊。深拷貝理由同 patch()。 */
@@ -1772,5 +1775,152 @@ describe('規則 27：裂縫商店', () => {
     for (const r of family(data)) r.icon = hash;
     const result = validate(svg, { ...opts, riftShop: data, riftShopIconsDir: dir });
     expect(result.errors.some(e => /規則 27\(c\).*不是有效的 PNG/.test(e))).toBe(true);
+  });
+});
+
+describe('規則 29：期間限定活動', () => {
+  /** 真實資料的深拷貝，給「只改一個地方」的破壞測試用（同規則 24／25／27）。 */
+  const rows = () => structuredClone(events) as Record<string, unknown>[];
+  const withEvents = (over: unknown) => ({ ...opts, events: over });
+  const only29 = (over: unknown) => validate(svg, withEvents(over)).errors.filter(e => /規則 29/.test(e));
+  /** 第一筆的第一段（雙六盤面）。 */
+  const firstSection = (data: Record<string, unknown>[]) =>
+    (data[0]!['sections'] as Record<string, unknown>[])[0]!;
+
+  it('真實資料零錯誤', () => {
+    expect(only29(rows())).toEqual([]);
+  });
+
+  it('沒有提供 data/events.json 時只警告、不擋 PR', () => {
+    const result = validate(svg, withEvents(null));
+    expect(result.errors).toEqual([]);
+    expect(result.warnings.some(w => /規則 29: 沒有提供 data\/events\.json/.test(w))).toBe(true);
+  });
+
+  it('最外層不是陣列會被擋', () => {
+    expect(only29({}).some(e => /規則 29\(a\).*最外層必須是陣列/.test(e))).toBe(true);
+  });
+
+  it('必填欄位缺一個會被擋', () => {
+    const data = rows();
+    delete data[0]!['summary'];
+    expect(only29(data).some(e => /規則 29\(b\).*summary 必須是非空字串/.test(e))).toBe(true);
+  });
+
+  it('未知欄位會被指名（包含 2026-09-21 拿掉的 notes——它是維護者資訊，不該被加回畫面上）', () => {
+    const data = rows();
+    data[0]!['banner'] = 'x.png';
+    expect(only29(data).some(e => /規則 29\(b\).*未知欄位 "banner"/.test(e))).toBe(true);
+    const withNotes = rows();
+    withNotes[0]!['notes'] = ['資料出處……'];
+    expect(only29(withNotes).some(e => /規則 29\(b\).*未知欄位 "notes"/.test(e))).toBe(true);
+  });
+
+  it('id 不是錨點格式會被擋', () => {
+    // id 是頁面錨點（`#chuseok-2026`）。中文或空白進到 id，畫面上只會是一個連不上的連結。
+    const data = rows();
+    data[0]!['id'] = '中秋 2026';
+    expect(only29(data).some(e => /規則 29\(c\).*不合法.*頁面錨點/.test(e))).toBe(true);
+  });
+
+  it('兩筆活動 id 撞號會被擋', () => {
+    const data = rows();
+    data.push(structuredClone(data[0]!));
+    expect(only29(data).some(e => /規則 29\(c\).*id 都是.*錨點會撞號/.test(e))).toBe(true);
+  });
+
+  it('version 不是 x.y.z 會被擋', () => {
+    const data = rows();
+    data[0]!['version'] = 'v1.1.2';
+    expect(only29(data).some(e => /規則 29\(d\).*不是 x\.y\.z/.test(e))).toBe(true);
+  });
+
+  it('period 寫成字串會被擋（客戶端根本沒有日期欄位，猜一個跟查證過的長得一樣）', () => {
+    const data = rows();
+    data[0]!['period'] = '2026-09-15 ~ 2026-10-01';
+    expect(only29(data).some(e => /規則 29\(e\).*必須是 null 或 \{ begin, finish \}/.test(e))).toBe(true);
+  });
+
+  it('period 是合法的起訖時放行（下一場活動真的有檔期時不必改規則）', () => {
+    const data = rows();
+    data[0]!['period'] = { begin: '2026-09-15', finish: '2026-10-01' };
+    expect(only29(data)).toEqual([]);
+  });
+
+  it('某一列少一格會被擋', () => {
+    // ⚠️ 這是這條規則最重要的一項：版面照畫，畫面上是一張欄位錯開、看起來很正常的表。
+    const data = rows();
+    const rowsOf = firstSection(data)['rows'] as unknown[][];
+    rowsOf[0] = rowsOf[0]!.slice(0, -1);
+    expect(only29(data).some(e => /規則 29\(h\).*格數對不上/.test(e))).toBe(true);
+  });
+
+  it('某一列多一格也會被擋', () => {
+    const data = rows();
+    const rowsOf = firstSection(data)['rows'] as unknown[][];
+    rowsOf[0] = [...rowsOf[0]!, '多的'];
+    expect(only29(data).some(e => /規則 29\(h\).*格數對不上/.test(e))).toBe(true);
+  });
+
+  it('格子的 icon 沒登記過圖會被擋', () => {
+    const data = rows();
+    const rowsOf = firstSection(data)['rows'] as unknown[][];
+    rowsOf[1]![2] = { icon: 'mooncake', text: '月餅 1' };
+    expect(only29(data).some(e => /規則 29\(i\).*icon "mooncake" 沒有登記過圖/.test(e))).toBe(true);
+  });
+
+  it('貨幣的 kind 沒登記過圖會被擋', () => {
+    const data = rows();
+    (data[0]!['currencies'] as Record<string, unknown>[])[0]!['kind'] = 'mooncake';
+    expect(only29(data).some(e => /規則 29\(f\).*kind "mooncake" 沒有登記過圖/.test(e))).toBe(true);
+  });
+
+  it('section 的 note 是選填，但寫成空字串會被擋', () => {
+    // 同規則 24 的 optionalText：空字串在版面的 `{note && …}` 是 falsy，那一段安靜消失，
+    // 而資料檔看起來「有寫」。
+    const data = rows();
+    firstSection(data)['note'] = '';
+    expect(only29(data).some(e => /規則 29\(g\).*note 是選填，但只要出現就必須是非空字串/.test(e))).toBe(true);
+  });
+
+  it('空字串的格子會被擋（沒有值要寫「—」）', () => {
+    const data = rows();
+    (firstSection(data)['rows'] as unknown[][])[0]![2] = '';
+    expect(only29(data).some(e => /規則 29\(i\).*是空字串/.test(e))).toBe(true);
+  });
+
+  it('截圖指向不存在的檔會被擋', () => {
+    // ⚠️ 這是這一頁唯一一條「檔案在不在」的檢查：檔名打錯的 HTML 完全合法，
+    // 畫面上是一張破圖，而 alt 還照樣念得出來。
+    const data = rows();
+    (data[0]!['screenshots'] as Record<string, unknown>[])[0]!['file'] = 'no-such-shot.webp';
+    expect(only29(data).some(e => /規則 29\(j\).*那個檔不存在/.test(e))).toBe(true);
+  });
+
+  it('截圖的 caption 空字串會被擋（它同時是 alt）', () => {
+    const data = rows();
+    (data[0]!['screenshots'] as Record<string, unknown>[])[0]!['caption'] = '';
+    expect(only29(data).some(e => /規則 29\(j\).*caption 必須是非空字串/.test(e))).toBe(true);
+  });
+
+  it('截圖檔名帶路徑會被擋（它直接接在網址後面）', () => {
+    const data = rows();
+    (data[0]!['screenshots'] as Record<string, unknown>[])[0]!['file'] = '../../etc/passwd';
+    expect(only29(data).some(e => /規則 29\(j\).*file .* 不合法/.test(e))).toBe(true);
+  });
+
+  it('沒有人引用的截圖只警告、不擋 PR', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'rd2-event-shots-'));
+    for (const f of readdirSync(eventShotsDir)) writeFileSync(join(dir, f), readFileSync(join(eventShotsDir, f)));
+    writeFileSync(join(dir, 'orphan.webp'), Buffer.from('x'));
+    const result = validate(svg, { ...opts, eventShotsDir: dir });
+    expect(result.errors.filter(e => /規則 29/.test(e))).toEqual([]);
+    expect(result.warnings.some(w => /規則 29\(j\).*orphan\.webp 沒有任何活動引用到/.test(w))).toBe(true);
+  });
+
+  it('sections 是空陣列會被擋', () => {
+    const data = rows();
+    data[0]!['sections'] = [];
+    expect(only29(data).some(e => /規則 29\(g\).*sections 必須是非空陣列/.test(e))).toBe(true);
   });
 });

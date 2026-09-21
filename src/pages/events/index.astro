@@ -1,0 +1,64 @@
+---
+// 活動索引（`data/events.json`）。一場活動一張小卡：縮圖 ＋ 名稱 ＋ 版本徽章 ＋ 檔期 ＋
+// 一句摘要，內容表在 `/events/<id>`。
+//
+// ⚠️ **為什麼是分頁不是就地展開**（Yuki 2026-09-21）：活動只會越來越多，而就地展開（`<details>`
+// 那類）只是視覺收合——每一場的整份內容表仍然在同一份 HTML 裡，索引頁會跟著每場活動一起變重。
+// 分頁把重量真的切開，也讓每一場有可分享、可被搜尋引擎索引的網址（同 `/guide/[slug]`）。
+import Base from '../../layouts/Base.astro';
+import '../../styles/events.css';
+import eventsRaw from '../../../data/events.json';
+import { eventIcon } from '../../lib/events';
+import type { GameEvent } from '../../lib/types';
+
+const events = eventsRaw as GameEvent[];
+
+/** 卡片上的「N 項內容」：從資料算，不寫死——條數會隨活動漂移。 */
+const rowCount = (ev: GameEvent) => ev.sections.reduce((n, s) => n + s.rows.length, 0);
+---
+
+<Base title="活動">
+  <section class="page">
+    <h1>活動</h1>
+    <p class="lede">
+      遊戲裡辦過的期間限定活動，內容取自對應版本的客戶端資料表。點一張卡片看那場活動的完整內容。
+    </p>
+
+    <div class="event-index">
+      {events.map((ev, i) => (
+        // 整張卡片是一個連結（同 `.guide-card`）：點哪裡都進得去，不必去瞄那個「→」。
+        <a class="event-card-link" href={`/events/${ev.id}`} style={`--i:${i}`}>
+          {ev.screenshots?.[0] && (
+            <img
+              class="event-thumb"
+              src={`/events/${ev.screenshots[0].file}`}
+              alt=""
+              loading="lazy"
+              decoding="async"
+              width="554"
+              height="1200"
+            />
+          )}
+          <div class="event-card-body">
+            <div class="event-head">
+              <h2>{ev.name}</h2>
+              <span class="event-badge">{ev.version} 客戶端</span>
+            </div>
+            {ev.period && (
+              <p class="event-period">{ev.period.begin} ～ {ev.period.finish}</p>
+            )}
+            <p class="event-card-summary">{ev.summary}</p>
+            <p class="event-card-meta">
+              {ev.currencies.map(c => (
+                <span class="event-chip">
+                  <Fragment set:html={eventIcon(c.kind)} />{c.name}
+                </span>
+              ))}
+              <span class="event-more">{rowCount(ev)} 項內容 →</span>
+            </p>
+          </div>
+        </a>
+      ))}
+    </div>
+  </section>
+</Base>

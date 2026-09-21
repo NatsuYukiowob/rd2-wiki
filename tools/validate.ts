@@ -18,6 +18,7 @@ import { expandTier } from '../src/lib/upgrade-tiers.js';
 import { deriveParams } from '../src/lib/dice-calc.js';
 import { BRANCH_ZH } from '../src/lib/labels.js';
 import { OFFGAME_TARGETS, ROW_TARGETS } from '../src/lib/offgame.js';
+import { EVENT_ICON_KINDS } from '../src/lib/events.js';
 import type { DiceStat, Edge, GlossaryRecord, Growth, MaxLevelOfficial, UpgradeCostTable, UpgradeTier } from '../src/lib/types.js';
 
 /**
@@ -483,6 +484,13 @@ export interface ValidateOpts {
    * 沒有這份資料時傳 `null`，規則 28 只警告——/board 的局外加成跟著全部算 0。
    */
   offgameEffects: unknown;
+  /**
+   * `data/events.json`：期間限定活動（`/events`，規則 29）。沒有這份資料時傳 `null`，
+   * 規則 29 只警告——同 `tactics`／`riftShop`，那條路 CLI 走不到，是給單元測試與舊分支用的。
+   */
+  events: unknown;
+  /** `public/events/` 所在目錄：活動的遊戲內截圖（規則 29(j) 驗引用得到、順帶警告孤兒檔）。 */
+  eventShotsDir: string;
 }
 
 export interface ValidateResult {
@@ -1838,6 +1846,214 @@ export function validate(svgText: string, opts: ValidateOpts): ValidateResult {
     }
   }
 
+  // 規則 29：期間限定活動（`data/events.json`，/events）。
+  //
+  // 這份資料的形狀跟規則 24／25／27 那族完全不同（沒有 icon 檔、沒有 id ↔ 圖的對應），所以不走
+  // `checkIconedRecordList()`。它的內容是**通用表格**（`sections[].columns` ＋ `rows`），版面
+  // 對每一欄的語意一無所知——這正是規則 29 存在的理由：版面不會為了「這一欄應該是什麼」說話。
+  //
+  // 四種會安靜出錯的寫壞法：
+  // 1. **某一列少一格或多一格** → Astro 的 `rows.map` 照畫，那一列的欄位跟表頭錯開（或少一格），
+  //    畫面上是一張看起來很正常、但數字對錯欄的表。
+  // 2. **`icon` 寫一個沒登記的種類** → `eventIcon()` 在建置期丟（那是刻意的），但只有真的建置
+  //    才看得到；驗證階段先擋下來，錯誤訊息才指得出是第幾筆第幾列。
+  // 3. **`period` 亂填** → 客戶端的活動表裡根本沒有日期（見 `GameEvent.period` 的說明），
+  //    一個猜來的檔期在畫面上跟查證過的日期長得一模一樣。所以它只能是 null 或兩個非空字串。
+  // 4. **`version` 寫成 `1.1` 或 `v1.1.2`** → 那個字串會直接印在活動卡片的徽章上。
+  //
+  // ⚠️ **沒有 `notes` 欄位**（Yuki 2026-09-21 拿掉）：資料出處與上游矛盾的註記是維護者資訊，
+  // 留在產生腳本與 CLAUDE.md，畫面上只印查得到的事實。未知欄位那條會擋下把它加回來。
+  if (opts.events === null) {
+    warn('規則 29: 沒有提供 data/events.json，期間限定活動未檢查');
+  } else if (!Array.isArray(opts.events)) {
+    push('規則 29(a): data/events.json 的最外層必須是陣列');
+  } else if (opts.events.length === 0) {
+    push('規則 29(a): data/events.json 是空陣列');
+  } else {
+    const KNOWN_29 = ['id', 'name', 'version', 'period', 'screenshots', 'summary', 'currencies', 'sections'];
+    // 截圖目錄只讀一次。⚠️ 讀不到不是錯（可能整個功能還沒有截圖），是「一張都引用不到」。
+    let shotFiles: string[] | null = null;
+    try {
+      shotFiles = readdirSync(opts.eventShotsDir);
+    } catch {
+      shotFiles = null;
+    }
+    const usedShots = new Set<string>();
+    const seenEventIds = new Map<string, number>();
+    const iconKinds = new Set(EVENT_ICON_KINDS);
+
+    for (let i = 0; i < opts.events.length; i++) {
+      const raw: unknown = opts.events[i];
+      // 訊息一律指得出「第幾筆」——同 checkIconedRecordList，這份檔案也沒有鍵。
+      const at = `data/events.json 第 ${i + 1} 筆`;
+      if (!isPlainObject(raw)) { push(`規則 29(b): ${at}必須是物件`); continue; }
+      for (const key of Object.keys(raw)) {
+        if (!KNOWN_29.includes(key)) push(`規則 29(b): ${at}有未知欄位 ${JSON.stringify(key)}，合法欄位只有 ${KNOWN_29.join('／')}`);
+      }
+      for (const key of ['id', 'name', 'version', 'summary']) {
+        const v = raw[key];
+        if (typeof v !== 'string' || v === '') push(`規則 29(b): ${at}的 ${key} 必須是非空字串`);
+      }
+
+      const id = raw['id'];
+      if (typeof id === 'string' && id !== '') {
+        // id 同時是頁面上的錨點（`#chuseok-2026`），所以格式綁死——中文或空白進到 id 會變成
+        // 一個連不上的錨點，而畫面上完全看不出來。
+        if (!/^[a-z0-9][a-z0-9-]*$/.test(id)) {
+          push(`規則 29(c): ${at}的 id ${JSON.stringify(id)} 不合法（小寫英數與連字號，且不以連字號開頭；它是頁面錨點）`);
+        }
+        const prev = seenEventIds.get(id);
+        if (prev !== undefined) {
+          push(`規則 29(c): data/events.json 第 ${prev + 1} 筆與第 ${i + 1} 筆的 id 都是 ${JSON.stringify(id)}，錨點會撞號`);
+        } else {
+          seenEventIds.set(id, i);
+        }
+      }
+
+      const version = raw['version'];
+      if (typeof version === 'string' && !/^\d+\.\d+\.\d+$/.test(version)) {
+        push(`規則 29(d): ${at}的 version ${JSON.stringify(version)} 不是 x.y.z（它直接印在活動卡片的徽章上）`);
+      }
+
+      // period：客戶端沒有日期欄位，所以「沒有」要寫成 null，不是空字串、不是 "未知"。
+      const period = raw['period'];
+      if (period !== null && period !== undefined) {
+        if (!isPlainObject(period)) {
+          push(`規則 29(e): ${at}的 period 必須是 null 或 { begin, finish }`);
+        } else {
+          for (const key of ['begin', 'finish']) {
+            const v = period[key];
+            if (typeof v !== 'string' || v === '') push(`規則 29(e): ${at}的 period.${key} 必須是非空字串`);
+          }
+          for (const key of Object.keys(period)) {
+            if (key !== 'begin' && key !== 'finish') push(`規則 29(e): ${at}的 period 有未知欄位 ${JSON.stringify(key)}`);
+          }
+        }
+      }
+
+      const currencies = raw['currencies'];
+      if (!Array.isArray(currencies) || currencies.length === 0) {
+        push(`規則 29(f): ${at}的 currencies 必須是非空陣列`);
+      } else {
+        for (let c = 0; c < currencies.length; c++) {
+          const cur: unknown = currencies[c];
+          const atc = `${at}的 currencies 第 ${c + 1} 筆`;
+          if (!isPlainObject(cur)) { push(`規則 29(f): ${atc}必須是物件`); continue; }
+          for (const key of Object.keys(cur)) {
+            if (!['kind', 'name', 'note'].includes(key)) push(`規則 29(f): ${atc}有未知欄位 ${JSON.stringify(key)}`);
+          }
+          for (const key of ['name', 'note']) {
+            const v = cur[key];
+            if (typeof v !== 'string' || v === '') push(`規則 29(f): ${atc}的 ${key} 必須是非空字串`);
+          }
+          const kind = cur['kind'];
+          if (typeof kind !== 'string' || !iconKinds.has(kind)) {
+            push(`規則 29(f): ${atc}的 kind ${JSON.stringify(kind)} 沒有登記過圖（合法值：${EVENT_ICON_KINDS.join('／')}）`);
+          }
+        }
+      }
+
+      // (j) 遊戲內截圖。它是**內容**不是裝飾（caption 同時當 alt），而且是這一頁唯一一條
+      // 「檔案在不在」的檢查——檔名打錯在畫面上是一張破圖，HTML 本身完全合法。
+      const shots = raw['screenshots'];
+      if (shots !== undefined) {
+        if (!Array.isArray(shots) || shots.length === 0) {
+          push(`規則 29(j): ${at}的 screenshots 是選填，但只要出現就必須是非空陣列（沒有截圖請整個欄位省略）`);
+        } else {
+          for (let k = 0; k < shots.length; k++) {
+            const shot: unknown = shots[k];
+            const atk = `${at}的第 ${k + 1} 張截圖`;
+            if (!isPlainObject(shot)) { push(`規則 29(j): ${atk}必須是物件`); continue; }
+            for (const key of Object.keys(shot)) {
+              if (key !== 'file' && key !== 'caption') push(`規則 29(j): ${atk}有未知欄位 ${JSON.stringify(key)}`);
+            }
+            const caption = shot['caption'];
+            if (typeof caption !== 'string' || caption === '') {
+              // caption 同時是 alt：空的 alt 等於這張圖對螢幕閱讀器完全不存在，而它是內容。
+              push(`規則 29(j): ${atk}的 caption 必須是非空字串（它同時是圖說與 alt）`);
+            }
+            const file = shot['file'];
+            if (typeof file !== 'string' || !/^[a-z0-9][a-z0-9.-]*$/.test(file)) {
+              push(`規則 29(j): ${atk}的 file ${JSON.stringify(file)} 不合法（小寫英數、連字號與點，且不以點或連字號開頭——它直接接在網址 /events/ 後面）`);
+              continue;
+            }
+            usedShots.add(file);
+            if (shotFiles !== null && !shotFiles.includes(file)) {
+              push(`規則 29(j): ${atk}指向 ${opts.eventShotsDir}/${file}，那個檔不存在`);
+            }
+          }
+        }
+      }
+
+      const sections = raw['sections'];
+      if (!Array.isArray(sections) || sections.length === 0) {
+        push(`規則 29(g): ${at}的 sections 必須是非空陣列`);
+        continue;
+      }
+      for (let sIdx = 0; sIdx < sections.length; sIdx++) {
+        const sec: unknown = sections[sIdx];
+        const ats = `${at}的第 ${sIdx + 1} 段`;
+        if (!isPlainObject(sec)) { push(`規則 29(g): ${ats}必須是物件`); continue; }
+        for (const key of Object.keys(sec)) {
+          if (!['title', 'note', 'columns', 'rows'].includes(key)) push(`規則 29(g): ${ats}有未知欄位 ${JSON.stringify(key)}`);
+        }
+        if (typeof sec['title'] !== 'string' || sec['title'] === '') push(`規則 29(g): ${ats}的 title 必須是非空字串`);
+        if (sec['note'] !== undefined && (typeof sec['note'] !== 'string' || sec['note'] === '')) {
+          // 同規則 24 的 optionalText：選填欄位寫成空字串或 null 時，版面的 `{note && …}` 會安靜地
+          // 少印一段，而資料檔看起來「有寫」。
+          push(`規則 29(g): ${ats}的 note 是選填，但只要出現就必須是非空字串`);
+        }
+        const columns = sec['columns'];
+        if (!Array.isArray(columns) || columns.length === 0) {
+          push(`規則 29(g): ${ats}的 columns 必須是非空陣列`);
+          continue;
+        }
+        for (let c = 0; c < columns.length; c++) {
+          if (typeof columns[c] !== 'string' || columns[c] === '') push(`規則 29(g): ${ats}的第 ${c + 1} 個欄名必須是非空字串`);
+        }
+        const rows = sec['rows'];
+        if (!Array.isArray(rows) || rows.length === 0) {
+          push(`規則 29(g): ${ats}的 rows 必須是非空陣列`);
+          continue;
+        }
+        for (let r = 0; r < rows.length; r++) {
+          const row: unknown = rows[r];
+          const atr = `${ats}的第 ${r + 1} 列`;
+          if (!Array.isArray(row)) { push(`規則 29(h): ${atr}必須是陣列`); continue; }
+          if (row.length !== columns.length) {
+            push(`規則 29(h): ${atr}有 ${row.length} 格，表頭有 ${columns.length} 欄——格數對不上，畫面上會是一張欄位錯開的表`);
+            continue;
+          }
+          for (let c = 0; c < row.length; c++) {
+            const cell: unknown = row[c];
+            const atcell = `${atr}第 ${c + 1} 格`;
+            if (typeof cell === 'string') {
+              if (cell === '') push(`規則 29(i): ${atcell}是空字串（沒有值請寫「—」）`);
+              continue;
+            }
+            if (!isPlainObject(cell)) { push(`規則 29(i): ${atcell}必須是字串或 { icon, text }`); continue; }
+            for (const key of Object.keys(cell)) {
+              if (key !== 'icon' && key !== 'text') push(`規則 29(i): ${atcell}有未知欄位 ${JSON.stringify(key)}`);
+            }
+            const icon = cell['icon'];
+            if (typeof icon !== 'string' || !iconKinds.has(icon)) {
+              push(`規則 29(i): ${atcell}的 icon ${JSON.stringify(icon)} 沒有登記過圖（合法值：${EVENT_ICON_KINDS.join('／')}）`);
+            }
+            if (typeof cell['text'] !== 'string' || cell['text'] === '') push(`規則 29(i): ${atcell}的 text 必須是非空字串`);
+          }
+        }
+      }
+    }
+
+    // 孤兒截圖只警告，不擋 PR——那只是 repo 裡多一個沒人引用的檔，擋下來會連「換圖忘了刪舊檔」
+    // 一起擋（同規則 7(d) 對圖示目錄的判準）。
+    if (shotFiles !== null) {
+      for (const f of shotFiles) {
+        if (!usedShots.has(f)) warn(`規則 29(j): ${opts.eventShotsDir}/${f} 沒有任何活動引用到`);
+      }
+    }
+  }
+
   return { errors, warnings };
 }
 
@@ -1896,6 +2112,8 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
     riftShop: readDataFile('data/rift-shop.json', true),
     riftShopIconsDir: 'data/rift-shop-icons',
     offgameEffects: readDataFile('data/offgame-effects.json', true),
+    events: readDataFile('data/events.json', true),
+    eventShotsDir: 'public/events',
   };
 
   // 有資料檔讀不到時就停在這裡：接下來每一條規則都會拿著一份空殼在猜，噴出來的幾百條錯誤

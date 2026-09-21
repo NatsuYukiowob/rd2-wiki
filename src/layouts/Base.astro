@@ -52,7 +52,7 @@ const isCurrent = (href: string) => path === href || (href !== '/' && path.start
  * 收進這個下拉之後，只看 `/guide` 的話，站在戰術頁時導覽列上零提示——下拉是收起來的，
  * 裡面那條 `aria-current` 使用者根本看不到。2026-09-06 的 `/rift-shop` 同理。
  */
-const guideCurrent = ['/guide', '/tactic', '/boss', '/rift-shop'].some(href => isCurrent(href));
+const guideCurrent = ['/guide', '/tactic', '/boss', '/rift-shop', '/events'].some(href => isCurrent(href));
 
 /**
  * 分頁標題的站名前綴。格式是「站名 | 分頁名」，站名在前（2026-08-22 定案）。
@@ -166,6 +166,7 @@ const imageUrl = new URL('/favicon.png', Astro.site).href;
           <a href="/tactic" aria-current={isCurrent('/tactic') ? 'page' : undefined}>戰術</a>
           <a href="/boss" aria-current={isCurrent('/boss') ? 'page' : undefined}>Boss</a>
           <a href="/rift-shop" aria-current={isCurrent('/rift-shop') ? 'page' : undefined}>裂縫商店</a>
+          <a href="/events" aria-current={isCurrent('/events') ? 'page' : undefined}>活動</a>
         </div>
       </details>
       {FEATURES.contributeLink && (

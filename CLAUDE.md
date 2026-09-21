@@ -37,6 +37,8 @@
   ⚠️ **五條資產路徑彼此獨立**：`data/icons/` 由正本 SVG 引用（規則 7）、`board-icons` 另有一份
   `{節點 id: hash}` 對應表（規則 21），戰術、Boss 與裂縫效果的雜湊則直接寫在各自資料檔那一筆的
   `icon` 欄（規則 24／25／27）——那三份資料不對應任何節點，沒有「要對到 SVG 裡的 id」這個約束。
+  ⚠️ **`public/events/`（活動的遊戲內截圖）不在這一族**：它沒有內容雜湊、沒有轉檔管線，
+  就是一批 `<img src>` 直接指過去的檔，由規則 29(j) 驗「引用得到」而已。
   ⚠️ **只有 `rift-shop-icons` 是多對一**（35 張圖對 55 筆）：客戶端只給 `*Low` 畫圖，同一個效果
   的三個檔位在遊戲裡本來就是同一張圖，所以規則 27 用 `sharedIconKey: 'name'` 放行同名之間的共用。
 
@@ -79,7 +81,7 @@ CSS 也碰不到它們（在 `canvas.css` 加 `.node` 規則不會有作用，�
 ## 指令
 
 ```bash
-npm run validate    # 資料驗證（規則 0–28，CI 守門員）
+npm run validate    # 資料驗證（規則 0–29，CI 守門員）
 npm run typecheck   # tsc --noEmit（含 noUnusedLocals）
 npm run normalize   # 攤平圖層/matrix/相對路徑、清掉 <text> 與註解（送 PR 前必跑）
 npm run preview     # 把標籤注回幾何，產出 data/dice-tree.preview.svg（不進版控）
@@ -113,6 +115,7 @@ npm run compare -- <beforeURL> <afterURL>  # computed-style 逐元素比對，�
 | 戰術 | **60 條**（官方 74 條 − 未啟用 16 條 ＋ 1.1.2 新增 2 條）；階段 前期 23／中期 24／後期 6／終盤 4／選項 3；`mode === '對戰'` 的 **9 條** ⟺ 沒有 `coop`（1.1.0 把 6／21／22／24 開放合作；1.1.2 新增的 127／128 是對戰專用） | `data/tactics.json`，規則 24 |
 | Boss | **21 條**（一般 10 ＋ 困難 11，`difficulty` 欄），圖示雙向零殘餘 | `data/boss.json`，規則 25 |
 | 裂縫效果 | **55 條**（一般 13 ／稀有 23 ／傳說 19）；階級 ⟺ 權重（30／20／10）；圖示 **35 張對 55 筆**（同名三檔共用） | `data/rift-shop.json`，規則 27 |
+| 活動 | 目前 **1 場**（中秋賞月活動，1.1.2 客戶端）；內容是通用表格，列數從資料算 | `data/events.json`，規則 29 |
 | 初始就可解鎖的節點 | 11 個（前置只有起始骰子） | `/sim` 的測試挑節點時要從這裡挑 |
 | 畫布 viewBox | `0 0 2000 1700` | |
 | 效能預算（硬斷言） | `tree.json` gzip ≤ 20KB（目前 17.5KB）／sprite ≤ 400KB（目前 126KB） | 數字每次 `build:data` 都會印，不要照抄這一格 |
@@ -355,6 +358,30 @@ npm run compare -- <beforeURL> <afterURL>  # computed-style 逐元素比對，�
      它們不是商品、沒有編號也沒有圖，進資料檔就得為三筆特例放寬規則 27 的每一條欄位檢查。
   ⚠️ 同樣**不進 tree.json**，所以規則 27 是它唯一的防線。
 
+- **`data/events.json`＝期間限定活動**（`/events`），由**規則 29** 守。來源是該版客戶端的活動
+  資料表（中秋是 `ChuseokBoardTable`／`ChuseokMarketTable`／`ChuseokShopFreeTable`／
+  `ChoseokLapRewardTable`）＋ `GoodsTable`／`Profile*Table` 的 id 對照，名稱一律取
+  `localization.json` 的 zh-tw。整份由維護者本機的產生腳本重產（跟解包工具一樣不進版控）。
+  三件裁決：
+  1. **軸是活動不是版本**（Yuki 2026-09-21）。解包只有 1.1.0 與 1.1.2 兩版，用版本當軸整頁會
+     變成「1.1.2 多了這些表」的差異報告，而玩家要找的是「這場活動有什麼、怎麼換」。版本降成
+     卡片上的一個徽章。
+  2. **內容是通用表格**（`sections[].columns` ＋ `rows`），不是「盤面」「商店」這種具名欄位：
+     每場活動的玩法都不一樣，具名欄位等於每加一場就要改型別、規則與版面。代價是版面不知道
+     每一欄的語意（沒辦法排序或篩選）——這一頁是「看資料」不是「查資料」，可以接受。
+  3. **只收節日活動**（Yuki 2026-09-21）：賽季（`SeasonTable`，唯一帶 `Begin`／`Finish` 的）、
+     熱門時段（`HotTimeScheduleTable`，目前 `Use=False`）與限時課金包都不在這一頁。
+  ⚠️ **兩種資訊客戶端拿不到，只能靠實機**，所以產生腳本裡有一個「人工補充」區塊（重跑不會洗掉）：
+  **檔期**（活動表沒有日期欄位，中秋這一筆是 2026-09-21 在遊戲裡實測的，UTC+9）與
+  **遊戲內截圖**（`public/events/`，sprite 拆得出零件、拆不出「零件在畫面上長怎樣」）。
+  沒有實測來源時 `period` 一律 `null`。
+  ⚠️ **圖示不是新的資產路徑**：活動貨幣的圖直接進 `public/currency/`，種類登記在
+  `src/lib/cost-html.ts` 的 `CurrencyIconKind`（同討伐硬幣那條路）。⚠️ **2026-09-21 拿實機截圖
+  修正過一次**：滿月硬幣原本挑了 `ChuseokIcon_moon`（黃色滿月，名稱與譯名都吻合），實機的兌換所
+  價格圖是 `item_event1_ticket_2`（綠色玉佩）——**sprite 名稱與貨幣譯名對得起來不等於它就是那個
+  貨幣的圖**，拿不到 UI 綁定時要標成推測並找實機對。
+  ⚠️ 同樣**不進 tree.json**（靜態頁建置期直接讀 `data/`），規則 29 是它唯一的防線。
+
 - **`data/changelog.json`＝站台更新日誌**（首頁顯示最新 3 筆），由**規則 20** 守。它是全站唯一
   沒有自動來源的內容，而「忘了寫」在畫面上跟「這次沒更新」長得一模一樣。規則 20 檢查的是
   **最新一筆帶 `data` 區塊的條目**而不是 `entries[0]`——純站台功能的條目排在最前面卻沒有資料版本
@@ -443,6 +470,7 @@ npm run compare -- <beforeURL> <afterURL>  # computed-style 逐元素比對，�
 | 25 | `data/boss.json`：通用檢查與規則 24／27 同一支 `checkIconedRecordList()`（含 (h) 的 `gameId` 撞號）。⚠️ **自己只寫一條**：`difficulty` 必須是「一般」或「困難」（同規則 24(e) 那一類的資料自身語意）。除此之外仍然一條都不要加——複製通用檢查的第二份出去就一定漂移 |
 | 27 | `data/rift-shop.json`（裂縫商店）：通用檢查與規則 24／25 同一支 `checkIconedRecordList()`，但**傳 `sharedIconKey: 'name'`**——同名的三個檔位共用一張圖是設計（客戶端只給 `*Low` 畫圖）。⚠️ **(g) 因此是雙向的**：跨不同名字共用是錯，**同名卻指向不同的圖也是錯**（2026-09-06 code review 抓到後補的反方向；少了它 `sharedIconKey` 就是個單向放行條款，`add-icon --rift-shop 73` 只換一筆、同名兄弟留在舊雜湊，實測零錯誤零警告而畫面上一個效果出現兩種圖）。自己只寫三條語意檢查：(e) `grade` 必須是三個合法值之一、`cost`／`weight` 必須是正整數（`requiredText` 只認非空字串，驗不到數字欄位）／(i) **同一階級的 `weight` 必須一致**（刻意不寫死 30／20／10：上游調價不該整片紅，真正會壞畫面的是階級與權重的對應崩掉）／(j) **同名的多筆階級必須互異**（那是 (g) 抓不到的：同名共用圖合法，複製一筆只改編號會全程沉默，畫面上是同一組出現兩張同名同圖的卡片） |
 | 28 | `data/offgame-effects.json`（骰子樹符文／玩家被動 → `/board` 數值卡片的語意）：最外層只有 note／source／effects；**雙向**——每一顆骰子符文／玩家被動都要有一筆（沒影響的寫 `target: "none"` 附 reason），表裡的孤兒 id 也擋；`target` 在 `src/lib/offgame.ts` 的詞彙內、`scope` 指得到骰子或分支（符文必須是 `dice:<id>`）、`maxLevel` 等於 nodes.json；等級會成長的那一筆，`value`／`rankAdd`（或 `value2`／`rankAdd2`）要跟描述的「基礎(+每級)」一致（`parseGrowth`，同規則 17；比絕對值）；`statAdd`／`statSet`／`statMul` 的 scope 必須是 `dice:<id>`、`label` 要是那顆骰子在 dice-stats.json 真的有的列；`none`／`conditional` 必填 reason、等級會成長的 `mechanic` 必填 template（只認 `{V}`／`{V2}`）；未知欄位一律擋。⚠️ 不進 tree.json（`/board` 建置期直接讀），規則 28 是它唯一的防線 |
+| 29 | `data/events.json`（期間限定活動，`/events`）：**不走 `checkIconedRecordList()`**（這份沒有 icon 檔、沒有 id ↔ 圖的對應，形狀是通用表格）。(a) 最外層是非空陣列／(b) 必填欄位與未知欄位（⚠️ **沒有 `notes` 欄位**：資料出處與上游矛盾的註記是維護者資訊，2026-09-21 從畫面與資料一起拿掉，未知欄位那條會擋下把它加回來）／(c) `id` 是小寫英數連字號（**它是頁面錨點**）且不撞號／(d) `version` 是 x.y.z（直接印在卡片徽章上）／(e) `period` 只能是 `null` 或 `{begin, finish}`（客戶端沒有日期欄位，猜來的檔期跟查證過的長得一模一樣）／(f) `currencies` 的 `kind` 要登記過圖／(g) 每一段的 `title`／`columns`／`rows` 形狀，`note` 是選填但只要出現就要非空／(h) **每一列的格數 ＝ 表頭欄數**（對不上時版面照畫，畫面上是一張欄位錯開、看起來很正常的表）／(i) 每一格是非空字串或 `{icon, text}`，`icon` 要登記過圖／(j) `screenshots` 指向的檔要真的在 `public/events/` 底下、`caption` 非空（它同時是 `alt`）、檔名不得帶路徑，孤兒檔只警告。⚠️ 合法的 `icon`／`kind` 只有一份清單（`src/lib/events.ts` 的 `EVENT_ICON_KINDS`），版面與這條規則共用 |
 | 23 | `data/dice-stats.json`：(a) 骰子漏一筆／(b) 表自己的孤兒 entry／(c) `name` 與正本節點不符／(d) entry 結構／(e) stat 欄位型別（含 `diceGrowth`／`spGrowth`，空字串不放行——`growthNote()` 用 `??`，`""` 會印成「骰點：／強化：…」）／(f) 同一顆骰子的 `label` 撞號／(g) 四個檔位的值要嘛全有要嘛全無／(h) 未知欄位／(i) 四個檔位反推得出成長參數（`/board` 數值卡片用，`src/lib/dice-calc.ts`；形狀已壞的項目讓給 (e)(g) 說話）。⚠️ 以 **gameId** 為鍵，規則 19 抓不到它的殘餘。⚠️ **(h) 是 (g) 的補完不是潔癖**：三個檔位鍵**全部**打錯時 (g) 完全沉默，那一項被判成固定值，畫面上跟「它本來就不會變」一模一樣。⚠️ (b) 的「找不到節點」那一半要先讓路給規則 19／規則 1，否則 `nodes.json` 漏一筆文案會多噴假錯誤 |
 
 ⚠️ **幾何規則吃 `nodes`，文案規則吃 `withText`**。`withText` 是「兩邊都在、結構又合法」的過濾集合；
@@ -593,10 +621,11 @@ npm run compare -- <beforeURL> <afterURL>  # computed-style 逐元素比對，�
   拿同一個 `readdirSync` 運算式跟自己比，恆真，已修正）。
   `tests/e2e/chrome.spec.ts` 的 D1–D12 守沾頂、`--nav-h`、`aria-current`、焦點框、footer 沉底、過場時間。
 
-### 十個 CSS 檔
+### 十一個 CSS 檔
 
 `src/styles/global.css`（2029 行）2026-08-26 拆成九個按作用域劃分的檔案（同日 `/tactic`
-與 `/boss` 上線時加上 `battle.css`，共十個；`/rift-shop` 2026-09-06 沿用同一個檔），畫面零變化
+與 `/boss` 上線時加上 `battle.css`，共十個；`/rift-shop` 2026-09-06 沿用同一個檔，
+`/events` 2026-09-21 加上 `events.css`，共十一個），畫面零變化
 （`tools/compare-computed.ts` 驗過，見「指令」一節）。新樣式要放哪個檔，先查這張表：
 
 | 檔 | 放什麼 | 誰載 |
@@ -611,6 +640,7 @@ npm run compare -- <beforeURL> <afterURL>  # computed-style 逐元素比對，�
 | `dice.css` | `/dice` 圖鑑：卡片網格 `.codex-grid`、`.dice-card` 本體、關鍵字卡片 `.card-term*`、數值面板 `.dice-stats`、篩選列 `.filters` | `/dice` |
 | `board.css` | `/board` 骰盤編輯器：`.board-*`／`#board-*`、組合列 `#deck-row`／`.deck-*`、選骰面板 `#dice-picker`／`.picker-*` | `/board` |
 | `battle.css` | `/tactic`、`/boss` 與 `/rift-shop` 共用的橫列清單：`.battle-*` | `/tactic`、`/boss`、`/rift-shop` |
+| `events.css` | `/events` 活動：卡片 `.event-*`、**全站第一份 `<table>` 樣式**（其他頁要用表格時從這裡拿） | `/events` |
 
 ⚠️ **`#toolbar`／`#filters`／`#branch-nav`／`#branch-chips`（`/tree` 工具列與篩選面板）不在
 `canvas.css` 裡**，它們留在 `src/pages/tree.astro` 自己的 `<style is:global>` 區塊——那個區塊
@@ -972,6 +1002,33 @@ PNG，檔名＝內容 sha256 前 12 碼，`addIcon()` 直接重用）＋ `data/b
 - **這一頁沒有模式切換鈕**：55 條全是困難合作，沒有對戰版本。
 - 討伐硬幣的圖走 `currencyIcon('tacticcoin')`（見「資料解析」那節的 `CurrencyIconKind`），
   不是另外寫一份 `<img>`。
+
+### `/events` 活動（索引 ＋ 一場一頁）
+
+`/events` 是索引（一場活動一張小卡：縮圖、名稱、版本徽章、檔期、摘要、貨幣、「N 項內容 →」），
+內容表在 `/events/<id>`（`src/pages/events/[id].astro`）。入口跟 `/tactic`／`/boss`／`/rift-shop`
+一樣收在「遊戲介紹」下拉裡（`guideCurrent` 要一起改，理由同 B6）。
+
+- ⚠️ **為什麼是分頁不是就地展開**（Yuki 2026-09-21）：活動只會越來越多，而 `<details>` 那種收合
+  只是視覺的——每一場的整份內容表仍然在索引的 HTML 裡，索引會跟著每場活動一起變重。分頁把重量
+  真的切開，也讓每場活動有可分享、可被索引的網址（同 `/guide/[slug]`）。**EV2 守著這條**：
+  索引頁的 HTML 裡不准出現 `<table>` 或任何一格內容。
+- ⚠️ **新增或移除一場活動要改 `tests/e2e/seo.spec.ts` 的 `PAGES`**：那份清單跟 sitemap 的 `<loc>`
+  是完全相等比對，而每場活動各是一頁。
+- **版面不知道每一欄的語意**（通用表格，見上面 `data/events.json` 那條），所以沒有篩選器，也沒有
+  任何「第幾欄是價格」這種假設。新活動只加資料。
+- ⚠️ **資料出處不上站**（Yuki 2026-09-21）：檔期只印日期，不印「誰在哪天實測的」；上游文案互相
+  矛盾那類註記留在產生腳本與這份檔案裡。
+- ⚠️ **`.event-table-wrap` 要有 `max-width`**：不設的話桌機上三欄會被拉到 1,200px 寬，「1」跟
+  「起點」之間隔著半個螢幕。表格的可讀性跟內文一樣是靠行寬撐的。
+- ⚠️ **窄螢幕上捲的是表格容器自己，不是整份文件**（`/board` 的 B13 是同一條）。那個容器要
+  `tabindex="0"`，否則只有滑鼠使用者捲得動——`overflow: auto` 最常見的無障礙漏洞。EV8 守，
+  而且它**自己撐寬一格再量**：現在這幾張表在 360px 下剛好放得下，直接驗「有沒有捲軸」等於沒驗。
+- ⚠️ **「同一欄裡有沒有圖」是建置期算的**（`iconCols` → `.pad-icon`），不是 `:has()`：CSS 選不到
+  「同一欄的其他列」，而 `td:not(:has(.currency-icon))` 會連整欄都沒有圖的欄位一起推。
+- ⚠️ **同一張截圖在兩個地方的 `alt` 不一樣**：索引的縮圖是裝飾（`alt=""`，卡片上的名稱已經說完
+  它是什麼），內容頁的同一張是內容（`alt` ＝圖說）。縮圖也是唯一一處刻意用 `object-fit: cover`
+  的地方（跟 `/board` 那四個顯示點相反）——縮圖要的是「認得出是哪一場」，完整畫面點進去就有。
 
 ### `/sim` 骰子樹模擬器
 
