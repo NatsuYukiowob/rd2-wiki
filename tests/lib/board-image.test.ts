@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { CELLS, DECK_SIZE } from '../../src/lib/board';
-import { IMAGE_H, IMAGE_W, badgeRect, cellRect, deckRect, iconRect } from '../../src/lib/board-image';
+import {
+  IMAGE_H, IMAGE_W, badgeRect, cellRect, deckLabelBaseline, deckRect, iconRect, imageSize, type Rect,
+} from '../../src/lib/board-image';
 
 describe('輸出尺寸', () => {
   it('固定 1200×900，跟螢幕 dpr 無關', () => {
@@ -177,5 +179,73 @@ describe('/board 骰子圖示的 object-fit 不變量', () => {
       `board.css 的 ${selector} 不是 object-fit: contain——純骰子圖的長寬比不統一（0.847–0.935），`
       + '方框裡改用 cover 會把骰子的角裁掉，而且沒有任何其他測試會說話',
     ).toBe(true);
+  });
+});
+
+/**
+ * 合作模式的分享圖版面。
+ *
+ * 幾何斷言在這裡特別值錢：兩盤上下疊起來之後，「隊友盤掉出畫布下緣」「我的隊伍列壓到我的盤」
+ * 這種錯誤在程式碼裡完全看不出來，而分享圖是 /board 唯一的產出——產出來才發現時已經是使用者
+ * 在回報了。第一條則是反方向的守門：對戰模式的每一個回傳值都必須跟加上合作版之前逐像素相同。
+ */
+describe('分享圖：合作版面', () => {
+  it('對戰模式的幾何與改動前逐像素相同（釘的是絕對座標）', () => {
+    // ⚠️ **不可以**寫成 `cellRect(i, false)` 跟 `cellRect(i)` 相比：第二個參數的預設值就是
+    // `false`，那是同一個函式用同一組實參跟自己比，任何實作下都不可能紅——只驗到「預設值是
+    // false」而已。這一條的職責是「對戰版的分享圖逐位元組不變」，所以只能釘**絕對座標**。
+    // ⚠️ 為什麼非釘不可：DECK_CLEAR 與 DECK_LABEL_H 現在是兩種模式共用的常數（合作版的兩條
+    // 隊伍列也吃它們），調合作版的留白會安靜地把對戰版的隊伍列整個往上／往下搬。既有的
+    // deckRect 測試只驗「在骰盤下方、不超出畫布」這種相對關係，E2E 的 B8 只取樣格子——
+    // 全套裡沒有第二條看得見這件事。
+    // 數字的來源：BOARD_X = round((1200 − 764) / 2)、BOARD_Y = HEADER_H + 24、
+    // DECK_Y = BOARD_Y + BOARD_H + DECK_CLEAR + DECK_LABEL_H、DECK_X = round((1200 − 576) / 2)。
+    expect(imageSize(false)).toEqual({ w: 1200, h: 900 });
+    expect(cellRect(0)).toEqual({ x: 218, y: 120, w: 140, h: 140 });
+    expect(cellRect(14)).toEqual({ x: 842, y: 432, w: 140, h: 140 });
+    expect(deckRect(0)).toEqual({ x: 312, y: 628, w: 96, h: 96 });
+    expect(deckRect(4)).toEqual({ x: 792, y: 628, w: 96, h: 96 });
+    expect(deckLabelBaseline(false, 'me')).toBe(606);
+  });
+
+  it('合作模式：兩盤不重疊、兩條隊伍列不重疊，全部落在畫布內', () => {
+    const { w, h } = imageSize(true);
+    const rects = [
+      ...[...Array(15).keys()].map(i => cellRect(i, true, 'partner')),
+      ...[...Array(15).keys()].map(i => cellRect(i, true, 'me')),
+      ...[...Array(5).keys()].map(s => deckRect(s, true, 'partner')),
+      ...[...Array(5).keys()].map(s => deckRect(s, true, 'me')),
+    ];
+    for (const r of rects) {
+      expect(r.x).toBeGreaterThanOrEqual(0);
+      expect(r.y).toBeGreaterThanOrEqual(0);
+      expect(r.x + r.w).toBeLessThanOrEqual(w);
+      expect(r.y + r.h).toBeLessThanOrEqual(h);
+    }
+    const overlaps = (a: Rect, b: Rect) =>
+      a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+    for (let i = 0; i < rects.length; i++)
+      for (let j = i + 1; j < rects.length; j++)
+        expect(overlaps(rects[i]!, rects[j]!), `第 ${i} 與第 ${j} 個矩形重疊`).toBe(false);
+
+    // ⚠️ 上面那兩組**在整組退化成零尺寸時全部成立**：`overlaps()` 用的是嚴格不等式，零矩形
+    // 兩兩都「不重疊」，而落在畫布內那四條在零尺寸下也恆真——`CELL = GAP = 0` 照樣全綠。
+    // 所以要有不會跟著退化的錨：兩盤各釘一格的絕對座標，再量一次相鄰兩格之間的縫。
+    expect(cellRect(0, true, 'partner')).toEqual({ x: 218, y: 272, w: 140, h: 140 });
+    expect(cellRect(0, true, 'me')).toEqual({ x: 218, y: 772, w: 140, h: 140 });
+    expect(deckRect(0, true, 'partner')).toEqual({ x: 312, y: 154, w: 96, h: 96 });
+    expect(deckRect(0, true, 'me')).toEqual({ x: 312, y: 1280, w: 96, h: 96 });
+    const a = cellRect(0, true, 'partner');
+    const b = cellRect(1, true, 'partner');
+    expect(b.x - (a.x + a.w), '相鄰兩格之間的縫不是 GAP').toBe(16);
+  });
+
+  it('合作模式：隊友盤在上、我的盤在下，同欄的 x 對齊', () => {
+    for (const c of [0, 2, 4]) {
+      const mine = cellRect(c, true, 'me');
+      const theirs = cellRect(c, true, 'partner');
+      expect(theirs.x).toBe(mine.x);
+      expect(theirs.y).toBeLessThan(mine.y);
+    }
   });
 });

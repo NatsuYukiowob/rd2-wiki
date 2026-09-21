@@ -2,19 +2,20 @@
 //
 // 這一支只做兩件事：把使用者的操作翻譯成 src/lib/board.ts 的純函式呼叫，然後把新狀態
 // 畫回 DOM。任何「放哪、換哪、清哪」的判斷都不寫在這裡——那些在 lib 裡，有單元測試。
-import {
-  COLS, DECK_SIZE, MAX_SP_LEVEL, ROWS, badgeKind, badgeText, cellPos, clampPips, clampSp, clear, cycleBadge,
-  emptyBoard, emptyDeck, inBoard, place, setDeckSlot, swap,
-  type Board, type Deck, type Placed,
-} from '../lib/board.js';
+//
+// 「一盤」（骰盤＋隊伍列＋局外加成切換）的狀態與綁定已經抽到 src/scripts/board-side.ts 的
+// createSide()；留在這裡的是**全頁只有一份**的東西：數值卡片、加成明細面板、加成高亮、
+// 挑選網格、/sim 存檔、live region、工具列，以及對戰／合作的模式切換與它要搬的 DOM。
+import { setDeckSlot } from '../lib/board.js';
 import { renderShareImage } from './board-export.js';
-import { boardBuffs, boardRunes, buffHighlights, pendingHint, type CellBuffs } from '../lib/board-buffs.js';
+import { boardBuffs, buffHighlights, pendingHint, type CellBuffs } from '../lib/board-buffs.js';
 import { cardTitle, placeCard } from '../lib/board-card.js';
+import { createSide, type Side } from './board-side.js';
 import type { StatParams } from '../lib/dice-calc.js';
 import type { NamedEffect } from '../lib/offgame.js';
 import {
-  appliedEffects, bonusCardModel, detailLines, levelSource,
-  type AppliedEffect, type OffgameMode, type SaveLevels,
+  bonusCardModel, detailLines,
+  type OffgameMode, type SaveLevels,
 } from '../lib/offgame-calc.js';
 import { SIM_STORAGE_KEY, deserializeSim } from '../lib/sim-io.js';
 import { ownedIds } from '../lib/sim.js';
@@ -22,7 +23,9 @@ import { decodeSaveContext, type SaveContextWire } from '../lib/sim-save-lite.js
 import type { Branch } from '../lib/types.js';
 
 const grid = document.getElementById('board-grid');
+const deckH = document.getElementById('deck-h');
 const deckRow = document.getElementById('deck-row');
+const deckLegend = document.getElementById('deck-legend');
 const picker = document.getElementById('dice-picker');
 const pickerClose = document.getElementById('picker-close');
 const live = document.getElementById('board-live');
@@ -32,24 +35,49 @@ const offgameEl = document.getElementById('offgame-mode');
 const nosaveEl = document.getElementById('offgame-nosave');
 const offgameDataEl = document.getElementById('board-offgame');
 const detailEl = document.getElementById('dice-detail');
+const boardTools = document.getElementById('board-tools');
+const boardStage = document.querySelector<HTMLElement>('.board-stage');
+const boardPage = document.querySelector<HTMLElement>('.board-page');
+// 隊友那一盤與模式切換鈕。DOM 永遠在（board.astro 直接輸出），對戰模式下只是 hidden。
+const coopModeEl = document.getElementById('board-coop-mode');
+const partnerDeckH = document.getElementById('partner-deck-h');
+const partnerOffgameEl = document.getElementById('partner-offgame-mode');
+const partnerNosaveEl = document.getElementById('partner-offgame-nosave');
+const partnerDeckRow = document.getElementById('partner-deck-row');
+const partnerLegend = document.getElementById('partner-deck-legend');
+const partnerGrid = document.getElementById('partner-grid');
+const divider = document.querySelector<HTMLElement>('.board-divider');
 
 // 這一頁的每一個元素都是 board.astro 直接輸出的靜態 DOM。任何一個抓不到都代表版面被改壞
 // 了，這時候什麼都不做比做一半好——不要用 `?.` 一路吞下去，那會變成「畫面沒反應也沒錯誤」。
-if (grid && deckRow && picker && pickerClose && live && card && statsEl && offgameEl && nosaveEl && offgameDataEl && detailEl) {
-  let board: Board = emptyBoard();
-  let deck: Deck = emptyDeck();
-  /** 目前正在挑骰子的組合槽；null＝挑選網格是關的。 */
-  let pickingSlot: number | null = null;
+if (grid && deckH && deckRow && deckLegend && picker && pickerClose && live && card && statsEl
+  && offgameEl && nosaveEl && offgameDataEl && detailEl && boardTools && boardStage && boardPage
+  && coopModeEl && partnerDeckH && partnerOffgameEl && partnerNosaveEl && partnerDeckRow
+  && partnerLegend && partnerGrid && divider) {
+  /** 目前正在替哪一盤的哪一個組合槽挑骰子；null＝挑選網格是關的。挑選網格全頁只有一個。 */
+  let pickingSlot: { side: Side; slot: number } | null = null;
 
   /**
-   * 局內 SP 強化 Lv，以骰子種類（節點 id）為鍵；沒有就是 1。只在記憶體裡，重整即清空（同骰盤）。
+   * 合作模式（預設關＝對戰）。**不存 localStorage**，重整回到對戰——這一頁什麼都不存。
    *
-   * ⚠️ 鍵是骰子 id 不是槽位：(1) 挑選網格沒擋重複，同一種骰子可以放在兩槽，兩槽必須顯示同一個值；
-   * (2) 換掉槽裡的骰子不會清掉骰盤上的舊骰子（setDeckSlot 只改 deck），那些骰子要保留最後的 Lv。
-   * 「清空骰盤」也不動它——Lv 屬於隊伍，不屬於骰盤。
+   * 它只決定三件事：隊友那一組 DOM 顯不顯示、我的隊伍列擺在骰盤的哪一側（applyCoopLayout()），
+   * 以及算盤面加成時要不要把另一盤當 partner 傳進去（buffsOf()）。對戰模式下每一條路徑都要
+   * 跟這個模式出現之前逐項相同。
    */
-  const spLevels = new Map<string, number>();
-  const spLevelOf = (diceId: string): number => spLevels.get(diceId) ?? 1;
+  let coop = false;
+
+  /**
+   * 兩盤在畫面文字裡的稱呼。
+   *
+   * ⚠️ 同一個詞在這一頁有兩種用法，不要混：**標題前綴**（「隊友盤 火骰子 3 骰點」）說的是
+   * 「這張卡片／這個面板現在描述的是哪一盤」；**明細裡的盤名**（board-buffs.ts 的 partnerLabel）
+   * 說的是「這個加成的來源在哪一盤」。兩者在同一個畫面上同時出現，方向相反——所以看隊友盤的
+   * 卡片時，明細裡的來源盤要寫「我的盤」（buffsOf() 負責傳），兩個詞才不會互相打架。
+   */
+  const MY_BOARD = '我的盤';
+  const PARTNER_BOARD = '隊友盤';
+  /** 隊友那一盤的播報前綴（見 board-side.ts 的 SideOptions.announcePrefix）。 */
+  const PARTNER_SAY = `${PARTNER_BOARD}：`;
 
   /** 數值卡片的計算參數（board.astro 建置期注入），以骰子 id 為鍵。 */
   const statParams = JSON.parse(statsEl.textContent ?? '{}') as Record<string, StatParams[]>;
@@ -82,44 +110,128 @@ if (grid && deckRow && picker && pickerClose && live && card && statsEl && offga
     const state = deserializeSim(text, ctx);
     return state ? { owned: ownedIds(state, ctx), levels: state.levels } : null;
   }
-  /** 頁面開著時存檔可能變（見 refreshSave()），所以是 let。 */
+  /** 頁面開著時存檔可能變（見 refreshSave()），所以是 let。存檔全頁只有一份，兩盤共用。 */
   let simSave = readSimSave();
-  /** 預設：讀得到存檔就用它，否則「不含」。切換狀態不存（重整回到預設）。 */
-  let mode: OffgameMode = simSave ? 'sim' : 'none';
-  const MODE_NAME: Record<OffgameMode, string> = { none: '不含', sim: '我的 /sim', max: '全滿' };
   const MODE_NOTE: Record<OffgameMode, string> = {
     none: '未含骰子樹（符文／被動）加成',
     sim: '局外加成：我的 /sim 存檔',
     max: '局外加成：全部練滿',
   };
 
-  function appliedFor(diceId: string): AppliedEffect[] {
-    const branch = offgame.branches[diceId];
-    return branch ? appliedEffects(diceId, branch, offgame.effects, levelSource(mode, simSave)) : [];
+  /** 骰子的顯示資料，直接從挑選網格的按鈕讀回來——那 41 顆已經在 HTML 裡了，
+   *  再從別的地方載一次只會多一份會漂移的副本。 */
+  const diceMeta = new Map<string, { name: string; icon: string }>();
+  for (const btn of picker.querySelectorAll<HTMLButtonElement>('.picker-dice')) {
+    const id = btn.dataset.diceId;
+    const img = btn.querySelector('img');
+    const name = btn.querySelector('span')?.textContent ?? '';
+    if (id && img) diceMeta.set(id, { name, icon: img.getAttribute('src') ?? '' });
+  }
+
+  function announce(msg: string): void {
+    live!.textContent = msg;
   }
 
   /**
-   * 整盤的盤面加成（每格一份）。骰盤、強化 Lv、局外模式、存檔任一改變都可能改到任何一格——光的強化 Lv 會改到
-   * 它照到的鄰格——所以每次要用就整盤重算（15 格，量很小），不做快取失效。
+   * 這兩個回呼**兩盤共用**。合作模式下任何一盤的改動都可能改到另一盤的數值（跨盤加成），
+   * 所以「是誰變了」不影響要做什麼：開著的那張原地重算，明細跟上。
+   * 兩者的差別（卡片收不收）見 SideOptions 的 doc。
    */
-  function currentBuffs(): CellBuffs[] {
-    return boardBuffs({
-      board,
-      params: id => statParams[id] ?? [],
-      spLevel: spLevelOf,
-      applied: appliedFor,
-      rune: boardRunes(offgame.effects, levelSource(mode, simSave)),
-    });
+  const onChange = (): void => {
+    if (openOn !== null) openCard(openOn.side, openOn.index);
+    renderDetail();
+  };
+  const onBoardChange = (): void => {
+    closeCard();
+    renderDetail();
+  };
+
+  /**
+   * 這一頁的兩盤：`me` 是我的，`partner` 是隊友的（合作模式才顯示，DOM 一直都在）。
+   *
+   * ⚠️ 傳進去的回呼都是「跨盤協調」：卡片、明細、挑選網格全頁各只有一份，由這裡決定它們
+   * 要對哪一盤反應——每一盤各自 close 住自己，`openCard`／`openPicker` 才知道是誰在叫。
+   */
+  const me = createSide(
+    { grid, deckRow, offgameEl, nosaveEl },
+    {
+      offgame,
+      statParams,
+      simSave: () => simSave,
+      /** 預設：讀得到存檔就用它，否則「不含」。切換狀態不存（重整回到預設）。 */
+      defaultMode: simSave ? 'sim' : 'none',
+      diceMeta,
+      namePrefix: '',
+      announce,
+      announcePrefix: '',
+      onChange,
+      onBoardChange,
+      openCard: i => openCard(me, i),
+      closeCard,
+      openPicker: slot => openPicker(me, slot),
+      syncCardToFocus,
+    },
+  );
+
+  const partner = createSide(
+    { grid: partnerGrid, deckRow: partnerDeckRow, offgameEl: partnerOffgameEl, nosaveEl: partnerNosaveEl },
+    {
+      offgame,
+      statParams,
+      simSave: () => simSave,
+      /** 隊友的符文等級我們永遠拿不到，所以預設是「全滿」＝上界，不是「不含」。 */
+      defaultMode: 'max',
+      diceMeta,
+      /** 無障礙名稱的前綴，跟 board.astro 輸出的隊友端靜態標記逐字相同（見 SideOptions）。 */
+      namePrefix: '隊友',
+      announce,
+      announcePrefix: PARTNER_SAY,
+      onChange,
+      onBoardChange,
+      openCard: i => openCard(partner, i),
+      closeCard,
+      openPicker: slot => openPicker(partner, slot),
+      syncCardToFocus,
+    },
+  );
+
+  /** 以某一盤為主角時，另一盤是誰。 */
+  function sidesFor(active: Side): { self: Side; other: Side } {
+    return active === me ? { self: me, other: partner } : { self: partner, other: me };
   }
 
-  function renderMode(): void {
-    for (const btn of offgameEl!.querySelectorAll<HTMLButtonElement>('button[data-mode]')) {
-      btn.setAttribute('aria-pressed', String(btn.dataset.mode === mode));
-    }
-    const simBtn = offgameEl!.querySelector<HTMLButtonElement>('button[data-mode="sim"]')!;
-    if (simSave) simBtn.removeAttribute('aria-disabled');
-    else simBtn.setAttribute('aria-disabled', 'true');
-    nosaveEl!.hidden = simSave !== null;
+  /**
+   * 卡片與明細面板的標題前綴。
+   *
+   * ⚠️ 兩者全頁各只有一份、兩盤共用：「火骰子 3 骰點」在兩盤上逐字相同，不標的話使用者看不出
+   * 眼前這一張講的是哪一盤——明細面板尤其要，它在卡片收起之後還留著最後那顆（見 detail 的說明）。
+   * 隊友盤只在合作模式看得見，所以這個前綴不必再看 coop：對戰模式下走不到 side === partner。
+   */
+  const titlePrefix = (side: Side): string => (side === partner ? `${PARTNER_BOARD} ` : '');
+
+  /** 這個元素在哪一盤的骰盤裡；兩盤都不是＝null。 */
+  function sideOfCell(el: Node): Side | null {
+    if (me.dom.grid.contains(el)) return me;
+    if (partner.dom.grid.contains(el)) return partner;
+    return null;
+  }
+
+  /**
+   * 某一盤的盤面加成（每格一份）。骰盤、強化 Lv、局外模式、存檔任一改變都可能改到任何一格——光的強化 Lv 會改到
+   * 它照到的鄰格——所以每次要用就整盤重算（15 格，量很小），不做快取失效。
+   *
+   * **合作模式才把另一盤傳進去**：對戰模式下傳的是 undefined，算出來的與 partner 這個欄位
+   * 出現之前逐項相同。
+   */
+  function buffsOf(active: Side): CellBuffs[] {
+    const { self, other } = sidesFor(active);
+    return boardBuffs({
+      ...self.buffSide(),
+      partner: coop ? other.buffSide() : undefined,
+      // ⚠️ 明細文字裡的「另一盤」要照**使用者看到的**那一盤講：算隊友盤的加成時 other 就是
+      // 使用者自己的盤，照 boardBuffs() 的預設印出來會寫成「隊友盤」，指到相反的地方。
+      partnerLabel: other === me ? MY_BOARD : PARTNER_BOARD,
+    });
   }
 
   const detailEmpty = detailEl.querySelector<HTMLElement>('.detail-empty')!;
@@ -134,13 +246,14 @@ if (grid && deckRow && picker && pickerClose && live && card && statsEl && offga
   const detailBoard = detailEl.querySelector<HTMLElement>('.detail-board')!;
 
   /**
-   * 明細面板描述的是哪一格的哪一顆骰子；null＝空狀態。
+   * 明細面板描述的是哪一盤的哪一格的哪一顆骰子；null＝空狀態。
    *
-   * 跟 cardIndex 分開：卡片收起後面板**保留**最後那顆（手機的面板在頁面最底，要往下捲才看得到，
+   * 跟 openOn 分開：卡片收起後面板**保留**最後那顆（手機的面板在頁面最底，要往下捲才看得到，
    * 收掉就來不及看）。記 diceId／pips 是為了分辨「那一格還是不是同一顆」——被拖走、被換掉之後回到
-   * 空狀態，不讓面板描述一顆已經不在那裡的骰子。
+   * 空狀態，不讓面板描述一顆已經不在那裡的骰子。記 side 是因為合作模式下同一個 index 在兩盤是
+   * 不同的格子，而面板要描述的是被點的那一盤（盤面加成也要照那一盤算）。
    */
-  let detail: { index: number; diceId: string; pips: number } | null = null;
+  let detail: { side: Side; index: number; diceId: string; pips: number } | null = null;
 
   function fillList(heading: HTMLElement, list: HTMLElement, lines: readonly string[]): void {
     list.replaceChildren(...lines.map(text => {
@@ -153,29 +266,30 @@ if (grid && deckRow && picker && pickerClose && live && card && statsEl && offga
   }
 
   function renderDetail(): void {
-    const p = detail ? board[detail.index] : null;
+    const p = detail ? detail.side.state.board[detail.index] : null;
     if (!detail || !p || p.diceId !== detail.diceId || p.pips !== detail.pips) {
       detail = null;
       detailEmpty.hidden = false;
       detailBody.hidden = true;
       return;
     }
-    const lv = spLevelOf(p.diceId);
-    const lines = detailLines(statParams[p.diceId] ?? [], p.pips, lv, appliedFor(p.diceId));
+    const side = detail.side;
+    const lv = side.spLevelOf(p.diceId);
+    const lines = detailLines(statParams[p.diceId] ?? [], p.pips, lv, side.appliedFor(p.diceId));
     detailEmpty.hidden = true;
     detailBody.hidden = false;
-    detailTitle.textContent = cardTitle(diceMeta.get(p.diceId)?.name ?? p.diceId, p.pips, lv);
+    detailTitle.textContent = titlePrefix(side) + cardTitle(diceMeta.get(p.diceId)?.name ?? p.diceId, p.pips, lv);
     fillList(detailOffgameH, detailOffgame, lines.offgame);
     fillList(detailMechanicH, detailMechanic, lines.mechanic);
     // 盤面：這一格拿到的每個來源一行；方向／種類還沒指定的排序、齒輪二階自己再多一行提示。
     const hint = pendingHint(p);
-    fillList(detailBoardH, detailBoard, [...(currentBuffs()[detail.index]?.entries ?? []).map(e => e.text), ...(hint ? [hint] : [])]);
+    fillList(detailBoardH, detailBoard, [...(buffsOf(side)[detail.index]?.entries ?? []).map(e => e.text), ...(hint ? [hint] : [])]);
     detailNothing.hidden = lines.offgame.length + lines.mechanic.length > 0;
-    detailNothing.textContent = mode === 'none' ? '局外加成設為「不含」' : '這顆骰子沒有局外加成';
+    detailNothing.textContent = side.state.mode === 'none' ? '局外加成設為「不含」' : '這顆骰子沒有局外加成';
   }
 
   /**
-   * 數值卡片開在哪一格；null＝關著。
+   * 數值卡片開在哪一盤的哪一格；null＝關著。
    *
    * ⚠️ 開卡片刻意**不綁 click**：拖曳結束時瀏覽器補送的那發 click 會被 setPointerCapture 導回來源格
    * （見 justDragged 的說明），綁 click 就得把 justDragged 的消費擴到骰盤，而觸控拖曳根本不送 click
@@ -183,13 +297,13 @@ if (grid && deckRow && picker && pickerClose && live && card && statsEl && offga
    * 點格子本來就走 pointerdown → startDrag → pointerup → endDrag，滑鼠與觸控同一條路。
    * 鍵盤走 focusin（只認 :focus-visible），跟指標路徑共用 openCard()。
    */
-  let cardIndex: number | null = null;
+  let openOn: { side: Side; index: number } | null = null;
 
-  function cellEl(i: number): HTMLElement | null {
-    return grid!.querySelector<HTMLElement>(`.board-cell[data-index="${i}"]`);
+  function cellEl(side: Side, i: number): HTMLElement | null {
+    return side.dom.grid.querySelector<HTMLElement>(`.board-cell[data-index="${i}"]`);
   }
 
-  function openCard(i: number): void {
+  function openCard(side: Side, i: number): void {
     // 卡片與挑選網格互斥，這裡守「網格開著時不開卡片」（另一半在 openPicker()）。網格沒有焦點陷阱，
     // Tab 會從最後一顆骰子走進骰盤第 0 格（focusin）；網格是貼著視窗底部的浮層，上方露出來的格子也點得到
     // （endDrag）。⚠️ 不要改成 closePicker()：它會把焦點送回組合槽，正在 Tab 的鍵盤使用者會被拉出骰盤。
@@ -197,19 +311,21 @@ if (grid && deckRow && picker && pickerClose && live && card && statsEl && offga
       closeCard();
       return;
     }
-    const p = board[i];
+    const p = side.state.board[i];
     if (!p) {
       closeCard();
       return;
     }
-    if (cardIndex !== null && cardIndex !== i) cellEl(cardIndex)?.removeAttribute('aria-describedby');
-    cardIndex = i;
-    const buffs = currentBuffs();
-    const here = buffs[i]!;
+    // 換格或換盤都要把上一格的關聯拿掉：aria-describedby 只能指著卡片現在描述的那一格。
+    if (openOn !== null && (openOn.side !== side || openOn.index !== i)) {
+      cellEl(openOn.side, openOn.index)?.removeAttribute('aria-describedby');
+    }
+    openOn = { side, index: i };
+    const here = buffsOf(side)[i]!;
     const m = bonusCardModel(
-      diceMeta.get(p.diceId)?.name ?? p.diceId, p.pips, spLevelOf(p.diceId), statParams[p.diceId] ?? [], appliedFor(p.diceId), here,
+      diceMeta.get(p.diceId)?.name ?? p.diceId, p.pips, side.spLevelOf(p.diceId), statParams[p.diceId] ?? [], side.appliedFor(p.diceId), here,
     );
-    cardTitleEl.textContent = m.title;
+    cardTitleEl.textContent = titlePrefix(side) + m.title;
     cardRows.replaceChildren(...m.rows.flatMap(r => {
       const dt = document.createElement('dt');
       dt.textContent = r.label;
@@ -229,33 +345,59 @@ if (grid && deckRow && picker && pickerClose && live && card && statsEl && offga
       }
       return [dt, dd];
     }));
-    // 盤面加成不受局外模式影響：這一格有的話在模式說明後面補一句，否則「不含」下出現括號會跟註記矛盾。
-    cardNote.textContent = here.entries.length > 0 ? `${MODE_NOTE[mode]}；含盤面加成` : MODE_NOTE[mode];
+    // 卡片底下那一句講的是「這個數字算了什麼、沒算什麼」，三段依序接：局外加成的模式 →
+    // 合作限定的免責 → 盤面加成。
+    // ⚠️ 合作那一段不可以省：客戶端有三條**只在合作模式生效**的規則不在這一頁的計算層裡
+    // （依盤上 7 骰點的數量增傷、依空格數增傷、流效果反號），不寫的話合作玩家會以為卡片
+    // 已經把合作模式的東西算全了。
+    // 盤面加成不受局外模式影響：這一格有的話才補那一段，否則「不含」下出現括號會跟註記矛盾。
+    cardNote.textContent = MODE_NOTE[side.state.mode]
+      + (coop ? '；未含合作限定的局內規則' : '')
+      + (here.entries.length > 0 ? '；含盤面加成' : '');
     card!.hidden = false;
-    cellEl(i)?.setAttribute('aria-describedby', 'dice-card');
-    renderHighlights(buffs, i);
-    detail = { index: i, diceId: p.diceId, pips: p.pips };
+    cellEl(side, i)?.setAttribute('aria-describedby', 'dice-card');
+    renderHighlights();
+    detail = { side, index: i, diceId: p.diceId, pips: p.pips };
     renderDetail();
     positionCard();
   }
 
-  /** 卡片開著時標出盤面加成的來源格（.buff-src）與目標格（.buff-dst）；index 是 null 就全部清掉。 */
-  function renderHighlights(buffs: readonly CellBuffs[], index: number | null): void {
-    const hl: { src: number[]; dst: number[] } = index === null ? { src: [], dst: [] } : buffHighlights(buffs, index);
-    for (const cell of grid!.querySelectorAll<HTMLElement>('.board-cell')) {
+  /**
+   * 卡片開著時標出盤面加成的來源格（.buff-src）與目標格（.buff-dst）；卡片關著就兩盤都清掉。
+   *
+   * 合作模式下來源與目標可能在另一盤上，所以兩盤都要套：buffHighlights() 回傳的
+   * srcPartner／dstPartner 就是另一盤那一份。⚠️ 第三個參數要傳**對調參數算出來的那一份**
+   * （buffsOf(other) 自己就會把 self 當成它的 partner），方向才正確——見 board-buffs.ts 的說明。
+   */
+  function renderHighlights(): void {
+    if (openOn === null) {
+      applyHighlights(me, [], []);
+      applyHighlights(partner, [], []);
+      return;
+    }
+    const { self, other } = sidesFor(openOn.side);
+    const h = buffHighlights(buffsOf(self), openOn.index, coop ? buffsOf(other) : undefined);
+    applyHighlights(self, h.src, h.dst);
+    applyHighlights(other, h.srcPartner, h.dstPartner);
+  }
+
+  function applyHighlights(side: Side, src: readonly number[], dst: readonly number[]): void {
+    for (const cell of side.dom.grid.querySelectorAll<HTMLElement>('.board-cell')) {
       const j = Number(cell.dataset.index);
-      cell.classList.toggle('buff-src', hl.src.includes(j));
-      cell.classList.toggle('buff-dst', hl.dst.includes(j));
+      cell.classList.toggle('buff-src', src.includes(j));
+      cell.classList.toggle('buff-dst', dst.includes(j));
     }
   }
 
   /** 依目前格子位置擺卡片。捲動與縮放時也要重擺：卡片是 fixed，格子不是。 */
   function positionCard(): void {
-    if (cardIndex === null) return;
-    const cell = cellEl(cardIndex);
+    if (openOn === null) return;
+    const { side, index } = openOn;
+    const cell = cellEl(side, index);
     if (!cell) return;
-    // 開在遠離隊伍列的那一側（桌機隊伍列在骰盤上方、手機沉到下方），改強化 Lv 時才看得到按鈕。
-    const prefer = deckRow!.getBoundingClientRect().top < grid!.getBoundingClientRect().top ? 'below' : 'above';
+    // 開在遠離**那一盤自己**隊伍列的那一側（桌機我的隊伍列在骰盤上方、手機沉到下方；合作模式下
+    // 我的在骰盤下方、隊友的在他那盤上方），改強化 Lv 時才看得到按鈕。
+    const prefer = side.dom.deckRow.getBoundingClientRect().top < side.dom.grid.getBoundingClientRect().top ? 'below' : 'above';
     // 導覽列是 sticky 的（z-index 40），卡片是 45：上緣要讓到導覽列的下緣，否則往上開會畫在導覽列上面
     // （手機 320px 點第一列的格子就會）。⚠️ 用量的、不寫死高度——這個 repo 不准有固定偏移量
     // （CLAUDE.md「版面沒有固定偏移量」），導覽列在窄螢幕會橫捲，高度也跟著字級走。
@@ -272,242 +414,108 @@ if (grid && deckRow && picker && pickerClose && live && card && statsEl && offga
   }
 
   function closeCard(): void {
-    if (cardIndex === null) return;
-    cellEl(cardIndex)?.removeAttribute('aria-describedby');
-    cardIndex = null;
+    if (openOn === null) return;
+    cellEl(openOn.side, openOn.index)?.removeAttribute('aria-describedby');
+    openOn = null;
     card!.hidden = true;
-    renderHighlights([], null);
+    renderHighlights();
   }
 
   /** 鍵盤路徑：焦點（:focus-visible）停在有骰子的格子上就開那一格，否則關。 */
   function syncCardToFocus(): void {
     const el = document.activeElement;
     if (el instanceof HTMLElement && el.classList.contains('board-cell') && el.matches(':focus-visible')) {
+      const side = sideOfCell(el);
       const i = Number(el.dataset.index);
-      if (board[i]) {
-        openCard(i);
+      if (side && side.state.board[i]) {
+        openCard(side, i);
         return;
       }
     }
     closeCard();
   }
 
-  grid.addEventListener('focusin', e => {
-    const cell = (e.target as HTMLElement).closest<HTMLElement>('.board-cell');
-    // 只認鍵盤焦點：滑鼠點格子（瀏覽器可能讓它取得焦點）走的是 endDrag() 那條路，這裡再處理一次
-    // 會跟它打架（例如把剛開的卡片關掉）。:focus-visible 對滑鼠點按鈕不成立。
-    if (!cell || !cell.matches(':focus-visible')) return;
-    syncCardToFocus();
-  });
+  /**
+   * 焦點／指標落在局外加成切換上。
+   *
+   * ⚠️ 不可以寫成 `closest('#offgame-mode')`：那是 id，隊友那一組（#partner-offgame-mode）
+   * 永遠配不到——改隊友的局外加成時，開著的卡片會被靜靜收掉，而同一個動作在我的那盤完全正常。
+   * `.sp-row` 是 class，兩盤本來就都配得到，維持原樣。
+   */
+  const inOffgame = (el: Element): boolean =>
+    me.dom.offgameEl.contains(el) || partner.dom.offgameEl.contains(el);
 
-  grid.addEventListener('focusout', e => {
-    const next = e.relatedTarget;
-    // 焦點還在骰盤裡（方向鍵換格）交給 focusin；去強化列或局外加成切換則留著卡片看即時重算。
-    if (next instanceof Node && grid!.contains(next)) return;
-    if (next instanceof Element && next.closest('.sp-row, #offgame-mode')) return;
-    closeCard();
-  });
+  // 兩盤各綁一份：只綁我的那盤的話，隊友盤的格子用鍵盤走過去永遠不會開卡片。
+  for (const side of [me, partner]) {
+    side.dom.grid.addEventListener('focusin', e => {
+      const cell = (e.target as HTMLElement).closest<HTMLElement>('.board-cell');
+      // 只認鍵盤焦點：滑鼠點格子（瀏覽器可能讓它取得焦點）走的是 endDrag() 那條路，這裡再處理一次
+      // 會跟它打架（例如把剛開的卡片關掉）。:focus-visible 對滑鼠點按鈕不成立。
+      if (!cell || !cell.matches(':focus-visible')) return;
+      syncCardToFocus();
+    });
+
+    side.dom.grid.addEventListener('focusout', e => {
+      const next = e.relatedTarget;
+      // 焦點還在同一盤裡（方向鍵換格）交給 focusin；去強化列或局外加成切換則留著卡片看即時重算。
+      // 跨到另一盤的格子也不必特別處理：那一盤自己的 focusin 緊接著就會重開。
+      if (next instanceof Node && side.dom.grid.contains(next)) return;
+      if (next instanceof Element && (next.closest('.sp-row') !== null || inOffgame(next))) return;
+      closeCard();
+    });
+  }
 
   document.addEventListener('pointerdown', e => {
-    if (cardIndex === null) return;
+    if (openOn === null) return;
     const t = e.target;
     if (!(t instanceof Element)) return;
     // 例外一：有骰子的格子交給拖曳流程（點一下＝endDrag 開那一格、拖動＝pointermove 裡關）。
     const cell = t.closest<HTMLElement>('.board-cell');
-    if (cell && board[Number(cell.dataset.index)]) return;
-    // 例外二：強化列與局外加成切換——改了之後卡片要留著即時重算。
-    if (t.closest('.sp-row, #offgame-mode')) return;
+    const side = cell ? sideOfCell(cell) : null;
+    if (cell && side && side.state.board[Number(cell.dataset.index)]) return;
+    // 例外二：強化列與局外加成切換（兩盤各一組）——改了之後卡片要留著即時重算。
+    if (t.closest('.sp-row') !== null || inOffgame(t)) return;
     closeCard();
   });
 
   window.addEventListener('resize', positionCard);
   window.addEventListener('scroll', positionCard, { passive: true });
 
-  /**
-   * 剛結束一次「有位移」的拖曳。**Task 3 只讀它，寫入在 Task 4 的拖曳那一段。**
-   *
-   * ⚠️ 這不是防禦性程式碼，是修一個實測過的 bug：對 `pointerdown` 呼叫 `preventDefault()`
-   * 只擋得掉相容滑鼠事件（mousedown／mouseup 實測都沒送出），**`click` 照樣會送達，
-   * 而且 `setPointerCapture()` 會把它的 target 重新導回來源元素**。於是每一次
-   * 「從組合列拖進骰盤」結束時，底下的 click 委派都會收到一發 click 並打開挑選網格。
-   * 實測事件序：
-   *   pointerdown → pointermove×N → pointerup → endDrag(target=6) → click(target=deck-dice) → openPicker
-   *
-   * 後果不只是難看：桌機 1280×720 上第一次 drop 之後挑選網格展開，`#board-grid` 被往下推
-   * 400px，第二次拖曳算出的落點落在視窗外，那一次拖曳完全沒有落點。
-   *
-   * 判準必須是「有沒有位移」而不是「有沒有按下過」，否則「原地點一下＝開挑選網格」會壞掉。
-   *
-   * ⚠️ **全分支 review I1 成因 A**：這個旗標曾經只在 `startDrag()` 內部重置，而 `startDrag()`
-   * 只在 `getPayload()` 非空時才會被呼叫。觸控拖曳結束後瀏覽器根本不送 `click`
-   * （拖曳不是 tap，setPointerCapture 導回來源元素那條路只對滑鼠成立）——旗標會卡在 true，
-   * 直到下一次真的觸發 `startDrag()` 才被重置。使用者緊接著點**空的**組合槽（`getPayload()`
-   * 回 null，`startDrag()` 不會跑）就會被吃掉一次點擊。實測 Pixel 7（CDP
-   * `Input.dispatchTouchEvent`）：觸控把骰子拖進第 6 格後，點空槽第 1 次沒開、第 2 次才開。
-   * 修法：重置改放在 `pointerdown` handler 的最開頭（見下方 `attachDragHandlers`），
-   * 在判斷 `getPayload()` 之前——`pointerdown` 一定先於同一次互動的 `click`，
-   * 每次按下都清乾淨就不會被前一次互動的殘留值影響。
-   */
-  let justDragged = false;
-
-  /**
-   * ⚠️ **全分支 review I1 成因 B**：`pointermove` 一發就把 `moved` 設成 `true`，沒有任何
-   * 位移門檻——滑鼠按下後只抖 1px、或觸控落指時手指自然滑了 1–2px，都會被誤判成「拖曳過」，
-   * 導致 `endDrag()` 把 `justDragged` 設成 true、吃掉緊接著那發原本該開挑選網格的 click。
-   * 5px（CSS px）是刻意選的：夠大到能過濾滑鼠手震與觸控落指的自然位移（實測案例都在
-   * 1–2px），又遠小於任何一顆骰子／格子的尺寸（組合槽 4rem、骰盤格更大），不會讓「這是真的
-   * 在拖」的判斷遲鈍到影響手感。⚠️ 拖曳影像與落點高亮不吃這個門檻——`moveGhost`／`highlight`
-   * 在每一次 `pointermove` 都照跑，只有「算不算一次拖曳」（`dragging.moved`）延後到超過門檻
-   * 才成立，否則影像會等使用者滑出 5px 才姍姍來遲地出現，手感會變差。
-   */
-  const DRAG_THRESHOLD_PX = 5;
-
-  /** 骰子的顯示資料，直接從挑選網格的按鈕讀回來——那 41 顆已經在 HTML 裡了，
-   *  再從別的地方載一次只會多一份會漂移的副本。 */
-  const diceMeta = new Map<string, { name: string; icon: string }>();
-  for (const btn of picker.querySelectorAll<HTMLButtonElement>('.picker-dice')) {
-    const id = btn.dataset.diceId;
-    const img = btn.querySelector('img');
-    const name = btn.querySelector('span')?.textContent ?? '';
-    if (id && img) diceMeta.set(id, { name, icon: img.getAttribute('src') ?? '' });
-  }
-
-  function announce(msg: string): void {
-    live!.textContent = msg;
-  }
-
-  function renderDeck(): void {
-    for (let slot = 0; slot < DECK_SIZE; slot++) {
-      const p = deck[slot];
-      const btn = deckRow!.querySelector<HTMLButtonElement>(`.deck-dice[data-slot="${slot}"]`)!;
-      const value = deckRow!.querySelector<HTMLElement>(`.pips-value[data-slot="${slot}"]`)!;
-      const dec = deckRow!.querySelector<HTMLButtonElement>(`.pips-dec[data-slot="${slot}"]`)!;
-      const inc = deckRow!.querySelector<HTMLButtonElement>(`.pips-inc[data-slot="${slot}"]`)!;
-      const spNum = deckRow!.querySelector<HTMLElement>(`.sp-value[data-slot="${slot}"] .sp-num`)!;
-      const spDec = deckRow!.querySelector<HTMLButtonElement>(`.sp-dec[data-slot="${slot}"]`)!;
-      const spInc = deckRow!.querySelector<HTMLButtonElement>(`.sp-inc[data-slot="${slot}"]`)!;
-
-      if (p) {
-        const meta = diceMeta.get(p.diceId);
-        btn.innerHTML = '';
-        const img = document.createElement('img');
-        img.src = meta?.icon ?? '';
-        img.alt = '';
-        img.draggable = false;
-        btn.append(img);
-        // I4（Yuki 拍板）：已填槽的 Enter 拿起、Space 才是換骰子——見下方 #deck-row 的
-        // keydown 委派。aria-label 要照實描述兩個鍵各做什麼，不能再寫含糊的「按下更換」。
-        btn.setAttribute('aria-label', `第 ${slot + 1} 槽，${meta?.name ?? p.diceId} ${p.pips} 骰點，Enter 拿起，Space 更換`);
-        value.textContent = String(p.pips);
-        const lv = spLevelOf(p.diceId);
-        const name = meta?.name ?? p.diceId;
-        spNum.textContent = String(lv);
-        spDec.setAttribute('aria-label', `第 ${slot + 1} 槽${name}降低強化等級，目前 Lv.${lv}，最低 1`);
-        spInc.setAttribute('aria-label', `第 ${slot + 1} 槽${name}提高強化等級，目前 Lv.${lv}，最高 ${MAX_SP_LEVEL}`);
-      } else {
-        btn.innerHTML = '<span class="deck-dice-empty" aria-hidden="true">＋</span>';
-        btn.setAttribute('aria-label', `第 ${slot + 1} 槽，尚未選擇骰子，按下選擇`);
-        value.textContent = '1';
-        spNum.textContent = '1';
-        spDec.setAttribute('aria-label', `第 ${slot + 1} 槽降低強化等級`);
-        spInc.setAttribute('aria-label', `第 ${slot + 1} 槽提高強化等級`);
-      }
-      // 空槽不能調等級：等級是「這一槽的骰子」的屬性，沒有骰子就沒有等級可言。
-      dec.disabled = !p;
-      inc.disabled = !p;
-      spDec.disabled = !p;
-      spInc.disabled = !p;
-    }
-  }
-
-  function openPicker(slot: number): void {
+  function openPicker(side: Side, slot: number): void {
     // 卡片與挑選網格互斥：卡片（z-index 45）會疊在挑選網格（40）上，而 Escape 的處理假設一次只有一個
     // 要關。兩個入口各守一半——這裡是「開網格時收掉卡片」，另一半「網格開著時不開卡片」在 openCard()。
     // 滑鼠點組合槽時 document 的 pointerdown 已經先關了卡片，但鍵盤（強化列 → 組合槽按 Space／空槽按
     // Enter）走不到那裡，所以收在每一條開網格路徑都會經過的這個函式。
     closeCard();
-    pickingSlot = slot;
+    pickingSlot = { side, slot };
     picker!.hidden = false;
     picker!.querySelector<HTMLButtonElement>('.picker-dice')?.focus();
   }
 
   function closePicker(): void {
-    const slot = pickingSlot;
+    const picking = pickingSlot;
     pickingSlot = null;
     picker!.hidden = true;
-    if (slot !== null) {
-      deckRow!.querySelector<HTMLButtonElement>(`.deck-dice[data-slot="${slot}"]`)?.focus();
+    if (picking !== null) {
+      picking.side.dom.deckRow.querySelector<HTMLButtonElement>(`.deck-dice[data-slot="${picking.slot}"]`)?.focus();
     }
   }
-
-  deckRow.addEventListener('click', e => {
-    const target = e.target as HTMLElement;
-    const dice = target.closest<HTMLButtonElement>('.deck-dice');
-    if (dice) {
-      // 拖曳結束時瀏覽器補送的那一發 click，不是使用者要換骰子（見 justDragged 的說明）。
-      if (justDragged) {
-        justDragged = false;
-        return;
-      }
-      openPicker(Number(dice.dataset.slot));
-      return;
-    }
-    // 強化列：改的是「這一種骰子」的 Lv（spLevels 以骰子 id 為鍵），所以重畫整條組合列——
-    // 同一種骰子在別的槽也要跟著變。
-    const spStep = target.closest<HTMLButtonElement>('.sp-inc, .sp-dec');
-    if (spStep) {
-      const p = deck[Number(spStep.dataset.slot)];
-      if (spStep.disabled || !p) return;
-      const lv = clampSp(spLevelOf(p.diceId) + (spStep.classList.contains('sp-inc') ? 1 : -1));
-      spLevels.set(p.diceId, lv);
-      renderDeck();
-      // 開著的卡片即時重算——改的是別種骰子也可能變：光的強化 Lv 會改到它照到的鄰格。
-      if (cardIndex !== null) openCard(cardIndex);
-      renderDetail(); // 卡片收起後面板仍描述那顆骰子，Lv 變了要跟著變
-      announce(`${diceMeta.get(p.diceId)?.name ?? p.diceId}強化 Lv.${lv}，同種骰子共用`);
-      return;
-    }
-    const step = target.closest<HTMLButtonElement>('.pips-inc, .pips-dec');
-    if (!step || step.disabled) return;
-    const slot = Number(step.dataset.slot);
-    const current = deck[slot];
-    if (!current) return;
-    const delta = step.classList.contains('pips-inc') ? 1 : -1;
-    deck = setDeckSlot(deck, slot, { diceId: current.diceId, pips: clampPips(current.pips + delta) });
-    renderDeck();
-    announce(`第 ${slot + 1} 槽改為 ${deck[slot]!.pips} 骰點`);
-  });
 
   picker.addEventListener('click', e => {
     const btn = (e.target as HTMLElement).closest<HTMLButtonElement>('.picker-dice');
     if (!btn || pickingSlot === null) return;
     const diceId = btn.dataset.diceId!;
+    const { side, slot } = pickingSlot;
     // 換骰子時保留這一槽原本的等級：使用者調好 5 骰點之後想換種類，不該被打回 1。
-    const pips = deck[pickingSlot]?.pips ?? 1;
-    deck = setDeckSlot(deck, pickingSlot, { diceId, pips });
-    const slot = pickingSlot;
+    const pips = side.state.deck[slot]?.pips ?? 1;
+    side.state.deck = setDeckSlot(side.state.deck, slot, { diceId, pips });
     closePicker();
-    renderDeck();
-    announce(`第 ${slot + 1} 槽選擇 ${diceMeta.get(diceId)?.name ?? diceId}`);
+    side.renderDeck();
+    // 挑選網格全頁只有一個、兩盤共用，所以這一句也要說清楚是替哪一盤選的（同 announcePrefix）。
+    announce(`${side === partner ? PARTNER_SAY : ''}第 ${slot + 1} 槽選擇 ${diceMeta.get(diceId)?.name ?? diceId}`);
   });
 
   pickerClose.addEventListener('click', closePicker);
-
-  offgameEl.addEventListener('click', e => {
-    const btn = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-mode]');
-    if (!btn) return;
-    const next = btn.dataset.mode as OffgameMode;
-    if (next === 'sim' && !simSave) {
-      announce('沒有找到 /sim 的存檔');
-      return;
-    }
-    mode = next;
-    renderMode();
-    // 開著的卡片原地重算：切換鈕在 pointerdown／focusout 的豁免清單裡，卡片不會先被收掉。
-    if (cardIndex !== null) openCard(cardIndex);
-    renderDetail();
-    announce(`局外加成：${MODE_NAME[mode]}`);
-  });
 
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape' && pickingSlot !== null) {
@@ -518,26 +526,25 @@ if (grid && deckRow && picker && pickerClose && live && card && statsEl && offga
 
   document.addEventListener('keydown', e => {
     // held 的 Escape（放下）與挑選網格的 Escape 都會 preventDefault——先讓它們吃掉，這裡只收剩下的。
-    if (e.key === 'Escape' && !e.defaultPrevented && cardIndex !== null) {
+    if (e.key === 'Escape' && !e.defaultPrevented && openOn !== null) {
       e.preventDefault();
       closeCard();
     }
   });
-
-  renderDeck();
-  renderMode();
 
   /**
    * 頁面開著時 /sim 的存檔變了：另一個分頁的 /sim 存了檔，或去 /sim 排好再按上一頁（這一頁從 bfcache
    * 原封回來，腳本不會重跑）。重讀一次，讓「我的 /sim」能不能按、提示、開著的卡片與明細面板跟上。
    * ⚠️ 不自動切到「我的 /sim」、也不播報：使用者沒有動這一頁，模式不該自己變。只有正在用的存檔不見了
    * 才退回「不含」——否則卡片描述的是一份已經不存在的規劃。仍然只讀不寫。
+   * ⚠️ 兩盤都要通知：存檔只有一份，但「我這一盤要跟著改什麼」是每一盤各自的事（隊友那盤同樣有
+   * 「我的 /sim」這個選項）。
    */
   function refreshSave(): void {
     simSave = readSimSave();
-    if (mode === 'sim' && !simSave) mode = 'none';
-    renderMode();
-    if (cardIndex !== null) openCard(cardIndex);
+    me.onSaveChanged();
+    partner.onSaveChanged();
+    if (openOn !== null) openCard(openOn.side, openOn.index);
     renderDetail();
   }
   window.addEventListener('pageshow', e => {
@@ -548,337 +555,12 @@ if (grid && deckRow && picker && pickerClose && live && card && statsEl && offga
     if (e.key === SIM_STORAGE_KEY || e.key === null) refreshSave();
   });
 
-  /**
-   * 只重畫格子（圖示、骰點、角標、aria-label）。卡片與明細要不要跟著動由呼叫端決定：
-   * 骰盤內容變了走 renderBoard()（收卡片），切換角標走 cycleAt()（卡片原地重算）。
-   */
-  function renderCells(): void {
-    for (const cell of grid!.querySelectorAll<HTMLButtonElement>('.board-cell')) {
-      const i = Number(cell.dataset.index);
-      const p = board[i];
-      const row = Math.floor(i / 5) + 1;
-      const col = (i % 5) + 1;
-      cell.innerHTML = '';
-      if (p) {
-        const meta = diceMeta.get(p.diceId);
-        const img = document.createElement('img');
-        img.src = meta?.icon ?? '';
-        img.alt = '';
-        img.draggable = false;
-        const pips = document.createElement('span');
-        pips.className = 'cell-pips';
-        pips.textContent = String(p.pips);
-        cell.append(img, pips);
-        // 角標：7 骰點以下的排序（方向）／齒輪二階（種類）。狀態由格子的 aria-label 說，角標本身 aria-hidden。
-        const b = badgeText(p);
-        if (b) {
-          const el = document.createElement('span');
-          el.className = b.glyph === '?' ? 'cell-badge unset' : 'cell-badge';
-          el.setAttribute('aria-hidden', 'true');
-          el.textContent = b.glyph;
-          cell.append(el);
-        }
-        cell.setAttribute('aria-label', `第 ${row} 列第 ${col} 格，${meta?.name ?? p.diceId} ${p.pips} 骰點${b ? `，${b.spoken}，按 R 切換` : ''}`);
-      } else {
-        cell.setAttribute('aria-label', `第 ${row} 列第 ${col} 格，空`);
-      }
-    }
-  }
-
-  function renderBoard(): void {
-    renderCells();
-    // 骰盤內容變了（放下／交換／移除／清空）：卡片描述的那一格可能已經不是原本那顆，收掉。
-    closeCard();
-    // 明細面板不收（它刻意保留），但那顆被移走或換掉時要回到空狀態——renderDetail() 自己會判斷。
-    renderDetail();
-  }
-
-  /**
-   * 切換第 i 格的角標（排序方向／齒輪二階種類）。跟 renderBoard() 不同：**卡片不收**——開著的那張（不一定是這一格）
-   * 原地重算，明細跟上，播報新狀態。指標（endDrag 的 onBadge）與鍵盤（R）共用這一支。
-   */
-  function cycleAt(i: number): void {
-    const next = cycleBadge(board, i);
-    if (next === board) return;
-    board = next;
-    renderCells();
-    if (cardIndex !== null) openCard(cardIndex);
-    renderDetail();
-    announce(badgeText(board[i])!.announce);
-  }
-
-  /** 目前正在拖的東西。`from` 是來源格 index，來自組合列時為 null。
-   *  `moved` 記「這一次按下之後指標有沒有超過 DRAG_THRESHOLD_PX」——原地點一下與拖曳要分得開。
-   *  `pointerId` 與 `startX`／`startY` 是 I3／I1 成因 B 用的：見 `startDrag()` 與
-   *  `attachDragHandlers()` 的說明。`onBadge`＝按下的點在格子的角標上（原地放開＝切換角標，見 endDrag）。 */
-  let dragging: {
-    payload: Placed; from: number | null; ghost: HTMLElement; moved: boolean;
-    pointerId: number; startX: number; startY: number; onBadge: boolean;
-  } | null = null;
-
-
-  function cellUnder(x: number, y: number): number | null {
-    // ⚠️ 拖曳影像必須是 pointer-events: none，否則這裡永遠只會抓到影像自己。
-    const el = document.elementFromPoint(x, y);
-    const cell = el?.closest<HTMLElement>('.board-cell');
-    if (!cell) return null;
-    const i = Number(cell.dataset.index);
-    return inBoard(i) ? i : null;
-  }
-
-  function highlight(index: number | null): void {
-    for (const cell of grid!.querySelectorAll<HTMLElement>('.board-cell')) {
-      cell.classList.toggle('drop-target', Number(cell.dataset.index) === index);
-    }
-  }
-
-  function startDrag(e: PointerEvent, payload: Placed, from: number | null): void {
-    // I3（全分支 review 實測）：`dragging` 是單一模組變數，第二根手指的 startDrag 會覆蓋
-    // 第一根的參照——兩指同時從組合列拖向骰盤時，第一根手指落地會用到第二根手指的 payload、
-    // 第一個 ghost 也永遠沒人 remove()（重整才消失）。這裡選擇忽略第二根手指：這一頁的操作
-    // 模型本來就是單指拖放，多指同拖不是要支援的情境，「什麼都不做」比「兩指打架」安全；
-    // 搭配 attachDragHandlers 用 pointerId 過濾 move／up／cancel，第二根手指自己的事件序
-    // 不會被錯認成第一根手指的一部分（也不會被第二根手指的座標覆蓋第一根的落點）。
-    if (dragging) return;
-    // 滑鼠拖曳一旦開始，鍵盤「拿在手上」的那顆就過期了：held 只被鍵盤自己的三條路徑
-    // （放置、Delete/Backspace、Escape）清空，不清的話跨模態操作完再回來按 Enter，
-    // live region 會播報一個已經不存在的擺放結果（比沒有播報更糟）。
-    held = null;
-    const source = e.currentTarget as HTMLElement;
-    const meta = diceMeta.get(payload.diceId);
-    const ghost = document.createElement('img');
-    ghost.className = 'drag-ghost';
-    ghost.src = meta?.icon ?? '';
-    ghost.alt = '';
-    document.body.append(ghost);
-    dragging = {
-      payload, from, ghost, moved: false, pointerId: e.pointerId, startX: e.clientX, startY: e.clientY,
-      onBadge: from !== null && e.target instanceof Element && e.target.closest('.cell-badge') !== null,
-    };
-    moveGhost(e.clientX, e.clientY);
-    // setPointerCapture：之後的 move／up 一定回到這個元素，指標滑出去也不會斷。
-    source.setPointerCapture(e.pointerId);
-  }
-
-  function moveGhost(x: number, y: number): void {
-    if (!dragging) return;
-    dragging.ghost.style.left = `${x}px`;
-    dragging.ghost.style.top = `${y}px`;
-  }
-
-  function endDrag(x: number, y: number): void {
-    if (!dragging) return;
-    const { payload, from, moved, onBadge } = dragging;
-    // ⚠️ 只有 #deck-row 的 click 委派會消費 justDragged。從骰盤格起手的拖曳
-    // （格↔格交換、格→骰盤外移除）結束後，setPointerCapture 導回的那發 click
-    // 落在 .board-cell 上，那裡沒有監聽器會讀它——寫 true 進去只會讓旗標卡住，
-    // 直到下一次 startDrag() 才被重置，使用者下一次點組合列的空槽要點兩次才開得了。
-    justDragged = from === null && dragging.moved;
-    dragging.ghost.remove();
-    dragging = null;
-    highlight(null);
-
-    // 從格子起手、沒超過位移門檻＝點一下：按在角標上是切換角標，其餘開這一格的數值卡片——都不交換也不移除，
-    // 門檻以下本來就是點擊（指標在門檻內跨進鄰格也一樣）。為什麼寫在這裡而不綁 click，見 cardIndex 的說明。
-    if (from !== null && !moved) {
-      if (onBadge) cycleAt(from);
-      else openCard(from);
-      return;
-    }
-
-    const target = cellUnder(x, y);
-    if (target === null) {
-      // 拖到骰盤外：來自格子＝移除，來自組合列＝什麼都不做。
-      if (from !== null) {
-        board = clear(board, from);
-        renderBoard();
-        announce('已移除一顆骰子');
-      }
-      return;
-    }
-    if (from === null) {
-      board = place(board, target, payload);
-      announce(`${diceMeta.get(payload.diceId)?.name ?? payload.diceId} ${payload.pips} 骰點放到第 ${Math.floor(target / 5) + 1} 列第 ${(target % 5) + 1} 格`);
-    } else {
-      // ⚠️ swap() 在 from === target 時是 no-op（回原陣列）。無條件播報的話，在已有骰子的
-      // 格子上「原地點一下」就會讓螢幕閱讀器收到一句「兩格已交換」，而畫面上什麼都沒動。
-      const next = swap(board, from, target);
-      if (next !== board) {
-        board = next;
-        announce('兩格已交換');
-      }
-    }
-    renderBoard();
-  }
-
-  function attachDragHandlers(el: HTMLElement, getPayload: () => Placed | null, from: number | null): void {
-    el.addEventListener('pointerdown', e => {
-      // I1 成因 A：重置放在 pointerdown 的最開頭、判斷 getPayload() 之前——不論這次按下
-      // 最後有沒有真的觸發拖曳都要清乾淨。pointerdown 一定先於同一次互動的 click，
-      // 而觸控拖曳結束後瀏覽器根本不會送 click（見 justDragged 宣告處的說明），
-      // 舊寫法把重置放在 startDrag() 內部（只在 payload 非空時才跑）會讓旗標卡在 true，
-      // 直到使用者下一次按在「有骰子」的來源上才被清掉——點空的組合槽永遠清不掉它。
-      justDragged = false;
-      const payload = getPayload();
-      if (!payload) return;
-      e.preventDefault();
-      startDrag(e, payload, from);
-    });
-    el.addEventListener('pointermove', e => {
-      // I3：只處理正在拖曳的那根手指／那顆指標，其餘 pointerId 的 move 一律忽略——
-      // 否則第二根手指（startDrag 已經因為 `if (dragging) return` 被吃掉）的移動事件
-      // 仍然會落到這個委派上，把第一根手指的 ghost 拖去第二根手指的座標。
-      if (!dragging || e.pointerId !== dragging.pointerId) return;
-      // I1 成因 B：只有超過門檻才算「真的拖過」，否則滑鼠手震／觸控落指的 1–2px 自然位移
-      // 會被誤判成拖曳，讓 endDrag() 把 justDragged 設成 true、吃掉緊接著那發該開挑選網格
-      // 的 click。拖曳影像與落點高亮不吃這個門檻，見 DRAG_THRESHOLD_PX 宣告處的說明。
-      if (!dragging.moved) {
-        const dx = e.clientX - dragging.startX;
-        const dy = e.clientY - dragging.startY;
-        if (Math.hypot(dx, dy) > DRAG_THRESHOLD_PX) {
-          dragging.moved = true;
-          // 真的開始拖了：卡片描述的那一格馬上就會變，先收掉。
-          closeCard();
-        }
-      }
-      moveGhost(e.clientX, e.clientY);
-      highlight(cellUnder(e.clientX, e.clientY));
-    });
-    el.addEventListener('pointerup', e => {
-      // I3：見上面 pointermove 的說明——第二根手指的落地不該被當成第一根手指的落地。
-      if (!dragging || e.pointerId !== dragging.pointerId) return;
-      endDrag(e.clientX, e.clientY);
-    });
-    // 指標被系統搶走（來電、手勢）時要收乾淨，否則影像會永遠留在畫面上。
-    el.addEventListener('pointercancel', e => {
-      if (!dragging || e.pointerId !== dragging.pointerId) return;
-      dragging.ghost.remove();
-      dragging = null;
-      highlight(null);
-    });
-  }
-
-  for (let slot = 0; slot < DECK_SIZE; slot++) {
-    const btn = deckRow.querySelector<HTMLElement>(`.deck-dice[data-slot="${slot}"]`)!;
-    attachDragHandlers(btn, () => deck[slot] ?? null, null);
-  }
-  for (const cell of grid.querySelectorAll<HTMLElement>('.board-cell')) {
-    const i = Number(cell.dataset.index);
-    attachDragHandlers(cell, () => board[i] ?? null, i);
-  }
-
   document.getElementById('board-clear')?.addEventListener('click', () => {
-    board = emptyBoard();
-    // 清空之後 held 若還指著一顆已經不存在的骰子，鍵盤 Enter 會把它憑空放回來。
-    held = null;
-    renderBoard();
-    announce('骰盤已清空');
-  });
-
-  /**
-   * 鍵盤版的「拿在手上」。
-   *
-   * 這一段不是裝飾：設計階段否掉「全 canvas」方案的唯一理由就是它給不了鍵盤與螢幕閱讀器
-   * 路徑。DOM 方案的代價就是這裡要真的寫完，不能只做滑鼠。
-   */
-  let held: { payload: Placed; from: number | null } | null = null;
-
-  function focusCell(index: number): void {
-    grid!.querySelector<HTMLElement>(`.board-cell[data-index="${index}"]`)?.focus();
-  }
-
-  deckRow.addEventListener('keydown', e => {
-    if (e.key !== 'Enter' && e.key !== ' ') return;
-    const btn = (e.target as HTMLElement).closest<HTMLButtonElement>('.deck-dice');
-    if (!btn) return;
-    const slot = Number(btn.dataset.slot);
-    const p = deck[slot];
-    // 空槽維持原本行為：Enter 與 Space 都打開挑選網格（click 事件會處理），不要攔。
-    if (!p) return;
-    // I4（全分支 review，Yuki 拍板）：已填槽以前 Enter／Space 兩個鍵都被攔下改成「拿起」，
-    // click 從此不再派發，挑選網格永遠打不開——純鍵盤使用者填滿 5 槽之後再也換不掉任何一顆，
-    // 而 aria-label 還寫著「按下更換」。現在 Space 改開挑選網格換骰子，Enter 維持「拿起」
-    // 不變（放到骰盤上再按一次 Enter 放下）。空槽與滑鼠行為兩者都不動。
-    if (e.key === ' ') {
-      e.preventDefault();
-      openPicker(slot);
-      return;
-    }
-    e.preventDefault();
-    held = { payload: p, from: null };
-    announce(`拿起 ${diceMeta.get(p.diceId)?.name ?? p.diceId} ${p.pips} 骰點，移到骰盤上按 Enter 放下`);
-  });
-
-  grid.addEventListener('keydown', e => {
-    const cell = (e.target as HTMLElement).closest<HTMLElement>('.board-cell');
-    if (!cell) return;
-    const i = Number(cell.dataset.index);
-    if (!inBoard(i)) return;
-    const { row, col } = cellPos(i);
-
-    // 方向鍵：撞到邊界就原地不動，不繞行到另一端（繞行在 5×3 上會讓人以為按錯了）。
-    const moves: Record<string, number | undefined> = {
-      ArrowLeft: col > 0 ? i - 1 : undefined,
-      ArrowRight: col < COLS - 1 ? i + 1 : undefined,
-      ArrowUp: row > 0 ? i - COLS : undefined,
-      ArrowDown: row < ROWS - 1 ? i + COLS : undefined,
-    };
-    if (e.key in moves) {
-      e.preventDefault();
-      const next = moves[e.key];
-      if (next !== undefined) focusCell(next);
-      return;
-    }
-
-    // R：切換這一格的角標（排序方向／齒輪二階種類）。帶 Ctrl／Meta／Alt 的不攔——Ctrl+R 是重新整理。
-    // held（鍵盤拿起中）不清：切換的是格子上的骰子，放下時 swap() 讀的是骰盤上的現況。
-    if ((e.key === 'r' || e.key === 'R') && !e.ctrlKey && !e.metaKey && !e.altKey) {
-      if (!badgeKind(board[i])) return;
-      e.preventDefault();
-      cycleAt(i);
-      return;
-    }
-
-    if (e.key === 'Enter' || e.key === ' ') {
-      e.preventDefault();
-      if (held) {
-        const next = held.from === null ? place(board, i, held.payload) : swap(board, held.from, i);
-        const name = diceMeta.get(held.payload.diceId)?.name ?? held.payload.diceId;
-        held = null;
-        // ⚠️ 比照 endDrag：swap() 在 held.from === i 時是 no-op（回原陣列）。無條件播報的話，
-        // 「拿起後在原地按 Enter」會讓螢幕閱讀器收到一句「放到第 X 列 Y 格」，畫面卻什麼都沒動。
-        // place() 一定會真的寫入（組合列來源沒有「原地」這回事），只有 swap 分支需要這層保護。
-        if (next !== board) {
-          board = next;
-          announce(`${name} 放到第 ${row + 1} 列第 ${col + 1} 格`);
-        }
-        renderBoard();
-        focusCell(i);
-        // renderBoard() 收掉了卡片，而焦點本來就在這一格（focus() 不會再觸發 focusin）→ 手動同步。
-        syncCardToFocus();
-      } else if (board[i]) {
-        held = { payload: board[i]!, from: i };
-        announce(`拿起第 ${row + 1} 列第 ${col + 1} 格的骰子，移到目標格按 Enter 放下`);
-      }
-      return;
-    }
-
-    if (e.key === 'Delete' || e.key === 'Backspace') {
-      e.preventDefault();
-      if (!board[i]) return;
-      board = clear(board, i);
-      held = null;
-      renderBoard();
-      focusCell(i);
-      announce(`已移除第 ${row + 1} 列第 ${col + 1} 格的骰子`);
-      return;
-    }
-
-    if (e.key === 'Escape' && held) {
-      e.preventDefault();
-      held = null;
-      announce('已放下');
-    }
+    // 工具列只有一顆清空鈕，而合作模式下畫面上有兩盤——只清一盤會留下一整盤還在算跨盤加成的骰子。
+    // 對戰模式下隊友盤是 hidden 的，清它看不出差別，所以動作不分支，只有播報分。
+    me.clearBoard();
+    partner.clearBoard();
+    announce(coop ? '兩盤骰盤已清空' : '骰盤已清空');
   });
 
   const exportBtn = document.getElementById('board-export') as HTMLButtonElement | null;
@@ -886,7 +568,7 @@ if (grid && deckRow && picker && pickerClose && live && card && statsEl && offga
   const exportImg = document.getElementById('board-export-img') as HTMLImageElement | null;
 
   /**
-   * 「隱藏星數」：切換 `#board-grid` 的 `.cell-pips`（骰盤格右下角 1–7 那個數字）。
+   * 「隱藏星數」：切換兩盤骰盤的 `.cell-pips`（格子右下角 1–7 那個數字）。
    *
    * ⚠️ 按鈕文字固定不變（不要「隱藏星數」↔「顯示星數」互換），否則工具列寬度會跳動
    * ——CLAUDE.md「工具列的尺寸不准隨狀態改變」那段記過同一個問題。用 `aria-pressed`
@@ -901,7 +583,8 @@ if (grid && deckRow && picker && pickerClose && live && card && statsEl && offga
     hidePipsBtn.addEventListener('click', () => {
       hidePips = !hidePips;
       hidePipsBtn.setAttribute('aria-pressed', String(hidePips));
-      grid!.classList.toggle('hide-pips', hidePips);
+      me.dom.grid.classList.toggle('hide-pips', hidePips);
+      partner.dom.grid.classList.toggle('hide-pips', hidePips);
       announce(hidePips ? '已隱藏星數' : '已顯示星數');
     });
   }
@@ -917,7 +600,14 @@ if (grid && deckRow && picker && pickerClose && live && card && statsEl && offga
       try {
         // 分享圖跟著隱藏（Yuki 拍板）：使用者按了隱藏就是不想看到那些數字，分享出去
         // 自然也不該有。只影響骰盤格，不影響組合列——見 ExportInput.hidePips 的說明。
-        const canvas = await renderShareImage({ board, deck, meta: diceMeta, hidePips });
+        //
+        // ⚠️ `coop` 與 `partner` 要跟著現在的模式走：漏傳的話合作模式產出的圖會安靜地
+        // 只有自己那一盤——畫面上兩盤都在，圖裡少一盤，而沒有任何東西會報錯。
+        // 隊友盤的內容**不看它是不是空的**照樣傳，那是 renderShareImage 的判斷。
+        const canvas = await renderShareImage({
+          board: me.state.board, deck: me.state.deck, meta: diceMeta, hidePips,
+          coop, partner: { board: partner.state.board, deck: partner.state.deck },
+        });
         const blob = await new Promise<Blob | null>(res => canvas.toBlob(res, 'image/png'));
         if (!blob) {
           announce('分享圖產生失敗');
@@ -946,5 +636,73 @@ if (grid && deckRow && picker && pickerClose && live && card && statsEl && offga
     });
   }
 
-  renderBoard();
+  // ---- 對戰／合作的模式切換 ----
+
+  /** 隊友那一組：標題、局外加成、隊伍列、圖例、骰盤、中間的分隔線。合作模式才顯示。 */
+  const partnerBlock = [partnerDeckH, partnerOffgameEl, partnerDeckRow, partnerLegend, partnerGrid, divider];
+
+  /**
+   * 「我的隊伍」那一組（標題、局外加成切換、隊伍列、圖例）裝進一個 DocumentFragment。
+   *
+   * append() 是**搬**不是複製：四個元素連同監聽器與內容一起離開原位置，插回去時順序不會錯，
+   * 也只有一次 reflow（四次 insertBefore 就是四次，而且多三個把順序寫反的機會）。
+   */
+  function myDeckBlock(): DocumentFragment {
+    const f = document.createDocumentFragment();
+    f.append(deckH!, offgameEl!, deckRow!, deckLegend!);
+    return f;
+  }
+
+  function renderCoopMode(): void {
+    for (const btn of coopModeEl!.querySelectorAll<HTMLButtonElement>('button[data-coop]')) {
+      btn.setAttribute('aria-pressed', String((btn.dataset.coop === 'on') === coop));
+    }
+  }
+
+  /**
+   * 把目前的模式套到版面上。
+   *
+   * ⚠️ 用**真的搬 DOM** 而不是 CSS order：order 不改 Tab 順序，而這一頁的鍵盤路徑是硬需求
+   * （設計時就是因為全 canvas 方案給不了鍵盤與螢幕閱讀器路徑才選 DOM）。
+   * 合作：隊友隊伍列 → 隊友盤 → 分隔線 → 我的盤 → 我的隊伍列 → 工具列，兩盤的隊伍列各自貼在
+   * 自己那一盤的外側，就是遊戲裡兩人對坐的樣子。
+   * 對戰：我的隊伍列搬回骰盤上方（＝這一頁本來的位置，挑選網格之前）。
+   */
+  function applyCoopLayout(): void {
+    for (const el of partnerBlock) el.hidden = !coop;
+    if (coop) boardStage!.insertBefore(myDeckBlock(), boardTools);
+    else boardPage!.insertBefore(myDeckBlock(), picker);
+    renderCoopMode();
+    // 搬家不改狀態，但兩盤的畫面要跟新的模式一致：跨盤加成只在合作模式算，明細面板的「盤面」
+    // 區塊會因此多幾行或少幾行（卡片在切換時已經收掉了）。
+    me.renderDeck();
+    partner.renderDeck();
+    me.renderCells();
+    partner.renderCells();
+    // ⚠️ 離開合作模式時要**主動**清掉指著隊友盤的明細：隊友盤的內容刻意保留（切回去還在），
+    // 所以 renderDetail() 的陳舊檢查（那一格還是不是同一顆骰子）永遠成立，面板會繼續描述一顆
+    // 畫面上已經看不見的骰子——連同隊友那盤「全滿」的局外加成，而畫面上唯一的切換鈕可能寫著
+    // 「不含」，正是 detailNothing 那句話要防的自相矛盾。
+    if (!coop && detail?.side === partner) detail = null;
+    renderDetail();
+  }
+
+  coopModeEl.addEventListener('click', e => {
+    const btn = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-coop]');
+    if (!btn) return;
+    const next = btn.dataset.coop === 'on';
+    if (next === coop) return;
+    coop = next;
+    // 卡片指著一格，而那一格馬上會被搬到別的位置：先收掉，讓使用者重新點一次。
+    closeCard();
+    applyCoopLayout();
+    announce(coop ? '切換到合作模式，已加入隊友的骰盤' : '切換到對戰模式');
+  });
+
+  // 開頁的那一發：兩盤的格子都畫出來、卡片確定是關的、明細回到空狀態。
+  // ⚠️ 這裡刻意不呼叫 applyCoopLayout()：board.astro 輸出的就是對戰模式的樣子（隊友那一組
+  // hidden、切換鈕的 aria-pressed 指著「對戰」、我的隊伍列在骰盤上方），開頁再搬一次 DOM
+  // 只是多一次 reflow。
+  me.renderBoard();
+  partner.renderBoard();
 }

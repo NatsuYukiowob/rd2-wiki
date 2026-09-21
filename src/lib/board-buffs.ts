@@ -5,7 +5,8 @@
 //   含自己；7 骰點＝全盤）是施加者給別格；陰陽、齒輪、齒輪二階、霓虹是骰子看盤面組成給自己。
 // - 施加者的數值＝施加者自己那一列在局外加成之後的值（offgame-calc.ts 的 rowValue()）：基礎增益就是
 //   dice-stats.json 裡那顆骰子的一列，光增益攻擊速度%增加這類符文是加在那一列上的 statAdd。這裡不另寫成長式。
-// - 同格的光（含 7 骰點）先相加成一個攻速來源；共鳴攻速也相加成一個；陰陽橫排、齒輪相連、齒輪二階各自一個。
+// - 同格的光（含 7 骰點）先相加成一個攻速來源；共鳴攻速也相加成一個（合作模式下連隊友盤的共鳴攻速
+//   都併進同一個來源，不可以拆成本盤／隊友盤兩個元素分開扣）；陰陽橫排、齒輪相連、齒輪二階各自一個。
 // - 攻擊%：排序、排序疊加強化（4307 × 該格排序層數，1 層也算）、三重共鳴（同骰點共鳴 ≥3 顆；7 骰點的共鳴數的是
 //   盤上全部共鳴）進被動那個池；
 //   陰陽直排進狀態效果池。怎麼合進卡片的數字見 offgame-calc.ts 的 bonusCardModel()。
@@ -62,8 +63,10 @@ export type BuffKind =
 /** 一格上的一個加成來源：明細面板的一行，以及開卡片時要標成 .buff-src 的格子。 */
 export interface BuffEntry {
   kind: BuffKind;
-  /** 給這個加成的格子，不含自己（照 index 排序）。 */
+  /** 給這個加成的**本盤**格子，不含自己（照 index 排序）。 */
   from: number[];
+  /** 給這個加成的**隊友盤**格子（照 index 排序）。對戰模式永遠是空陣列。 */
+  fromPartner: number[];
   text: string;
 }
 
@@ -73,16 +76,33 @@ export interface CellBuffs extends BoardBonus {
 
 export const NO_BUFFS: CellBuffs = { ...NO_BOARD, entries: [] };
 
-export interface BuffInput {
+/** 一盤的取值來源。⚠️ 每一盤自帶 applied／spLevel／rune：隊友的局外加成是獨立切換，共用會少算。 */
+export interface BuffSide {
   board: Board;
   /** 骰子的計算參數（board.astro 建置期注入的那份），以骰子 id 為鍵；沒有就是空陣列。 */
   params: (diceId: string) => readonly StatParams[];
   /** 局內強化 Lv（同種骰子共用）。 */
   spLevel: (diceId: string) => number;
-  /** 局外節點（依目前的模式）：施加者那一列的 statAdd 符文從這裡進來。 */
+  /** 局外節點（依那一盤目前的模式）：施加者那一列的 statAdd 符文從這裡進來。 */
   applied: (diceId: string) => readonly AppliedEffect[];
   /** 盤面符文的當前值；沒有（沒解開，或模式是「不含」）＝null。1306／2305 這種值是 0 的開關只看有沒有。 */
   rune: (id: string) => number | null;
+}
+
+export interface BuffInput extends BuffSide {
+  /**
+   * 合作模式的隊友盤。對戰模式是 undefined——那條路徑與這個欄位出現之前逐項相同。
+   * ⚠️ 只有排序（方向 0）與共鳴兩條規則讀得到它，其餘五條不跨盤（客戶端 IsCoop 的呼叫者掃過）。
+   */
+  partner?: BuffSide;
+  /**
+   * 跨盤來源在明細文字裡的稱呼（`排序（<這個字> 第 1 列第 2 格 ↑）：…`）。預設「隊友盤」。
+   *
+   * ⚠️ 它是**看的人**的視角，不是這份輸入的視角。呼叫端算的是「被點的那一盤」的加成，所以點
+   * 隊友盤上的骰子時 `partner` 指的是使用者自己的盤——照預設印出來會把使用者自己盤上的來源
+   * 說成「隊友盤」，指到相反的地方。替隊友那一盤算時要傳「我的盤」。
+   */
+  partnerLabel?: string;
 }
 
 /** 盤面符文的取值：等級來源跟局外加成同一個（offgame-calc.ts 的 levelSource()）。 */
@@ -160,11 +180,15 @@ function where(i: number): string {
  * 三重共鳴 → 陰陽橫排 → 陰陽直排 → 齒輪 → 齒輪二階 → 霓虹。
  */
 export function boardBuffs(input: BuffInput): CellBuffs[] {
-  const { board, rune } = input;
-  /** 施加者那一列在局外加成之後的值；列不存在時當 0（真實資料的列名由單元測試守著）。 */
-  const rowOf = (p: Placed, label: string): number =>
-    rowValue(input.params(p.diceId), label, p.pips, input.spLevel(p.diceId), input.applied(p.diceId)) ?? 0;
-  const cellsOf = (diceId: string): number[] => [...Array(CELLS).keys()].filter(j => board[j]?.diceId === diceId);
+  const { board, rune, partner } = input;
+  const partnerLabel = input.partnerLabel ?? '隊友盤';
+  /** 某一盤上、施加者那一列在**那一盤**局外加成之後的值；列不存在時當 0。 */
+  const rowIn = (side: BuffSide, p: Placed, label: string): number =>
+    rowValue(side.params(p.diceId), label, p.pips, side.spLevel(p.diceId), side.applied(p.diceId)) ?? 0;
+  const rowOf = (p: Placed, label: string): number => rowIn(input, p, label);
+  const cellsIn = (b: Board, diceId: string): number[] =>
+    [...Array(CELLS).keys()].filter(j => b[j]?.diceId === diceId);
+  const cellsOf = (diceId: string): number[] => cellsIn(board, diceId);
 
   return board.map((me, i): CellBuffs => {
     if (!me) return NO_BUFFS;
@@ -173,8 +197,9 @@ export function boardBuffs(input: BuffInput): CellBuffs[] {
     let neonPct = 0;
     const intervalPcts: number[] = [];
     const entries: BuffEntry[] = [];
-    const add = (kind: BuffKind, from: readonly number[], text: string): void => {
-      entries.push({ kind, from: from.filter(j => j !== i), text });
+    // ⚠️ from 要排除自己（同一盤的同 index 就是這一格）；fromPartner 不排除——不同盤的同 index 是不同格。
+    const add = (kind: BuffKind, from: readonly number[], text: string, fromPartner: readonly number[] = []): void => {
+      entries.push({ kind, from: from.filter(j => j !== i), text, fromPartner: [...fromPartner] });
     };
 
     // 光：四鄰（有 1306 → 八鄰）的每一顆光，同格先相加成一個攻速來源。
@@ -201,35 +226,85 @@ export function boardBuffs(input: BuffInput): CellBuffs[] {
       attackPct += v;
       add('alignment', [j], `排序（${where(j)} ${isSeven(a) ? '四向' : badgeText(a)!.glyph}）：攻擊 +${pct(v)}%`);
     }
-    const stack = rune(BOARD_RUNES.alignmentStack);
-    if (aligns.length > 0 && stack !== null) {
-      const v = round9(stack * aligns.length);
+
+    // 跨盤排序：隊友盤上方向 0（或 7 骰點）的排序骰，對我這一欄的整欄三格施加。
+    // ⚠️ 不是射線延伸：客戶端無條件對同一欄（同 W）的 H'=0,1,2 三格施加，與施加者自己在哪一列無關。
+    // ⚠️ 只有方向 0 跨盤；方向 1／2／3 沒有 coop 分支。
+    const myCol = cellPos(i).col;
+    const acrossAligns = partner
+      ? cellsIn(partner.board, ALIGNMENT_ID).filter(j => {
+          const a = partner.board[j]!;
+          return (isSeven(a) || a.dir === 0) && cellPos(j).col === myCol;
+        })
+      : [];
+    for (const j of acrossAligns) {
+      const a = partner!.board[j]!;
+      const v = rowIn(partner!, a, BUFF_ROWS.alignment);
       attackPct += v;
-      add('alignmentStack', aligns, `排序疊加強化 ×${aligns.length}：攻擊 +${pct(v)}%`);
+      add('alignment', [], `排序（${partnerLabel} ${where(j)} ${isSeven(a) ? '四向' : badgeText(a)!.glyph}）：攻擊 +${pct(v)}%`, [j]);
+    }
+
+    // 排序疊加強化（4307）：10% × 該格排序層數，1 層也算。
+    // ⚠️【推論，高】跨盤掛上去的是同一格上同一種效果，所以層數一起數。客戶端沒有直接讀到
+    //    這一段的計數方式（要讀對應的計數邏輯才能升等這個推論）。
+    const layers = aligns.length + acrossAligns.length;
+    const stack = rune(BOARD_RUNES.alignmentStack);
+    if (layers > 0 && stack !== null) {
+      const v = round9(stack * layers);
+      attackPct += v;
+      add('alignmentStack', aligns, `排序疊加強化 ×${layers}：攻擊 +${pct(v)}%`, acrossAligns);
     }
 
     // 共鳴：同骰點（7 骰點的共鳴＝全盤）的每一顆共鳴，含自己；攻速相加成一個來源，明細依施加者骰點分行。
-    const res = cellsOf(RESONANCE_ID).filter(j => isSeven(board[j]!) || board[j]!.pips === me.pips);
-    const resPips = [...new Set(res.map(j => board[j]!.pips))].sort((a, b) => a - b);
-    const withPips = (p: number): number[] => res.filter(j => board[j]!.pips === p);
+    // ⚠️ 合作：客戶端把隊友盤的共鳴累加進同一組 buf，而且「同骰點」是跨盤比對的
+    //    （比的是施加者的骰點 vs 我這一格的骰點），所以隊友那顆 5 骰點共鳴會加到我盤所有 5 骰點的格子。
+    const matches = (b: Board, j: number): boolean => isSeven(b[j]!) || b[j]!.pips === me.pips;
+    const res = cellsOf(RESONANCE_ID).filter(j => matches(board, j));
+    const resThere = partner ? cellsIn(partner.board, RESONANCE_ID).filter(j => matches(partner.board, j)) : [];
+
+    const pipsOf = (b: Board, js: readonly number[]): number[] =>
+      [...new Set(js.map(j => b[j]!.pips))].sort((a, b2) => a - b2);
+
+    let mineResSum = 0;
+    let theirsResSum = 0;
     if (res.length > 0) {
-      for (const p of resPips) {
-        const js = withPips(p);
+      for (const p of pipsOf(board, res)) {
+        const js = res.filter(j => board[j]!.pips === p);
         add('resonanceSpeed', js, `共鳴（${p} 骰點 ×${js.length}）：攻速 +${pct(sum(js.map(j => rowOf(board[j]!, BUFF_ROWS.resonance))))}%`);
       }
-      intervalPcts.push(sum(res.map(j => rowOf(board[j]!, BUFF_ROWS.resonance))));
+      mineResSum = sum(res.map(j => rowOf(board[j]!, BUFF_ROWS.resonance)));
     }
+    if (resThere.length > 0) {
+      const pb = partner!.board;
+      for (const p of pipsOf(pb, resThere)) {
+        const js = resThere.filter(j => pb[j]!.pips === p);
+        add('resonanceSpeed', [], `共鳴（${partnerLabel} ${p} 骰點 ×${js.length}）：攻速 +${pct(sum(js.map(j => rowIn(partner!, pb[j]!, BUFF_ROWS.resonance))))}%`, js);
+      }
+      theirsResSum = sum(resThere.map(j => rowIn(partner!, pb[j]!, BUFF_ROWS.resonance)));
+    }
+    // ⚠️ 兩段（本盤／隊友盤）要合併成同一個攻速來源再推進去：intervalAfter() 對 intervalPcts 的
+    //    每個元素各自扣 i0·r/(1+r)，拆成兩個元素會比合併扣得多（r/(1+r) 是凹函數），算出來的
+    //    攻擊間隔會偏快。明細行仍照施加者分開列，只有這裡進位的數字要先加總。
+    if (res.length > 0 || resThere.length > 0) intervalPcts.push(round9(mineResSum + theirsResSum));
+
+    // 三重共鳴（3402）：同骰點共鳴 ≥3 顆時，每顆 +10% 攻擊；施加者是 7 骰點時數盤上全部共鳴。
+    // ⚠️ 合作：≥3 顆的門檻**在施加者自己的那一盤內數**，兩盤不可以加起來再判
+    //    （客戶端的共鳴累加是依施加者的來源盤各自計數）。
     const trio = rune(BOARD_RUNES.resonanceTrio);
     if (trio !== null) {
-      // 客戶端 CountSameLevelResonanceDice：施加者是 7 骰點時數盤上全部共鳴（任何骰點），其餘只數同骰點的。
-      const allRes = cellsOf(RESONANCE_ID).length;
-      for (const p of resPips) {
-        const js = withPips(p);
-        if ((p >= MAX_PIPS ? allRes : js.length) < 3) continue;
-        const v = round9(trio * js.length);
-        attackPct += v;
-        add('resonanceAttack', js, `三重共鳴（${p} 骰點 ×${js.length}）：攻擊 +${pct(v)}%`);
-      }
+      const applyTrio = (b: Board, js: readonly number[], isPartner: boolean): void => {
+        const allRes = cellsIn(b, RESONANCE_ID).length;
+        for (const p of pipsOf(b, js)) {
+          const same = js.filter(j => b[j]!.pips === p);
+          if ((p >= MAX_PIPS ? allRes : same.length) < 3) continue;
+          const v = round9(trio * same.length);
+          attackPct += v;
+          if (isPartner) add('resonanceAttack', [], `三重共鳴（${partnerLabel} ${p} 骰點 ×${same.length}）：攻擊 +${pct(v)}%`, same);
+          else add('resonanceAttack', same, `三重共鳴（${p} 骰點 ×${same.length}）：攻擊 +${pct(v)}%`);
+        }
+      };
+      applyTrio(board, res, false);
+      if (partner) applyTrio(partner.board, resThere, true);
     }
 
     // 陰陽：只給自己——自己那一列 5 格全是陰陽（攻速）、自己那一欄 3 格全是陰陽（狀態效果池）。
@@ -291,17 +366,35 @@ export function boardBuffs(input: BuffInput): CellBuffs[] {
 }
 
 /**
- * 卡片開在第 index 格時的高亮：`src`＝給它加成的格子、`dst`＝它加成到的格子，都不含自己、照 index 排序。
- * 陰陽、齒輪、霓虹這種「看盤面組成給自己」的，一起湊成條件的那幾格同時是 src 也是 dst（互相成全）。
+ * 卡片開在第 index 格時的高亮：`src`／`dst` 是本盤（不含自己、照 index 排序），
+ * `srcPartner`／`dstPartner` 是隊友盤（照 index 排序；**不排除自己**——不同盤的同 index 是不同格子，
+ * 跟 `BuffEntry.fromPartner` 同一個道理）。陰陽、齒輪、霓虹這種「看盤面組成給自己」的，一起湊成
+ * 條件的那幾格同時是 src 也是 dst（互相成全）。
+ *
+ * ⚠️ `partnerCells` 要傳**用對調參數算出來的那一份**（`boardBuffs({ ...partnerSide, partner: mySide })`）：
+ * 它裡面的 `fromPartner` 裝的才是「從我這盤來的來源」。傳錯方向會讓 dstPartner 永遠是空的。
  */
-export function buffHighlights(cells: readonly CellBuffs[], index: number): { src: number[]; dst: number[] } {
+export function buffHighlights(
+  cells: readonly CellBuffs[],
+  index: number,
+  partnerCells?: readonly CellBuffs[],
+): { src: number[]; dst: number[]; srcPartner: number[]; dstPartner: number[] } {
   const src = new Set<number>();
-  for (const e of cells[index]?.entries ?? []) for (const j of e.from) src.add(j);
+  const srcPartner = new Set<number>();
+  for (const e of cells[index]?.entries ?? []) {
+    for (const j of e.from) src.add(j);
+    for (const j of e.fromPartner) srcPartner.add(j);
+  }
   const dst: number[] = [];
   cells.forEach((c, j) => {
     if (j !== index && c.entries.some(e => e.from.includes(index))) dst.push(j);
   });
-  return { src: [...src].sort((a, b) => a - b), dst };
+  const dstPartner: number[] = [];
+  partnerCells?.forEach((c, j) => {
+    if (c.entries.some(e => e.fromPartner.includes(index))) dstPartner.push(j);
+  });
+  const sorted = (s: Set<number>): number[] => [...s].sort((a, b) => a - b);
+  return { src: sorted(src), dst, srcPartner: sorted(srcPartner), dstPartner };
 }
 
 /** 角標「?」那顆自己的明細多一行：排序方向／齒輪二階種類還沒指定，它的加成沒有算進去。 */
