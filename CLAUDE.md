@@ -31,12 +31,17 @@
 - **`data/nodes.json`**——全部**文案**：`name` `label` `type` `category?` `gameId` `cost`
   `maxLevel` `description` `awakening?`。
 - 外加 `data/icons/`（242 張 PNG，檔名＝內容 sha256 前 12 碼）、`data/tree-center.png`、
-  `data/board-icons/`（43 張純骰子圖，見 `/board`）、`data/tactic-icons/`（60 張，見 `/tactic`）、
+  `data/board-icons/`（43 張純骰子圖，見 `/board`）、`data/dice3-icons/`（43 張 3D 立體骰子圖，見 `/dice`）、`data/tactic-icons/`（60 張，見 `/tactic`）、
   `data/boss-icons/`（21 張，見 `/boss`）、`data/rift-shop-icons/`（35 張，見 `/rift-shop`）。
   由社群發 PR 維護，**CI 是唯一防線**（維護者不可能逐行 review SVG 的 diff）。
-  ⚠️ **五條資產路徑彼此獨立**：`data/icons/` 由正本 SVG 引用（規則 7）、`board-icons` 另有一份
-  `{節點 id: hash}` 對應表（規則 21），戰術、Boss 與裂縫效果的雜湊則直接寫在各自資料檔那一筆的
+  ⚠️ **六條資產路徑彼此獨立**：`data/icons/` 由正本 SVG 引用（規則 7）、`board-icons` 與
+  `dice3-icons` 各有一份 `{節點 id: hash}` 對應表（規則 21／30，共用 `checkDiceIconMap()`），
+  戰術、Boss 與裂縫效果的雜湊則直接寫在各自資料檔那一筆的
   `icon` 欄（規則 24／25／27）——那三份資料不對應任何節點，沒有「要對到 SVG 裡的 id」這個約束。
+  ⚠️ **同一顆骰子在三處的圖不一樣，不要互相接線**：節點圖（`data/icons/`，有底板，骰子樹上用）、
+  純骰子圖（`board-icons`，2 號素材＝扁平卡片視角，骰盤格裡用）、3D 立體圖（`dice3-icons`，
+  3 號素材，圖鑑卡片用）。接錯了畫面上只是「圖鑑的骰子變回扁平」，兩份檔案各自都完全合法——
+  規則 30 的測試有一條專門守這件事（兩份對應表不得有任何一顆指向同一個雜湊）。
   ⚠️ **`public/events/`（活動的遊戲內截圖）不在這一族**：它沒有內容雜湊、沒有轉檔管線，
   就是一批 `<img src>` 直接指過去的檔，由規則 29(j) 驗「引用得到」而已。
   ⚠️ **只有 `rift-shop-icons` 是多對一**（35 張圖對 55 筆）：客戶端只給 `*Low` 畫圖，同一個效果
@@ -85,7 +90,7 @@ npm run validate    # 資料驗證（規則 0–29，CI 守門員）
 npm run typecheck   # tsc --noEmit（含 noUnusedLocals）
 npm run normalize   # 攤平圖層/matrix/相對路徑、清掉 <text> 與註解（送 PR 前必跑）
 npm run preview     # 把標籤注回幾何，產出 data/dice-tree.preview.svg（不進版控）
-npm run add-icon    # 新增圖示，自動用內容雜湊命名（--board／--tactic／--boss／--rift-shop 各指向另一條資產路徑）
+npm run add-icon    # 新增圖示，自動用內容雜湊命名（--board／--dice3／--tactic／--boss／--rift-shop 各指向另一條資產路徑）
 npm run render-nodes -- <遊戲原圖路徑>  # 用 Chromium 重畫全部節點圖示（遊戲改版才跑）
 npm run split -- <遊戲原圖路徑>         # 從原圖切出正本與圖示（重建整份資料時才用）
 npm run build:data  # 產出 src/generated/tree.json + public/assets/
@@ -463,7 +468,8 @@ npm run compare -- <beforeURL> <afterURL>  # computed-style 逐元素比對，�
 | 18 | 解鎖例外表的型別與長度（含 `unlockPaid`／`bypassPrereq` 必須是布林） |
 | 19 | SVG 的 `data-id` 集合 ≡ `nodes.json` 的鍵集合，雙射零殘餘，**兩種殘餘都要逐一列出 id**（239 個節點，只說「數量對不上」等於沒說） |
 | 20 | changelog 的結構，以及最新一筆資料條目與正本版本欄位一致。擋的不是「日誌寫錯」，是**「資料改了、日誌沒改」** |
-| 21 | `/board` 純骰子圖：(a) 骰子漏一筆對應 (b)(c)(d) 目錄本身 (e) 值必須是 12 碼小寫 hex（擋路徑穿越與 `[object Object].png`） (f) 指向的檔不存在 (g) **兩筆指到同一張圖** (h) 對應表自己留著一筆不是（或已不是）骰子的 id |
+| 21 | `/board` 純骰子圖（`data/board-icons.json` ＋ `data/board-icons/`）：(a) 骰子漏一筆對應 (b)(c)(d) 目錄本身 (e) 值必須是 12 碼小寫 hex（擋路徑穿越與 `[object Object].png`） (f) 指向的檔不存在 (g) **兩筆指到同一張圖** (h) 對應表自己留著一筆不是（或已不是）骰子的 id。⚠️ **實作在 `checkDiceIconMap()`，跟規則 30 共用**，要加檢查就加在那裡 |
+| 30 | `/dice` 圖鑑的 3D 立體骰子圖（`data/dice3-icons.json` ＋ `data/dice3-icons/`）：**跟規則 21 同一支 `checkDiceIconMap()`，子規則字母一一對應**，差別只有對應表、目錄與訊息裡的稱呼。所以 `tests/tools/validate.test.ts` 的規則 30 那組**刻意不重抄規則 21 那十幾條**，只驗兩件規則 21 證明不了的事：(1) 第二條路徑真的接上了（少接就每一條子規則都是 no-op，而畫面上看不出來）／(2) 它讀的是自己那份對應表與目錄、而且跟 `board-icons` 沒有任何一顆指向同一張圖 |
 | 22 | 玩家被動升級費用表：6 個 tier 的形狀與區間連續性、`(maxLevel, unlockGold)` 不得撞號、**每個可升級的共通節點都對得到 tier、每個 tier 也都對得到節點**、`special` 的鍵是節點 id 且不與 tier 重疊、`special` 的 levels 可帶選填 `mythic`（`{kind: 正整數}`，kind 必須登記在 `MYTHIC_CORES`）、**未知欄位一律擋**（1.1.0 的舊寫法 `"solar": N` 會被指名：留著它不會有任何錯誤，那一列的超越核心只是安靜消失） |
 | 24 | `data/tactics.json`：(a) 最外層是非空陣列／(b)(c)(d) 圖示目錄本身／(e) 每筆欄位型別、未知欄位、`stage`／`mode` 的合法值、`dataIssue`／(f) 指向的圖不存在／(g) 兩筆指到同一張圖／(h) 編號格式與撞號，**以及 `gameId` 撞號**（2026-09-06 補；`id` 撞號畫面上看得出來，`gameId` 撞號完全正常——它是對上游資料表的 join key，而 `requiredText` 只驗它是非空字串。節點那邊由規則 16 守著同一件事，這三份檔案在那之前一個都沒有）／(i) **子選項語意**（id 含 `-` ⟺ `stage === '選項'`，且母條目要在）／(j) **`mode === '對戰'` ⟺ 沒有 `coop`**（兩個方向都要問：漏抓一邊會讓合作模式冒出官方沒有的文字，漏抓另一邊會讓那條戰術在合作模式下整條消失）／(k) `#標記` 要在白名單。⚠️ `mode` 是 `未啟用` 時**指名道姓地擋**——那是官方資料表真有的第三個值，泛用訊息會讓人以為是打錯字 |
 | 26 | `data/prereq-ranks.json`（前置節點的等級條件，客戶端 `NeedNode`／`NeedNodeRank`）：最外層只有 note／source／ranks；外層鍵與內層鍵都是節點 id，內層必須是外層那顆的**祖先**、不得是自己；rank 是整數且 2 ≤ rank ≤ 該前置的 `maxLevel`（rank 1 就是解鎖，邊已表達）。⚠️ `TreeNode.prereqRanks` **只在有值的節點上放欄位**——tree.json 餘裕不到 1 KB，241 顆各多一個空物件會爆 |
@@ -478,15 +484,16 @@ npm run compare -- <beforeURL> <afterURL>  # computed-style 逐元素比對，�
 一筆文案 → 55 條錯誤，54 條是規則 5／6／10／18 在說「從根不可達」，唯一說對的規則 19 被埋在裡面）。
 文案規則＝1／3／4／8／9／14／15／16／17，其餘全部走 `nodes`。
 
-⚠️ **(b)(c)(d)「掃一個雜湊命名的圖示目錄」規則 7／21／24／25／27 共用 `checkHashNamedIconDir()`，
-只有一份實作**（規則 24／25／27 再往上共用一層 `checkIconedRecordList()`，那層管的是
-「一筆一個 id、雜湊寫在紀錄 `icon` 欄」這種資料檔的 (a)(e)(f)(g)(h)(k)）。要加檢查就加在那裡，不要為第二個目錄複製第二份出去——上一份複製品漂到
+⚠️ **(b)(c)(d)「掃一個雜湊命名的圖示目錄」規則 7／21／24／25／27／30 共用 `checkHashNamedIconDir()`，
+只有一份實作**（規則 21／30 再往上共用一層 `checkDiceIconMap()`，那層管的是「對應表是
+`{節點 id: hash}`」這種資產路徑的 (a)(e)(f)(g)(h)；規則 24／25／27 則共用 `checkIconedRecordList()`，
+那層管的是「一筆一個 id、雜湊寫在紀錄 `icon` 欄」這種資料檔的 (a)(e)(f)(g)(h)(k)）。要加檢查就加在那裡，不要為第二個目錄複製第二份出去——上一份複製品漂到
 「不驗 PNG、孤兒檔嚴重度相反、逐 entry 重複讀檔」才被抓到。孤兒檔一律只警告：那只是 repo
 裡多一個沒人引用的 PNG，擋下來會連「換圖忘了刪舊檔」一起擋。
 
-⚠️ **規則 21(h) 必須先跳過規則 19 與規則 1 的地盤**：判斷「是不是骰子」要走 `withText`，
-不讓開的話 `nodes.json` 漏一筆文案就會多噴一條指向 `board-icons.json` 的假錯誤。
-規則 21 仍擋不到：**兩顆骰子的雜湊互換**（內容定址的本質限制，每一條檢查都照樣成立）。
+⚠️ **規則 21(h)／30(h) 必須先跳過規則 19 與規則 1 的地盤**：判斷「是不是骰子」要走 `withText`，
+不讓開的話 `nodes.json` 漏一筆文案就會多噴一條指向對應表的假錯誤。
+兩條規則都仍擋不到：**兩顆骰子的雜湊互換**（內容定址的本質限制，每一條檢查都照樣成立）。
 
 - **`parseCost` 只吃單行**：規則 4 拒絕的輸入 `build:data` 必須也拒絕，判斷寫在 `parseCost` 裡
   而不是 validate，兩邊才不會對同一份輸入給不同答案。
@@ -823,8 +830,15 @@ J（手機抽屜不蓋住工具列）是這三條防線。
 
 在這之前全站幾乎沒有可索引的文字（`dist/tree/index.html` 只有 194 個字元）。
 
-- **`/dice` 只收 41 顆骰子本體**（`type === 'dice'`）。⚠️ 符文／玩家被動／支援那 198 個節點**刻意
-  不進圖鑑**（Yuki 指定）：它們是加在骰子或玩家身上的強化，混進同一個網格會讓 41 顆真正的骰子被稀釋掉。
+- **`/dice` 只收骰子本體**（`type === 'dice'`）。⚠️ 符文／玩家被動／支援那批節點**刻意
+  不進圖鑑**（Yuki 指定）：它們是加在骰子或玩家身上的強化，混進同一個網格會讓真正的骰子被稀釋掉。
+- **卡片上的圖是遊戲的 3D 立體骰子圖（3 號素材），不是骰子樹的節點圖**（2026-09-21，Yuki 指定）。
+  它走自己的一條資產路徑（`data/dice3-icons/`＋`data/dice3-icons.json`，規則 30；見「核心概念」
+  那條「六條資產路徑」）。⚠️ **`<img width/height>` 寫的是來源 PNG 的真實尺寸**（`src/lib/png.ts`
+  的 `readPngSize` 在建置期讀出來），不是 `node.size`——那是骰子樹上那張圖的顯示尺寸，跟這張無關；
+  實際大小由 CSS 的 3rem 方框 ＋ `object-fit: contain` 決定，屬性只負責 CSS 生效前先佔位。
+  ⚠️ 這批來源尺寸不統一（384–426 × 398–437），`buildBoardIcon()` 的 240px 上限**對它是真的會
+  觸發的**（對 `board-icons` 那批則完全是 no-op），改那個常數會改到 `/dice` 的畫質。
 - **`/guide/[slug]` 的分組依據是官方色碼**（`keywords.json` 的 `color`）——同色＝同一類機制，
   **分組不是本站的判斷，只有組名是**，頁面上要照實註明。清單在 `src/lib/glossary-groups.ts`。
   ⚠️ **算條數不要用 `index.byTerm.size`**：那份表為了讓別名也查得到本尊會把別名指到同一筆上。
@@ -1298,6 +1312,11 @@ colors 重新著色，那張樹本來就看得見，等於用自己的無障礙�
   `<rect width="100%" height="100%">`，沒把它一起 `display:none` 的話截出來的每張圖都夾帶實心底色。
   後果會蔓延：節點變成不透明方塊蓋掉穿過它的線與鄰居的標籤，畫布上的投影與前置鏈光暈（描的是圖示的
   alpha 輪廓）會去描那個方塊而不是圖示。**檢查方式是量 alpha 通道的分佈，不是看截圖。**
+- ⚠️ **`readPngSize` 住在 `src/lib/png.ts`，不是 `tools/lib/`**（2026-09-21 搬的）。`/dice` 的
+  頁面在建置期要讀 3D 骰子圖的真實尺寸，而 **Astro 的頁面 import 不到 `tools/` 底下的模組**
+  ——實測 build 會過、頁面渲染時才炸 `readPngSize is not defined`（`npm run typecheck` 完全不會說話）。
+  同一族的前例是 `src/lib/upgrade-tiers.ts`：**tools 與站台都要用的純函式一律放 `src/lib/`，
+  tools 反過來 import 它**，不要在 `tools/lib/` 留一份站台碰不到的複本。
 - ⚠️ **`split-svg.ts` 與 `render-nodes.ts` 的來源檔一律由參數傳入、沒有預設值。** 以前預設指向維護者
   本機的遊戲原圖，別人跑到只會得到一個看不懂的 ENOENT，而那條路徑也不該留在公開 repo 裡。
 

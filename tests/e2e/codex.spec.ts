@@ -478,3 +478,44 @@ test('C12. 卡片頂緣的分支色線：真的畫得出來，翻到關鍵字頁
   // 它橫跨整張卡片的頂緣，不能吃掉底下的點擊。
   expect(await card.evaluate(el => getComputedStyle(el, '::after').pointerEvents)).toBe('none');
 });
+
+test('C13. 圖鑑卡片的圖示指向 3D 骰子圖，而且每一張都真的載得到', async ({ page }) => {
+  // 2026-09-21 換圖之後的第一道防線，判準跟 /board 的 B0d 一樣：src 對得上正則不代表圖真的
+  // 存在——對應表打錯一個字或 build:data 漏轉一張，畫面上就是一張破圖，而 `naturalWidth`
+  // 是 0。⚠️ 單元測試（規則 30）驗的是「對應表 ↔ 來源 PNG」，驗不到「WebP 有沒有被轉出來、
+  // 網址組得對不對」——那兩件事只有真的去載才會說話。
+  await page.goto('/dice');
+
+  const imgs = page.locator('.dice-card header img');
+  await expect(imgs).toHaveCount(dice.length);
+
+  const srcs = await imgs.evaluateAll(els => els.map(el => el.getAttribute('src')));
+  for (const src of srcs) {
+    // ⚠️ 指向 `/assets/icons/`（骰子樹的節點圖，有底板）也是一張載得到的圖，所以路徑本身
+    // 要驗：接錯的話畫面上只是「圖鑑的骰子變回有底板的那張」，其餘每條測試都不會紅。
+    expect(src, `${src} 沒有指向 /dice 專用的 3D 骰子圖路徑`).toMatch(/^\/assets\/dice3-icons\/[0-9a-f]{12}\.webp$/);
+  }
+  // 43 顆骰子各一張圖，不准有兩張重複（規則 30(g) 守資料那一側，這裡守畫面那一側）。
+  expect(new Set(srcs).size).toBe(dice.length);
+
+  // 卡片是 loading="lazy" 而網格大半在可視範圍外，不強制 eager 的話量到的 naturalWidth
+  // 只會是「還沒載入」而不是「載入失敗」（同 B0d 與 battle.spec 的 B5 記過的坑）。
+  await imgs.evaluateAll(els => { for (const el of els) (el as HTMLImageElement).loading = 'eager'; });
+  await expect.poll(() => imgs.evaluateAll(els => els.every(el => (el as HTMLImageElement).complete))).toBe(true);
+
+  const sizes = await imgs.evaluateAll(els => els.map(el => {
+    const img = el as HTMLImageElement;
+    return { w: img.naturalWidth, h: img.naturalHeight, attrW: img.width, attrH: img.height };
+  }));
+  for (let i = 0; i < sizes.length; i++) {
+    const s = sizes[i]!;
+    // complete === true 但 naturalWidth === 0 正是「請求發出去了、但圖是破的（404 等）」的訊號。
+    expect(s.w, `第 ${i} 張（src=${srcs[i]}）naturalWidth 是 0——圖沒有真的載到，是破圖`).toBeGreaterThan(0);
+    // 顯示尺寸是 CSS 的 3rem 方框（48px）＋ object-fit: contain，圖不准被拉伸：版面尺寸
+    // 是正方形，而這批來源長寬比不統一，contain 一旦被改成 fill／cover 骰子就會被壓扁或裁角。
+    expect(s.attrW, `第 ${i} 張的版面寬不是 3rem`).toBe(48);
+    expect(s.attrH, `第 ${i} 張的版面高不是 3rem`).toBe(48);
+    // 3rem 顯示 ＋ 高 DPI 要 2 倍，來源解析度必須撐得住（同規則 7(e) 的判準）。
+    expect(Math.max(s.w, s.h), `第 ${i} 張的解析度 ${s.w}×${s.h} 撐不住 3rem 的 2 倍顯示`).toBeGreaterThanOrEqual(96);
+  }
+});

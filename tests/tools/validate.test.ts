@@ -19,6 +19,8 @@ const iconsDir = 'data/icons';
 const dataDir = 'data';
 const boardIcons: Record<string, string> = JSON.parse(readFileSync('data/board-icons.json', 'utf8'));
 const boardIconsDir = 'data/board-icons';
+const dice3Icons: Record<string, string> = JSON.parse(readFileSync('data/dice3-icons.json', 'utf8'));
+const dice3IconsDir = 'data/dice3-icons';
 const passiveUpgradeCost: unknown = JSON.parse(readFileSync('data/passive-upgrade-cost.json', 'utf8'));
 const diceStats: unknown = JSON.parse(readFileSync('data/dice-stats.json', 'utf8'));
 const tactics: unknown = JSON.parse(readFileSync('data/tactics.json', 'utf8'));
@@ -33,7 +35,7 @@ const events: unknown = JSON.parse(readFileSync('data/events.json', 'utf8'));
 const eventShotsDir = 'public/events';
 const opts = {
   keywords, nodeText, upgradeCostTable, maxLevelOfficial, unlockExceptions, changelog, iconsDir, dataDir,
-  boardIcons, boardIconsDir, passiveUpgradeCost, diceStats,
+  boardIcons, boardIconsDir, dice3Icons, dice3IconsDir, passiveUpgradeCost, diceStats,
   tactics, tacticIconsDir, boss, bossIconsDir, prereqRanks, riftShop, riftShopIconsDir, offgameEffects,
   events, eventShotsDir,
 };
@@ -903,6 +905,56 @@ describe('validate', () => {
       expect(result.warnings.filter(w => /規則 21/.test(w))).toEqual([]);
     });
   });
+
+  // 規則 30：/dice 圖鑑的 3D 立體骰子圖。它跟規則 21 共用 checkDiceIconMap()，所以這裡
+  // **不重抄規則 21 那十幾條**（抄了就是兩份會各自漂移的複本，正是 checkHashNamedIconDir()
+  // 的註解在講的事）。這一組只驗兩件規則 21 的測試證明不了的事：
+  // (1) 第二條路徑真的接上了——少接就每一條子規則都是 no-op，而畫面上看不出來；
+  // (2) 它讀的是自己那份對應表與目錄，不是 board-icons 的。
+  describe('規則 30：/dice 3D 骰子圖的對應表', () => {
+    it('沒有提供 data/dice3-icons.json 時只警告、不擋 PR', () => {
+      const result = validate(svg, { ...opts, dice3Icons: null });
+      expect(result.errors).toEqual([]);
+      expect(result.warnings.some(w => /規則 30.*沒有提供 data\/dice3-icons\.json/.test(w))).toBe(true);
+    });
+
+    it('骰子節點在對應表裡漏了一筆會被擋', () => {
+      const { '5006': _dropped, ...missing } = dice3Icons;
+      const result = validate(svg, { ...opts, dice3Icons: missing });
+      expect(result.errors.some(e => /規則 30.*骰子 5006.*沒有對應的圖/.test(e))).toBe(true);
+    });
+
+    it('對應表指向的圖檔不存在會被擋，且訊息指的是實際讀取的目錄', () => {
+      const tmpDir = mkdtempSync(join(tmpdir(), 'rd2-dice3-icons-'));
+      const result = validate(svg, { ...opts, dice3IconsDir: tmpDir });
+      const hash = dice3Icons['5006']!;
+      expect(result.errors).toContain(`規則 30(f): data/dice3-icons.json 的 5006 指向的圖 ${join(tmpDir, `${hash}.png`)} 不存在`);
+    });
+
+    it('兩筆指向同一張圖會被擋（複製上一筆、忘了換成新加的圖）', () => {
+      const result = validate(svg, { ...opts, dice3Icons: { ...dice3Icons, '5006': dice3Icons['5005']! } });
+      expect(result.errors.some(e => /規則 30\(g\).*5005、5006.*同一張3D 骰子圖/.test(e))).toBe(true);
+    });
+
+    it('對應表裡指向非骰子節點的孤兒 entry 會被擋', () => {
+      const rune = validate(svg, { ...opts, dice3Icons: { ...dice3Icons, '1101': dice3Icons['5006']! } });
+      expect(rune.errors.some(e => /規則 30\(h\).*1101.*孤兒/.test(e))).toBe(true);
+    });
+
+    // ⚠️ 這條是「兩條路徑沒有互相串線」的守門：`/dice` 一旦被接回 board-icons 的圖，畫面上
+    // 只是「圖鑑的骰子變回扁平卡片」——沒有任何既有規則會說話，兩份檔案各自都完全合法。
+    it('兩份對應表指向的是不同的圖（/dice 用 3D、/board 用扁平卡片）', () => {
+      expect(Object.keys(dice3Icons).sort()).toEqual(Object.keys(boardIcons).sort());
+      const shared = Object.keys(dice3Icons).filter(id => dice3Icons[id] === boardIcons[id]);
+      expect(shared).toEqual([]);
+    });
+
+    it('現有資料本身沒有任何規則 30 的問題（錯誤與警告都是零）', () => {
+      const result = validate(svg, opts);
+      expect(result.errors.filter(e => /規則 30/.test(e))).toEqual([]);
+      expect(result.warnings.filter(w => /規則 30/.test(w))).toEqual([]);
+    });
+  });
 });
 
 /** 產生一張只有簽章 + IHDR chunk 的最小合法 PNG，足以通過 `readPngSize` 的結構性檢查。 */
@@ -966,10 +1018,19 @@ describe('validate：邊與座標的守門（P2）', () => {
     const extraBuf = makeMinimalPng(150, 175);
     const extraHash = createHash('sha256').update(extraBuf).digest('hex').slice(0, 12);
     writeFileSync(join(boardDir, `${extraHash}.png`), extraBuf);
+    // 規則 30(a) 是規則 21(a) 的同一支實作（checkDiceIconMap），對 wip 骰子同樣不放水，
+    // 所以 /dice 的 3D 骰子圖也要照同一個方式另外補一張。
+    const dice3Dir = mkdtempSync(join(tmpdir(), 'rd2-dice3-icons-'));
+    for (const f of readdirSync(dice3IconsDir)) writeFileSync(join(dice3Dir, f), readFileSync(join(dice3IconsDir, f)));
+    const extra3Buf = makeMinimalPng(385, 400);
+    const extra3Hash = createHash('sha256').update(extra3Buf).digest('hex').slice(0, 12);
+    writeFileSync(join(dice3Dir, `${extra3Hash}.png`), extra3Buf);
     const { errors, warnings } = validate(withPlaceholder, {
       ...patch({ '1099': { ...nodeText[copiedId], gameId: 'D999' } }),
       boardIcons: { ...boardIcons, '1099': extraHash },
       boardIconsDir: boardDir,
+      dice3Icons: { ...dice3Icons, '1099': extra3Hash },
+      dice3IconsDir: dice3Dir,
       // 規則 23(a) 對 wip 節點不放水，判準跟規則 21(a) 一致：`data-wip` 豁免的是「接不接得到
       // 根」（規則 6），不是「這顆骰子有沒有官方數值」。所以這裡也要補一筆，才回得到只驗 6(c)。
       diceStats: { ...(diceStats as Record<string, unknown>), D999: { name: nodeText[copiedId]!['name'], stats: [{ label: '攻擊力', base: '1' }] } },

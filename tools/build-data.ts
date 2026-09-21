@@ -242,16 +242,23 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
   }
   for (const [hash, buf] of hiRes) writeFileSync(`public/assets/icons/${hash}.webp`, buf);
 
-  // /board 骰盤編輯器的純骰子圖：跟正本 SVG 引用的節點圖示是平行的一條資產路徑（不進
-  // tree.json，也不經 meta.sprite）。src/pages/board.astro 直接讀 data/board-icons.json
-  // 取得節點 id -> hash 的對應，站台端組出 /assets/board-icons/<hash>.webp 這個網址。
-  const boardIcons: Record<string, string> = JSON.parse(readFileSync('data/board-icons.json', 'utf8'));
-  mkdirSync('public/assets/board-icons', { recursive: true });
-  for (const hash of new Set(Object.values(boardIcons))) {
-    writeFileSync(
-      `public/assets/board-icons/${hash}.webp`,
-      await buildBoardIcon(readFileSync(`data/board-icons/${hash}.png`)),
-    );
+  // 「一顆骰子一張圖、對應表是 {節點 id: hash}」的兩條資產路徑：`/board` 骰盤編輯器的純骰子圖
+  // （2 號素材，扁平卡片視角）與 `/dice` 圖鑑的 3D 立體骰子圖（3 號素材）。兩者都跟正本 SVG
+  // 引用的節點圖示平行（不進 tree.json，也不經 meta.sprite）：頁面直接讀對應表，站台端組出
+  // /assets/<目錄>/<hash>.webp 這個網址。
+  //
+  // ⚠️ 三批圖是三條**彼此獨立**的路徑，不要因為「都是骰子」就合併成一份對應表：節點圖示有底板
+  // （骰子樹上用）、board-icons 是扁平卡片視角（骰盤格裡用）、dice3-icons 是 3D 立體
+  // （圖鑑卡片用），同一顆骰子在三處的圖不一樣。
+  for (const [mapPath, dir, out] of [
+    ['data/board-icons.json', 'data/board-icons', 'public/assets/board-icons'],
+    ['data/dice3-icons.json', 'data/dice3-icons', 'public/assets/dice3-icons'],
+  ] as const) {
+    const map: Record<string, string> = JSON.parse(readFileSync(mapPath, 'utf8'));
+    mkdirSync(out, { recursive: true });
+    for (const hash of new Set(Object.values(map))) {
+      writeFileSync(`${out}/${hash}.webp`, await buildBoardIcon(readFileSync(`${dir}/${hash}.png`)));
+    }
   }
 
   // 戰術、Boss 與裂縫商店的圖：跟 /board 的純骰子圖同一種平行路徑，差別只有「雜湊寫在

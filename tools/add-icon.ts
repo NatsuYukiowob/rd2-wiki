@@ -2,7 +2,7 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { createHash } from 'node:crypto';
 import { join } from 'node:path';
-import { readPngSize } from './lib/png.js';
+import { readPngSize } from '../src/lib/png.js';
 
 export interface AddIconResult {
   /** sha256 前 12 碼，同時也是不含副檔名的檔名。 */
@@ -40,39 +40,42 @@ export function addIcon(srcPath: string, iconsDir: string): AddIconResult {
   return { hash, fileName, destPath, alreadyExists };
 }
 
-/** `addBoardIcon()` 的結果：`addIcon()` 的全部欄位，外加對應表原本那筆的雜湊。 */
-export interface AddBoardIconResult extends AddIconResult {
+/** `addMappedIcon()` 的結果：`addIcon()` 的全部欄位，外加對應表原本那筆的雜湊。 */
+export interface AddMappedIconResult extends AddIconResult {
   /**
-   * 這個節點原本在 `data/board-icons.json` 指向的雜湊；先前沒有這一筆時為 `null`。
-   * 換圖時舊檔通常就此沒人引用——CLI 會提醒一句，validate 的規則 21(d) 也會警告（不擋 PR）。
+   * 這個節點原本在對應表（`data/board-icons.json`／`data/dice3-icons.json`）指向的雜湊；
+   * 先前沒有這一筆時為 `null`。
+   * 換圖時舊檔通常就此沒人引用——CLI 會提醒一句，validate 的規則 21(d)／28(d) 也會警告（不擋 PR）。
    */
   previousHash: string | null;
 }
 
 /**
- * `/board` 骰盤編輯器的「純骰子圖」（不含底板）走的是跟節點圖示平行的一條資產路徑：
- * 圖放 `data/board-icons/`，而且 **`data/board-icons.json` 那一筆要一起更新**——少了任一邊，
- * CI 的規則 21 就會紅（漏對應＝21(a)，漏檔案＝21(f)）。
+ * 「一顆骰子一張圖、對應表是 `{節點 id: hash}`」這種資產路徑共用這一支——目前兩條：
+ * `/board` 的純骰子圖（`data/board-icons/` ＋ `data/board-icons.json`，規則 21）與
+ * `/dice` 圖鑑的 3D 立體骰子圖（`data/dice3-icons/` ＋ `data/dice3-icons.json`，規則 30）。
+ * **圖與對應表那一筆要一起更新**——少了任一邊，CI 就會紅（漏對應＝(a)，漏檔案＝(f)）。
  *
  * 這支存在的理由就是那個「一起」：`npm run add-icon` 的目的地過去寫死成 `data/icons`，
  * 沒有任何工具放得進 `data/board-icons`，貢獻者只能自己算雜湊、自己改 JSON——而規則 21
  * 是 2026-08 才加的，指南裡一個字都沒提過這件事（2026-08-23 review F10）。
  *
  * 圖檔本身的檢查（有效 PNG、最長邊 ≥ 96px、依內容雜湊命名）直接重用 `addIcon()`，
- * 兩條資產路徑的判準因此不會各自漂移；**而且它先跑**，來源圖不合格時對應表不會被動到。
+ * 這幾條資產路徑的判準因此不會各自漂移；**而且它先跑**，來源圖不合格時對應表不會被動到。
  *
  * ⚠️ 只驗 id 的**格式**，不驗「它是不是骰子」：那要讀正本兩個檔才知道，而 validate 的
- * 規則 21(a)／21(h) 本來就是幹這個的。這裡擋的是「手滑打錯一碼」這種當場就看得出來的錯。
+ * 規則 21(a)／21(h)（與 30 的同名子規則）本來就是幹這個的。這裡擋的是「手滑打錯一碼」
+ * 這種當場就看得出來的錯。
  */
-export function addBoardIcon(
+export function addMappedIcon(
   srcPath: string,
   nodeId: string,
-  opts: { boardIconsDir: string; mapPath: string },
-): AddBoardIconResult {
+  opts: { iconsDir: string; mapPath: string },
+): AddMappedIconResult {
   // 跟 validate 規則 2 同一個編碼規律：首碼＝分支 1-5、次碼＝ 0-6，其後兩碼任意。
   if (!/^[1-5][0-6]\d\d$/.test(nodeId)) throw new Error(`節點 id 不符編碼規律: ${nodeId}`);
 
-  const result = addIcon(srcPath, opts.boardIconsDir);
+  const result = addIcon(srcPath, opts.iconsDir);
 
   const map: Record<string, string> = existsSync(opts.mapPath)
     ? JSON.parse(readFileSync(opts.mapPath, 'utf8'))
@@ -97,7 +100,7 @@ export interface AddRecordIconResult extends AddIconResult {
  * 把一張圖加進「一筆一個 id、雜湊寫在紀錄 `icon` 欄」的資料檔——`data/tactics.json`（戰術）、
  * `data/boss.json`（Boss）與 `data/rift-shop.json`（裂縫效果）共用。
  *
- * 存在的理由跟 `addBoardIcon()` 一模一樣：規則 24／25／27 擋下「新增一條戰術／一個 Boss／
+ * 存在的理由跟 `addMappedIcon()` 一模一樣：規則 24／25／27 擋下「新增一條戰術／一個 Boss／
  * 一條裂縫效果」這個動作，但**沒有工具放得進那三個 `data/*-icons`**的話，貢獻者只能自己算
  * 雜湊、自己改 JSON——2026-08-23 規則 21 就是這樣把人卡在一條他讀不到的規則上（review F10）。
  *
@@ -135,6 +138,7 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
     '用法:',
     '  npm run add-icon -- <圖片路徑>                     節點圖示 → data/icons/',
     '  npm run add-icon -- --board <節點 id> <圖片路徑>    /board 純骰子圖 → data/board-icons/，並更新 data/board-icons.json',
+    '  npm run add-icon -- --dice3 <節點 id> <圖片路徑>    /dice 3D 骰子圖 → data/dice3-icons/，並更新 data/dice3-icons.json',
     '  npm run add-icon -- --tactic <戰術編號> <圖片路徑>  戰術圖 → data/tactic-icons/，並更新 data/tactics.json 那一筆的 icon',
     '  npm run add-icon -- --boss <Boss 編號> <圖片路徑>   Boss 圖 → data/boss-icons/，並更新 data/boss.json 那一筆的 icon',
     '  npm run add-icon -- --rift-shop <效果編號> <圖片路徑>  裂縫效果圖 → data/rift-shop-icons/，並更新 data/rift-shop.json 那一筆的 icon',
@@ -150,6 +154,12 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
       '--tactic': { label: '戰術', iconsDir: 'data/tactic-icons', dataPath: 'data/tactics.json' },
       '--boss': { label: 'Boss', iconsDir: 'data/boss-icons', dataPath: 'data/boss.json' },
       '--rift-shop': { label: '裂縫效果', iconsDir: 'data/rift-shop-icons', dataPath: 'data/rift-shop.json' },
+    } as const;
+    // 「對應表是 {節點 id: hash}」的兩條資產路徑走同一條分支，理由同 RECORD_KINDS：
+    // 兩段各自的 if 只會讓提示訊息漂移。
+    const MAP_KINDS = {
+      '--board': { label: '純骰子圖', dirName: 'board-icons', iconsDir: 'data/board-icons', mapPath: 'data/board-icons.json' },
+      '--dice3': { label: '3D 骰子圖', dirName: 'dice3-icons', iconsDir: 'data/dice3-icons', mapPath: 'data/dice3-icons.json' },
     } as const;
     const kind = RECORD_KINDS[args[0] as keyof typeof RECORD_KINDS];
     if (kind) {
@@ -167,20 +177,21 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
         console.log(`⚠️  ${id} 原本指向 ${result.previousHash}.png；若沒有別筆在用，`
           + `${kind.iconsDir}/${result.previousHash}.png 就成了孤兒檔（npm run validate 會警告），確認後可以刪掉`);
       }
-    } else if (args[0] === '--board') {
+    } else if (MAP_KINDS[args[0] as keyof typeof MAP_KINDS]) {
+      const map = MAP_KINDS[args[0] as keyof typeof MAP_KINDS]!;
       const [, nodeId, src] = args;
       if (!nodeId || !src) {
         console.error(usage);
         process.exit(1);
       }
-      const result = addBoardIcon(src, nodeId, { boardIconsDir: 'data/board-icons', mapPath: 'data/board-icons.json' });
+      const result = addMappedIcon(src, nodeId, { iconsDir: map.iconsDir, mapPath: map.mapPath });
       console.log(result.alreadyExists
-        ? `純骰子圖已存在，未重複寫入：board-icons/${result.fileName}`
-        : `已新增純骰子圖：board-icons/${result.fileName}`);
-      console.log(`已把 data/board-icons.json 的 ${nodeId} 指到 ${result.hash}`);
+        ? `${map.label}已存在，未重複寫入：${map.dirName}/${result.fileName}`
+        : `已新增${map.label}：${map.dirName}/${result.fileName}`);
+      console.log(`已把 ${map.mapPath} 的 ${nodeId} 指到 ${result.hash}`);
       if (result.previousHash && result.previousHash !== result.hash) {
         console.log(`⚠️  ${nodeId} 原本指向 ${result.previousHash}.png；若沒有別的節點在用，`
-          + `data/board-icons/${result.previousHash}.png 就成了孤兒檔（npm run validate 會警告），確認後可以刪掉`);
+          + `${map.iconsDir}/${result.previousHash}.png 就成了孤兒檔（npm run validate 會警告），確認後可以刪掉`);
       }
     } else {
       const src = args[0];

@@ -30,9 +30,13 @@ interface Props {
    *  會是「同一個名字兩件事」。⚠️ **不要在這裡夾上限**：夾的動作在 CSS
    *  （`min(var(--i), var(--p-stagger-max))`），寫在這裡就是同一個上限散成兩份。 */
   enterIndex: number;
+  /** 這顆骰子的 3D 立體圖（`data/dice3-icons.json` 的雜湊 ＋ 來源 PNG 的真實尺寸）。
+   *  ⚠️ **不要退回 `node.icon`**：那是骰子樹的節點圖（有底板），圖鑑卡片刻意用 3 號素材，
+   *  由 CI 規則 30 守那份對應表。頁面讀檔、這裡只負責印。 */
+  icon3: { hash: string; width: number; height: number };
 }
 
-const { node, gameId, index, whitelist, glossary, upgradeCostTable, stats, enterIndex } = Astro.props;
+const { node, gameId, index, whitelist, glossary, upgradeCostTable, stats, enterIndex, icon3 } = Astro.props;
 
 const desc = renderStaticText(node.description, whitelist, glossary, index);
 const awakening = node.awakening ? renderStaticText(node.awakening, whitelist, glossary, index) : null;
@@ -53,10 +57,10 @@ const modeName = `stat-mode-${node.id}`;
   <div class="dice-card-main">
     <header>
       <img
-        src={`/assets/icons/${node.icon}.webp`}
+        src={`/assets/dice3-icons/${icon3.hash}.webp`}
         alt=""
-        width={node.size[0]}
-        height={node.size[1]}
+        width={icon3.width}
+        height={icon3.height}
         loading="lazy"
         decoding="async"
       />
