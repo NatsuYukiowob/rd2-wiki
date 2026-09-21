@@ -12,7 +12,7 @@ import { checkChangelog } from '../src/lib/changelog.js';
 import { groupOfColor } from '../src/lib/glossary-groups.js';
 import { branchOfId, categoryOfZh, elementOfStroke, typeOfZh } from '../src/lib/taxonomy.js';
 import { buildAdjacency, detectCycle, findRoots, prerequisiteChain, unreachableFrom } from '../src/lib/graph.js';
-import { readPngSize } from '../src/lib/png.js';
+import { readPngSize } from './lib/png.js';
 import { isGlossaryAlias } from '../src/lib/types.js';
 import { expandTier } from '../src/lib/upgrade-tiers.js';
 import { deriveParams } from '../src/lib/dice-calc.js';

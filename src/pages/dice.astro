@@ -13,7 +13,6 @@
 // 卡片裡的 `#關鍵字` **不跳頁**：點下去在同一張卡片上就地換成那個詞的解釋（2026-08-22
 // Yuki 指定，跟 /tree 的詳情面板同一種操作感）。四組關鍵字的完整清單在 /guide 底下，
 // 那裡是「攤開來瀏覽」用的；卡片上的就地視圖是「讀到一半想起來這個詞是什麼」用的。
-import { readFileSync } from 'node:fs';
 import Base from '../layouts/Base.astro';
 import '../styles/dice.css';
 import DiceCard from '../components/DiceCard.astro';
@@ -22,7 +21,6 @@ import keywordsRaw from '../../data/keywords.json';
 import nodeTextRaw from '../../data/nodes.json';
 import diceStatsRaw from '../../data/dice-stats.json';
 import dice3IconsRaw from '../../data/dice3-icons.json';
-import { readPngSize } from '../lib/png';
 import { buildGlossary, displayGlossary } from '../lib/glossary-groups';
 import { buildTermPayload } from '../lib/static-markup';
 import { BRANCH_ZH } from '../lib/labels';
@@ -61,18 +59,15 @@ const nodes = tree.nodes
 // CI 規則 30 守這份對應表。⚠️ 跟 /board 的純骰子圖（2 號，扁平卡片視角）是**兩條**路徑，
 // 同一顆骰子的兩張圖不一樣，不要互相接線（規則 30 的測試有一條專門守這件事）。
 const dice3Icons = dice3IconsRaw as Record<string, string>;
-// `<img width/height>` 寫來源圖的真實尺寸而不是節點的顯示尺寸（`node.size` 是骰子樹上那張
-// 圖的尺寸，跟這張無關）。這批來源尺寸與長寬比都不統一（384–426 × 398–437），而 build:data
-// 的 `fit: 'inside'` 保留長寬比，所以來源的比例就是輸出的比例。⚠️ 實際顯示尺寸由 CSS 的
-// 3rem 方框 ＋ `object-fit: contain` 決定，這兩個屬性只負責「CSS 生效前先把位置佔好」。
-const icon3Size = new Map<string, { width: number; height: number }>();
-for (const hash of new Set(Object.values(dice3Icons))) {
-  const size = readPngSize(readFileSync(`data/dice3-icons/${hash}.png`));
-  // 讀不到就讓建置失敗，不要退回一個猜來的尺寸：規則 30(c) 已經擋過「不是有效 PNG」，
-  // 走到這裡還讀不到代表檔案在 validate 之後才壞掉，安靜地猜一個比例只會變成版面跳動。
-  if (!size) throw new Error(`data/dice3-icons/${hash}.png 不是有效的 PNG，讀不到尺寸`);
-  icon3Size.set(hash, size);
-}
+// ⚠️ 少一筆就讓建置失敗，不要讓 `!` 把 undefined 放行：`dice3Icons[id]` 是 undefined 時
+// 版面會安靜地印出 `src="/assets/dice3-icons/undefined.webp"`，畫面上是一張破圖而 build
+// 回 0（2026-09-21 /code-review 抓到）。CI 的規則 30(a) 擋得到同一件事，但它跑在 build
+// 之前的另一個步驟——`astro dev` 與單跑 `npm run build` 的人完全不會被告知。
+const icon3Of = (id: string): string => {
+  const hash = dice3Icons[id];
+  if (!hash) throw new Error(`data/dice3-icons.json 沒有節點 ${id} 的 3D 骰子圖（npm run add-icon -- --dice3 ${id} <png>）`);
+  return hash;
+};
 
 const BRANCHES = Object.entries(BRANCH_ZH);
 ---
@@ -128,7 +123,7 @@ const BRANCHES = Object.entries(BRANCH_ZH);
           glossary={glossary}
           upgradeCostTable={tree.meta.upgradeCostTable}
           stats={statsOf(diceStats, gameIds.get(node.id))}
-          icon3={{ hash: dice3Icons[node.id]!, ...icon3Size.get(dice3Icons[node.id]!)! }}
+          icon3Hash={icon3Of(node.id)}
         />
       ))}
     </div>

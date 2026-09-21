@@ -11,6 +11,7 @@ import { STAT_MODES, isFixed, growthNote, statValue } from '../lib/dice-stats';
 import { formatCost, formatGrowth, formatUnlockVia } from '../lib/format';
 import { cumulativeUpgradeCost, upgradeTableApplies } from '../lib/cost';
 import { AWAKENING_CONDITION, BRANCH_ZH } from '../lib/labels';
+import { DICE_CARD_ICON_PX } from '../lib/dice-icon';
 import type { GlossaryIndex } from '../lib/glossary-groups';
 import type { DiceStatEntry, TreeNode, UpgradeCostTable } from '../lib/types';
 
@@ -30,13 +31,13 @@ interface Props {
    *  會是「同一個名字兩件事」。⚠️ **不要在這裡夾上限**：夾的動作在 CSS
    *  （`min(var(--i), var(--p-stagger-max))`），寫在這裡就是同一個上限散成兩份。 */
   enterIndex: number;
-  /** 這顆骰子的 3D 立體圖（`data/dice3-icons.json` 的雜湊 ＋ 來源 PNG 的真實尺寸）。
+  /** 這顆骰子的 3D 立體圖在 `data/dice3-icons.json` 裡的雜湊。
    *  ⚠️ **不要退回 `node.icon`**：那是骰子樹的節點圖（有底板），圖鑑卡片刻意用 3 號素材，
-   *  由 CI 規則 30 守那份對應表。頁面讀檔、這裡只負責印。 */
-  icon3: { hash: string; width: number; height: number };
+   *  由 CI 規則 30 守那份對應表。 */
+  icon3Hash: string;
 }
 
-const { node, gameId, index, whitelist, glossary, upgradeCostTable, stats, enterIndex, icon3 } = Astro.props;
+const { node, gameId, index, whitelist, glossary, upgradeCostTable, stats, enterIndex, icon3Hash } = Astro.props;
 
 const desc = renderStaticText(node.description, whitelist, glossary, index);
 const awakening = node.awakening ? renderStaticText(node.awakening, whitelist, glossary, index) : null;
@@ -57,10 +58,10 @@ const modeName = `stat-mode-${node.id}`;
   <div class="dice-card-main">
     <header>
       <img
-        src={`/assets/dice3-icons/${icon3.hash}.webp`}
+        src={`/assets/dice3-icons/${icon3Hash}.webp`}
         alt=""
-        width={icon3.width}
-        height={icon3.height}
+        width={DICE_CARD_ICON_PX}
+        height={DICE_CARD_ICON_PX}
         loading="lazy"
         decoding="async"
       />
