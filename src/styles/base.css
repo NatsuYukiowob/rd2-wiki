@@ -168,7 +168,7 @@ pre {
   }
 }
 
-[data-enter] :is(.home-card, .guide-card, .dice-card) {
+[data-enter] :is(.home-card, .guide-card, .dice-card, .event-card-link) {
   animation: rise var(--t-slow) var(--e-out) both;
   animation-delay: calc(min(var(--i, 0), var(--p-stagger-max)) * var(--p-stagger));
 }
@@ -177,7 +177,7 @@ pre {
    ⚠️ 用 `animation: none` 而不是把長度歸零——長度歸零時 `both` 仍然成立，帶延遲的卡片會在
    延遲跑完之前維持在起點（opacity: 0），使用者會看到一頁慢慢補齊的空白格。 */
 @media (prefers-reduced-motion: reduce) {
-  [data-enter] :is(.home-card, .guide-card, .dice-card) {
+  [data-enter] :is(.home-card, .guide-card, .dice-card, .event-card-link) {
     animation: none;
   }
 }

@@ -109,13 +109,13 @@ describe('版面級距', () => {
    */
   const EXPECTED_CSS = [
     'base.css', 'battle.css', 'board.css', 'canvas.css', 'chrome.css', 'components.css',
-    'content.css', 'detail.css', 'dice.css', 'tokens.css',
+    'content.css', 'detail.css', 'dice.css', 'events.css', 'tokens.css',
   ].map(f => `${STYLE_DIR}/${f}`).sort();
 
-  it('掃描名單剛好是十個 .css，一個不多一個不少', () => {
+  it('掃描名單剛好是十一個 .css，一個不多一個不少', () => {
     const onDisk = readdirSync(STYLE_DIR)
       .filter(f => f.endsWith('.css')).sort().map(f => `${STYLE_DIR}/${f}`);
-    expect(onDisk, 'src/styles 底下的 .css 集合跟預期的十個檔對不上').toEqual(EXPECTED_CSS);
+    expect(onDisk, 'src/styles 底下的 .css 集合跟預期的十一個檔對不上').toEqual(EXPECTED_CSS);
     expect(FILES).toContain(TOKENS_FILE);
   });
 

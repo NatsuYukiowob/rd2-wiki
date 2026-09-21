@@ -30,13 +30,27 @@ export type CurrencyKind = 'core' | 'gold';
  * （客戶端 `GoodsTable` 裡根本沒有它，跟 SP 一樣一局結束就沒了），加進去等於讓每一處成本
  * 運算都多背一個永遠是 0 的欄位。它只需要一張圖，所以只擴圖示這一層。
  */
-export type CurrencyIconKind = CurrencyKind | 'tacticcoin';
+/**
+ * 活動貨幣（`/events` 的中秋賞月活動）。跟討伐硬幣同一個理由留在圖示這一層：它們不是
+ * 骰子樹的花費，活動一結束連遊戲裡都作廢（`event_chuseok_alert`）。
+ */
+export type EventCoinKind = 'chuseoktoken' | 'chuseokcoin';
+
+export type CurrencyIconKind = CurrencyKind | 'tacticcoin' | EventCoinKind;
 
 const CURRENCY: Record<CurrencyIconKind, { label: string; file: string }> = {
   core: { label: '核心', file: 'core.png' },
   gold: { label: '金幣', file: 'gold.png' },
   tacticcoin: { label: '討伐硬幣', file: 'tacticcoin.png' },
+  chuseoktoken: { label: '賞月代幣', file: 'chuseoktoken.png' },
+  chuseokcoin: { label: '滿月硬幣', file: 'chuseokcoin.png' },
 };
+
+/**
+ * 登記過的貨幣圖種類。給規則 29 列舉合法的 `icon` 值用——**不要在別處複製第二份清單**，
+ * 那是這個 repo 記過兩次的漂移（`--panel` 一個東西兩個名字、規則 7 與 21 的兩份目錄掃描）。
+ */
+export const CURRENCY_ICON_KINDS = Object.keys(CURRENCY) as readonly CurrencyIconKind[];
 
 function img(file: string): string {
   return `<img class="currency-icon" src="/currency/${file}" alt="" width="16" height="16" aria-hidden="true">`;

@@ -1,0 +1,307 @@
+/* --- 活動（/events）--- */
+/*
+ * 一場活動一張卡片（`.event-card`），卡片裡每一段是一張表。
+ *
+ * ⚠️ **為什麼不共用 `battle.css`**：那邊是「圖左、文右、一行一條」的橫列清單（一筆一個效果），
+ * 這邊的一筆是**一整張表**（欄名固定、列數不定）。兩者沒有共用的元素，硬塞進同一個檔只會讓
+ * `.battle-*` 長出一批只有一頁用得到的規則。
+ *
+ * 站上在這之前沒有任何 `<table>` 的樣式——這個檔是第一份，其他頁要用表格時從這裡拿。
+ */
+
+/* --- 索引（/events）--- */
+
+.event-index {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+/* 整張卡片是一個連結（同 `.guide-card`）：縮圖在左、文字在右，點哪裡都進得去。 */
+.event-card-link {
+  display: flex;
+  gap: var(--space-4);
+  padding: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  background: var(--surface-1);
+  box-shadow: var(--face);
+  color: inherit;
+  text-decoration: none;
+  transition: transform var(--t-fast) var(--e-out), box-shadow var(--t-fast) var(--e-out);
+}
+
+.event-card-link:hover {
+  transform: translateY(calc(-1 * var(--p-lift)));
+  box-shadow: var(--face-lift);
+}
+
+.event-card-link:active {
+  transform: scale(var(--p-press));
+}
+
+/* 縮圖是**裝飾**（`alt=""`）：卡片上的名稱與摘要已經說完了它是什麼，給它一個 alt
+   只會讓讀屏把同一件事念兩次。詳細頁上的同一張圖才是內容（那裡的 alt 是圖說）。 */
+.event-thumb {
+  flex: none;
+  width: 5.5rem;
+  /* 直式手機截圖：固定高度、裁掉中間以外的部分，卡片高度才不會被一張 554×1200 的圖拉長。
+     ⚠️ `object-fit: cover` 在這裡是對的（跟 /board 那四個顯示點相反）：縮圖要的是
+     「認得出是哪一場」，不是完整畫面——完整畫面點進去就有。 */
+  height: 7rem;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  object-fit: cover;
+  object-position: top;
+}
+
+.event-card-body {
+  min-width: 0;
+}
+
+.event-card-summary {
+  margin: var(--space-1) 0 var(--space-2);
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  /* 摘要在卡片上只給三行——它在詳細頁有完整的一份。 */
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+}
+
+.event-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  font-size: var(--fs-xs);
+}
+
+.event-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-h);
+  padding: var(--space-h) var(--space-2);
+  border-radius: var(--r-pill);
+  background: var(--surface-2);
+  color: var(--muted);
+}
+
+.event-more {
+  color: var(--gold);
+}
+
+/* --- 一場活動（/events/<id>）--- */
+
+.event-back {
+  margin: 0 0 var(--space-2);
+  font-size: var(--fs-sm);
+}
+
+/* 標題列：活動名 ＋ 版本徽章（＋有檔期時的起訖）。會換行——窄螢幕上徽章掉到第二行，
+   總比把活動名壓縮成兩三個字一行好。 */
+.event-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-3);
+}
+
+.event-head h1,
+.event-head h2 {
+  margin: 0;
+  font-size: var(--fs-xl);
+}
+
+/* 詳細頁的標題列排在 `.page h1` 的位置上，所以要自己收掉 `.page h1` 的下邊界。 */
+.event-page .event-head h1 {
+  font-size: var(--fs-2xl);
+}
+
+/* 徽章講的是「內含這場活動的客戶端版本」。用 --font-num 排版本號，跟站上其他數字一致；
+   ⚠️ 後面必須接上 --font 的全部成員（Archivo 沒有中文字），所以直接用 token 不要自己拼。 */
+.event-badge {
+  padding: var(--space-h) var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-pill);
+  background: var(--surface-2);
+  color: var(--muted);
+  font-family: var(--font-num);
+  font-size: var(--fs-xs);
+  letter-spacing: var(--ls-label);
+}
+
+.event-period {
+  margin: var(--space-1) 0 0;
+  color: var(--muted);
+  font-family: var(--font-num);
+  font-size: var(--fs-sm);
+}
+
+/* 貨幣：圖 ＋ 全名 ＋ 一句取得方式。 */
+.event-currencies {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: 0 0 var(--space-4);
+  padding: 0;
+  list-style: none;
+}
+
+.event-currencies li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+
+.event-currency-note {
+  color: var(--muted);
+  font-size: var(--fs-sm);
+}
+
+.event-section {
+  margin: 0 0 var(--space-5);
+}
+
+.event-section:last-child {
+  margin-bottom: 0;
+}
+
+/* ⚠️ 段落標題是 **h2**（頁面標題是 h1）。這條原本寫成 `h3`——那是卡片式版面留下來的，
+   改成一場一頁之後整條變成死規則，標題退回 UA 預設的 1.5em ＋ 20px 上下邊界，
+   跟 h1 幾乎一樣大而 CI 全綠（/code-review 2026-09-21 抓到）。 */
+.event-section h2 {
+  margin: 0 0 var(--space-1);
+  font-size: var(--fs-lg);
+}
+
+.event-section .note {
+  margin: 0 0 var(--space-2);
+  max-width: 44rem;
+}
+
+/* 窄螢幕上表格自己捲。⚠️ 捲動容器要拿得到鍵盤焦點（頁面上是 `tabindex="0"`），
+   否則只有滑鼠使用者捲得動——那是 `overflow: auto` 最常見的無障礙漏洞。 */
+.event-table-wrap {
+  /* 跟 `.lede` 同一個量級的行寬上限。不設的話桌機上三欄會被拉到 1,200px 寬，
+     「1」跟「起點」之間隔著半個螢幕——表格的可讀性跟內文一樣是靠行寬撐的。 */
+  max-width: 44rem;
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--surface-0);
+}
+
+.event-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--fs-sm);
+}
+
+.event-table th,
+.event-table td {
+  padding: var(--space-2) var(--space-3);
+  text-align: start;
+  /* 一格是一個值（「滿月硬幣 3」），不准從中間斷開——中文沒有空白，瀏覽器會在任意兩字
+     之間斷行（同 `.kw-link` 記下的那條）。容器已經會橫向捲動，斷行沒有好處。 */
+  white-space: nowrap;
+}
+
+.event-table thead th {
+  border-bottom: 1px solid var(--border-strong);
+  background: var(--surface-2);
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  letter-spacing: var(--ls-label);
+}
+
+.event-table tbody tr + tr th,
+.event-table tbody tr + tr td {
+  border-top: 1px solid var(--border);
+}
+
+/* 列標頭（格號／兌換內容／來源／完賽次數）。 */
+.event-table tbody th {
+  font-weight: 600;
+}
+
+/* 貨幣圖跟著所在行的字級（同 `.currency-icon` 在別處的用法），圖與數字之間留半階。 */
+.event-table .currency-icon {
+  margin-inline-end: var(--space-h);
+  vertical-align: -0.15em;
+}
+
+/* 同一欄裡有帶圖的格子時，沒有圖的那幾格往右讓出一張圖的寬度，文字起點才對得齊
+   （兌換所那一欄「太陽核心 100」有圖、「賞月橫幅」沒有）。
+   ⚠️ 判斷「這一欄有沒有圖」是在建置期做的（`events.astro` 的 `iconCols`），不是 `:has()`
+   ——CSS 選不到「同一欄的其他列」，而 `td:not(:has(.currency-icon))` 會連「來源」這種
+   整欄都沒有圖的欄位一起推。 */
+.event-table .pad-icon {
+  padding-inline-start: calc(var(--space-3) + 1em + var(--space-h));
+}
+
+@media (max-width: 480px) {
+  .event-card-link {
+    padding: var(--space-3);
+    gap: var(--space-3);
+  }
+
+  .event-thumb {
+    width: 4.5rem;
+    height: 6rem;
+  }
+}
+
+/* 減少動態：卡片的抬升與按壓都收掉。⚠️ 選擇器要跟被覆寫的那一條長得一模一樣，
+   否則具體度輸掉、規則照樣生效（`/board` 與 `/tree` 為此紅過一次，D18 守著同一件事）。 */
+@media (prefers-reduced-motion: reduce) {
+  .event-card-link {
+    transition: none;
+  }
+
+  .event-card-link:hover {
+    transform: none;
+  }
+
+  .event-card-link:active {
+    transform: none;
+  }
+}
+
+/* 遊戲內實機截圖。桌機並排、窄螢幕堆疊，單張不超過一個手機畫面的高度——它是佐證，
+   不是主角，放大看細節是點進去的事。 */
+.event-shots {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  margin: 0 0 var(--space-5);
+}
+
+.event-shots figure {
+  margin: 0;
+  max-width: 14rem;
+}
+
+.event-shots img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  /* 圖檔本身是 554×1200 的直式截圖，width/height 屬性寫的就是它——留著是為了讓瀏覽器
+     在圖載完之前就把位置空出來（沒有的話下面整段文字會在載入時往下跳一次）。 */
+}
+
+.event-shots a {
+  display: block;
+}
+
+.event-shots figcaption {
+  margin-top: var(--space-1);
+  color: var(--muted);
+  font-size: var(--fs-xs);
+}

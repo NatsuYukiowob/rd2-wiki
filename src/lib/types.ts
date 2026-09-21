@@ -449,3 +449,89 @@ export interface RiftShopEffect {
    */
   icon: string;
 }
+
+/**
+ * 一場期間限定活動（`data/events.json` 的一筆，`/events`）。
+ *
+ * 資料來自客戶端那一版的活動資料表（中秋是 `ChuseokBoardTable`／`ChuseokMarketTable`／
+ * `ChuseokShopFreeTable`／`ChoseokLapRewardTable`），名稱一律取 `localization.json` 的
+ * `zh-tw`（官方繁中），不自己翻譯。
+ *
+ * ⚠️ **內容欄位刻意是通用的 `sections`（標題＋欄名＋列），不是「盤面」「商店」這種具名欄位。**
+ * 每一場活動的玩法都不一樣（中秋是雙六盤面＋兌換所，下一場可能什麼都不是），具名欄位等於
+ * 每加一場活動就要改一次型別、規則與版面；通用表格讓新活動只加資料。代價是版面不知道每一欄
+ * 的語意、沒辦法為特定欄位做排序或篩選——這一頁是「看資料」不是「查資料」，可以接受。
+ */
+export interface GameEvent {
+  /** 活動識別碼（`chuseok-2026`）。也是頁面上的錨點 id。 */
+  id: string;
+  /** 活動名稱（客戶端 `event_*_title` 的 zh-tw）。 */
+  name: string;
+  /**
+   * **內含這場活動的客戶端版本**，不是活動的舉辦版本。
+   *
+   * ⚠️ 兩者不是同一件事：解包只看得到「這一版客戶端帶著這些表」，活動實際什麼時候開、
+   * 什麼時候關是伺服器控的。
+   */
+  version: string;
+  /**
+   * 活動檔期。⚠️ **不是從客戶端表讀出來的**：活動表裡沒有日期欄位（只有 `SeasonTable`
+   * 這種賽季表帶 `Begin`／`Finish`），檔期由伺服器控。中秋這一筆是玩家 2026-09-21 在遊戲裡
+   * 實測的（UTC+9），來源寫在同一筆的 `notes` 裡。
+   *
+   * ⚠️ **沒有實測來源就寫 `null`**，不要為了填滿它去猜一個日期——猜來的跟查證過的在畫面上
+   * 長得一模一樣。產生器把這一格放在「人工補充」區塊，重跑不會把它洗掉。
+   */
+  period: { begin: string; finish: string } | null;
+  /**
+   * 遊戲內實機畫面（`public/events/` 底下的檔名）。客戶端的 sprite 拆得出零件，拆不出
+   * 「這些零件在畫面上長怎樣」——那只能靠玩家拍。選填：沒有截圖的活動就整個欄位省略。
+   */
+  screenshots?: EventShot[];
+  /** 一段話介紹，由客戶端的活動說明（`event_*_guide_*`）接起來。 */
+  summary: string;
+  /** 這場活動的專屬貨幣。 */
+  currencies: EventCurrency[];
+  /**
+   * ⚠️ **資料出處與上游矛盾的註記刻意不上站**（Yuki 2026-09-21）：那是維護者資訊，畫面上
+   * 只印查得到的事實（檔期印日期、不印「誰在哪天實測的」）。理由與來源留在產生腳本與 CLAUDE.md。
+   */
+  sections: EventSection[];
+}
+
+export interface EventShot {
+  /** `public/events/` 底下的檔名（含副檔名）。規則 29(j) 驗它真的存在。 */
+  file: string;
+  /** 圖說，也是 `alt`——截圖是內容不是裝飾，空的 alt 等於這張圖對讀屏使用者不存在。 */
+  caption: string;
+  /**
+   * 圖檔的實際像素尺寸，**由產生腳本從檔案讀出來寫進來的，不要手填**。
+   *
+   * ⚠️ 版面不可以寫死一組數字（/code-review 2026-09-21）：`<img width/height>` 的用途是讓
+   * 瀏覽器在圖載完之前先把位置空出來，寫錯比不寫更糟——先用錯的長寬比佔位、載完再跳一次。
+   * 現在兩張剛好都是 554×1200，下一張橫式截圖就會踩到。
+   */
+  width: number;
+  height: number;
+}
+
+export interface EventCurrency {
+  /** 貨幣圖的種類，必須是 `src/lib/events.ts` 的 `EVENT_ICON_KINDS` 之一（規則 29 守）。 */
+  kind: string;
+  /** 全名，含遊戲自己標的年份（「滿月硬幣(2026)」）。表格內用的是剝掉年份的簡稱。 */
+  name: string;
+  /** 取得方式或用途（客戶端 `goods_*_desc` 的 zh-tw）。 */
+  note: string;
+}
+
+export interface EventSection {
+  title: string;
+  /** 這一段的說明，選填。 */
+  note?: string;
+  columns: string[];
+  /** 每一列的格數必須等於 `columns.length`（規則 29 守）。 */
+  rows: EventCell[][];
+}
+
+/** 一格：純文字，或「貨幣圖＋文字」。 */
+export type EventCell = string | { icon: string; text: string };
