@@ -2834,3 +2834,41 @@ test('B54. 合作模式的分享圖：畫布是合作版的高度，隊友盤那
   ]);
   expect(colors[0], '隊友盤有骰子的格與空格同色＝隊友盤沒畫進去').not.toBe(colors[1]);
 });
+
+test('B55. 挑選網格開著時切換模式：網格收起來、不會寫進看不見的那一盤', async ({ page }) => {
+  await page.goto('/board');
+  await page.locator('#board-coop-mode button[data-coop="on"]').click();
+  await expect(page.locator('#partner-grid')).toBeVisible();
+
+  // 替**隊友盤**開挑選網格。⚠️ 切換鈕在頁面最上方、挑選網格是貼著視窗底部的浮層，
+  // 兩者同時點得到——這正是這條測試要守的那個並存狀態。
+  await page.locator(theirs('.deck-dice[data-slot="0"]')).click();
+  await expect(page.locator('#dice-picker')).toBeVisible();
+
+  await page.locator('#board-coop-mode button[data-coop="off"]').click();
+  await expect(page.locator('#dice-picker'), '切回對戰後挑選網格還開著').toBeHidden();
+
+  // 焦點不可以掉回 <body>：切換鈕是剛按下的那顆，焦點本來就該留在它身上。
+  const active = await page.evaluate(() => document.activeElement?.closest('#board-coop-mode') !== null);
+  expect(active, '切換之後焦點掉出了切換鈕').toBe(true);
+
+  // 收起來只是一半：pickingSlot 也必須清掉。網格是 hidden 的，真的點不到（`force` 也不行），
+  // 所以這裡用 dispatchEvent 繞過可見性，直接驗**監聽器那一半**——選骰的處理器看到
+  // pickingSlot 是 null 就什麼都不做。留著的話，哪天網格因為別的理由又可見，它會把骰子寫進
+  // 已經 hidden 的那一組隊伍列，播報還說得出槽號，而畫面上完全沒有反應。
+  await page.evaluate(() => {
+    document.querySelector<HTMLButtonElement>('#dice-picker .picker-dice')!
+      .dispatchEvent(new MouseEvent('click', { bubbles: true }));
+  });
+  const filled = await page.evaluate(() =>
+    document.querySelectorAll('#partner-deck-row .deck-dice img, #deck-row .deck-dice img').length);
+  expect(filled, '模式切換之後挑選網格仍然寫得進某一盤的隊伍列').toBe(0);
+
+  // 反面：網格本身沒壞，切換之後照樣用得了，而且寫進的是**我的**那一盤。
+  await page.locator(mine('.deck-dice[data-slot="0"]')).click();
+  await expect(page.locator('#dice-picker')).toBeVisible();
+  await page.locator('.picker-dice').first().click();
+  await expect(page.locator(mine('.deck-dice[data-slot="0"] img'))).toBeVisible();
+  await expect(page.locator('#partner-deck-row .deck-dice[data-slot="0"] img')).toHaveCount(0);
+
+});

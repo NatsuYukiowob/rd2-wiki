@@ -421,13 +421,15 @@ describe('合作雙盤：跨盤排序', () => {
       params,
       spLevel: () => 1,
       applied: (id: string) => appliedEffects(id, branchOfId(id), effects, () => 0),
-      rune: boardRunes(effects, (id: string) => (id === BOARD_RUNES.resonanceTrio ? 1 : 0)),
+      rune: boardRunes(effects, () => 0),
       partner: {
         board: theirs,
         params,
         spLevel: () => 1,
         applied: (id: string) => appliedEffects(id, branchOfId(id), effects, () => 0),
-        rune: boardRunes(effects, () => 0),
+        // ⚠️ 三重共鳴的符文要給**共鳴骰所在的那一盤**（這裡三顆都在 partner 上），
+        //    不是給呼叫端那一盤——3402 的 scope 是共鳴骰子自己。
+        rune: boardRunes(effects, (id: string) => (id === BOARD_RUNES.resonanceTrio ? 1 : 0)),
       },
     };
     const kinds = ['alignment', 'resonanceSpeed', 'resonanceAttack'] as const;
@@ -535,15 +537,29 @@ describe('合作雙盤：跨盤共鳴', () => {
     expect(e.text).toContain('隊友盤');
   });
 
-  it('三重共鳴的門檻值讀我自己的符文，不是隊友的', () => {
-    // 我這盤自己有 3 顆同骰點共鳴（≥3 顆才夠門檻）；隊友盤完全沒有共鳴骰，跟門檻值無關。
+  it('三重共鳴讀共鳴骰自己那一盤的符文：我的盤那三顆讀我的', () => {
+    // 我這盤自己有 3 顆同骰點共鳴（≥3 顆才夠門檻）；隊友盤完全沒有共鳴骰。
     const mine = boardOf({ 0: dice(FIRE, 5), 1: dice(RES, 5), 2: dice(RES, 5), 3: dice(RES, 5) });
     const theirs = boardOf({});
     const trio = { '3402': 1 };
-    // 隊友解了 3402、我沒解 → 不觸發：trio 要讀我的 rune()，不是隊友的。
+    // 隊友解了 3402、我沒解 → 不觸發：這三顆是我盤上的，讀的是我的 rune()。
     expect(runCoop(mine, theirs, {}, trio)[0]!.entries.some(e => e.kind === 'resonanceAttack')).toBe(false);
     // 反過來我解了、隊友沒解 → 觸發。
     expect(runCoop(mine, theirs, trio, {})[0]!.entries.some(e => e.kind === 'resonanceAttack')).toBe(true);
+  });
+
+  it('三重共鳴讀共鳴骰自己那一盤的符文：隊友盤那三顆讀隊友的', () => {
+    // 對稱的另一半。⚠️ 這是合作模式的**預設狀態**：讀不到 /sim 存檔時我是「不含」、
+    // 隊友那一側是「全滿」（隊友的符文等級拿不到，取上界），所以讀錯邊就是預設就錯。
+    const mine = boardOf({ 0: dice(FIRE, 5) });
+    const theirs = boardOf({ 0: dice(RES, 5), 1: dice(RES, 5), 2: dice(RES, 5) });
+    const trio = { '3402': 1 };
+    // 隊友解了、我沒解 → 要觸發（施加者是隊友那三顆）。
+    const withTheirs = runCoop(mine, theirs, {}, trio)[0]!;
+    expect(withTheirs.entries.some(e => e.kind === 'resonanceAttack')).toBe(true);
+    expect(withTheirs.attackPct).toBeGreaterThan(0);
+    // 反過來我解了、隊友沒解 → 不觸發。
+    expect(runCoop(mine, theirs, trio, {})[0]!.entries.some(e => e.kind === 'resonanceAttack')).toBe(false);
   });
 });
 

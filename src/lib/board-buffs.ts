@@ -290,22 +290,26 @@ export function boardBuffs(input: BuffInput): CellBuffs[] {
     // 三重共鳴（3402）：同骰點共鳴 ≥3 顆時，每顆 +10% 攻擊；施加者是 7 骰點時數盤上全部共鳴。
     // ⚠️ 合作：≥3 顆的門檻**在施加者自己的那一盤內數**，兩盤不可以加起來再判
     //    （客戶端的共鳴累加是依施加者的來源盤各自計數）。
-    const trio = rune(BOARD_RUNES.resonanceTrio);
-    if (trio !== null) {
-      const applyTrio = (b: Board, js: readonly number[], isPartner: boolean): void => {
-        const allRes = cellsIn(b, RESONANCE_ID).length;
-        for (const p of pipsOf(b, js)) {
-          const same = js.filter(j => b[j]!.pips === p);
-          if ((p >= MAX_PIPS ? allRes : same.length) < 3) continue;
-          const v = round9(trio * same.length);
-          attackPct += v;
-          if (isPartner) add('resonanceAttack', [], `三重共鳴（${partnerLabel} ${p} 骰點 ×${same.length}）：攻擊 +${pct(v)}%`, same);
-          else add('resonanceAttack', same, `三重共鳴（${p} 骰點 ×${same.length}）：攻擊 +${pct(v)}%`);
-        }
-      };
-      applyTrio(board, res, false);
-      if (partner) applyTrio(partner.board, resThere, true);
-    }
+    // ⚠️ 符文要讀**共鳴骰自己那一盤**的：3402 的 scope 是 dice:3002，它是共鳴骰子的符文，
+    //    跟「誰在看這張卡片」無關。兩盤的局外加成是各自切換的，而且預設就不一樣（隊友的符文
+    //    等級拿不到，那一側預設取上界「全滿」），讀錯邊時隊友那幾顆共鳴骰的加成會整個消失，
+    //    畫面上跟「客戶端本來就沒給」一模一樣。
+    const applyTrio = (side: BuffSide, js: readonly number[], isPartner: boolean): void => {
+      const trio = side.rune(BOARD_RUNES.resonanceTrio);
+      if (trio === null) return;
+      const b = side.board;
+      const allRes = cellsIn(b, RESONANCE_ID).length;
+      for (const p of pipsOf(b, js)) {
+        const same = js.filter(j => b[j]!.pips === p);
+        if ((p >= MAX_PIPS ? allRes : same.length) < 3) continue;
+        const v = round9(trio * same.length);
+        attackPct += v;
+        if (isPartner) add('resonanceAttack', [], `三重共鳴（${partnerLabel} ${p} 骰點 ×${same.length}）：攻擊 +${pct(v)}%`, same);
+        else add('resonanceAttack', same, `三重共鳴（${p} 骰點 ×${same.length}）：攻擊 +${pct(v)}%`);
+      }
+    };
+    applyTrio(input, res, false);
+    if (partner) applyTrio(partner, resThere, true);
 
     // 陰陽：只給自己——自己那一列 5 格全是陰陽（攻速）、自己那一欄 3 格全是陰陽（狀態效果池）。
     if (me.diceId === BINGO_ID) {

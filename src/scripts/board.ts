@@ -492,11 +492,18 @@ if (grid && deckH && deckRow && deckLegend && picker && pickerClose && live && c
     picker!.querySelector<HTMLButtonElement>('.picker-dice')?.focus();
   }
 
-  function closePicker(): void {
+  /**
+   * 收起挑選網格。`restoreFocus` 預設把焦點送回剛才那一槽——鍵盤使用者開完網格要回得去。
+   *
+   * ⚠️ 切換對戰／合作時要傳 false：那條路徑會把整組隊伍列 hidden 掉，而 `.focus()` 對
+   * `display: none` 的元素是 no-op，焦點會掉回 `<body>`。那時焦點本來就在剛按下的切換鈕上，
+   * 留在那裡才是對的。
+   */
+  function closePicker(restoreFocus = true): void {
     const picking = pickingSlot;
     pickingSlot = null;
     picker!.hidden = true;
-    if (picking !== null) {
+    if (picking !== null && restoreFocus) {
       picking.side.dom.deckRow.querySelector<HTMLButtonElement>(`.deck-dice[data-slot="${picking.slot}"]`)?.focus();
     }
   }
@@ -515,7 +522,9 @@ if (grid && deckH && deckRow && deckLegend && picker && pickerClose && live && c
     announce(`${side === partner ? PARTNER_SAY : ''}第 ${slot + 1} 槽選擇 ${diceMeta.get(diceId)?.name ?? diceId}`);
   });
 
-  pickerClose.addEventListener('click', closePicker);
+  // ⚠️ 包一層：closePicker 現在收一個選用參數，直接當 handler 傳的話 MouseEvent 會被
+  //    當成 restoreFocus（truthy，行為碰巧一樣），型別也對不起來。
+  pickerClose.addEventListener('click', () => closePicker());
 
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape' && pickingSlot !== null) {
@@ -695,6 +704,10 @@ if (grid && deckH && deckRow && deckLegend && picker && pickerClose && live && c
     coop = next;
     // 卡片指著一格，而那一格馬上會被搬到別的位置：先收掉，讓使用者重新點一次。
     closeCard();
+    // ⚠️ 挑選網格也要收：它是貼著視窗底部的浮層，而切換鈕在頁面最上方——兩者同時點得到。
+    // 不收的話 pickingSlot 會繼續指著剛剛被 hidden 掉的那一盤，接著挑一顆骰子就寫進看不見的
+    // 那一組隊伍列，播報還說得出槽號，畫面上完全沒有反應。focus 不還（見 closePicker 的說明）。
+    closePicker(false);
     applyCoopLayout();
     announce(coop ? '切換到合作模式，已加入隊友的骰盤' : '切換到對戰模式');
   });
