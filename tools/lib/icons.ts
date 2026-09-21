@@ -130,22 +130,29 @@ export async function buildHiRes(entries: IconEntry[]): Promise<Map<string, Buff
 }
 
 /**
- * 每張「純骰子圖」的縮放**上限**（像素）——不是實際的縮放目標。
+ * 「給普通 `<img>` 用的平面圖」預設的縮放**上限**（像素）——不是實際的縮放目標。
  *
- * ⚠️ **對 `data/board-icons/` 這一批它一次都不會觸發。** 實測那批來源全部是寬 147–174、
- * 高 171–186（最長邊最大值 186），沒有一張任何一邊 ≥ 240；配上 `withoutEnlargement`，
- * `resize()` 對它們完完全全是 no-op，WebP 只是原尺寸重新編碼。把 240 改成任何 ≥ 187 的值，
- * 那一批的輸出一個位元組都不會變（2026-08-23 review F4-1）。**要提高 /board 的畫質請換
- * 來源圖，調這個數字調不到。**
- *
- * ⚠️ **`data/dice3-icons/`（`/dice` 的 3D 骰子圖）就不一樣**：那批來源是 384–426 × 398–437，
- * 每一張都會真的被縮到最長邊 240（`fit: 'inside'`）——這個常數從 2026-09-21 起是**有作用**的，
- * 改它會改變 `/dice` 的圖檔大小與畫質，不要再照舊註解當成死參數。
+ * ⚠️ **對 `data/board-icons/`、戰術、Boss、裂縫效果這幾批它一次都不會觸發。** 實測那些來源
+ * 最長邊最大 206，沒有一張 ≥ 240；配上 `withoutEnlargement`，`resize()` 對它們完完全全是
+ * no-op，WebP 只是原尺寸重新編碼。把 240 改成任何 ≥ 207 的值，那幾批的輸出一個位元組都不會變
+ * （2026-08-23 review F4-1）。**要提高 /board 的畫質請換來源圖，調這個數字調不到。**
  *
  * 240 這個值的由來：`/board` 骰盤格在桌機約 96px、手機更大，跟 `buildHiRes()` 的高 DPI
- * 原則一樣抓 2 倍顯示尺寸左右。`/dice` 的圖示顯示 3rem（48px），240 等於 5 倍，綽綽有餘。
+ * 原則一樣抓 2 倍顯示尺寸左右。
  */
 const BOARD_ICON_TARGET_PX = 240;
+
+/**
+ * `/dice` 圖鑑卡片的 3D 骰子圖上限。**這一批是唯一會真的被縮的**（來源 384–426 × 398–437），
+ * 所以這個數字直接決定 `/dice` 的圖檔大小。
+ *
+ * 144 ＝ 顯示尺寸 3rem（48px）× 3，涵蓋到 DPR 3 的手機。⚠️ **不要沿用 240**：那是照
+ * `/board` 的 96px 格子抓的，套到 48px 的方框上是 5 倍 DPR，實測 43 張從 304 KB 漲到 581 KB
+ * ——多出來的 277 KB 沒有任何顯示器看得到，而這一頁不在規則 12 的效能預算裡（那條只量
+ * `tree.json` 與 `sprite.webp`），沒有人會說話。改顯示尺寸（`dice.css` 的 `3rem`）時記得回頭
+ * 改這裡。
+ */
+export const DICE3_ICON_TARGET_PX = 144;
 
 /**
  * 把一張「給普通 `<img>` 用的平面圖」轉成站台用的 WebP——`/board` 的純骰子圖
@@ -162,9 +169,9 @@ const BOARD_ICON_TARGET_PX = 240;
  * 夠大的來源不會被無意義放大出鋸齒。畫面與分享圖兩端都要各自對這個不統一的長寬比做等比
  * 縮放置中（見 `src/lib/board-image.ts` 的 `iconRect`），不能假設它是正方形。
  */
-export async function buildBoardIcon(buf: Buffer): Promise<Buffer> {
+export async function buildBoardIcon(buf: Buffer, targetPx: number = BOARD_ICON_TARGET_PX): Promise<Buffer> {
   return sharp(buf)
-    .resize({ width: BOARD_ICON_TARGET_PX, height: BOARD_ICON_TARGET_PX, fit: 'inside', withoutEnlargement: true })
+    .resize({ width: targetPx, height: targetPx, fit: 'inside', withoutEnlargement: true })
     .webp({ quality: 90 })
     .toBuffer();
 }

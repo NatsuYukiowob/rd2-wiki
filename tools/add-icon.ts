@@ -2,7 +2,7 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { createHash } from 'node:crypto';
 import { join } from 'node:path';
-import { readPngSize } from '../src/lib/png.js';
+import { readPngSize } from './lib/png.js';
 
 export interface AddIconResult {
   /** sha256 前 12 碼，同時也是不含副檔名的檔名。 */

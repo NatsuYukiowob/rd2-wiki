@@ -86,7 +86,7 @@ CSS 也碰不到它們（在 `canvas.css` 加 `.node` 規則不會有作用，�
 ## 指令
 
 ```bash
-npm run validate    # 資料驗證（規則 0–29，CI 守門員）
+npm run validate    # 資料驗證（規則 0–30，CI 守門員）
 npm run typecheck   # tsc --noEmit（含 noUnusedLocals）
 npm run normalize   # 攤平圖層/matrix/相對路徑、清掉 <text> 與註解（送 PR 前必跑）
 npm run preview     # 把標籤注回幾何，產出 data/dice-tree.preview.svg（不進版控）
@@ -834,11 +834,16 @@ J（手機抽屜不蓋住工具列）是這三條防線。
   不進圖鑑**（Yuki 指定）：它們是加在骰子或玩家身上的強化，混進同一個網格會讓真正的骰子被稀釋掉。
 - **卡片上的圖是遊戲的 3D 立體骰子圖（3 號素材），不是骰子樹的節點圖**（2026-09-21，Yuki 指定）。
   它走自己的一條資產路徑（`data/dice3-icons/`＋`data/dice3-icons.json`，規則 30；見「核心概念」
-  那條「六條資產路徑」）。⚠️ **`<img width/height>` 寫的是來源 PNG 的真實尺寸**（`src/lib/png.ts`
-  的 `readPngSize` 在建置期讀出來），不是 `node.size`——那是骰子樹上那張圖的顯示尺寸，跟這張無關；
-  實際大小由 CSS 的 3rem 方框 ＋ `object-fit: contain` 決定，屬性只負責 CSS 生效前先佔位。
-  ⚠️ 這批來源尺寸不統一（384–426 × 398–437），`buildBoardIcon()` 的 240px 上限**對它是真的會
-  觸發的**（對 `board-icons` 那批則完全是 no-op），改那個常數會改到 `/dice` 的畫質。
+  那條「六條資產路徑」）。⚠️ **`<img width/height>` 寫的是 CSS 方框**
+  （`src/lib/dice-icon.ts` 的 `DICE_CARD_ICON_PX` ＝ 3rem ＝ 48），不是圖檔尺寸：那兩個屬性唯一的
+  用途是「CSS 生效前先佔位」，而 CSS 把寬高都釘死 ＋ `object-fit: contain`，圖檔的長寬比從頭到尾
+  沒有人會讀——寫來源尺寸（384–426 × 398–437）或送出去的 WebP 尺寸，都是在描述一個畫面上不存在的
+  大小（2026-09-21 /code-review）。那個常數跟 `dice.css` 的 `3rem` 是同一個數字的兩份，
+  `tests/styles/dice-icon.test.ts` 讀 CSS 比對擋漂移。
+  ⚠️ 這批來源尺寸不統一（384–426 × 398–437），是**唯一一批真的會被 `buildBoardIcon()` 縮到的**，
+  上限走自己的 `DICE3_ICON_TARGET_PX`（144 ＝ 48×3，涵蓋 DPR 3）——**不要沿用 `/board` 的 240**：
+  那是照 96px 格子抓的，套到 48px 方框上實測讓 43 張從 304 KB 漲到 581 KB，而這一頁**不在規則 12
+  的效能預算裡**（那條只量 `tree.json` 與 `sprite.webp`），漲上去沒有人會說話。
 - **`/guide/[slug]` 的分組依據是官方色碼**（`keywords.json` 的 `color`）——同色＝同一類機制，
   **分組不是本站的判斷，只有組名是**，頁面上要照實註明。清單在 `src/lib/glossary-groups.ts`。
   ⚠️ **算條數不要用 `index.byTerm.size`**：那份表為了讓別名也查得到本尊會把別名指到同一筆上。
@@ -1312,11 +1317,9 @@ colors 重新著色，那張樹本來就看得見，等於用自己的無障礙�
   `<rect width="100%" height="100%">`，沒把它一起 `display:none` 的話截出來的每張圖都夾帶實心底色。
   後果會蔓延：節點變成不透明方塊蓋掉穿過它的線與鄰居的標籤，畫布上的投影與前置鏈光暈（描的是圖示的
   alpha 輪廓）會去描那個方塊而不是圖示。**檢查方式是量 alpha 通道的分佈，不是看截圖。**
-- ⚠️ **`readPngSize` 住在 `src/lib/png.ts`，不是 `tools/lib/`**（2026-09-21 搬的）。`/dice` 的
-  頁面在建置期要讀 3D 骰子圖的真實尺寸，而 **Astro 的頁面 import 不到 `tools/` 底下的模組**
-  ——實測 build 會過、頁面渲染時才炸 `readPngSize is not defined`（`npm run typecheck` 完全不會說話）。
-  同一族的前例是 `src/lib/upgrade-tiers.ts`：**tools 與站台都要用的純函式一律放 `src/lib/`，
-  tools 反過來 import 它**，不要在 `tools/lib/` 留一份站台碰不到的複本。
+- ⚠️ **Astro 的頁面 import 不到 `tools/` 底下的模組**（2026-09-21 實測）：`npm run build` 會過、
+  `npm run typecheck` 也不會說話，是**頁面渲染時**才炸 `<函式名> is not defined`。tools 與站台
+  都要用的純函式一律放 `src/lib/`（前例：`src/lib/upgrade-tiers.ts`），tools 反過來 import 它。
 - ⚠️ **`split-svg.ts` 與 `render-nodes.ts` 的來源檔一律由參數傳入、沒有預設值。** 以前預設指向維護者
   本機的遊戲原圖，別人跑到只會得到一個看不懂的 ENOENT，而那條路徑也不該留在公開 repo 裡。
 

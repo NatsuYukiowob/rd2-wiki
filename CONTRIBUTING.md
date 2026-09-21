@@ -128,7 +128,7 @@ npm run add-icon -- --boss <Boss 編號> <你的圖片路徑>
 ```bash
 npm run normalize    # 把 GUI 工具的重寫攤平回正規形式（跑完 git diff 要是乾淨的，見下一節）
 npm run preview      # 產出帶名字與 id 的 data/dice-tree.preview.svg，用來肉眼確認版面
-npm run validate     # 檢查資料本身正確不正確（規則 0–10、13–21，見下一節）
+npm run validate     # 檢查資料本身正確不正確（規則 0–10、13–30，見下一節）
 npm run build        # 或 npm run build:data；順便檢查組裝後的體積有沒有超出效能預算（規則 12）
 npm run typecheck    # 型別檢查（tsc --noEmit）；動到 src/ 或 tools/ 一定要跑
 npm run test         # 純函式與解析器的單元測試
@@ -299,7 +299,7 @@ PR 送出後，CI 會用 `npm run validate` 檢查兩份正本本身的正確性
   等級超過那顆前置節點的 `maxLevel`（條件永遠達不到，而畫面上跟「前置還沒解完」一模一樣）、
   以及把自己列成自己的前置。
 
-以上規則 0–10 與 13–21、24–26 都是 `npm run validate` 實際會檢查的內容，本機先跑過一次就能提早抓到，不用等 CI。
+以上規則 0–10 與 13–30 都是 `npm run validate` 實際會檢查的內容，本機先跑過一次就能提早抓到，不用等 CI。
 
 ### 另外兩道 CI 檢查：正規化定點、型別檢查
 

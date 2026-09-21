@@ -4,7 +4,7 @@ import { gzipSync } from 'node:zlib';
 import sharp from 'sharp';
 import { parseTree, COORD_TOLERANCE } from './lib/svg-parse.js';
 import { MAX_TEXT_LENGTH, loadNodeText, mergeNodes, type NodeTextMap } from './lib/node-text.js';
-import { buildSprite, buildHiRes, buildBoardIcon, type IconEntry } from './lib/icons.js';
+import { buildSprite, buildHiRes, buildBoardIcon, DICE3_ICON_TARGET_PX, type IconEntry } from './lib/icons.js';
 import { addCost, parseCost, zeroCost } from '../src/lib/cost.js';
 import { parseGrowth } from '../src/lib/growth.js';
 import { extractKeywords } from '../src/lib/keywords.js';
@@ -250,14 +250,17 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
   // ⚠️ 三批圖是三條**彼此獨立**的路徑，不要因為「都是骰子」就合併成一份對應表：節點圖示有底板
   // （骰子樹上用）、board-icons 是扁平卡片視角（骰盤格裡用）、dice3-icons 是 3D 立體
   // （圖鑑卡片用），同一顆骰子在三處的圖不一樣。
-  for (const [mapPath, dir, out] of [
-    ['data/board-icons.json', 'data/board-icons', 'public/assets/board-icons'],
-    ['data/dice3-icons.json', 'data/dice3-icons', 'public/assets/dice3-icons'],
+  //
+  // ⚠️ 兩批的**縮放上限不同**：`/board` 用預設的 240（對那批來源是 no-op，見 icons.ts），
+  // `/dice` 的顯示尺寸只有 3rem，沿用 240 等於把 5 倍 DPR 的像素送給每一個人。
+  for (const [mapPath, dir, out, targetPx] of [
+    ['data/board-icons.json', 'data/board-icons', 'public/assets/board-icons', undefined],
+    ['data/dice3-icons.json', 'data/dice3-icons', 'public/assets/dice3-icons', DICE3_ICON_TARGET_PX],
   ] as const) {
     const map: Record<string, string> = JSON.parse(readFileSync(mapPath, 'utf8'));
     mkdirSync(out, { recursive: true });
     for (const hash of new Set(Object.values(map))) {
-      writeFileSync(`${out}/${hash}.webp`, await buildBoardIcon(readFileSync(`${dir}/${hash}.png`)));
+      writeFileSync(`${out}/${hash}.webp`, await buildBoardIcon(readFileSync(`${dir}/${hash}.png`), targetPx));
     }
   }
 
