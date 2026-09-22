@@ -20,15 +20,15 @@ import { isTypingTarget } from '../lib/filter.js';
 import {
   buildSimContext, initialSimState, ownedIds, isAvailable, missingParents, missingPrereqRanks,
   unlockNode, removeNode, setNodeLevel, setInitialDice, pathTo, unlockMany,
-  simTotals, maxSelectableLevel, minSelectableLevel, summarizeAbilities, exceedsLimit,
+  simTotals, maxSelectableLevel, minSelectableLevel, summarizeAbilities, resourceGap,
   edgeWasUsed, edgeIsLinked,
 } from '../lib/sim.js';
-import type { AbilityGroup, SimLimits, SimState } from '../lib/sim.js';
+import type { AbilityGroup, GapEntry, SimHoldings, SimState } from '../lib/sim.js';
 import { SIM_STORAGE_KEY, deserializeSim, serializeSim, simReport } from '../lib/sim-io.js';
 import { levelTableFor, upgradeExtraCost } from '../lib/upgrade-tiers.js';
-import { costHtml, simCostHtml } from '../lib/cost-html.js';
-import { mythicAmount, subCost, zeroCost } from '../lib/cost.js';
-import { MYTHIC_CORES } from '../lib/currency.js';
+import { costHtml, currencyIcon, mythicIcon, simCostHtml } from '../lib/cost-html.js';
+import { subCost, zeroCost } from '../lib/cost.js';
+import { MYTHIC_CORES, mythicCoreByKind } from '../lib/currency.js';
 import { typeLabel } from '../lib/labels.js';
 import { renderTaggedText } from '../lib/markup.js';
 import type { Cost, PassiveUpgradeCost, TreeData, TreeNode } from '../lib/types.js';
@@ -105,20 +105,13 @@ function save(): void {
 
 /**
  * 套用一個狀態轉換並存檔，**但不碰 undo 堆疊、也不重畫**。回 false 代表那個操作不合法
- * （前置沒齊、等級超出範圍）或被資源上限擋下來。
+ * （前置沒齊、等級超出範圍）或根本沒改變狀態。
  *
- * ⚠️ 上限檢查帶著「操作前的總額」進去，只擋**會讓事情變糟**的方向。玩家的實際用法是
- * 「先規劃、事後才填上限」，填完的那一刻通常已經超支——若連取消節點、降等級這些會讓成本
- * 下降的操作都一起擋掉，他除了 undo 或整份重置之外沒有出路（`/code-review high` 抓到，
- * 實測：4,000 金幣的規劃填上限 1,000 之後連「取消此節點」都按不動）。
+ * ⚠️ 持有資源**不擋**任何操作（2026-09-23 以前這幾格是「上限」，會擋掉變貴的方向）：
+ * 規劃超過手上的量是常態，玩家要看的是還差多少，那份差額由 renderTotals() 畫在側欄。
  */
 function applyState(next: SimState | null): boolean {
   if (next === null || next === state) return false;
-  const over = exceedsLimit(simTotals(next, ctx).total, limits(), simTotals(state, ctx).total);
-  if (over.length > 0) {
-    toast(`超出資源上限：${over.join('、')}`);
-    return false;
-  }
   state = next;
   save();
   return true;
@@ -153,23 +146,40 @@ function redo(): void {
   render();
 }
 
-// --- 資源上限 ---------------------------------------------------------------
-function readLimit(el: HTMLInputElement): number | null {
+// --- 持有資源 ---------------------------------------------------------------
+function readHolding(el: HTMLInputElement): number | null {
   const raw = el.value.trim();
   if (raw === '') return null;
   const v = Number(raw);
   return Number.isFinite(v) && v >= 0 ? Math.floor(v) : null;
 }
 
-// 超越核心的上限欄由 sim.astro 依 MYTHIC_CORES 逐種產生（`sim-limit-<kind>`）。
+// 超越核心的持有欄由 sim.astro 依 MYTHIC_CORES 逐種產生（`sim-limit-<kind>`；id 沿用上限時代的名字）。
 const MYTHIC_LIMIT_IDS = MYTHIC_CORES.map(d => [d.kind, `sim-limit-${d.kind}`] as const);
+const HOLDING_INPUT: Record<string, string> = {
+  core: 'sim-limit-core', gold: 'sim-limit-gold', ...Object.fromEntries(MYTHIC_LIMIT_IDS),
+};
 
-function limits(): SimLimits {
+function holdings(): SimHoldings {
   return {
-    core: readLimit($<HTMLInputElement>('sim-limit-core')),
-    gold: readLimit($<HTMLInputElement>('sim-limit-gold')),
-    mythic: Object.fromEntries(MYTHIC_LIMIT_IDS.map(([kind, id]) => [kind, readLimit($<HTMLInputElement>(id))])),
+    core: readHolding($<HTMLInputElement>('sim-limit-core')),
+    gold: readHolding($<HTMLInputElement>('sim-limit-gold')),
+    mythic: Object.fromEntries(MYTHIC_LIMIT_IDS.map(([kind, id]) => [kind, readHolding($<HTMLInputElement>(id))])),
   };
+}
+
+function gapIcon(key: string): string {
+  if (key === 'core' || key === 'gold') return currencyIcon(key);
+  const def = mythicCoreByKind(key);
+  return def ? mythicIcon(def) : '';
+}
+
+/** 差額的一列：「還差」標警示色，夠用的印剩餘量。數字全來自 number，不含自由文字（innerHTML 安全）。 */
+function gapRow(g: GapEntry): string {
+  const n = (v: number) => v.toLocaleString('en-US');
+  const text = g.short > 0 ? `還差 ${n(g.short)}` : `剩餘 ${n(-g.short)}`;
+  return `<div class="sim-total-row ${g.short > 0 ? 'is-short' : 'is-enough'}" data-gap="${g.key}">`
+    + `<dt>${gapIcon(g.key)}${g.label}</dt><dd>${text}</dd></div>`;
 }
 
 // --- 畫面 -------------------------------------------------------------------
@@ -231,16 +241,15 @@ function renderTotals(): void {
   $('sim-head-cost').innerHTML = cost(t.total);
   $('sim-head-owned').textContent = ownedText;
 
-  const over = exceedsLimit(t.total, limits());
-  const warn = $('sim-limit-warn');
-  warn.textContent = over.length > 0 ? `已超出設定的上限：${over.join('、')}` : '';
-  warn.toggleAttribute('hidden', over.length === 0);
-  const lim = limits();
-  $<HTMLInputElement>('sim-limit-core').classList.toggle('over-limit', lim.core !== null && t.total.core > lim.core);
-  $<HTMLInputElement>('sim-limit-gold').classList.toggle('over-limit', lim.gold !== null && t.total.gold > lim.gold);
-  for (const [kind, id] of MYTHIC_LIMIT_IDS) {
-    const l = lim.mythic[kind] ?? null;
-    $<HTMLInputElement>(id).classList.toggle('over-limit', l !== null && mythicAmount(t.total, kind) > l);
+  // 對照持有資源：只列有填的貨幣，一格都沒填就整塊收起來。輸入框的 .over-limit 標的是
+  // 「手上的不夠」那幾格（class 名沿用上限時代）。
+  const gaps = resourceGap(t.total, holdings());
+  const gapBox = $('sim-gap');
+  gapBox.innerHTML = gaps.map(gapRow).join('');
+  gapBox.toggleAttribute('hidden', gaps.length === 0);
+  const short = new Set(gaps.filter(g => g.short > 0).map(g => g.key));
+  for (const [key, id] of Object.entries(HOLDING_INPUT)) {
+    $<HTMLInputElement>(id).classList.toggle('over-limit', short.has(key));
   }
 
   $<HTMLButtonElement>('sim-undo').disabled = undoStack.length === 0;
@@ -383,7 +392,7 @@ let toastTimer: ReturnType<typeof setTimeout> | undefined;
 /**
  * ⚠️ 收放靠的是**清空內容**，不是 `hidden`／`display:none`／`visibility:hidden`。
  * `#sim-toast` 是這一頁唯一的 `role="status"`，那三種收法會讓它一併從無障礙樹消失，
- * 於是「超出資源上限」「請先在初始骰子勾選」這些**唯一**的失敗回饋對螢幕閱讀器完全不存在
+ * 於是「請先在初始骰子勾選」這類**唯一**的失敗回饋對螢幕閱讀器完全不存在
  * ——而畫面上看起來一切正常。CLAUDE.md 為 `#filter-live` 記過同一條（`/code-review high` 抓到）。
  * 空元素的視覺由 CSS 的 `:empty` 收掉。
  */
@@ -404,7 +413,7 @@ function toast(msg: string): void {
 function activate(id: string | null): void {
   selected = id;
   // 前置齊了就直接取得——先選再按按鈕，在一棵 239 節點的樹上太累。
-  // ⚠️ `commit()` 失敗（例如被資源上限擋下）時**一定要自己補一次 render**：`selected` 已經
+  // ⚠️ 沒有取得（點的是還不能取得的節點、或 `commit()` 失敗）時**一定要自己補一次 render**：`selected` 已經
   // 換人了，不重畫的話面板與畫布上的選取高亮會停在上一顆節點，而面板上那些按鈕讀的是
   // `selected`——按下去作用在畫面上看不到的那顆（`/code-review high` 抓到）。
   const taken = id !== null && isAvailable(id, state, ctx) && commit(unlockNode(state, ctx, id));
@@ -430,7 +439,7 @@ const dimmed = new Set<string>();
 tree.onSelect(id => activate(id !== null && dimmed.has(id) ? null : id));
 
 // Esc 取消選取。掛在 host 上而不是 window：事件要先冒泡經過 host 才會觸發，所以只有「焦點
-// 在畫布內（無障礙節點按鈕或兩張 canvas）」時才生效——搜尋框與三個上限輸入框都不是 host 的
+// 在畫布內（無障礙節點按鈕或兩張 canvas）」時才生效——搜尋框與持有資源輸入框都不是 host 的
 // 子節點，在那裡按 Esc 不會被攔截。`isTypingTarget()` 是第二道保險：焦點在表單元件上時
 // 一律讓路（同 /tree 的鍵盤平移，見 src/lib/filter.ts）。
 host.addEventListener('keydown', e => {
@@ -453,9 +462,8 @@ $('sim-detail').addEventListener('click', e => {
       return;
     }
     if (plan.need.length === 0 && plan.levels.length === 0) return;
-    // ⚠️ 整份計畫一起套用（節點 ＋ 練等），資源上限也一起判：太陽骰子那段升級佔了整條路徑
-    // 78% 的金幣，分兩次套用的話玩家會在「解完節點、還沒練完」的中間狀態被上限擋下來，
-    // 而那正是「解一半」要避免的情形。
+    // 整份計畫一起套用（節點 ＋ 練等），算一步復原：分兩次的話 undo 會停在「解完節點、
+    // 還沒練完」的中間狀態，而那正是「解一半」要避免的情形。
     const levelText = plan.levels
       .map(l => `${ctx.byId.get(l.id)?.name ?? l.id} 練到 Lv.${l.level}`)
       .join('、');
@@ -479,7 +487,7 @@ $('sim-detail').addEventListener('input', e => {
   if (range.id !== 'sim-level-range' || selected === null) return;
   const before = state;
   if (!applyState(setNodeLevel(state, ctx, selected, Number(range.value)))) {
-    // 被上限擋下來：把滑桿拉回真實等級，不要留一個沒生效的位置在畫面上。
+    // 沒生效（等級超出可選範圍）：把滑桿拉回真實等級，不要留一個沒生效的位置在畫面上。
     range.value = String(state.levels.get(selected) ?? 1);
     return;
   }
@@ -528,13 +536,13 @@ document.addEventListener('click', closeMenus);
 for (const el of document.querySelectorAll<HTMLInputElement>('[data-initial]')) {
   el.addEventListener('change', () => {
     const ok = commit(setInitialDice(state, ctx, el.dataset['initial']!, el.checked));
-    // 被擋下來（超出上限、或那顆根本不是可選初始骰子）時，勾選框要跟著回到真實狀態，
+    // 被擋下來（那顆根本不是可選初始骰子）時，勾選框要跟著回到真實狀態，
     // 否則畫面上會顯示一個沒有生效的勾。
     if (!ok) el.checked = state.initial.has(el.dataset['initial']!);
   });
 }
 
-// 超越核心的上限欄也要掛：以前只掛了核心與金幣，太陽核心那格改了數字要等下一個操作才重算。
+// 超越核心的持有欄也要掛：以前只掛了核心與金幣，太陽核心那格改了數字要等下一個操作才重算。
 for (const id of ['sim-limit-core', 'sim-limit-gold', ...MYTHIC_LIMIT_IDS.map(([, x]) => x)]) {
   $<HTMLInputElement>(id).addEventListener('input', () => { renderTotals(); });
 }

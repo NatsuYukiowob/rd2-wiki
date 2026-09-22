@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import {
   buildSimContext, initialSimState, ownedIds, isAvailable, missingParents, missingPrereqRanks,
   unlockNode, removeNode, setNodeLevel, setInitialDice, pathTo, unlockMany,
-  simTotals, maxSelectableLevel, minSelectableLevel, summarizeAbilities, exceedsLimit,
+  simTotals, maxSelectableLevel, minSelectableLevel, summarizeAbilities, resourceGap,
   edgeWasUsed, edgeIsLinked,
 } from '../../src/lib/sim';
 import type { Edge, PassiveUpgradeCost, TreeData, TreeNode } from '../../src/lib/types';
@@ -322,60 +322,41 @@ describe('前置節點的等級條件', () => {
   });
 });
 
-describe('資源上限', () => {
-  it('沒設定上限時不擋', () => {
-    expect(exceedsLimit({ core: 999, gold: 999, mythic: { solar: 999 } }, { core: null, gold: null, mythic: {} })).toEqual([]);
+describe('資源差額', () => {
+  const none = { core: null, gold: null, mythic: {} };
+
+  it('四格都沒填時不列任何一項', () => {
+    expect(resourceGap({ core: 999, gold: 999, mythic: { solar: 999 } }, none)).toEqual([]);
   });
 
-  it('超出時回報是哪一種、差多少', () => {
-    const over = exceedsLimit({ core: 10, gold: 5000 }, { core: 8, gold: null, mythic: {} });
-    expect(over).toHaveLength(1);
-    expect(over[0]).toMatch(/核心.*10.*8/);
+  it('只列有填的貨幣，順序核心→金幣→超越核心', () => {
+    const gap = resourceGap(
+      { core: 10, gold: 5000, mythic: { solar: 30, gearSecond: 4 } },
+      { core: 8, gold: null, mythic: { gearSecond: 9, solar: 50 } },
+    );
+    expect(gap.map(g => g.key)).toEqual(['core', 'solar', 'gearSecond']);
+    expect(gap.map(g => g.label)).toEqual(['核心', '太陽核心', '齒輪二階核心']);
   });
 
-  it('剛好等於上限不算超出', () => {
-    expect(exceedsLimit({ core: 8, gold: 100, mythic: { solar: 50 } }, { core: 8, gold: 100, mythic: { solar: 50 } })).toEqual([]);
+  it('short＝規劃總額減持有量：正數是還差、負數是剩餘', () => {
+    const [core, gold] = resourceGap({ core: 10, gold: 100 }, { core: 8, gold: 400, mythic: {} });
+    expect(core).toEqual({ key: 'core', label: '核心', need: 10, held: 8, short: 2 });
+    expect(gold).toEqual({ key: 'gold', label: '金幣', need: 100, held: 400, short: -300 });
   });
 
-  // 太陽核心（v1.1.0）走的是跟核心／金幣同一條路徑。漏掉它的話玩家設了上限卻照樣買得下去，
-  // 而畫面上沒有任何地方說話——這是這一頁最貴的一種沉默。
-  it('太陽核心超出時也會被擋，訊息指名是哪一種貨幣', () => {
-    const over = exceedsLimit({ core: 0, gold: 0, mythic: { solar: 2500 } }, { core: null, gold: null, mythic: { solar: 2000 } });
-    expect(over).toHaveLength(1);
-    expect(over[0]).toMatch(/太陽核心.*2,500.*2,000/);
+  it('剛好等於持有量是 0，不算還差', () => {
+    expect(resourceGap({ core: 8, gold: 0 }, { core: 8, gold: null, mythic: {} })[0]!.short).toBe(0);
   });
 
-  it('太陽核心也只擋會變貴的方向', () => {
-    // 從 3,000 降到 2,500（仍超過上限 2,000）＝在往好的方向走，不擋
-    expect(exceedsLimit(
-      { core: 0, gold: 0, mythic: { solar: 2500 } },
-      { core: null, gold: null, mythic: { solar: 2000 } },
-      { core: 0, gold: 0, mythic: { solar: 3000 } },
-    )).toEqual([]);
-    // 從 2,100 漲到 2,500 ＝變更貴，擋
-    expect(exceedsLimit(
-      { core: 0, gold: 0, mythic: { solar: 2500 } },
-      { core: null, gold: null, mythic: { solar: 2000 } },
-      { core: 0, gold: 0, mythic: { solar: 2100 } },
-    )).toHaveLength(1);
+  // 超越核心走跟核心／金幣同一條路徑；規劃裡沒用到的那種仍然要列（剩餘＝全部持有量），
+  // 不然玩家填了齒輪二階核心卻在側欄找不到那一格的回應。
+  it('填了持有量但規劃沒用到的超越核心，列成全部剩餘', () => {
+    const gap = resourceGap({ core: 0, gold: 0 }, { core: null, gold: null, mythic: { solar: 2000 } });
+    expect(gap).toEqual([{ key: 'solar', label: '太陽核心', need: 0, held: 2000, short: -2000 }]);
   });
 
-  // ⚠️ 玩家的實際用法是「先規劃、事後才填上限」，所以填完之後**一定**處在超支狀態。
-  // 這時若連「取消節點」「降等級」這些會讓成本下降的操作都一起擋掉，他除了 undo 或整份
-  // 重置之外沒有出路——上限欄位反而把人鎖死在自己想改掉的那份規劃裡。
-  it('傳入 previous 時，降成本的操作即使仍超上限也不算超出', () => {
-    expect(exceedsLimit({ core: 5, gold: 0 }, { core: 1, gold: null, mythic: {} }, { core: 10, gold: 0 })).toEqual([]);
-  });
-
-  it('傳入 previous 時，只有「超上限而且比之前更貴」才算超出', () => {
-    expect(exceedsLimit({ core: 5, gold: 0 }, { core: 1, gold: null, mythic: {} }, { core: 3, gold: 0 })).toHaveLength(1);
-  });
-
-  it('傳入 previous 時，逐幣別分開判斷', () => {
-    // 核心變便宜、金幣變貴：只該擋金幣那一項
-    const over = exceedsLimit({ core: 5, gold: 900 }, { core: 1, gold: 100, mythic: {} }, { core: 10, gold: 200 });
-    expect(over).toHaveLength(1);
-    expect(over[0]).toMatch(/金幣/);
+  it('表裡沒登記的超越核心 kind 不列', () => {
+    expect(resourceGap({ core: 0, gold: 0 }, { core: null, gold: null, mythic: { nope: 5 } })).toEqual([]);
   });
 });
 

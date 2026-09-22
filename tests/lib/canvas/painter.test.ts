@@ -190,18 +190,29 @@ describe('drawOverlay', () => {
   // 把它重畫一次，那顆節點在畫面上就是**滿亮**的——淡出等於沒發生。
   // /sim 的實際症狀（Task 11 review 抓到）：搜尋「火」之後，所有「可取得」與「已選取」的
   // 節點照樣亮著，只有鎖住的那些變暗，搜尋看起來只做了一半。
-  it('/sim：被搜尋淡出的 available 節點，金光重畫要吃 nodeAlpha（.08），不是一律 1', () => {
+  // 2026-09-23：可取得的節點不再有金色光暈（Yuki：跟著亮起來會誤導成已經拿到）。
+  // 互動層上唯一的節點重畫是 selected 的白光，available 一顆都不畫。
+  it('/sim：available 節點在互動層不畫任何光暈', () => {
     const { ctx, calls } = fakeCtx();
     const sim = {
       owned: new Set<string>(), available: new Set(['1201']), selected: null,
       linked: new Set<string>(), active: new Set<string>(), ready: new Set<string>(),
       levels: new Map<string, number>(), maxLevels: new Map<string, number>(),
     };
-    const s = { ...emptyPaintState(), sim, filteredOut: new Set(['1201']) };
-    drawOverlay(ctx, scene, view, DEFAULT_THEME, s, fakeAssets, 1, false);
-    const glow = calls.filter(c => c.op === 'drawImage');
-    expect(glow).toHaveLength(1);
-    expect(glow[0]!.alpha).toBe(0.08);
+    drawOverlay(ctx, scene, view, DEFAULT_THEME, { ...emptyPaintState(), sim }, fakeAssets, 1, false);
+    expect(calls.filter(c => c.op === 'drawImage')).toHaveLength(0);
+  });
+  it('/sim：聚焦在 available 節點上的焦點框是滿亮的，不跟著節點的 .28', () => {
+    const { ctx, calls } = fakeCtx();
+    const sim = {
+      owned: new Set<string>(), available: new Set(['1201']), selected: null,
+      linked: new Set<string>(), active: new Set<string>(), ready: new Set<string>(),
+      levels: new Map<string, number>(), maxLevels: new Map<string, number>(),
+    };
+    drawOverlay(ctx, scene, view, DEFAULT_THEME, { ...emptyPaintState(), sim, focus: '1201' }, fakeAssets, 1, false);
+    const ring = calls.filter(c => c.op === 'stroke');
+    expect(ring).toHaveLength(1);
+    expect(ring[0]!.alpha).toBe(1);
   });
   it('/sim：被搜尋淡出的 selected 節點也一樣（state.ts 把 filteredOut 排在 selected 之前）', () => {
     const { ctx, calls } = fakeCtx();
