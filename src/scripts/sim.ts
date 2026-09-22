@@ -221,10 +221,15 @@ const cost = (c: Cost) => simCostHtml(c);
 
 function renderTotals(): void {
   const t = simTotals(state, ctx);
+  const ownedText = `${ownedIds(state, ctx).size} / ${data.nodes.length}`;
   $('sim-total').innerHTML = cost(t.total);
   $('sim-total-unlock').innerHTML = cost(t.unlock);
   $('sim-total-upgrade').innerHTML = cost(t.upgrade);
-  $('sim-owned-count').textContent = `${ownedIds(state, ctx).size} / ${data.nodes.length}`;
+  $('sim-owned-count').textContent = ownedText;
+  // 手機抽屜收起時把手上那一行摘要（桌機 display:none）。它跟上面兩列是同一份計算的
+  // 兩個出口，不是第二份真相——「資源合計常駐顯示」因此在收起狀態下仍然成立。
+  $('sim-head-cost').innerHTML = cost(t.total);
+  $('sim-head-owned').textContent = ownedText;
 
   const over = exceedsLimit(t.total, limits());
   const warn = $('sim-limit-warn');
@@ -404,6 +409,8 @@ function activate(id: string | null): void {
   // `selected`——按下去作用在畫面上看不到的那顆（`/code-review high` 抓到）。
   const taken = id !== null && isAvailable(id, state, ctx) && commit(unlockNode(state, ctx, id));
   if (!taken) render();
+  // 手機抽屜預設收起，選了節點得看得到詳情的主按鈕（見 revealDetail 的說明）。
+  if (id !== null) revealDetail();
 }
 
 /**
@@ -610,10 +617,11 @@ $<HTMLInputElement>('sim-search').addEventListener('input', e => {
   tree.setState({ filteredOut: new Set(dimmed) });
 });
 
-// --- 手機版：footer 讓位給抽屜 ------------------------------------------------
-// 抽屜是 fixed bottom:0，而這一頁不捲動——不讓位的話 footer 的著作權聲明在手機上完全
-// 讀不到。量**實際**高度而不是寫一個 42dvh：抽屜會隨「有沒有選節點」長高變矮，而這個
-// repo 的固定偏移量已經咬過五次（CLAUDE.md 有一整節）。
+// --- 手機版：抽屜高度追蹤 ------------------------------------------------------
+// 兩個消費者：沒有 JS 時 footer 的讓位（`body:has(#canvas-host) > footer`），以及兩顆
+// 浮動鍵的 `bottom`——浮動鍵必須永遠浮在抽屜上緣之上，否則真人點不到。
+// 量**實際**高度而不是寫一個 dvh：抽屜可以被拖高拖低，而這個 repo 的固定偏移量已經
+// 咬過五次（CLAUDE.md 有一整節）。
 function trackPanelHeight(): void {
   const panel = $('sim-panel');
   const write = (): void => {
@@ -624,7 +632,247 @@ function trackPanelHeight(): void {
   if (typeof ResizeObserver === 'function') new ResizeObserver(write).observe(panel);
 }
 
+// --- 手機版：底部 sheet、可拖曳抽屜、著作權搬家 ---------------------------------
+//
+// ≤720px 的版面跟桌機是兩件事（版面說明寫在 sim.astro 的媒體查詢裡）：工具列變成從下緣
+// 升起的 sheet、側欄變成預設只露出把手那一列的抽屜。這一段是它的行為，桌機一律不作用
+// ——每個入口都先問 `mobile()`，那是**當下**問 matchMedia，不是開機時的快照
+// （`isMobile` 那個常數只給圖示目標尺寸用，視窗縮放後不會跟著變）。
+
+const PANEL_H_KEY = 'rd2-wiki:sim-panel-h';
+/** 展開時的預設高度（佔視窗的比例）。使用者拖過之後改用他拖到的高度。 */
+const PANEL_OPEN_RATIO = 0.5;
+const PANEL_MAX_RATIO = 0.8;
+/** 主按鈕下方要留的呼吸空間（px）。純視覺值，CSS 沒有任何規則依賴它，所以不從 token 讀
+ *  ——`getComputedStyle` 讀 `--space-*` 回的是 `rem` 字串，為了一個數字去蓋一層換算器
+ *  才是多出來的第二份東西。 */
+const CTA_BOTTOM_GAP = 24;
+
+const panelMq = typeof matchMedia === 'function' ? matchMedia('(width <= 720px)') : null;
+const mobile = (): boolean => panelMq?.matches ?? false;
+
+/** 抽屜的下限＝把手那一列的實際高度。⚠️ 不在這裡寫第二份數字，CSS 的 3.5rem 是唯一來源。 */
+function panelMinH(): number {
+  const h = $('sim-panel-handle').getBoundingClientRect().height;
+  return h > 0 ? h : 56;
+}
+
+const clampPanel = (px: number): number =>
+  Math.min(Math.max(px, panelMinH()), innerHeight * PANEL_MAX_RATIO);
+
+function setPanelHeight(px: number): void {
+  document.documentElement.style.setProperty('--sim-panel-user-h', `${Math.round(px)}px`);
+}
+
+/**
+ * 抽屜的偏好＝**展開時的高度** ＋ **上次離開時是不是展開的**，兩個值。
+ *
+ * ⚠️ 只存一個「目前高度」會把兩件事混在一起：收合一次就把它覆寫成把手的高度，
+ * 使用者拖出來的那個高度永久消失，再展開只會回到 50% 的預設值
+ * （2026-09-22 /code-review 實測：拖到 306 → 收合 → 再展開變 422）。
+ */
+interface PanelPref { h: number; open: boolean }
+
+function readPanelPref(): PanelPref | null {
+  // localStorage 在無痕模式、或使用者關掉網站資料時會直接丟例外（不是回 null）。
+  try {
+    const raw = localStorage.getItem(PANEL_H_KEY);
+    if (raw === null) return null;
+    const v = JSON.parse(raw) as Partial<PanelPref> | null;
+    const h = Number(v?.h);
+    return Number.isFinite(h) && h > 0 ? { h, open: v?.open !== false } : null;
+  } catch { return null; }   // 舊格式（純數字）也會走到這裡，當成沒存過
+}
+
+function writePanelPref(pref: PanelPref): void {
+  try {
+    localStorage.setItem(PANEL_H_KEY, JSON.stringify({ h: Math.round(pref.h), open: pref.open }));
+  } catch { /* 存不了就算了 */ }
+}
+
+/** 使用者展開時要回到的高度。拖曳與點開都會更新它，收合**不會**。 */
+let openPanelH: number | null = null;
+const openTarget = (): number => clampPanel(openPanelH ?? innerHeight * PANEL_OPEN_RATIO);
+
+const panelH = (): number => $('sim-panel').getBoundingClientRect().height;
+const panelCollapsed = (): boolean => panelH() <= panelMinH() + 4;
+
+function syncHandleState(): void {
+  const open = !panelCollapsed();
+  const handle = $('sim-panel-handle');
+  handle.setAttribute('aria-expanded', String(open));
+  handle.setAttribute('aria-label', open ? '收合資源合計' : '展開資源合計');
+}
+
+/**
+ * 選了節點之後把詳情的主按鈕拉進視線。
+ *
+ * 抽屜預設收起成一行，而「取得 · 核心 5」這種按鈕正是使用者點完節點要按的下一個東西
+ * ——看不到它等於這一頁在手機上不能用。刻意**不寫回偏好**：這是系統為了這一次操作把
+ * 抽屜拉開，不是使用者拖出來的高度。
+ */
+function revealDetail(): void {
+  if (!mobile()) return;
+  const panel = $('sim-panel');
+  // `#sim-panel` 是 fixed，所以它就是子孫的 offsetParent：`offsetTop` 直接是元素在抽屜
+  // 捲動內容裡的位置（把手是 sticky，仍然佔著那一列，所以已經算進去了）。
+  const cta = panel.querySelector<HTMLElement>('#sim-detail .cta');
+  if (!cta) {
+    if (panelCollapsed()) setPanelHeight(openTarget());
+    syncHandleState();
+    return;
+  }
+  // ⚠️ 底下只留 CTA_BOTTOM_GAP。以前留的是 `panelMinH()`（＝把手那一列 56px），而把手
+  // 是 sticky、`offsetTop` 本來就含它——那 56px 是白給出去的畫布，實測 243 顆全部中招。
+  const want = cta.offsetTop + cta.offsetHeight + CTA_BOTTOM_GAP;
+  // 只長不縮：使用者自己拖大過的抽屜不該因為換了一顆節點就被收回去。
+  if (panelH() < want) setPanelHeight(clampPanel(want));
+  // ⚠️ `want` 會被 80dvh 的上限夾住：矮螢幕 ＋ 多行「缺少前置／需達 Lv.N」的節點高度不夠，
+  // 光改高度主按鈕仍然在框外（實測 iPhone SE 375×568 的 2503 差 2px）。夾住時改用捲動把它
+  // 帶進可視範圍——「選了節點就看得到主按鈕」不能只在大螢幕上成立。
+  const r = cta.getBoundingClientRect();
+  const p = panel.getBoundingClientRect();
+  if (r.bottom > p.bottom) panel.scrollTop += r.bottom - p.bottom + CTA_BOTTOM_GAP;
+  syncHandleState();
+}
+
+function installPanelHandle(): void {
+  const handle = $('sim-panel-handle');
+  let dragFrom: { id: number; y: number; h: number } | null = null;
+  let moved = false;
+
+  // ⚠️ 刻意**不用** `setPointerCapture()`：合成的 PointerEvent 沒有對應的真實 pointer id，
+  // 它會丟 NotFoundError 並中斷後面的 handler（這個 repo 的驗證腳本因此拿過假結果）。
+  // 改成在 window 上收 move／up，手指拖出把手範圍一樣跟得上，而且測得動。
+  handle.addEventListener('pointerdown', e => {
+    if (!mobile()) return;
+    dragFrom = { id: e.pointerId, y: e.clientY, h: panelH() };
+    moved = false;
+  });
+
+  addEventListener('pointermove', e => {
+    // ⚠️ 要比對 pointerId：監聽掛在 window 上，不比對的話「另一根手指／滑鼠在畫布上移動」
+    // 也會被算進這一次拖曳。
+    if (!dragFrom || e.pointerId !== dragFrom.id) return;
+    const dy = dragFrom.y - e.clientY;    // 往上拖＝變高
+    if (Math.abs(dy) > 4) moved = true;
+    setPanelHeight(clampPanel(dragFrom.h + dy));
+  });
+
+  /** 拖曳收尾。⚠️ `pointercancel` 一定要接：Android 的邊緣返回手勢、長按選單、旋轉螢幕
+   *  之後**不會**再有 `pointerup`，少接它 `dragFrom` 會一直留著，而 `pointermove` 掛在
+   *  window 上——之後使用者在畫布上平移都會變成在改抽屜高度（2026-09-22 /code-review
+   *  實測：cancel 之後隨便滑一下，抽屜從 56 跳到 673）。 */
+  const endDrag = (e: PointerEvent): void => {
+    if (!dragFrom || e.pointerId !== dragFrom.id) return;
+    dragFrom = null;
+    // 只有真的拖動過才寫偏好：沒位移的那一下是點擊，收合／展開由 click 那支決定。
+    if (moved) {
+      const h = panelH();
+      const open = h > panelMinH() + 4;
+      if (open) openPanelH = h;
+      writePanelPref({ h: openPanelH ?? innerHeight * PANEL_OPEN_RATIO, open });
+    }
+    syncHandleState();
+  };
+  addEventListener('pointerup', endDrag);
+  addEventListener('pointercancel', endDrag);
+
+  // 沒有位移的那一下＝點擊，收合／展開。鍵盤的 Enter／Space 也走這裡（它是 <button>）。
+  handle.addEventListener('click', () => {
+    if (moved) { moved = false; return; }
+    if (panelCollapsed()) {
+      const target = openTarget();
+      openPanelH = target;
+      setPanelHeight(target);
+      writePanelPref({ h: target, open: true });
+    } else {
+      // 收合之前先把目前的高度記下來——它就是下次展開要回到的地方。
+      openPanelH = panelH();
+      setPanelHeight(panelMinH());
+      writePanelPref({ h: openPanelH, open: false });
+    }
+    syncHandleState();
+  });
+}
+
+type SheetMode = 'search' | 'all' | null;
+let sheetMode: SheetMode = null;
+
+function setSheet(mode: SheetMode): void {
+  sheetMode = mode;
+  const bar = $('sim-toolbar');
+  bar.classList.toggle('is-open', mode !== null);
+  bar.classList.toggle('is-search', mode === 'search');
+  $('sim-scrim').toggleAttribute('hidden', mode === null);
+  $('sim-fab-search').setAttribute('aria-expanded', String(mode === 'search'));
+  $('sim-fab-more').setAttribute('aria-expanded', String(mode === 'all'));
+  if (mode === null) closeMenus();
+  else if (mode === 'search') $<HTMLInputElement>('sim-search').focus();
+}
+
+function installSheet(): void {
+  for (const [id, mode] of [['sim-fab-search', 'search'], ['sim-fab-more', 'all']] as const) {
+    $(id).addEventListener('click', e => {
+      // 不讓它冒泡到 document 上那個 closeMenus——在 sheet 裡兩個下拉是就地展開的，
+      // 按 ⋯ 再按一次應該只收 sheet，不該順手把使用者剛展開的那一段也收掉。
+      e.stopPropagation();
+      setSheet(sheetMode === mode ? null : mode);
+    });
+  }
+  $('sim-scrim').addEventListener('click', () => setSheet(null));
+  $('sim-sheet-close').addEventListener('click', () => setSheet(null));
+  addEventListener('keydown', e => {
+    if (e.key === 'Escape' && sheetMode !== null) setSheet(null);
+  });
+}
+
+/**
+ * 著作權那兩行在手機上搬進抽屜最底。
+ *
+ * 它在 Base.astro 裡是 <body> 的直屬子節點、排在 <main> 後面。留在原處的話，抽屜
+ * （fixed bottom:0）得靠 footer 的 padding-bottom 讓位，光那兩行就在 390×844 上吃掉
+ * 73px 的畫布。搬進抽屜之後捲到底仍然讀得到，而讓位規則因為選擇器是 `> footer` 自動失效。
+ *
+ * ⚠️ 跨斷點要搬回去（桌機的抽屜是右側整條側欄，著作權塞進去只是把它藏起來）。
+ */
+function syncCredit(): void {
+  const foot = document.querySelector('footer');
+  const main = document.querySelector('main');
+  if (!foot || !main) return;
+  const panel = $('sim-panel');
+  if (mobile()) {
+    if (foot.parentElement !== panel) panel.appendChild(foot);
+  } else if (foot.parentElement !== document.body) {
+    document.body.insertBefore(foot, main.nextSibling);
+  }
+}
+
+function installMobileLayout(): void {
+  // linkedom 的 matchMedia 替身只回一個 `{ matches }`，沒有 addEventListener——掛之前
+  // 一定要確認它存在，否則整支腳本載入時就丟錯（CLAUDE.md 記過同一條）。
+  installPanelHandle();
+  installSheet();
+  const pref = readPanelPref();
+  if (pref !== null) {
+    openPanelH = pref.h;
+    setPanelHeight(pref.open ? clampPanel(pref.h) : panelMinH());
+  }
+  syncCredit();
+  syncHandleState();
+  if (panelMq && typeof panelMq.addEventListener === 'function') {
+    // ⚠️ 跨斷點要重設狀態：桌機開著 sheet 把視窗縮到手機寬度（或反過來），留著的
+    // `.is-open` 會變成一個使用者從沒打開過的面板。
+    panelMq.addEventListener('change', () => {
+      setSheet(null);
+      syncCredit();
+      syncHandleState();
+    });
+  }
+}
+
 // --- 啟動 -------------------------------------------------------------------
 trackPanelHeight();
+installMobileLayout();
 fitAll();
 render();

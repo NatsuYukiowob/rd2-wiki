@@ -36,8 +36,12 @@ const optional = [...ctx.optional]
 
 <Base title="骰子樹-模擬器(beta)">
   <!-- 工具列浮在畫布上（同 /tree 的 #toolbar）。⚠️ 裡面每一項都是常駐的，undo／redo
-       用 disabled 而不是收起來——「工具列的尺寸不准隨狀態改變」在這個 repo 已經記過三次。 -->
+       用 disabled 而不是收起來——「工具列的尺寸不准隨狀態改變」在這個 repo 已經記過三次。
+       ⚠️ **手機版（≤720px）它不是頂端那一條，是從下緣升起的 sheet**（見下面媒體查詢裡的
+       說明與量到的數字）。DOM 順序與桌機完全一樣，換的只有定位與 `.sim-menu-body` 的展開方式。 -->
   <div id="sim-toolbar">
+    <!-- sheet 的把手兼關閉鈕，桌機 display:none。 -->
+    <button type="button" id="sim-sheet-close" aria-label="收起工具列"><span class="sim-grip" aria-hidden="true"></span></button>
     <input id="sim-search" type="search" placeholder="搜尋骰子或符文" aria-label="搜尋節點" autocomplete="off" />
 
     <div class="sim-menu">
@@ -85,9 +89,36 @@ const optional = [...ctx.optional]
     </script>
   </div>
 
+  <!-- 手機版工具列的兩顆入口（桌機 display:none）。🔍 只升起搜尋那一列（畫布仍然看得見
+       ——邊打字邊看節點淡出是這一頁搜尋唯一的回饋），⋯ 升起整份。
+       ⚠️ 位置綁 `--sim-panel-h`（抽屜量出來的實際高度）而不是寫死偏移量，見
+       「版面沒有固定偏移量」；抽屜被拖高時它們要跟著上移，否則會被蓋住而真人點不到
+       ——「浮動 UI 被畫布外、z-index 更高的兄弟元素蓋掉」在這個 repo 已經咬過兩次。 -->
+  <div id="sim-fabs">
+    <button type="button" id="sim-fab-search" aria-expanded="false" aria-controls="sim-toolbar" aria-label="搜尋節點">
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="11" cy="11" r="6" /><path d="M15.6 15.6 21 21" /></svg>
+    </button>
+    <button type="button" id="sim-fab-more" aria-expanded="false" aria-controls="sim-toolbar" aria-label="工具與設定">
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="5" cy="12" r="1.7" /><circle cx="12" cy="12" r="1.7" /><circle cx="19" cy="12" r="1.7" /></svg>
+    </button>
+  </div>
+
+  <!-- sheet 升起時蓋住畫布的遮罩，點它收起。桌機 display:none。 -->
+  <div id="sim-scrim" hidden></div>
+
   <!-- 側欄常駐顯示資源合計——那是這一頁存在的理由，不該藏在要點開的地方。
-       選了節點時下半部才出現詳情。手機版整個變成底部抽屜。 -->
+       選了節點時下半部才出現詳情。手機版整個變成**可拖曳高度**的底部抽屜：預設只露出
+       把手那一列（總計與已取得仍然看得到，只是分項收在下面），拖上來才是完整側欄。 -->
   <aside id="sim-panel">
+    <!-- 抽屜把手（桌機 display:none）：拖曳改高度、點一下收合／展開。
+         ⚠️ 它是收起狀態下唯一看得到的一列，高度固定不隨狀態變（同工具列那條）。 -->
+    <button type="button" id="sim-panel-handle" aria-expanded="false" aria-label="展開資源合計">
+      <span class="sim-grip" aria-hidden="true"></span>
+      <span class="sim-head-sum">
+        <span id="sim-head-cost">核心 0 ／金幣 0</span>
+        <span id="sim-head-owned">5 / {tree.nodes.length}</span>
+      </span>
+    </button>
     <div id="sim-totals">
       <h2>資源合計</h2>
       <dl>
@@ -207,7 +238,11 @@ const optional = [...ctx.optional]
     left: 0;
     z-index: 6;
     width: max-content;
-    max-width: 22rem;
+    /* ⚠️ 上界必須夾到視口內。原本只寫 `max-width: 22rem`，而定位只有 `left: 0`——
+       在 390px 寬的螢幕上實測「資源上限」的選單 left 245 ＋ width 302 ＝ 右緣 547，
+       五個數字輸入框整排落在畫面外、完全摸不到（「初始骰子」右緣 482，同一個成因）。
+       桌機用不到這個夾制（100vw − 兩側邊距 ≥ 697px > 352px），computed style 不變。 */
+    max-width: min(22rem, calc(100vw - var(--space-3) * 2));
     padding: var(--space-3);
     background: var(--surface-2);
     border: 1px solid var(--border-strong);
@@ -252,6 +287,16 @@ const optional = [...ctx.optional]
   /* 超出上限時把輸入框標紅。--nature 是站台既有的警示色用法（見 #detail .warn）。 */
   #sim-toolbar input.over-limit {
     border-color: var(--nature);
+  }
+
+  /* --- 手機版專屬的元件在桌機一律收起來 --------------------------------------
+     它們只在 ≤720px 的媒體查詢裡被打開（見檔尾「手機版」那節）。寫在這裡而不是
+     只寫在媒體查詢裡：沒有這一條，桌機會多出兩顆浮動鍵、一片遮罩與一條把手。 */
+  #sim-fabs,
+  #sim-scrim,
+  #sim-sheet-close,
+  #sim-panel-handle {
+    display: none;
   }
 
   /* --- 側欄 ----------------------------------------------------------------- */
@@ -520,16 +565,53 @@ const optional = [...ctx.optional]
   }
 
   /* --- 手機版 --------------------------------------------------------------- */
-  /* 側欄改成底部抽屜（同 /tree 的 #detail）。工具列改成全寬、可橫捲的一列，
-     免得 8 個按鈕在 390px 寬的螢幕上折成四行把畫布壓掉一半。 */
+  /*
+   * 2026-09-22 重排。改之前在 390×844（Pixel 7 視口）量到的版面：
+   *   nav 50.6 ＋ 工具列 87（兩列、fixed、蓋在 #canvas-host 頂端）
+   *   ＋ footer 著作權 73 ＋ 抽屜 354（其中「資源合計」四列固定佔 152）
+   *   → **畫布只剩 368px ／ 844 ＝ 44%**，而且被工具列蓋住的那 87px 裡的節點點不到。
+   * 改之後：工具列收成底部 sheet（兩顆浮動鍵當入口）、抽屜預設只露出把手那一列、
+   * 著作權搬進抽屜最底 → 畫布約 89%。
+   *
+   * ⚠️ 仍然**不能**用 `overflow-x: auto` 把工具列變成一條橫捲的列：第一版那樣做，390px
+   * 寬的螢幕上「重置」之後的按鈕整批看不到，而畫面上沒有任何東西告訴使用者可以往右滑
+   * ——看不到的按鈕等於不存在。sheet 是**縱向**可捲的，每一顆都在視線裡。
+   */
   @media (width <= 720px) {
-    /* ⚠️ 這裡**不能**用 `overflow-x: auto` 把工具列變成一條橫捲的列：第一版那樣做，390px
-       寬的螢幕上「重置」之後的按鈕整批看不到，而畫面上沒有任何東西告訴使用者可以往右滑
-       ——看不到的按鈕等於不存在。換行多佔一列，但每一顆都摸得到。 */
+    /* 工具列＝從下緣升起的 sheet。收起時整個移出畫面**並且 visibility: hidden**——它是
+       真的關著，裡面的搜尋框與五個上限輸入框不該還能被 Tab 走到。
+       （`#sim-toast` 那條「不准用 visibility 收」講的是這一頁唯一的 role="status"，
+       不是這裡：sheet 關著的時候它的內容本來就不該被播報。） */
     #sim-toolbar {
+      top: auto;
       right: 0;
+      bottom: 0;
+      z-index: 7;
+      max-height: 80dvh;
+      padding-bottom: calc(var(--space-3) + env(safe-area-inset-bottom, 0px));
+      overflow-y: auto;
+      visibility: hidden;
       border-right: none;
-      border-bottom-right-radius: 0;
+      border-bottom: none;
+      border-top: 1px solid var(--border-strong);
+      border-radius: var(--r-lg) var(--r-lg) 0 0;
+      transform: translateY(101%);
+    }
+
+    /* ⚠️ 過場只掛在開啟那一側（升起時滑上來、收起時直接收掉）。
+       `visibility` 是離散屬性，放進 transition 就得自己指定翻轉時機，而這個 repo 的
+       「每一條 transition 都要指名 token 曲線」只收 `--e-*`／`--slide-ease`，
+       `step-end` 過不了那道閘（`tests/styles/tokens.test.ts`）。收起不做動畫也跟遮罩
+       一致——遮罩本來就是 `[hidden]` 一翻就不見。 */
+    #sim-toolbar.is-open {
+      visibility: visible;
+      transform: translateY(0);
+      transition: transform var(--t-med) var(--e-out);
+    }
+
+    /* 🔍 那一顆只升起搜尋列：sheet 只有把手與搜尋框兩個孩子露出來，畫布仍然看得見。 */
+    #sim-toolbar.is-search > :not(#sim-search):not(#sim-sheet-close) {
+      display: none;
     }
 
     #sim-toolbar input[type='search'] {
@@ -537,21 +619,199 @@ const optional = [...ctx.optional]
       min-width: 6rem;
     }
 
+    /* 把手佔滿一列（`#sim-toolbar` 是 flex-wrap）。內距要指名到 id 才蓋得過
+       `#sim-toolbar button` 的 (1,0,1)。 */
+    #sim-toolbar #sim-sheet-close {
+      display: flex;
+      flex-basis: 100%;
+      justify-content: center;
+      padding: var(--space-1) 0;
+      background: none;
+      border: none;
+      box-shadow: none;
+    }
+
+    /* 兩個下拉在 sheet 裡**就地展開**，不再是絕對定位的浮層——浮層在 390px 上會整片溢出
+       右邊界（見上面 `.sim-menu-body` 那條的實測數字）。就地展開會把 sheet 撐高，而
+       sheet 本來就是可捲的，不像工具列撐高會讓整排東西跳。 */
+    .sim-menu {
+      flex-basis: 100%;
+    }
+
+    .sim-menu > button {
+      width: 100%;
+    }
+
+    .sim-menu-body {
+      position: static;
+      width: auto;
+      max-width: none;
+      margin-top: var(--space-2);
+      box-shadow: none;
+    }
+
+    .sim-field input {
+      width: 7rem;
+    }
+
+    /* 抽屜：高度由把手拖曳決定（`--sim-panel-user-h`，存在 localStorage），
+       預設＝把手自己那一列。上限 80dvh。
+       ⚠️ 不寫 max-height 之外的固定偏移量——這個 repo 的寫死偏移量已經咬過五次。 */
     #sim-panel {
       top: auto;
       width: 100%;
-      max-height: 42dvh;
+      height: var(--sim-panel-user-h, 3.5rem);
+      max-height: 80dvh;
+      /* ⚠️ 下內距要搬到最後一個孩子身上，不能留在抽屜上：`box-sizing: border-box` 之下
+         它會從 3.5rem 裡扣掉，把手（3.5rem）就溢出到收起高度之外，「總計」那一列會從
+         把手底下露出半行。 */
+      padding: 0 var(--space-3);
+      overscroll-behavior: contain;
       border-top: 1px solid var(--border);
       border-left: none;
     }
 
-    /* footer 讓位給抽屜：#sim-panel 是 fixed bottom:0，而這一頁不捲動，抽屜會永遠疊在
-       footer 上，「遊戲圖示與文字著作權屬 111 Percent Inc.」那句就完全讀不到。
-       高度由 src/scripts/sim.ts 的 ResizeObserver 量實際值寫進 --sim-panel-h（抽屜會隨
-       選不選節點長高變矮），不寫死數字——這個 repo 的固定偏移量已經咬過五次。
-       <main> 是 flex: 1，footer 變高只會讓畫布跟著縮，不會把捲軸叫回來。 */
-    body:has(#canvas-host) footer {
-      padding-bottom: calc(var(--space-4) + var(--sim-panel-h, 42dvh));
+    #sim-panel > :last-child {
+      margin-bottom: var(--space-3);
+    }
+
+    /* ⚠️ 抽屜是 flex column，而 flex 子項預設 `flex-shrink: 1`：抽屜收到 3.5rem 時把手
+       會被壓扁，「總計」那一列就從它底下露出半行（實測露約 30px）。收起狀態下的高度是
+       刻意夾出來的，子項一律不准被壓縮，超出的部分交給 `overflow-y: auto`。 */
+    #sim-panel > * {
+      flex: none;
+    }
+
+    #sim-panel-handle {
+      display: flex;
+      position: sticky;
+      top: 0;
+      z-index: 1;
+      flex-direction: column;
+      gap: var(--space-1);
+      justify-content: center;
+      /* 固定高度：收起時它是唯一看得到的一列，尺寸隨狀態跳動的話整個抽屜會抖。
+         這個值同時是抽屜高度的下限，由 sim.ts 量它、不另外寫死第二份數字。 */
+      width: 100%;
+      height: 3.5rem;
+      padding: 0;
+      color: var(--fg);
+      cursor: grab;
+      background: var(--surface-2);
+      border: none;
+      /* 拖曳要自己收 pointermove，不能讓瀏覽器先把它當成捲動手勢吃掉。 */
+      touch-action: none;
+    }
+
+    #sim-panel-handle:active {
+      cursor: grabbing;
+    }
+
+    .sim-grip {
+      align-self: center;
+      width: 2.25rem;
+      height: 0.25rem;
+      background: var(--border-strong);
+      border-radius: var(--r-pill);
+    }
+
+    .sim-head-sum {
+      display: flex;
+      gap: var(--space-2);
+      justify-content: space-between;
+      width: 100%;
+      font-size: var(--fs-md);
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* 收起狀態下把手已經講完總計與已取得，標題再重複一次只是佔位。 */
+    #sim-totals h2 {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip-path: inset(50%);
+      white-space: nowrap;
+    }
+
+    /* 著作權：由 sim.ts 把 <footer> 搬進抽屜最底（見該處說明）。搬進來之後它不再是
+       body 的直屬子節點，下面那條讓位規則自動失效——那正是要的。 */
+    #sim-panel > footer {
+      margin-top: var(--space-4);
+      padding-top: var(--space-3);
+      border-top: 1px solid var(--border);
+    }
+
+    /* 沒有 JS 時 footer 還留在原處，抽屜（fixed bottom:0）會疊在它上面。
+       高度用 sim.ts 量出來的實際值，不寫死數字。 */
+    body:has(#canvas-host) > footer {
+      padding-bottom: calc(var(--space-4) + var(--sim-panel-h, 3.5rem));
+    }
+
+    /* 兩顆浮動鍵。`bottom` 綁抽屜的實際高度：拖高時跟著上移，永遠浮在抽屜上緣之上。 */
+    #sim-fabs {
+      display: flex;
+      position: fixed;
+      right: var(--space-3);
+      bottom: calc(var(--sim-panel-h, 3.5rem) + var(--space-3));
+      z-index: 6;
+      flex-direction: column;
+      gap: var(--space-2);
+      transition: bottom var(--t-fast) var(--e-out);
+    }
+
+    #sim-fabs button {
+      display: grid;
+      /* 固定尺寸（44px＝可點區域下限）：浮動鍵不准隨狀態改變大小。 */
+      width: 2.75rem;
+      height: 2.75rem;
+      padding: 0;
+      color: var(--fg);
+      cursor: pointer;
+      background: var(--surface-2);
+      border: 1px solid var(--border-strong);
+      border-radius: var(--r-pill);
+      box-shadow: var(--shadow-3);
+      place-items: center;
+      transition: transform var(--t-press) var(--e-out);
+    }
+
+    #sim-fabs button:active {
+      transform: scale(var(--p-press));
+    }
+
+    #sim-fabs svg {
+      width: 1.25rem;
+      height: 1.25rem;
+      fill: none;
+      stroke: currentcolor;
+      stroke-width: 2;
+      stroke-linecap: round;
+    }
+
+    #sim-fab-more svg {
+      fill: currentcolor;
+      stroke: none;
+    }
+
+    /* 遮罩從導覽列下緣開始：nav 仍然要點得到。
+       ⚠️ `z-index: 5` 必須**低於** `#sim-fabs` 的 6：兩者同為 6 時由 DOM 順序決勝，而遮罩
+       排在後面——搜尋模式下 sheet 只有一列高、兩顆浮動鍵明明露在它上方，`elementFromPoint`
+       卻回 `#sim-scrim`，於是「⋯ 開著時按 🔍 換模式」那條路用指標永遠走不到
+       （2026-09-22 /code-review 抓到，同一族的「浮動 UI 被兄弟元素蓋掉」第三次）。
+       仍然高於 `#sim-panel` 的 4：sheet 開著時抽屜本來就該被擋住。 */
+    #sim-scrim {
+      display: block;
+      position: fixed;
+      inset: var(--nav-h, 3rem) 0 0;
+      z-index: 5;
+      background: rgb(0 0 0 / 45%);
+    }
+
+    /* ⚠️ 這條要排在上面那條後面：`[hidden]` 的 UA 預設 `display: none` 具體度是 (0,1,0)，
+       會輸給 `#sim-scrim` 的 (1,0,0)，少了它遮罩會永遠蓋著畫布。 */
+    #sim-scrim[hidden] {
+      display: none;
     }
   }
 
@@ -568,6 +828,22 @@ const optional = [...ctx.optional]
        而 D18 當時沒有把 /sim 列進去、D14 只驗 transition-duration 不驗 transform。 */
     #sim-toolbar button:not(:disabled):active {
       transform: none;
+    }
+
+    /* 手機版新增的三段過場。⚠️ 選擇器要跟被覆寫的那幾條**一模一樣**（含 `.is-open`），
+       少一階具體度就會輸掉——同一族坑 2026-08-26 在這一頁踩過一次。 */
+    @media (width <= 720px) {
+      #sim-toolbar.is-open {
+        transition: none;
+      }
+
+      #sim-fabs {
+        transition: none;
+      }
+
+      #sim-fabs button:active {
+        transform: none;
+      }
     }
   }
 </style>
