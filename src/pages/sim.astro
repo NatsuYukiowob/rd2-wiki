@@ -64,10 +64,10 @@ const optional = [...ctx.optional]
 
     <div class="sim-menu">
       <button type="button" id="sim-limit-toggle" aria-expanded="false" aria-controls="sim-limit-menu">
-        資源上限
+        持有資源
       </button>
       <div class="sim-menu-body" id="sim-limit-menu" hidden>
-        <p class="note">填了之後，會超出的操作會被擋下來。留白＝不限。</p>
+        <p class="note">填入目前持有量，側欄會顯示還差多少。留白＝不計算。</p>
         <label class="sim-field">核心 <input id="sim-limit-core" type="number" min="0" step="1" inputmode="numeric" /></label>
         <label class="sim-field">金幣 <input id="sim-limit-gold" type="number" min="0" step="1" inputmode="numeric" /></label>
         {MYTHIC_CORES.map(d => (
@@ -127,7 +127,7 @@ const optional = [...ctx.optional]
         <div class="sim-total-row"><dt>升級</dt><dd id="sim-total-upgrade">核心 0 ／金幣 0</dd></div>
         <div class="sim-total-row"><dt>已取得</dt><dd id="sim-owned-count">5 / {tree.nodes.length}</dd></div>
       </dl>
-      <p id="sim-limit-warn" class="warn" hidden></p>
+      <dl id="sim-gap" aria-label="對照持有資源" hidden></dl>
     </div>
     <div id="sim-detail" class="empty">
       <p class="note">點畫布上的節點看它的詳情；前置都解開的節點點一下就會取得。</p>
@@ -284,7 +284,7 @@ const optional = [...ctx.optional]
     width: 8rem;
   }
 
-  /* 超出上限時把輸入框標紅。--nature 是站台既有的警示色用法（見 #detail .warn）。 */
+  /* 持有量不夠規劃總額時把輸入框標紅。--nature 是站台既有的警示色用法（見 #detail .warn）。 */
   #sim-toolbar input.over-limit {
     border-color: var(--nature);
   }
@@ -349,10 +349,22 @@ const optional = [...ctx.optional]
     border-bottom: 1px solid var(--border);
   }
 
-  #sim-limit-warn {
+  /* 對照持有資源：跟上面三列合計同一種列（.sim-total-row），用一條細線隔開。
+     ⚠️ 選擇器要帶 #sim-totals：它本身是 #sim-totals 裡的 <dl>，只寫 #sim-gap (1,0,0) 的話
+     margin 會被上面的 `#sim-totals dl { margin: 0 }` (1,0,1) 壓掉。 */
+  #sim-totals #sim-gap {
     margin: var(--space-2) 0 0;
+    padding-top: var(--space-2);
+    border-top: 1px dashed var(--border);
+  }
+
+  #sim-gap .is-short dd {
     color: var(--nature);
-    font-size: var(--fs-sm);
+    font-weight: 600;
+  }
+
+  #sim-gap .is-enough dd {
+    color: var(--muted);
   }
 
   #sim-detail {
@@ -556,7 +568,7 @@ const optional = [...ctx.optional]
   }
 
   /* ⚠️ 不要用 `[hidden]`／`display:none`／`visibility:hidden` 收這個元素：它是這一頁唯一的
-     `role="status"`，那三種收法會讓它一併從無障礙樹消失，於是「超出資源上限」這些唯一的
+     `role="status"`，那三種收法會讓它一併從無障礙樹消失，於是「請先勾選初始骰子」這類唯一的
      失敗回饋對螢幕閱讀器完全不存在。改成內容空的時候只收視覺（元素本身一直在）。 */
   #sim-toast:empty {
     padding: 0;
@@ -579,7 +591,7 @@ const optional = [...ctx.optional]
    */
   @media (width <= 720px) {
     /* 工具列＝從下緣升起的 sheet。收起時整個移出畫面**並且 visibility: hidden**——它是
-       真的關著，裡面的搜尋框與五個上限輸入框不該還能被 Tab 走到。
+       真的關著，裡面的搜尋框與四個持有資源輸入框不該還能被 Tab 走到。
        （`#sim-toast` 那條「不准用 visibility 收」講的是這一頁唯一的 role="status"，
        不是這裡：sheet 關著的時候它的內容本來就不該被播報。） */
     #sim-toolbar {

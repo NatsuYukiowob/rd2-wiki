@@ -360,10 +360,10 @@ export function pathTo(id: string, state: SimState, ctx: SimContext): SimPlan {
 export interface SimTotals { unlock: Cost; upgrade: Cost; total: Cost }
 
 /**
- * 玩家在 `/sim` 填的資源上限，`null`＝沒填。超越核心每一種各一格（`sim-limit-<kind>`），
- * 鍵是 `MYTHIC_CORES[].kind`；表裡沒有的 kind 等同沒填。
+ * 玩家在 `/sim` 填的**持有資源**，`null`＝沒填。超越核心每一種各一格（`sim-limit-<kind>`，
+ * id 沿用上限時代的名字），鍵是 `MYTHIC_CORES[].kind`；表裡沒有的 kind 等同沒填。
  */
-export interface SimLimits { core: number | null; gold: number | null; mythic: Readonly<Record<string, number | null>> }
+export interface SimHoldings { core: number | null; gold: number | null; mythic: Readonly<Record<string, number | null>> }
 
 export function simTotals(state: SimState, ctx: SimContext): SimTotals {
   // 起始骰子與勾選的初始骰子不在 state.unlocked 裡，所以這裡自然不會算到它們；
@@ -382,38 +382,24 @@ export function simTotals(state: SimState, ctx: SimContext): SimTotals {
   return { unlock, upgrade, total: addCost(unlock, upgrade) };
 }
 
+/** 一種貨幣的差額：`short > 0`＝還差這麼多，`<= 0`＝夠用、剩 `-short`。 */
+export interface GapEntry { key: string; label: string; need: number; held: number; short: number }
+
 /**
- * 總資源有沒有超出玩家設定的上限？回傳超出項目的說明（空陣列＝沒超出）。
+ * 規劃總額跟持有量的差額，只列玩家有填的貨幣，順序核心→金幣→`MYTHIC_CORES`。
  *
- * `previous` 是「這個操作之前的總額」：**傳了它就只擋會讓事情變糟的方向**。
- * ⚠️ 這不是可有可無的細節。玩家的實際用法是「先規劃、事後才填上限」，填完的那一刻通常
- * 已經超支；若連「取消節點」「降等級」這些會讓成本下降的操作都一起擋掉，他除了 undo 或
- * 整份重置之外沒有出路——上限欄位反而把人鎖死在自己正想改掉的那份規劃裡。
- * 不傳 `previous` 的呼叫端（畫面上那行「已超出設定的上限」）要的是純粹的現況，不受影響。
+ * ⚠️ **只算、不擋。** 2026-09-23 以前這幾格是「上限」，`exceedsLimit()` 會擋掉讓總額變貴的
+ * 操作；改成持有量之後「規劃超過手上的量」是常態（規劃本來就是在算還要肝多少），再擋就等於
+ * 不准玩家規劃超過他現在有的東西。
  */
-export function exceedsLimit(
-  total: Cost,
-  limits: SimLimits,
-  previous?: Cost,
-): string[] {
-  const out: string[] = [];
-  const fmt = (n: number) => n.toLocaleString('en-US');
-  const worse = (now: number, before: number | undefined) => before === undefined || now > before;
-  if (limits.core !== null && total.core > limits.core && worse(total.core, previous?.core)) {
-    out.push(`核心 ${fmt(total.core)} / ${fmt(limits.core)}`);
-  }
-  if (limits.gold !== null && total.gold > limits.gold && worse(total.gold, previous?.gold)) {
-    out.push(`金幣 ${fmt(total.gold)} / ${fmt(limits.gold)}`);
-  }
-  // 超越核心走同一條路徑（含「只擋會變貴的方向」那條語意）——任一種貨幣超出都要擋，
-  // 不然玩家設了太陽核心上限卻照樣買得下去，而畫面上完全沒有東西說話。順序照 MYTHIC_CORES。
-  for (const def of MYTHIC_CORES) {
-    const limit = limits.mythic[def.kind] ?? null;
-    const now = mythicAmount(total, def.kind);
-    if (limit !== null && now > limit && worse(now, previous && mythicAmount(previous, def.kind))) {
-      out.push(`${def.label} ${fmt(now)} / ${fmt(limit)}`);
-    }
-  }
+export function resourceGap(total: Cost, held: SimHoldings): GapEntry[] {
+  const out: GapEntry[] = [];
+  const push = (key: string, label: string, need: number, h: number | null) => {
+    if (h !== null) out.push({ key, label, need, held: h, short: need - h });
+  };
+  push('core', '核心', total.core, held.core);
+  push('gold', '金幣', total.gold, held.gold);
+  for (const def of MYTHIC_CORES) push(def.kind, def.label, mythicAmount(total, def.kind), held.mythic[def.kind] ?? null);
   return out;
 }
 

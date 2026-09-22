@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { emptyPaintState, nodeAlpha, edgeAlpha, edgeColor, labelVisible, stateSignature } from '../../../src/lib/canvas/state';
+import { emptyPaintState, nodeAlpha, focusAlpha, edgeAlpha, edgeColor, labelVisible, stateSignature } from '../../../src/lib/canvas/state';
 import type { SceneNode, SceneEdge } from '../../../src/lib/canvas/scene';
 const node = (id: string, type: SceneNode['type'] = 'rune'): SceneNode =>
   ({ id, x: 0, y: 0, w: 26, h: 26, shape: 'diamond', type, branch: 'nature', icon: 'x', cell: null, label: id, labelAlways: type === 'dice' || type === 'support', ariaLabel: '', bypassPrereq: false });
@@ -20,6 +20,14 @@ describe('nodeAlpha：canvas.css 那幾條 class 規則的程式版', () => {
     const s = { ...emptyPaintState(), sim };
     expect(nodeAlpha(s, 'o')).toBe(1); expect(nodeAlpha(s, 'l')).toBe(0.28); expect(nodeAlpha(s, 'l2')).toBe(1);
   });
+  // 2026-09-23 Yuki：點亮一顆之後，後面那些可取得的節點跟著亮起來會誤導——看起來像已經拿到了。
+  // 「下一步在哪」只由 ready 邊（.7）表達，節點本身跟其他沒到手的一樣是 .28。
+  it('sim：可取得但還沒取得的節點跟 locked 一樣 .28，不是 1', () => {
+    const sim = { owned: new Set(['o']), available: new Set(['v']), selected: null, linked: new Set<string>(), active: new Set<string>(), ready: new Set(['o>v']), levels: new Map<string, number>(), maxLevels: new Map<string, number>() };
+    const s = { ...emptyPaintState(), sim };
+    expect(nodeAlpha(s, 'v')).toBe(0.28);
+    expect(edgeAlpha(s, edge('o', 'v'))).toBe(0.7);
+  });
   // /sim 的搜尋（Task 11）：舊版是 `#tree.sim .node.sim-dimmed { opacity: .08 }`，具體度
   // (1,3,0) 壓過 `.sim-selected`／`.sim-locked` (1,2,0)——所以連被選取的節點也要跟著淡，
   // 而已取得的節點也不例外。邊刻意不跟著淡（舊版那條只掛在 .node 上）。
@@ -29,6 +37,25 @@ describe('nodeAlpha：canvas.css 那幾條 class 規則的程式版', () => {
     expect(nodeAlpha(s, 's')).toBe(0.08); expect(nodeAlpha(s, 'o')).toBe(0.08);
     expect(nodeAlpha(s, 'other')).toBe(0.28);
     expect(edgeAlpha(s, edge('o', 'v'))).toBe(1);
+  });
+});
+// 焦點框是鍵盤使用者唯一的位置提示：只有「被篩選／搜尋淡出」這種刻意藏起來的節點跟著淡，
+// 狀態造成的暗（沒到手 .28、/tree 有選取時鏈外 .25）不能連焦點框一起吃掉（2026-09-23 Yuki 拍板）。
+describe('focusAlpha', () => {
+  const sim = { owned: new Set(['o']), available: new Set(['v']), selected: null, linked: new Set<string>(), active: new Set<string>(), ready: new Set<string>(), levels: new Map<string, number>(), maxLevels: new Map<string, number>() };
+  it('sim：可取得、鎖住、已取得的焦點框都是 1', () => {
+    const s = { ...emptyPaintState(), sim };
+    expect(focusAlpha(s, 'v')).toBe(1); expect(focusAlpha(s, 'l')).toBe(1); expect(focusAlpha(s, 'o')).toBe(1);
+  });
+  it('sim：被搜尋淡出的跟著節點淡（.08）', () => {
+    expect(focusAlpha({ ...emptyPaintState(), sim, filteredOut: new Set(['v']) }, 'v')).toBe(0.08);
+  });
+  it('tree：有選取時鏈外的焦點框是 1，不是 .25', () => {
+    expect(focusAlpha({ ...emptyPaintState(), selected: 'a', chain: new Set(['a']) }, 'z')).toBe(1);
+  });
+  it('tree：被篩掉 .1；被篩掉但在鏈上 1', () => {
+    const s = { ...emptyPaintState(), selected: 'a', chain: new Set(['a', 'b']), filteredOut: new Set(['b', 'z']) };
+    expect(focusAlpha(s, 'z')).toBe(0.1); expect(focusAlpha(s, 'b')).toBe(1);
   });
 });
 describe('edge 樣式', () => {

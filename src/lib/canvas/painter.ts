@@ -19,7 +19,7 @@ import type { Scene, SceneNode } from './scene.js';
 import type { ViewGeometry } from './view.js';
 import type { Theme } from './theme.js';
 import type { AssetStore } from './assets.js';
-import { centerAlpha, edgeAlpha, edgeColor, labelVisible, nodeAlpha, type PaintState } from './state.js';
+import { centerAlpha, edgeAlpha, edgeColor, focusAlpha, labelVisible, nodeAlpha, type PaintState } from './state.js';
 
 export interface Ctx2D extends Pick<CanvasRenderingContext2D,
   'save' | 'restore' | 'setTransform' | 'clearRect' | 'beginPath' | 'moveTo' | 'lineTo' | 'arc' | 'closePath' | 'rect'
@@ -149,7 +149,8 @@ export function focusRingPath(ctx: Ctx2D, n: SceneNode, inset: number): void {
 
 export function drawOverlay(ctx: Ctx2D, scene: Scene, view: ViewGeometry, theme: Theme, state: PaintState, assets: AssetStore, dpr: number, useHires: boolean): void {
   ctx.save(); clear(ctx, view, dpr); const dk = begin(ctx, view, dpr);
-  // ⚠️ 互動層畫的每一樣東西都要用 `nodeAlpha(state, id)`，**不能寫死 1**。
+  // ⚠️ 互動層畫的每一樣東西都要用 `nodeAlpha(state, id)`，**不能寫死 1**（焦點框例外，走 `focusAlpha()`：
+  // 它同樣會跟著篩選淡出，只是不吃「沒到手」「鏈外」這種狀態造成的暗）。
   //
   // 互動層是疊在靜態層上面的第二張 canvas，這裡畫的節點在靜態層已經畫過一次了。靜態層照
   // nodeAlpha() 把被篩掉（/tree 的 .1）或被搜尋淡出（/sim 的 .08）的節點畫暗，互動層若用
@@ -169,7 +170,7 @@ export function drawOverlay(ctx: Ctx2D, scene: Scene, view: ViewGeometry, theme:
     drawNodeImage(ctx, n, assets, useHires); ctx.shadowBlur = 0;
   };
   if (state.sim) {
-    for (const id of state.sim.available) glow(id, theme.gold, 5);
+    // 可取得的節點不畫金光（2026-09-23，見 state.ts nodeAlpha 的說明）；下一步只由 ready 邊表達。
     if (state.sim.selected) glow(state.sim.selected, theme.fg, 6);
   } else {
     for (const id of state.chain) glow(id, theme.gold, 6);
@@ -180,7 +181,8 @@ export function drawOverlay(ctx: Ctx2D, scene: Scene, view: ViewGeometry, theme:
   if (state.focus) {
     const n = scene.byId.get(state.focus);
     if (n) {
-      ctx.globalAlpha = nodeAlpha(state, n.id); ctx.strokeStyle = theme.gold; ctx.lineWidth = 2; ctx.setLineDash([]);
+      // 焦點框走 focusAlpha 不走 nodeAlpha：只有被篩掉的節點才跟著淡，狀態造成的暗不吃掉它。
+      ctx.globalAlpha = focusAlpha(state, n.id); ctx.strokeStyle = theme.gold; ctx.lineWidth = 2; ctx.setLineDash([]);
       focusRingPath(ctx, n, 2); ctx.stroke();
     }
   }

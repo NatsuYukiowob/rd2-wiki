@@ -186,7 +186,7 @@ async function tapNode(page: Page, id: string): Promise<void> {
 /**
  * 互動層畫出來的東西的指紋。
  *
- * 光暈（可取得＝金、已選取＝白）與鍵盤焦點框都畫在 `canvas.tree-overlay` 上，畫布同源、
+ * 已選取的白色光暈與鍵盤焦點框都畫在 `canvas.tree-overlay` 上（可取得的節點 2026-09-23 起不再有金光），畫布同源、
  * 讀得回來，所以「畫面真的變了」可以直接問那張點陣圖，不必掃特定像素的顏色（CLAUDE.md
  * 記過：掃金色像素找光暈這條路走不通，角色圖自己就有大量金／橙色像素）。
  */
@@ -309,18 +309,25 @@ test('S5. 勾選初始骰子不花錢；勾掉會連帶取消依賴它的節點'
   await expect(totals(page).owned).toHaveText(`${FREE_IDS.length} / ${NODE_COUNT}`);
 });
 
-test('S6. 資源上限：會超出的操作被擋下來，總資源不變', async ({ page }) => {
+test('S6. 持有資源不夠也照樣取得，側欄列出還差多少', async ({ page }) => {
   await openSim(page);
   await openTools(page);
   await page.locator('#sim-limit-toggle').click();
   await page.locator('#sim-limit-core').fill('1');
   await page.locator('#sim-limit-toggle').click();   // 收起選單，免得蓋住畫布
 
-  const before = await totals(page).total.textContent();
-  await tapNode(page, WITH_KIDS);   // 齒輪骰子要 5 核心，遠超過設定的 1
-  await expect(page.locator('#sim-toast')).toContainText('超出資源上限');
-  await expect(totals(page).total).toHaveText(before!);
-  expect(await owned(page)).not.toContain(WITH_KIDS);
+  // 還沒規劃任何東西：總額 0 ≤ 持有 1，列的是剩餘。
+  const coreGap = page.locator('#sim-gap [data-gap="core"]');
+  await expect(page.locator('#sim-gap')).toBeVisible();
+  await expect(coreGap).toHaveText('核心剩餘 1');
+
+  await tapNode(page, WITH_KIDS);   // 齒輪骰子要 5 核心，超過持有的 1——2026-09-23 起不擋
+  expect(await owned(page)).toContain(WITH_KIDS);
+  await expect(page.locator('#sim-toast')).toHaveText('');
+  await expect(coreGap).toHaveText('核心還差 4');
+  await expect(coreGap).toHaveClass(/is-short/);
+  await openTools(page);
+  await expect(page.locator('#sim-limit-core')).toHaveClass(/over-limit/);
 });
 
 test('S7. undo／redo 回到操作前的完整狀態', async ({ page }) => {
@@ -478,23 +485,26 @@ test('S15. 鍵盤焦點在「可取得」「已選取」的節點上也看得見
   }
 });
 
-test('S16. 資源上限只擋會變貴的方向，降成本的操作永遠放行', async ({ page }) => {
+test('S16. 差額只列有填的貨幣，全部清空時整塊收起來', async ({ page }) => {
   await openSim(page);
   await tapNode(page, READY);
   await tapNode(page, '1205');   // 另一顆初始就可解鎖的 50 級符文
-  const before = (await totals(page).total.textContent())!;
+  await expect(page.locator('#sim-gap')).toBeHidden();   // 一格都沒填
 
-  // 填一個「現在已經超過」的上限——玩家的實際用法就是先規劃、事後才填。
   await openTools(page);
   await page.locator('#sim-limit-toggle').click();
-  await page.locator('#sim-limit-gold').fill('1000');
-  await page.locator('#sim-limit-toggle').click();
-  await expect(page.locator('#sim-limit-warn')).toBeVisible();
+  await page.locator('#sim-limit-gold').fill('1000000');
+  await expect(page.locator('#sim-gap [data-gap]')).toHaveCount(1);
+  await expect(page.locator('#sim-gap [data-gap="gold"]')).toHaveClass(/is-enough/);
+  await expect(page.locator('#sim-gap [data-gap="gold"]')).toContainText('金幣剩餘');
 
-  await tapNode(page, READY);
-  await page.locator('#sim-detail [data-remove]').click();
-  await expect(totals(page).total).not.toHaveText(before);   // 真的降下來了
-  await expect(page.locator('#sim-toast')).toHaveText('');    // 沒有被擋
+  // 超越核心走同一條路徑：填了就列，規劃沒用到＝全部剩餘。
+  await page.locator('#sim-limit-solar').fill('20');
+  await expect(page.locator('#sim-gap [data-gap="solar"]')).toHaveText('太陽核心剩餘 20');
+
+  await page.locator('#sim-limit-gold').fill('');
+  await page.locator('#sim-limit-solar').fill('');
+  await expect(page.locator('#sim-gap')).toBeHidden();
 });
 
 test('S17. 等級滑桿一次拖得完，而且整段拖曳只算一步復原', async ({ page, isMobile }) => {
@@ -544,33 +554,33 @@ test('S17b. 連續調整等級不會把滑桿元素換掉（拖曳斷掉的根�
   expect(r.readout).toBe('Lv.60 / 100');
 });
 
-test('S20. 操作被擋下來時，面板與高亮仍然跟著切到新選的節點', async ({ page }) => {
+test('S20. 點到還不能取得的節點時，面板與高亮仍然跟著切到新選的節點', async ({ page }) => {
   await openSim(page);
-  // 把上限填成 0/0，讓接下來每一次「取得」都必定失敗。
-  await openTools(page);
-  await page.locator('#sim-limit-toggle').click();
-  await page.locator('#sim-limit-core').fill('0');
-  await page.locator('#sim-limit-gold').fill('0');
-  await page.locator('#sim-limit-toggle').click();
+  // 1301 的唯一前置是 1201，一開始一定取不到——`activate()` 走的是「沒取得」那條分支，
+  // 得自己補一次 render。2026-09-23 以前靠「上限填 0」逼 commit 失敗走到同一個分支，
+  // 持有資源不再擋之後改用還不能取得的節點。
+  // ⚠️ 要挑離 1001 夠近的：手機版選了節點會升起抽屜，離太遠的（例如 5201）會掉到抽屜底下，
+  // tapNode 只好平移畫布，下面「互動層點陣圖變了」這個證據就不成立了。
+  const LOCKED = '1301';
 
   // 先把兩顆都搬進安全區，接下來兩次點擊 tapNode 就不會再拖畫布——下面用「互動層的點陣圖
   // 變了」當證據，畫布一平移那個證據就不成立了。
-  await tapNode(page, READY);
+  await tapNode(page, LOCKED);
   await tapNode(page, FREE_IDS[0]!);
   await expect(page.locator('#sim-detail h3')).toHaveText(tree.nodes.find(n => n.id === FREE_IDS[0])!.name);
   const inkBefore = await overlayInk(page);
-  const rectBefore = await nodeRect(page, READY);
+  const rectBefore = await nodeRect(page, LOCKED);
 
-  // `selected` 已經換人，但取得失敗——不重畫的話面板與畫布上的白色光暈會停在上一顆，
+  // `selected` 已經換人，但沒有取得——不重畫的話面板與畫布上的白色光暈會停在上一顆，
   // 而面板上那些按鈕讀的是 selected，按下去作用在畫面上看不到的那顆。
-  await tapNode(page, READY);
-  await expect(page.locator('#sim-toast')).toContainText('超出資源上限');
-  await expect(page.locator('#sim-detail h3')).toHaveText(tree.nodes.find(n => n.id === READY)!.name);
+  await tapNode(page, LOCKED);
+  await expect(page.locator('#sim-detail h3')).toHaveText(tree.nodes.find(n => n.id === LOCKED)!.name);
+  expect(await owned(page)).not.toContain(LOCKED);
 
   // ⚠️ 畫布那一半只能問到這裡為止：`state().sim` **沒有**帶 `selected` 出來（見檔頭），
   // 所以「白色光暈跟著換人」改用互動層的點陣圖有沒有變來證明。前提是畫布沒有平移——
   // 平移的話整張互動層本來就會不一樣，這個證據就退化成恆真。
-  expect(await nodeRect(page, READY), '這兩次點擊之間畫布不該平移').toEqual(rectBefore);
+  expect(await nodeRect(page, LOCKED), '這兩次點擊之間畫布不該平移').toEqual(rectBefore);
   expect(await overlayInk(page), '選取換人之後互動層完全沒有重畫').not.toBe(inkBefore);
   // 光暈畫在哪一顆由 painter 依 `state.sim.selected` 決定，那條由
   // tests/lib/canvas/painter.test.ts 的 `/sim：被搜尋淡出的 selected 節點` 一組守著。
@@ -690,7 +700,7 @@ test('S24. 手機版：畫布拿到視窗八成以上的高度', async ({ page, 
   expect(geo.barTop).toBeGreaterThanOrEqual(geo.vh);
 });
 
-test('S25. 手機版：兩個下拉都夾在視口內，五個上限輸入框都摸得到', async ({ page, isMobile }) => {
+test('S25. 手機版：兩個下拉都夾在視口內，持有資源輸入框都摸得到', async ({ page, isMobile }) => {
   test.skip(!isMobile, '桌機的工具列貼左上，下拉不會撞到右邊界');
   await openSim(page);
   await openTools(page);
