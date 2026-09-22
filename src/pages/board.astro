@@ -78,9 +78,54 @@ const offgamePayload = {
       骰盤模擬工具，選擇骰子後將骰子直接拖入骰盤。
     </p>
 
+    <!-- 模式切換：對戰／合作。預設對戰，切換由 src/scripts/board.ts 接（它同時搬 DOM：合作模式下
+         「我的隊伍」那一組會搬到骰盤下方，見 applyCoopLayout()）。
+         文字固定不隨狀態改變（工具列尺寸不准隨狀態跳動，同 #board-tools）。
+         ⚠️ 兩顆鈕的 aria-pressed 就是「現在是哪個模式」的初始值，跟腳本裡 `coop = false` 是
+         同一件事的兩份宣告——改預設值要兩邊一起改，否則開頁時畫面與狀態對不起來。 -->
+    <div id="board-coop-mode" role="group" aria-label="對戰或合作">
+      <button type="button" data-coop="off" aria-pressed="true">對戰</button>
+      <button type="button" data-coop="on" aria-pressed="false">合作</button>
+    </div>
+
+    <!-- 隊友的隊伍列與局外加成切換。預設 hidden；結構與「我的隊伍」逐項相同。
+         隊友的符文等級我們永遠拿不到，所以這一組的預設是「全滿」＝上界，不是「不含」。 -->
+    <h2 class="board-h2" id="partner-deck-h" hidden>隊友的隊伍</h2>
+    <div id="partner-offgame-mode" role="group" aria-label="隊友的局外加成" hidden>
+      <span class="offgame-label" aria-hidden="true">局外加成</span>
+      <button type="button" data-mode="none" aria-pressed="false">不含</button>
+      <button type="button" data-mode="sim" aria-pressed="false">我的 /sim</button>
+      <button type="button" data-mode="max" aria-pressed="true">全滿</button>
+      <span id="partner-offgame-nosave" hidden>沒有找到 <a href="/sim">/sim</a> 的存檔</span>
+    </div>
+    <div id="partner-deck-row" role="group" aria-label="隊友的隊伍" hidden>
+      {slots.map(slot => (
+        <div class="deck-slot" data-slot={slot}>
+          <button type="button" class="deck-dice" data-slot={slot}
+            aria-label={`隊友第 ${slot + 1} 槽，尚未選擇骰子，按下選擇`}>
+            <span class="deck-dice-empty" aria-hidden="true">＋</span>
+          </button>
+          <div class="pips-row">
+            <button type="button" class="pips-dec" data-slot={slot} disabled aria-label={`隊友第 ${slot + 1} 槽降低骰面點數`}>◀</button>
+            <span class="pips-value" data-slot={slot}>1</span>
+            <button type="button" class="pips-inc" data-slot={slot} disabled aria-label={`隊友第 ${slot + 1} 槽提高骰面點數`}>▶</button>
+          </div>
+          <div class="sp-row">
+            <button type="button" class="sp-dec" data-slot={slot} disabled aria-label={`隊友第 ${slot + 1} 槽降低強化等級`}>◀</button>
+            <span class="sp-value" data-slot={slot}><span class="sp-prefix">Lv.</span><span class="sp-num">1</span></span>
+            <button type="button" class="sp-inc" data-slot={slot} disabled aria-label={`隊友第 ${slot + 1} 槽提高強化等級`}>▶</button>
+          </div>
+        </div>
+      ))}
+    </div>
+    <p id="partner-deck-legend" aria-hidden="true" hidden>上排：骰點　下排：強化 Lv</p>
+
     <!-- 組合列。每一槽自帶等級選擇器：等級是「這一槽」的屬性，拖進骰盤時直接沿用，
          格子上不再改（設計決策 5）。要改單一格就重拖一次。 -->
-    <h2 class="board-h2">我的隊伍</h2>
+    <!-- ⚠️ id 是給腳本抓的：合作模式下這個標題要跟 #offgame-mode／#deck-row／#deck-legend
+         整組搬到骰盤下方（board.ts 的 myDeckBlock()）。沒有 id 就只能靠「#offgame-mode 的前
+         一個元素」這種位置推論，而那正是搬家會動到的東西。 -->
+    <h2 class="board-h2" id="deck-h">我的隊伍</h2>
     <!-- 局外加成切換：卡片數值要不要疊上骰子樹的符文／玩家被動。「我的 /sim」唯讀 /sim 的存檔，
          這一頁仍然不寫任何東西。預設值由 src/scripts/board.ts 依「讀不讀得到存檔」決定。
          三顆按鈕永遠都在、文字固定（寬度不跳），沒有存檔時「我的 /sim」只是 aria-disabled——
@@ -156,6 +201,15 @@ const offgamePayload = {
          裡面四個元素直接參與 .board-page 的 flex order（見 board.css）。 -->
     <div class="board-stage">
     <h2 class="board-h2">骰盤</h2>
+    <!-- 隊友盤。欄定義與 #board-grid 完全相同——兩個 grid 用同一組欄寬就會逐欄對齊，
+         視覺上是一個 5×6 的連續網格（分隔線只是視覺，不進無障礙樹）。 -->
+    <div id="partner-grid" role="group" aria-label="隊友的骰盤，5 欄 3 列" hidden>
+      {cells.map(i => (
+        <button type="button" class="board-cell" data-index={i} data-side="partner"
+          aria-label={`隊友第 ${Math.floor(i / 5) + 1} 列第 ${(i % 5) + 1} 格，空`}></button>
+      ))}
+    </div>
+    <div class="board-divider" aria-hidden="true" hidden></div>
     <!-- 5 欄 3 列。每一格是 button：它要能 Tab、能按 Enter，鍵盤路徑是這一頁的硬需求
          （設計時就是因為 canvas 方案給不了這個才選 DOM）。 -->
     <div id="board-grid" role="group" aria-label="骰盤，5 欄 3 列">

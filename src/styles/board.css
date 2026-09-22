@@ -25,7 +25,14 @@
    三顆按鈕文字固定、用 aria-pressed 表達選中（同「隱藏星數」），切換不改變寬度。
    沒有存檔的提示（#offgame-nosave）是它的最後一個子元素、跟按鈕同一行；放不下時（手機 320px）
    換到下一行、各行置中——那是預期的，不是跑版。 */
-#offgame-mode {
+/* ⚠️ 這一頁有**三列**長得一樣的切換鈕：模式切換（#board-coop-mode）、我的局外加成（#offgame-mode）、
+   隊友的局外加成（#partner-offgame-mode）。下面每一條都要三個一起列——漏掉一列的後果不是「少了
+   圓角」那麼輕：瀏覽器預設的按鈕不認得 aria-pressed，`true` 與 `false` 會畫成逐像素相同的灰鈕，
+   畫面上完全看不出現在是哪個模式、隊友那一盤套的是哪一段局外加成（而那一項會讓卡片上的
+   數字差到 2.5 倍）。
+   ⚠️ 用 `:is()` 包三個 id 是為了讓具體度停在 (1,0,0)——`:is()` 取引數裡最高的那一個，三個都是 id，
+   所以跟原本單寫 `#offgame-mode` 完全相同，檔尾「按壓回饋」與「減少動態」那兩組 `:is()` 不必重算。 */
+:is(#board-coop-mode, #offgame-mode, #partner-offgame-mode) {
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
@@ -36,7 +43,7 @@
   font-size: var(--fs-sm);
 }
 .offgame-label { color: var(--muted); }
-#offgame-mode button {
+:is(#board-coop-mode, #offgame-mode, #partner-offgame-mode) button {
   padding: var(--space-1) var(--space-3);
   background: var(--surface-1);
   border: 1px solid var(--border-strong);
@@ -45,17 +52,20 @@
   font: inherit;
   cursor: pointer;
 }
-#offgame-mode button:not([aria-disabled="true"]):hover { background: var(--surface-3); }
-#offgame-mode button[aria-pressed="true"] { background: var(--surface-3); border-color: var(--gold); }
+:is(#board-coop-mode, #offgame-mode, #partner-offgame-mode) button:not([aria-disabled="true"]):hover { background: var(--surface-3); }
+:is(#board-coop-mode, #offgame-mode, #partner-offgame-mode) button[aria-pressed="true"] { background: var(--surface-3); border-color: var(--gold); }
 /* 沒有 /sim 存檔時的「我的 /sim」：aria-disabled 不是 :disabled，外觀要自己給——hover 與按壓回饋
    也要自己排除（上面的 :hover 與檔尾按壓那兩條的 :not([aria-disabled="true"])）。 */
-#offgame-mode button[aria-disabled="true"] { color: var(--muted); cursor: not-allowed; }
-#offgame-nosave {
+:is(#board-coop-mode, #offgame-mode, #partner-offgame-mode) button[aria-disabled="true"] { color: var(--muted); cursor: not-allowed; }
+/* 兩列局外加成各有一個「沒有存檔」提示，兩個都要——只寫我這一列的話隊友那一句會以內文字級、
+   前景色印出來，看起來像一句正式的說明而不是附註。⚠️ 這裡只給顏色與字級，**不給 display**：
+   兩個都是 JS 切 hidden 的 <span>，給了 display 就會壓過 [hidden]（同檔案中段那個防護區塊）。 */
+#offgame-nosave, #partner-offgame-nosave {
   color: var(--muted);
   font-size: var(--fs-xs);
 }
 
-#deck-row {
+#deck-row, #partner-deck-row {
   display: flex;
   gap: var(--space-3);
   flex-wrap: wrap;
@@ -104,7 +114,7 @@
   white-space: nowrap;
 }
 /* 圖例只在手機版出現（見下方媒體查詢）。 */
-#deck-legend { display: none; }
+#deck-legend, #partner-deck-legend { display: none; }
 
 /* ⚠️ 挑選網格是**浮層**，不是版面裡的一塊。
    它原本夾在組合列與骰盤中間、用 `hidden`（＝display:none）收放，一展開就把骰盤往下推
@@ -196,9 +206,9 @@
 
 /* 明細面板（#dice-detail）。
    - 窄視窗的桌機：.board-stage 是一般區塊，面板排在工具列正下方。
-   - 寬桌機（滑鼠、68rem 以上）：骰盤那一段排成三欄 `1fr | 骰盤 --board-w | 1fr`，面板在右欄——骰盤仍以
+   - 桌機（滑鼠，寬度夠）：骰盤那一段排成三欄 `1fr | 骰盤 --board-w | 1fr`，面板在右欄——骰盤仍以
      <main> 置中（E2E 的 B10 量的就是這件事），面板只吃右邊本來空著的留白。
-     ⚠️ 面板 `contain: size`，高度由那三列決定、不回頭撐開它們：面板一長高（全滿時十幾行）的話，
+     ⚠️ 面板 `contain: size`，高度由左欄那幾列決定、不回頭撐開它們：面板一長高（全滿時十幾行）的話，
      骰盤那一列會被撐高、工具列被往下推。sticky 掛在內層 .detail-box。
    - 手機（觸控）：.board-stage 是 display: contents，面板排到頁面最底（見下方觸控媒體查詢）。 */
 #dice-detail {
@@ -217,11 +227,25 @@
 .detail-title { margin: 0 0 var(--space-2); }
 .detail-box h3 { margin: var(--space-2) 0 var(--space-1); font-size: var(--fs-sm); color: var(--muted); }
 .detail-box ul { margin: 0; padding-left: var(--space-4); }
-@media (hover: hover) and (pointer: fine) and (min-width: 68rem) {
+/* ⚠️ 兩個 min-width 是刻意的，不是手滑：
+   - `1024px` ＝這個版面真正需要的絕對寬度（骰盤 512 ＋ 兩道 24 間距 ＋ 兩側各 216 的欄，
+     216 就是 1280 寬時面板的寬度）。
+   - `50rem` ＝rem 空間也要夠，避免大字級使用者在剛好 1024px 時把骰盤擠掉。
+   ⚠️ **媒體查詢裡的 `rem` 吃的是「瀏覽器預設字級」，不是 CSS 宣告的 root font-size**
+   （規格：媒體查詢的相對單位以初始值計算，不看任何宣告）。這一條原本只寫 `68rem`，
+   對把預設字級調成 20px 的使用者等於 **1360px**——Yuki 那台 1920 螢幕開 175% 縮放、
+   有效視窗只有 1097 CSS px，於是永遠掉不到這個分支，面板一直落在頁面最底（2026-09-22 回報）。
+   純 rem 的門檻會同時被「視窗多寬」與「使用者字級多大」兩件事放大，所以這裡兩個條件都要。 */
+@media (hover: hover) and (pointer: fine) and (min-width: 1024px) and (min-width: 50rem) {
   .board-stage {
     display: grid;
     grid-template-columns: 1fr minmax(0, var(--board-w)) 1fr;
     column-gap: var(--space-5);
+    /* ⚠️ 明寫成 0 不是多餘：#dice-detail 用一個很大的 span 跨滿整欄（見下面那段），
+       列數因此遠多於實際內容。空列高度是 0，但 row-gap 會**每一條都實際撐開**。
+       ⚠️ 這一行要排在 column-gap **後面**：`gap` 是同時設兩軸的簡寫，有人把上面那行順手
+       「簡化」成 `gap:` 時，排在後面的這一行才蓋得回來。順序本身是防線的一部分。 */
+    row-gap: 0;
     align-items: start;
   }
   .board-stage > :not(#dice-detail) { grid-column: 2; }
@@ -235,10 +259,22 @@
      ⚠️ 選擇器要用 `.board-stage > #board-grid`（具體度 1,1,0）：這個媒體查詢區塊在檔案裡排在
      後面「置中「骰盤」本體」那段（#board-grid 原本的 margin-inline: auto）之前，同具體度時
      由後面那條贏，單寫 `#board-grid` 蓋不掉它。 */
-  .board-stage > #board-grid { margin-inline: 0; }
+  /* ⚠️ .board-divider 也要一起清：它是空的 <div>（只有 border-top），auto 邊界一取消 stretch
+     就退回 shrink-to-fit ＝ **0 寬**，那條線在畫面上整個消失，而兩盤仍然各自畫得好好的——
+     沒有任何一條既有斷言看得到。實測合作模式下量到 `w=0`。 */
+  .board-stage > #board-grid, .board-stage > #partner-grid, .board-stage > .board-divider { margin-inline: 0; }
   #dice-detail {
     grid-column: 3;
-    grid-row: 1 / span 3;
+    /* 跨滿整個 .board-stage。原本寫 `1 / span 3`（h2／骰盤／工具列三列），合作模式下第 2 欄
+       會多出隊友盤、分隔線與整組「我的隊伍」，列數跟著模式變多，面板只跨到分隔線就結束。
+       ⚠️ **不可以改成 `1 / -1`**（直覺的寫法，實測會更糟）：`-1` 指的是**顯式**格線，而這個 grid
+       沒有 grid-template-rows、每一列都是隱式的——`-1` 解析成第 1 條線，起訖相同就退化成 span 1，
+       面板只剩標題那一列高（實測 436.6px → 69.0px），而且**對戰模式也一起壞**。
+       所以用一個大於任何可能列數的 span：多出來的隱式列沒有內容、高度是 0，容器總高一個位元組
+       都不變（實測改動前後 scrollHeight 相同）。
+       ⚠️ 配套：.board-stage 的 row-gap 必須維持 0（上面明寫了一行）——空列本身不佔高度，
+       但每一條 row-gap 都會實際撐開，加上去等於憑空多出幾十倍的間距。 */
+    grid-row: 1 / span 99;
     align-self: stretch;
     contain: size;
     max-width: 18rem;
@@ -263,7 +299,8 @@
    （後面的手足元素蓋在前面元素之上），焦點框在朝向鄰格的那一側會被切掉一截、只剩另外三邊。
    4px 剛好讓凸出的邊緣落在鄰格的邊界上（貼齊但不重疊），四邊仍然完整可見
    （實測見下方測試／自行截圖記錄）。 */
-#board-grid {
+/* 隊友盤：欄定義與 #board-grid 相同，兩者上下相鄰時就是一個連續的 5×6 網格。 */
+#board-grid, #partner-grid {
   display: grid;
   grid-template-columns: repeat(5, 1fr);
   gap: var(--space-1);
@@ -272,6 +309,31 @@
   /* ⚠️ 拖曳靠 pointermove；沒有這一行，手機上一拖就變成捲頁。 */
   touch-action: none;
 }
+/* 中間分隔線：留白要大於盤內的格間距，照遊戲裡兩盤之間那條小徑的比例。
+   ⚠️ 用 --border-strong 不是 --border：這條線是「這裡是兩盤不是一盤」的唯一視覺訊號，
+   而 --border 對這一頁的底色只有約 1.7:1，寬視窗下要裁切放大才確定得了它在（窄視窗與手機
+   因為留白佔畫面比例大，反而一眼看得見）。留白本身已經分開兩盤，線要做的是說明那段留白的意思。 */
+.board-divider {
+  max-width: var(--board-w);
+  margin: var(--space-4) auto;
+  border-top: 1px solid var(--border-strong);
+}
+/* #board-grid 是 display: grid、#deck-row 與 #offgame-mode 是 display: flex、手機版的
+   #deck-legend 是 display: block——那些值會壓過 [hidden] 的預設 display: none。少了下面這條，
+   對戰模式下隊友盤照樣出現在畫面上。這個 repo 已經踩過同一族的 bug（.battle-item[hidden]、
+   .battle-group-head[hidden]，以及這條線 preflight 抓到的兩條）。
+   ⚠️ 這份清單刻意列出**每一個腳本會切 hidden 的隊友側元素**，不是只列「現在有 display 的那些」。
+   其中 .board-divider、#partner-deck-h、#partner-offgame-nosave 今天沒有任何規則給它們 display，
+   那三條因此是永遠成立的空轉——**那是刻意的**：這一族缺陷在這個 repo 已經發作十次，而「現在沒有
+   display」是一個會被下一次改動作廢的判準（加一條置中用的 display: flex 就夠了，而且看起來完全
+   無害）。把有效性押在「未來沒有人加 display」上，跟把它寫進清單裡，成本差三行。 */
+#partner-grid[hidden],
+#partner-deck-row[hidden],
+#partner-offgame-mode[hidden],
+#partner-deck-legend[hidden],
+#partner-deck-h[hidden],
+#partner-offgame-nosave[hidden],
+.board-divider[hidden] { display: none; }
 .board-cell {
   aspect-ratio: 1;
   position: relative;
@@ -311,7 +373,9 @@
 .board-cell .cell-badge.unset { color: var(--muted); }
 /* 「隱藏星數」：用 visibility 不用 display——後者會讓 .board-cell 的 `place-items: center`
    重新分配空間，圖示跟著輕微位移。visibility: hidden 讓 .cell-pips 原地不可見，版面零位移。 */
-#board-grid.hide-pips .cell-pips { visibility: hidden; }
+/* ⚠️ 兩盤都要列：JS 是對兩個 grid 各掛一次 .hide-pips（工具列只有一份，合作模式下它動的是兩盤），
+   只寫 #board-grid 的話隊友盤的星數照樣看得見，而那顆鈕的 aria-pressed 已經是 true。 */
+#board-grid.hide-pips .cell-pips, #partner-grid.hide-pips .cell-pips { visibility: hidden; }
 /* 工具列跟著骰盤本體置中：它是浮在骰盤正下方的一列按鈕，骰盤本身已經置中，工具列留在
    左邊會顯得跟上面那塊對不齊。justify-content 不影響 #board-tools 自己的框大小
    （B3d／B8d 驗的是尺寸，不是位置），所以跟「按下前後尺寸不變」不衝突。 */
@@ -346,11 +410,15 @@
    而手機上沒有 hover 可以講「我碰到了」。
    ⚠️ **刻意不含 `.board-cell`**：格子的主要互動是拖曳，而 `:active` 在整段拖曳期間都成立，
    格子會從按下的那一刻一路縮著直到放開。抓起來的回饋由 .dragging 那一路負責，不是這裡。
-   ⚠️ `.pips-row button:disabled` 也要排除：按不動的東西不該有按下去的回饋。 */
-:is(#board-tools button, #picker-close, .picker-dice, .pips-row button, .sp-row button, #offgame-mode button:not([aria-disabled="true"])) {
+   ⚠️ `.pips-row button:disabled` 也要排除：按不動的東西不該有按下去的回饋。
+   ⚠️ 切換鈕那一項用的是檔頭那組 `:is(#board-coop-mode, #offgame-mode, #partner-offgame-mode)`，
+   三列一起列——漏掉一列的長相是「這一頁的切換鈕有的按下去會縮、有的不會」，而兩者外觀相同。
+   內層 `:is()` 的具體度是三個 id 裡最高的 (1,0,0)，跟原本單寫 #offgame-mode 一樣，外層 `:is()`
+   算出來的具體度因此一個字都沒變（下面減少動態那兩條要跟這裡逐字相同，理由見該處）。 */
+:is(#board-tools button, #picker-close, .picker-dice, .pips-row button, .sp-row button, :is(#board-coop-mode, #offgame-mode, #partner-offgame-mode) button:not([aria-disabled="true"])) {
   transition: transform var(--t-press) var(--e-out);
 }
-:is(#board-tools button, #picker-close, .picker-dice, .pips-row button, .sp-row button, #offgame-mode button:not([aria-disabled="true"])):not(:disabled):active {
+:is(#board-tools button, #picker-close, .picker-dice, .pips-row button, .sp-row button, :is(#board-coop-mode, #offgame-mode, #partner-offgame-mode) button:not([aria-disabled="true"])):not(:disabled):active {
   transform: scale(var(--p-press));
 }
 
@@ -375,32 +443,60 @@
    滑鼠點 A 格的光——pointerdown 的 preventDefault 讓焦點留在 B）目標格可能正是焦點格，焦點框不能被虛線換掉。 */
 .board-cell.buff-src { box-shadow: inset 0 0 0 var(--space-h) var(--gold); }
 .board-cell.buff-dst:not(:focus-visible) { outline: var(--space-h) dashed var(--bonus); outline-offset: calc(-1 * var(--space-1)); }
-/* ⚠️ 掛在 #deck-row 上（不是 .deck-dice）：B9 量的是這個選擇器，而且拖曳從按鈕邊緣起手時
-   仍然要能攔住捲頁手勢。 */
-#deck-row { touch-action: none; }
+/* ⚠️ 掛在隊伍列上（不是 .deck-dice）：B9 量的是這個選擇器，而且拖曳從按鈕邊緣起手時
+   仍然要能攔住捲頁手勢。
+   ⚠️ **兩條隊伍列都要**：兩盤各自的五個 .deck-dice 都掛了拖曳（board-side.ts 的
+   attachDragHandlers()），而 touch-action 不是繼承屬性、JS 也沒設——隊友那條漏掉的話 computed
+   值是 auto，手指從隊友隊伍列拖骰子會變成捲頁、瀏覽器送 pointercancel，**隊友盤在手機上完全
+   填不了骰子**（跨盤拖曳本來就不作用，觸控又沒有鍵盤路徑）。
+   ⚠️ 這件事 `preventDefault()` 救不了：對 pointerdown 呼叫 preventDefault 依規範不會阻止捲動，
+   唯一的機制就是 touch-action。骰盤那一側由上面 #board-grid, #partner-grid 那條共用規則涵蓋。 */
+#deck-row, #partner-deck-row { touch-action: none; }
 
 /* 手機：骰盤在上、組合列沉到底部拇指區。
    ⚠️ 判準用 hover／pointer 而不是畫面寬度——跟 /tree 的標籤升層同一套判準，
    窄視窗的桌機瀏覽器仍然是滑鼠操作，不該被當成手機。 */
 @media (hover: none) and (pointer: coarse) {
   .board-page { display: flex; flex-direction: column; }
+  /* ⚠️ 這一整組 order 是**一套值同時服務兩種模式**，不是「對戰一套、合作一套」。
+     合作模式是靠 src/scripts/board.ts 真的搬 DOM 達成的（order 不改 Tab 順序），而**搬 DOM 在
+     手機上沒有任何視覺效果**——.board-stage 是 display: contents，搬進搬出的四個元素前後都是
+     .board-page 的 flex 項目，視覺位置只由 order 決定。所以順序全部寫在這裡。
+     不需要另一套「合作模式」的值，也不需要一個 .coop 類別當鉤子：隊友那一組（3～5）在對戰模式下
+     是 [hidden] ＝ display:none，根本不是 flex 項目，那三個號碼自動讓位。留白的號碼就是它們。
+     對戰：h1 → 說明 → 切換鈕 → 我的盤 → 我的隊伍列 → 工具列 →（分享圖）→ 明細
+     合作：h1 → 說明 → 切換鈕 → 隊友隊伍列 → 隊友盤 → 分隔線 → 我的盤 → 我的隊伍列 → 工具列 →…
+     ⚠️ 改號碼要整組一起看：order 是整數，中間插一個就得把後面每一個都往後推。 */
   .board-page > h1 { order: 0; }
   .board-page > .lede { order: 1; }
-  #board-grid { order: 2; }
+  /* 模式切換鈕：跟桌機同一個位置（說明文字之下、骰盤之上）。
+     ⚠️ 少了這一行它會掉回預設的 order: 0，跟 h1 同號而 DOM 在 h1 之後 → 夾在標題與說明文字
+     中間。那是**對戰模式**也看得到的跑版，不是合作模式才有的。 */
+  #board-coop-mode { order: 2; }
+  /* 隊友那一組（只有合作模式看得到）：局外加成切換 → 隊伍列 → 圖例，三個同號、DOM 順序決定先後。
+     ⚠️ 三個一定要同號。#partner-deck-legend 曾經只從下面「#deck-legend, #partner-deck-legend」
+     那條共用規則拿到我這一側的號碼，於是隊友的圖例單獨飛到我的隊伍列旁邊——一組東西被拆成
+     兩個 order 值，畫面上看起來像「圖例放錯邊」而不是「order 寫錯」。 */
+  #partner-offgame-mode, #partner-deck-row, #partner-deck-legend { order: 3; }
+  /* 隊友盤與中間的分隔線。隊友盤的上邊距對應我這一側 #offgame-mode 的那一份
+     （兩側都是「隊伍區」與「骰盤」之間的間距，只是隊伍列在骰盤的相反側）。 */
+  #partner-grid { order: 4; margin-top: var(--space-5); }
+  .board-divider { order: 5; }
+  #board-grid { order: 6; }
   /* .board-stage 在手機上不成盒：裡面的骰盤／工具列／面板直接參與 .board-page 的 flex order。
-     ⚠️ 拿掉這一行，#board-grid 的 order: 2 會失效（它不再是 .board-page 的直屬子元素），手機版面整個亂掉。 */
+     ⚠️ 拿掉這一行，#board-grid 的 order 會失效（它不再是 .board-page 的直屬子元素），手機版面整個亂掉。 */
   .board-stage { display: contents; }
   /* 局外加成切換（連同它裡面那行沒有存檔的提示）跟隊伍列同一個 order、DOM 在它前面 → 排在隊伍列正上方；
      原本隊伍列的上邊距移給切換（隊伍區整塊跟骰盤之間的間距不變）。 */
-  #offgame-mode { order: 3; margin-top: var(--space-5); }
-  #deck-row { order: 3; }
+  #offgame-mode { order: 7; margin-top: var(--space-5); }
+  #deck-row { order: 7; }
   /* 明細面板排到頁面最底（分享圖區塊之後），內容一變只推動它自己下面的東西。
      ⚠️ margin-inline 要清成 0：flex column 裡的 auto 邊界會取消 stretch（同 #board-grid 那一條的坑）。 */
-  #dice-detail { order: 8; margin-inline: 0; max-width: none; }
-  #dice-picker { order: 4; }
-  #board-tools { order: 5; }
-  #board-live { order: 6; }
-  #board-export-out { order: 7; }
+  #dice-detail { order: 12; margin-inline: 0; max-width: none; }
+  #dice-picker { order: 8; }
+  #board-tools { order: 9; }
+  #board-live { order: 10; }
+  #board-export-out { order: 11; }
   /* 兩個 h2 在手機上是多餘的：畫面上骰盤與組合列各自只有一塊，位置就說明了它是什麼。 */
   .board-h2 { display: none; }
   /* ⚠️ margin-inline: auto 在這裡必須清掉，不能只改 max-width。`.board-page` 這裡是
@@ -408,8 +504,11 @@
      `main { margin: 0 auto }` 同一個坑，這次踩在 #board-grid 上）：#board-grid 因此不再
      被拉滿版寬，退回用內容（沒有明確寬度可分配的 grid 欄）反推寬度，實測整個骰盤縮成 26px
      寬的一小撮點。桌機沒有這個問題（.board-page 那裡不是 flex 容器），所以只在這個媒體
-     查詢裡覆寫回 0，不動桌機那份置中。 */
-  #board-grid { max-width: 100%; margin-inline: 0; }
+     查詢裡覆寫回 0，不動桌機那份置中。
+     ⚠️ 隊友盤與分隔線是同一個坑的第二、三次：`#partner-grid` 少了這一行實測縮成 **26px 寬的
+     一小撮點**（跟上面記的數字一模一樣），`.board-divider` 是空的 <div>、shrink-to-fit 之後
+     是 **0 寬**——那條線在手機的合作模式下整條消失。三個一起列。 */
+  #board-grid, #partner-grid, .board-divider { max-width: 100%; margin-inline: 0; }
 
   /* I5：組合列在手機上排成 5 個不折行。
      實測（改動前）：320px 排 3+2、360／390／412px 排 4+1，430px 以上才是 5 個——骰盤本身
@@ -419,11 +518,20 @@
      ⚠️ 只在這個媒體查詢裡改，不動桌機：改成 CSS Grid（跟 #board-grid 同一招）而不是繼續用
      flex-wrap，是因為 grid 的 `repeat(5, 1fr)` 永遠剛好 5 欄、永遠不會折行，欄寬由容器寬度
      自動除出來，不必為每個斷點各自手算一個 px 值。桌機的 #deck-row 仍然是外層那份
-     `width: fit-content` 的 flex（內容窄於頁寬，置中即可，不需要也不應該被拉滿版）。 */
-  #deck-row {
+     `width: fit-content` 的 flex（內容窄於頁寬，置中即可，不需要也不應該被拉滿版）。
+
+     ⚠️ 隊友隊伍列要一起列：只改 #deck-row 的話兩條隊伍列在同一個畫面上一條 5 個、一條 4+1
+     （實測），而兩者的結構逐項相同。這條 display: grid 會壓過 [hidden] 的預設值，對戰模式下
+     靠中段那個 [hidden] 防護區塊（具體度 1,1,0 > 1,0,0）蓋掉——同 #deck-legend 那條。 */
+  /* ⚠️ gap 用 --space-1（不是桌機那份 --space-3，也不是原本的 --space-2）：320px 下容器只有
+     288px，每欄分到 (288 − 4×gap) / 5。gap 8px ⇒ 51.2px，而一欄的 min-content 是 50px（見下面
+     「◀ 1 ▶」那段的算式），餘裕只有 1.2px——那是字型度量等級的雜訊，等於沒修。gap 4px ⇒ 54.4px，
+     餘裕 4.4px。順帶：4px 正好是 #board-grid 的 gap，兩者容器同寬同欄數，所以隊伍列的五個槽
+     會跟骰盤的五欄逐欄對齊。 */
+  #deck-row, #partner-deck-row {
     display: grid;
     grid-template-columns: repeat(5, 1fr);
-    gap: var(--space-2);
+    gap: var(--space-1);
     width: 100%;
     margin-inline: 0;
   }
@@ -438,11 +546,20 @@
   /* 「◀ 1 ▶」這一列也要跟著窄下去，否則欄寬縮小之後它會比欄位還寬、溢出到鄰欄。
      縮法：內距與內部間距都降到 --space-h（2px，token 表最小的一階），數字的最小寬度從
      1.5rem 降到 1rem——單一位數字仍然放得下，不會截字。
-     ⚠️ 這樣一來 ◀／▶ 的可點區塊會小於建議的 24×24 CSS px（320px 寬時整欄只剩約 51px，
-     兩顆鈕加中間的數字怎麼分都到不了 24×24×2）；已實測不會小到點不到（見 layout-batch
-     report 的量測數字與 E2E 斷言），但這是 320px 這個極窄寬度下的已知取捨，不是假裝達標。 */
+     ⚠️ 這樣一來 ◀／▶ 的可點區塊會小於建議的 24×24 CSS px（320px 下的欄寬見上面 gap 那段的
+     算式，兩顆鈕加中間的數字怎麼分都到不了 24×24×2）；已實測不會小到點不到（E2E 有斷言），
+     但這是 320px 這個極窄寬度下的已知取捨，不是假裝達標。
+     ⚠️ 欄寬那個數字只寫在上面那一段，這裡不再抄第二份——抄過一次就漂過一次（gap 從 8px 收到
+     4px 那次，這裡與下面 .sp-value 那段抄的舊欄寬都留在原地沒跟上）。 */
+  /* ⚠️ gap 收成 0——**這不是「再縮 ◀／▶」**：按鈕的 padding 仍是 --space-h、寬度仍是 17px，
+     可點區塊一個像素都沒變。收掉的是 ◀ 與數字之間、數字與 ▶ 之間那兩格**不可點的死空隙**
+     （◀ 與 ▶ 從來不相鄰，中間隔著 16px 的數字，所以收掉不會讓兩顆鈕互相誤觸）。
+     為什麼要收：grid 項目的預設 min-width: auto 讓欄寬不得小於內容的 min-content，而一欄的
+     min-content 就是這一列——17（◀）＋ 16（數字 min-width: 1rem）＋ 17（▶）＋ 2×gap。
+     gap 2px ⇒ 54px > 320px 下能分到的欄寬，五欄合計把 288px 的容器撐破 14px（第五槽的 ▶ 因此
+     貼在螢幕最右緣，比頁面其他元素少了 16px 的右留白）。gap 0 ⇒ 50px，才真的塞得進去。 */
   :is(.pips-row, .sp-row) {
-    gap: var(--space-h);
+    gap: 0;
     justify-content: center;
   }
   :is(.pips-row, .sp-row) button {
@@ -451,14 +568,18 @@
   .pips-value {
     min-width: 1rem;
   }
-  /* 320px 每槽約 51px，扣掉 ◀ ▶ 後值只剩約 19px，放不下「Lv.15」（約 34px）→ 只顯示數字，
-     哪一排是什麼交給 #deck-legend（Yuki 2026-09-19 裁決）。 */
+  /* 320px 下一槽扣掉 ◀ ▶ 之後，值剩下的寬度放不下「Lv.15」（約 34px）→ 只顯示數字，
+     哪一排是什麼交給 #deck-legend（Yuki 2026-09-19 裁決）。欄寬的數字見上面 gap 那段，
+     這裡不抄第二份。 */
   .sp-value { min-width: 1rem; }
   .sp-prefix { display: none; }
-  /* 跟 #deck-row 同一個 order、DOM 緊接在它後面 → 手機版排在組合列正下方。 */
-  #deck-legend {
+  /* 兩側的圖例外觀相同，**order 不同**（各自跟著自己那一側的隊伍列，見上面那一組）——
+     所以這裡只給外觀，號碼寫在上面。
+     ⚠️ 選擇器擴到 #partner-deck-legend 之後，這條 display: block 會壓過 [hidden] 的
+     預設值——對戰模式下隊友的圖例照樣要靠中段的 [hidden] 防護區塊蓋掉才會真的消失。 */
+  #deck-legend { order: 7; }
+  #deck-legend, #partner-deck-legend {
     display: block;
-    order: 3;
     margin: var(--space-2) 0 0;
     text-align: center;
     color: var(--muted);
@@ -472,12 +593,14 @@
 @media (prefers-reduced-motion: reduce) {
   /* ⚠️ 選擇器要跟上面那兩條**一模一樣**，包含 `:is()` 的包法與 `:not(:disabled)`。
      `:is()` 的具體度等於它引數裡最高的那一個——`:is(#board-tools button, …):not(:disabled):active`
-     是 (1,2,1)，而攤開來寫的 `#board-tools button:active` 只有 (1,1,1)，會被壓過去。
+     是 (1,3,1)（最高的引數是切換鈕那一條 `… button:not([aria-disabled="true"])` ＝ (1,1,1)，
+     再加 `:not(:disabled)` 與 `:active` 各一），而攤開來寫的 `#board-tools button:active`
+     只有 (1,1,1)，會被壓過去。
      2026-08-26 實測踩到：reduce 之下按鈕照樣縮，是 E2E 的 D18 抓出來的。 */
-  :is(#board-tools button, #picker-close, .picker-dice, .pips-row button, .sp-row button, #offgame-mode button:not([aria-disabled="true"])) {
+  :is(#board-tools button, #picker-close, .picker-dice, .pips-row button, .sp-row button, :is(#board-coop-mode, #offgame-mode, #partner-offgame-mode) button:not([aria-disabled="true"])) {
     transition: none;
   }
-  :is(#board-tools button, #picker-close, .picker-dice, .pips-row button, .sp-row button, #offgame-mode button:not([aria-disabled="true"])):not(:disabled):active {
+  :is(#board-tools button, #picker-close, .picker-dice, .pips-row button, .sp-row button, :is(#board-coop-mode, #offgame-mode, #partner-offgame-mode) button:not([aria-disabled="true"])):not(:disabled):active {
     transform: none;
   }
 }

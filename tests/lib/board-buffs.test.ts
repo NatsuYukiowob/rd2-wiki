@@ -50,6 +50,46 @@ function run(board: Board, levels: Record<string, number> = {}, sp: Record<strin
     rune: boardRunes(effects, levelOf),
   });
 }
+/**
+ * 合作模式：兩盤各自的局外等級可以不同（隊友預設全滿＝levels 給大數）。
+ *
+ * `crossDir` 預設 2（↓）＝算「我的盤」那一份：隊友盤畫在上面，它箭頭往下那顆才跨盤打到我。
+ * 算隊友盤那一份的跨盤方向是相反的，用 runAsPartner()。
+ */
+function runCoop(
+  board: Board,
+  partnerBoard: Board,
+  levels: Record<string, number> = {},
+  partnerLevels: Record<string, number> = levels,
+  sp: Record<string, number> = {},
+  partnerSp: Record<string, number> = sp,
+  crossDir: Dir = 2,
+): CellBuffs[] {
+  const levelOf = (id: string) => levels[id] ?? 0;
+  const pLevelOf = (id: string) => partnerLevels[id] ?? 0;
+  return boardBuffs({
+    board,
+    params,
+    spLevel: id => sp[id] ?? 1,
+    applied: id => appliedEffects(id, branchOfId(id), effects, levelOf),
+    rune: boardRunes(effects, levelOf),
+    partner: {
+      board: partnerBoard,
+      crossDir,
+      params,
+      spLevel: id => partnerSp[id] ?? 1,
+      applied: id => appliedEffects(id, branchOfId(id), effects, pLevelOf),
+      rune: boardRunes(effects, pLevelOf),
+    },
+  });
+}
+
+/**
+ * 從隊友盤那一側算的那一份（呼叫端的 buffsOf(隊友盤)）：這一份的「另一盤」是使用者自己的盤、
+ * 畫在下面，所以跨過去的是箭頭往上（0）那顆——跟 runCoop() 的預設剛好相反。
+ */
+const runAsPartner = (board: Board, myBoard: Board): CellBuffs[] =>
+  runCoop(board, myBoard, {}, {}, {}, {}, 0);
 const withKind = (cells: readonly CellBuffs[], kind: string): number[] =>
   cells.flatMap((c, i) => (c.entries.some(e => e.kind === kind) ? [i] : []));
 const texts = (c: CellBuffs): string[] => c.entries.map(e => e.text);
@@ -265,14 +305,14 @@ describe('霓虹', () => {
 describe('高亮與明細提示', () => {
   it('buffHighlights：開光照到的格子 → 光是來源；開光 → 它照到的格子是目標；自己不標', () => {
     const cells = run(boardOf({ 7: dice(LIGHT_ID), 2: dice(FIRE), 12: dice(FIRE) }));
-    expect(buffHighlights(cells, 2)).toEqual({ src: [7], dst: [] });
-    expect(buffHighlights(cells, 7)).toEqual({ src: [], dst: [2, 12] });
-    expect(buffHighlights(cells, 0)).toEqual({ src: [], dst: [] });
+    expect(buffHighlights(cells, 2)).toEqual({ src: [7], dst: [], srcPartner: [], dstPartner: [] });
+    expect(buffHighlights(cells, 7)).toEqual({ src: [], dst: [2, 12], srcPartner: [], dstPartner: [] });
+    expect(buffHighlights(cells, 0)).toEqual({ src: [], dst: [], srcPartner: [], dstPartner: [] });
   });
   it('buffHighlights：排序朝右 → 射線上有骰子的格子是目標', () => {
     const cells = run(boardOf({ 0: align(1, 1), 1: dice(FIRE), 3: dice(FIRE) }));
-    expect(buffHighlights(cells, 0)).toEqual({ src: [], dst: [1, 3] });
-    expect(buffHighlights(cells, 3)).toEqual({ src: [0], dst: [] });
+    expect(buffHighlights(cells, 0)).toEqual({ src: [], dst: [1, 3], srcPartner: [], dstPartner: [] });
+    expect(buffHighlights(cells, 3)).toEqual({ src: [0], dst: [], srcPartner: [], dstPartner: [] });
   });
   it('pendingHint：只有 7 骰點以下、還沒指定的排序／齒輪二階才有', () => {
     expect(pendingHint(align(3))).toBe('方向未指定，點左上角標切換');
@@ -314,5 +354,286 @@ describe('合進卡片（真實資料）', () => {
     const cells = run(boardOf({ 0: dice(BINGO_ID), 5: dice(BINGO_ID), 10: dice(BINGO_ID) }));
     const c = bonusCardModel('陰陽骰子', 1, 1, params(BINGO_ID), [], cells[0]!);
     expect(c.rows.find(r => r.label === '攻擊力')!.bonus).toBe('(+75)');
+  });
+});
+
+describe('合作雙盤：介面', () => {
+  it('每一個 entry 都有 fromPartner，對戰模式一律是空陣列', () => {
+    const board = filled({ 0: dice(LIGHT_ID), 6: dice(FIRE) });
+    const cells = run(board);
+    const all = cells.flatMap(c => c.entries);
+    expect(all.length).toBeGreaterThan(0);
+    for (const e of all) expect(e.fromPartner).toEqual([]);
+  });
+
+  it('傳 partner 但兩條跨盤規則都用不到時，結果與不傳 partner 完全相同', () => {
+    // 隊友盤擺滿光：光不跨盤，所以我的盤一格都不該變。
+    const mine = filled({ 7: dice(FIRE) });
+    const theirs = filled({ 0: dice(LIGHT_ID), 1: dice(LIGHT_ID), 2: dice(LIGHT_ID) });
+    expect(runCoop(mine, theirs)).toEqual(run(mine));
+  });
+});
+
+describe('合作雙盤：跨盤排序', () => {
+  // 盤面座標：index = row * 5 + col。第 0 欄＝index 0/5/10。
+  it('隊友盤同欄、箭頭往下的排序骰，加到我這一欄的整欄三格；其他欄不吃', () => {
+    const mine = filled({});
+    const theirs = boardOf({ 7: align(1, 2) });   // 隊友第 1 列第 2 欄（col 2），箭頭 ↓（指向我的盤）
+    const cells = runCoop(mine, theirs);
+    expect(withKind(cells, 'alignment')).toEqual([2, 7, 12]);   // 我的 col 2 整欄
+  });
+
+  it('是同欄不是鏡像欄：隊友盤 col 0 箭頭往下的排序骰，只加到我的 col 0，col 4（鏡像＝4−0）不吃', () => {
+    const theirs = boardOf({ 5: align(1, 2) });   // 隊友第 2 列第 1 欄（col 0），箭頭 ↓
+    const cells = runCoop(filled({}), theirs);
+    // 若過濾條件誤寫成鏡像公式（4 − col(j) === myCol），這裡會算出 [4, 9, 14] 而不是 [0, 5, 10]。
+    expect(withKind(cells, 'alignment')).toEqual([0, 5, 10]);
+  });
+
+  it('隊友那顆在自己盤最下排（盤內射線沒有目標）時，我這一欄照樣吃到', () => {
+    const theirs = boardOf({ 12: align(1, 2) });  // 隊友 row 2、col 2：箭頭 ↓ 在自己盤內沒有格子可打
+    const cells = runCoop(filled({}), theirs);
+    expect(withKind(cells, 'alignment')).toEqual([2, 7, 12]);
+  });
+
+  it('隊友盤的方向 0／1／3 不跨盤（↑ 是遠離我的那一邊），方向未指定也不跨盤', () => {
+    for (const d of [0, 1, 3] as const) {
+      expect(withKind(runCoop(filled({}), boardOf({ 7: align(1, d) })), 'alignment')).toEqual([]);
+    }
+    expect(withKind(runCoop(filled({}), boardOf({ 7: align(1) })), 'alignment')).toEqual([]);
+  });
+
+  it('隊友盤的 7 骰點排序骰四向全開，跨盤照樣只給同一欄', () => {
+    const cells = runCoop(filled({}), boardOf({ 7: dice(ALIGNMENT_ID, 7) }));
+    expect(withKind(cells, 'alignment')).toEqual([2, 7, 12]);
+  });
+
+  it('雙向：換成從隊友盤的視角算，我這顆箭頭往上的排序骰一樣打到他的同一欄', () => {
+    const mine = boardOf({ 7: align(1, 0) });   // 我的盤畫在下面 → ↑ 才是指向隊友盤的那一邊
+    const theirs = filled({});
+    // 隊友盤的那一份＝把兩邊對調再算一次（buffsOf() 就是這樣呼叫的）
+    expect(withKind(runAsPartner(theirs, mine), 'alignment')).toEqual([2, 7, 12]);
+  });
+
+  it('兩盤的跨盤方向相反：同一個箭頭方向，換一盤就從跨盤變成不跨盤', () => {
+    // 實作若把跨盤方向寫死成同一個值（不管寫 0 還是 2），下面兩組一定有一組紅。
+    const col2 = (dir: Dir): Board => boardOf({ 7: align(1, dir) });
+    // 隊友盤畫在上面：↓ 跨盤、↑ 不跨。
+    expect(withKind(runCoop(filled({}), col2(2)), 'alignment')).toEqual([2, 7, 12]);
+    expect(withKind(runCoop(filled({}), col2(0)), 'alignment')).toEqual([]);
+    // 我的盤畫在下面：↑ 跨盤、↓ 不跨。
+    expect(withKind(runAsPartner(filled({}), col2(0)), 'alignment')).toEqual([2, 7, 12]);
+    expect(withKind(runAsPartner(filled({}), col2(2)), 'alignment')).toEqual([]);
+  });
+
+  it('跨盤來源記在 fromPartner，不混進 from', () => {
+    const cells = runCoop(filled({}), boardOf({ 7: align(1, 2) }));
+    const e = cells[2]!.entries.find(x => x.kind === 'alignment')!;
+    expect(e.from).toEqual([]);
+    expect(e.fromPartner).toEqual([7]);
+    expect(e.text).toContain('隊友盤');
+  });
+
+  it('partnerLabel 換掉跨盤來源的盤名，三條跨盤文字都跟著換（看隊友盤時來源是「我的盤」）', () => {
+    // 呼叫端算隊友盤那一份時，partner 指的是使用者自己的盤——預設的「隊友盤」會指到相反的地方。
+    // 三條會印出盤名的跨盤文字（排序、共鳴攻速、三重共鳴）在同一次呼叫裡一起驗，漏改一條就會紅。
+    const theirs = boardOf({
+      2: align(1, 2),                                   // 跨盤排序（col 2，箭頭 ↓）
+      5: dice(RESONANCE_ID), 6: dice(RESONANCE_ID), 7: dice(RESONANCE_ID),   // 3 顆同骰點共鳴 → 三重共鳴
+    });
+    const input = {
+      board: filled({}),
+      params,
+      spLevel: () => 1,
+      applied: (id: string) => appliedEffects(id, branchOfId(id), effects, () => 0),
+      rune: boardRunes(effects, () => 0),
+      partner: {
+        board: theirs,
+        crossDir: 2 as const,
+        params,
+        spLevel: () => 1,
+        applied: (id: string) => appliedEffects(id, branchOfId(id), effects, () => 0),
+        // ⚠️ 三重共鳴的符文要給**共鳴骰所在的那一盤**（這裡三顆都在 partner 上），
+        //    不是給呼叫端那一盤——3402 的 scope 是共鳴骰子自己。
+        rune: boardRunes(effects, (id: string) => (id === BOARD_RUNES.resonanceTrio ? 1 : 0)),
+      },
+    };
+    const kinds = ['alignment', 'resonanceSpeed', 'resonanceAttack'] as const;
+    const textsOf = (cells: readonly CellBuffs[]): string[] =>
+      cells[2]!.entries.filter(e => (kinds as readonly string[]).includes(e.kind)).map(e => e.text);
+
+    const fallback = textsOf(boardBuffs(input));
+    expect(fallback).toHaveLength(kinds.length);
+    for (const t of fallback) expect(t).toContain('隊友盤');
+
+    const overridden = textsOf(boardBuffs({ ...input, partnerLabel: '我的盤' }));
+    expect(overridden).toHaveLength(kinds.length);
+    for (const t of overridden) {
+      expect(t).toContain('我的盤');
+      expect(t).not.toContain('隊友盤');
+    }
+    // 換的只是那個詞：其餘逐字相同（數字、格號、骰點都不該跟著動）。
+    expect(overridden).toEqual(fallback.map(t => t.replace('隊友盤', '我的盤')));
+  });
+
+  it('本盤與跨盤排序同時命中同一格：層數相加（4307），兩種來源的 entry 都在', () => {
+    const mine = boardOf({ 2: align(1, 2), 7: dice(FIRE) });   // 我方 col 2、方向 2（下），射線蓋到 index 7
+    const theirs = boardOf({ 2: align(1, 2) });                // 隊友同欄（col 2）、箭頭 ↓，跨盤蓋到我的 col 2 整欄
+    const cells = runCoop(mine, theirs, { '4307': 1 });
+    const alignEntries = cells[7]!.entries.filter(e => e.kind === 'alignment');
+    expect(alignEntries).toHaveLength(2);
+    expect(alignEntries.some(e => e.from.length === 1 && e.fromPartner.length === 0)).toBe(true);
+    expect(alignEntries.some(e => e.from.length === 0 && e.fromPartner.length === 1)).toBe(true);
+    const stack = cells[7]!.entries.find(e => e.kind === 'alignmentStack')!;
+    expect(stack.text).toBe('排序疊加強化 ×2：攻擊 +20%');
+    expect(cells[7]!.attackPct).toBe(60);   // 20（本盤）＋20（跨盤）＋20（疊加 ×2 層）
+  });
+
+  it('隊友盤用自己的局外加成算值：隊友全滿時的值大於隊友不含時的值', () => {
+    const theirs = boardOf({ 7: align(1, 2) });
+    const lo = runCoop(filled({}), theirs, {}, {})[2]!.attackPct;
+    // ⚠️ 只給 4207（施加者那一列的 statAdd）。4307 是**我的**符文、走 input.rune()，
+    //    放進 partnerLevels 不會有作用，擺在這裡只會混淆這條測試在測什麼。
+    const hi = runCoop(filled({}), theirs, {}, { '4207': 99 })[2]!.attackPct;
+    expect(hi).toBeGreaterThan(lo);
+  });
+});
+
+describe('合作雙盤：跨盤共鳴', () => {
+  const RES = RESONANCE_ID;
+  it('隊友盤 5 骰點共鳴 → 我盤所有 5 骰點的格子吃到，其他骰點不吃', () => {
+    const mine = boardOf({ 0: dice(FIRE, 5), 1: dice(FIRE, 3), 2: dice(FIRE, 5) });
+    const theirs = boardOf({ 0: dice(RES, 5) });
+    const cells = runCoop(mine, theirs);
+    expect(withKind(cells, 'resonanceSpeed')).toEqual([0, 2]);
+  });
+
+  it('隊友盤 7 骰點共鳴 → 我盤每一格都吃到', () => {
+    const mine = boardOf({ 0: dice(FIRE, 1), 1: dice(FIRE, 4), 2: dice(FIRE, 6) });
+    const cells = runCoop(mine, boardOf({ 0: dice(RES, 7) }));
+    expect(withKind(cells, 'resonanceSpeed')).toEqual([0, 1, 2]);
+  });
+
+  // ⭐ 這一條是整份設計最容易寫錯的地方：攻速累加、三重共鳴各盤獨立判門檻。
+  it('我 2 顆 ＋ 隊友 2 顆同骰點共鳴：攻速四顆全加，三重共鳴兩邊都不觸發', () => {
+    const mine = boardOf({ 0: dice(FIRE, 5), 1: dice(RES, 5), 2: dice(RES, 5) });
+    const theirs = boardOf({ 0: dice(RES, 5), 1: dice(RES, 5) });
+    const trio = { '3402': 1 };
+    const cells = runCoop(mine, theirs, trio, trio);
+    const me = cells[0]!;
+    expect(me.entries.filter(e => e.kind === 'resonanceSpeed').length).toBeGreaterThan(0);
+    expect(me.entries.some(e => e.kind === 'resonanceAttack')).toBe(false);
+    const solo = run(mine, trio);   // 只有我那 2 顆
+    // ⚠️ 兩段共鳴攻速要合併成一個來源再扣（intervalAfter() 對每個元素各自扣 i0·r/(1+r)，
+    //    元素數量本身就會改變結果，拆成兩個會扣得比合併多）：我 28％ ＋ 隊友 28％＝56％，
+    //    不是 [28, 28] 兩個元素。
+    expect(solo[0]!.intervalPcts).toEqual([28]);
+    expect(me.intervalPcts).toEqual([56]);
+  });
+
+  it('我 3 顆同骰點共鳴 → 我這邊觸發三重共鳴；隊友只有 2 顆 → 隊友那 2 顆不加攻擊%', () => {
+    const mine = boardOf({ 0: dice(FIRE, 5), 1: dice(RES, 5), 2: dice(RES, 5), 3: dice(RES, 5) });
+    const theirs = boardOf({ 0: dice(RES, 5), 1: dice(RES, 5) });
+    const trio = { '3402': 1 };
+    const withPartner = runCoop(mine, theirs, trio, trio)[0]!;
+    const alone = run(mine, trio)[0]!;
+    // 三重共鳴只數本盤的 3 顆 → 攻擊% 與單盤時相同
+    expect(withPartner.attackPct).toBe(alone.attackPct);
+    // 但攻速多了隊友那 2 顆
+    expect(withPartner.intervalPcts.reduce((a, b) => a + b, 0))
+      .toBeGreaterThan(alone.intervalPcts.reduce((a, b) => a + b, 0));
+  });
+
+  it('隊友盤 3 顆同骰點共鳴 → 隊友那邊自己觸發三重共鳴，加到我的攻擊%', () => {
+    const mine = boardOf({ 0: dice(FIRE, 5) });
+    const theirs = boardOf({ 0: dice(RES, 5), 1: dice(RES, 5), 2: dice(RES, 5) });
+    const trio = { '3402': 1 };
+    const cells = runCoop(mine, theirs, trio, trio);
+    const e = cells[0]!.entries.find(x => x.kind === 'resonanceAttack')!;
+    expect(e.fromPartner).toEqual([0, 1, 2]);
+    expect(e.from).toEqual([]);
+    expect(e.text).toContain('隊友盤');
+    expect(cells[0]!.attackPct).toBeGreaterThan(0);
+  });
+
+  it('跨盤共鳴的攻速來源記在 fromPartner', () => {
+    const cells = runCoop(boardOf({ 0: dice(FIRE, 5) }), boardOf({ 3: dice(RES, 5) }));
+    const e = cells[0]!.entries.find(x => x.kind === 'resonanceSpeed')!;
+    expect(e.fromPartner).toEqual([3]);
+    expect(e.text).toContain('隊友盤');
+  });
+
+  it('三重共鳴讀共鳴骰自己那一盤的符文：我的盤那三顆讀我的', () => {
+    // 我這盤自己有 3 顆同骰點共鳴（≥3 顆才夠門檻）；隊友盤完全沒有共鳴骰。
+    const mine = boardOf({ 0: dice(FIRE, 5), 1: dice(RES, 5), 2: dice(RES, 5), 3: dice(RES, 5) });
+    const theirs = boardOf({});
+    const trio = { '3402': 1 };
+    // 隊友解了 3402、我沒解 → 不觸發：這三顆是我盤上的，讀的是我的 rune()。
+    expect(runCoop(mine, theirs, {}, trio)[0]!.entries.some(e => e.kind === 'resonanceAttack')).toBe(false);
+    // 反過來我解了、隊友沒解 → 觸發。
+    expect(runCoop(mine, theirs, trio, {})[0]!.entries.some(e => e.kind === 'resonanceAttack')).toBe(true);
+  });
+
+  it('三重共鳴讀共鳴骰自己那一盤的符文：隊友盤那三顆讀隊友的', () => {
+    // 對稱的另一半。⚠️ 這是合作模式的**預設狀態**：讀不到 /sim 存檔時我是「不含」、
+    // 隊友那一側是「全滿」（隊友的符文等級拿不到，取上界），所以讀錯邊就是預設就錯。
+    const mine = boardOf({ 0: dice(FIRE, 5) });
+    const theirs = boardOf({ 0: dice(RES, 5), 1: dice(RES, 5), 2: dice(RES, 5) });
+    const trio = { '3402': 1 };
+    // 隊友解了、我沒解 → 要觸發（施加者是隊友那三顆）。
+    const withTheirs = runCoop(mine, theirs, {}, trio)[0]!;
+    expect(withTheirs.entries.some(e => e.kind === 'resonanceAttack')).toBe(true);
+    expect(withTheirs.attackPct).toBeGreaterThan(0);
+    // 反過來我解了、隊友沒解 → 不觸發。
+    expect(runCoop(mine, theirs, trio, {})[0]!.entries.some(e => e.kind === 'resonanceAttack')).toBe(false);
+  });
+});
+
+describe('合作雙盤：高亮', () => {
+  it('跨盤來源進 srcPartner，不混進 src', () => {
+    const mine = filled({});
+    const theirs = boardOf({ 7: align(1, 2) });
+    const cells = runCoop(mine, theirs);
+    const h = buffHighlights(cells, 2);
+    expect(h.srcPartner).toEqual([7]);
+    expect(h.src).toEqual([]);
+  });
+
+  it('dstPartner＝我這一格加成到的隊友盤格子', () => {
+    // 我這顆箭頭往上的排序骰在 col 2 → 打到隊友盤 col 2 的整欄。
+    const mine = boardOf({ 7: align(1, 0) });
+    const theirs = filled({});
+    const mineCells = runCoop(mine, theirs);
+    const theirsCells = runAsPartner(theirs, mine);
+    const h = buffHighlights(mineCells, 7, theirsCells);
+    expect(h.dstPartner).toEqual([2, 7, 12]);
+  });
+
+  it('沒有 partnerCells 時 dstPartner 是空陣列', () => {
+    const cells = run(filled({ 7: align(1, 0) }));
+    expect(buffHighlights(cells, 7).dstPartner).toEqual([]);
+  });
+
+  it('非對稱：來源在 col 0（index 5），查詢的 index 跟來源 index 不同時要嘛正確帶出整欄要嘛正確為空', () => {
+    // col 2 是 5 欄棋盤的正中欄，鏡像不變，容易讓錯誤實作矇混過關；改用 col 0。
+    const mine = boardOf({ 5: align(1, 0) }); // row1 col0
+    const theirs = filled({});
+    const mineCells = runCoop(mine, theirs);
+    const theirsCells = runAsPartner(theirs, mine);
+    // 查詢的 index（10＝row2 col0）不是排序骰自己的格子（5）：那一格沒有 fromPartner=[10] 的
+    // entry，正確答案必須是空陣列。錯把 `e.fromPartner.includes(index)` 寫成
+    // `includes(j)`（j 是被掃描的隊友格自己）的話，這裡會誤中 [5]。
+    expect(buffHighlights(mineCells, 10, theirsCells).dstPartner).toEqual([]);
+    // 查詢排序骰自己的格子（5）才會拿到整欄三格。
+    expect(buffHighlights(mineCells, 5, theirsCells).dstPartner).toEqual([0, 5, 10]);
+  });
+
+  it('非對稱：srcPartner 查詢格與來源格 index 不同（col 0，不是自鏡像的 col 2）', () => {
+    const mine = filled({});
+    const theirs = boardOf({ 5: align(1, 2) }); // row1 col0
+    const cells = runCoop(mine, theirs);
+    const h = buffHighlights(cells, 10); // row2 col0：跟來源格 5 不同 index
+    expect(h.srcPartner).toEqual([5]);
+    expect(h.src).toEqual([]);
   });
 });
