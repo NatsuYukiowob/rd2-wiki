@@ -1593,6 +1593,16 @@ test('B24. 明細面板：寬桌機在骰盤右側且骰盤仍以 main 置中；
   const right = main.x + main.width - (grid.x + grid.width);
   expect(Math.abs(left - right), `骰盤仍以 <main> 置中（${left} / ${right}）`).toBeLessThanOrEqual(2);
 
+  // 1024px 的桌機視窗也要走右側版面。⚠️ 這一條是 2026-09-22 的實際回報：門檻原本只寫 `68rem`，
+  // 而**媒體查詢裡的 rem 吃的是瀏覽器預設字級**——預設 20px 的使用者要 1360px 才進得來，
+  // 1920 螢幕開 175% 縮放（有效視窗 1097 CSS px）永遠掉不進去，面板一直在頁面最底。
+  // 這裡量的是絕對寬度那一半（E2E 改不了瀏覽器預設字級，rem 那一半靠 board.css 的註解與這段說明）。
+  await page.setViewportSize({ width: 1024, height: 800 });
+  const p1024 = await box('#dice-detail');
+  const g1024 = await box('#board-grid');
+  expect(p1024.x, '1024px：面板要在骰盤右側').toBeGreaterThanOrEqual(g1024.x + g1024.width);
+  expect(p1024.y, '1024px：面板要跟骰盤並排').toBeLessThan(g1024.y + g1024.height);
+
   // 窄視窗的桌機：一般區塊，面板在工具列正下方。
   await page.setViewportSize({ width: 900, height: 800 });
   const p2 = await box('#dice-detail');

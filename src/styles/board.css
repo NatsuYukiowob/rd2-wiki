@@ -206,7 +206,7 @@
 
 /* 明細面板（#dice-detail）。
    - 窄視窗的桌機：.board-stage 是一般區塊，面板排在工具列正下方。
-   - 寬桌機（滑鼠、68rem 以上）：骰盤那一段排成三欄 `1fr | 骰盤 --board-w | 1fr`，面板在右欄——骰盤仍以
+   - 桌機（滑鼠，寬度夠）：骰盤那一段排成三欄 `1fr | 骰盤 --board-w | 1fr`，面板在右欄——骰盤仍以
      <main> 置中（E2E 的 B10 量的就是這件事），面板只吃右邊本來空著的留白。
      ⚠️ 面板 `contain: size`，高度由左欄那幾列決定、不回頭撐開它們：面板一長高（全滿時十幾行）的話，
      骰盤那一列會被撐高、工具列被往下推。sticky 掛在內層 .detail-box。
@@ -227,7 +227,16 @@
 .detail-title { margin: 0 0 var(--space-2); }
 .detail-box h3 { margin: var(--space-2) 0 var(--space-1); font-size: var(--fs-sm); color: var(--muted); }
 .detail-box ul { margin: 0; padding-left: var(--space-4); }
-@media (hover: hover) and (pointer: fine) and (min-width: 68rem) {
+/* ⚠️ 兩個 min-width 是刻意的，不是手滑：
+   - `1024px` ＝這個版面真正需要的絕對寬度（骰盤 512 ＋ 兩道 24 間距 ＋ 兩側各 216 的欄，
+     216 就是 1280 寬時面板的寬度）。
+   - `50rem` ＝rem 空間也要夠，避免大字級使用者在剛好 1024px 時把骰盤擠掉。
+   ⚠️ **媒體查詢裡的 `rem` 吃的是「瀏覽器預設字級」，不是 CSS 宣告的 root font-size**
+   （規格：媒體查詢的相對單位以初始值計算，不看任何宣告）。這一條原本只寫 `68rem`，
+   對把預設字級調成 20px 的使用者等於 **1360px**——Yuki 那台 1920 螢幕開 175% 縮放、
+   有效視窗只有 1097 CSS px，於是永遠掉不到這個分支，面板一直落在頁面最底（2026-09-22 回報）。
+   純 rem 的門檻會同時被「視窗多寬」與「使用者字級多大」兩件事放大，所以這裡兩個條件都要。 */
+@media (hover: hover) and (pointer: fine) and (min-width: 1024px) and (min-width: 50rem) {
   .board-stage {
     display: grid;
     grid-template-columns: 1fr minmax(0, var(--board-w)) 1fr;
