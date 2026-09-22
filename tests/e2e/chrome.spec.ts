@@ -764,3 +764,44 @@ test('D18. 按住時縮一下，放開回原狀；reduce 之下整組關掉', as
     expect.soft(reduced.held, `reduce 之下 ${c.path} 的 ${c.selector} 按住時仍然會縮`).toBe('none');
   }
 });
+
+test('D19. 窄螢幕：「遊戲介紹」的下拉浮在導覽列外面，每一項都點得到，導覽列不會被撐成上下可捲', async ({ page }) => {
+  // 2026-09-22 的實際 bug：導覽列在窄螢幕是橫向捲動盒（overflow-x: auto），而 `overflow-y: visible`
+  // 依規格會被算成 auto，於是絕對定位的下拉整個被關進那個捲動盒——選單「開了」卻只露出 5px，
+  // 要把導覽列上下拖才看得到。
+  await page.setViewportSize({ width: 320, height: 720 });
+  await page.goto('/dice');
+  const nav = page.locator('#site-nav');
+  // 前提：這個寬度下導覽列真的是橫向捲動的，不然這條測試守的東西不存在。
+  expect(await nav.evaluate(n => n.scrollWidth > n.clientWidth), '前提：320px 下導覽列要橫向捲動').toBe(true);
+  // 照使用者的路徑：先把導覽列拖到最右，才按得到「遊戲介紹」。
+  await nav.evaluate(n => { n.scrollLeft = n.scrollWidth; });
+  await page.locator('#site-nav .nav-menu > summary').click();
+
+  const r = await page.evaluate(() => {
+    const navEl = document.getElementById('site-nav')!;
+    const menu = document.querySelector('#site-nav .nav-menu-items')!;
+    const items = [...menu.querySelectorAll('a')];
+    const hittable = items.filter(el => {
+      const b = el.getBoundingClientRect();
+      const top = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2);
+      return !!top && menu.contains(top);
+    });
+    return {
+      items: items.length,
+      hittable: hittable.length,
+      menuTop: menu.getBoundingClientRect().top,
+      navBottom: navEl.getBoundingClientRect().bottom,
+      navScrollTopMax: navEl.scrollHeight - navEl.clientHeight,
+      blur: getComputedStyle(navEl, '::before').backdropFilter,
+    };
+  });
+  // ⚠️ 不可以只看 getBoundingClientRect：被祖先 overflow 裁掉的元素照樣回報完整尺寸
+  //（這個 bug 當下 rect 是 192×384，畫面上只露 5px）。要逐項打點才驗得到。
+  expect(r.items).toBeGreaterThan(3);
+  expect(r.hittable, '下拉有項目點不到（被導覽列的捲動盒裁掉了）').toBe(r.items);
+  expect(r.menuTop, '下拉沒有落在導覽列下方').toBeGreaterThanOrEqual(r.navBottom - 1);
+  expect(r.navScrollTopMax, '導覽列被下拉撐出垂直捲動（又被關進捲動盒了）').toBeLessThanOrEqual(2);
+  // 模糊是**搬到 ::before**，不是拿掉：底色只有 88% 不透明，沒有模糊時後面的內文看得出字。
+  expect(r.blur, '手機版導覽列的模糊不見了').toContain('blur');
+});
