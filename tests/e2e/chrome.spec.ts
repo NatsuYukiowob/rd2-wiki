@@ -724,8 +724,23 @@ test('D18. 按住時縮一下，放開回原狀；reduce 之下整組關掉', as
     // ⚠️ /sim 一定要列進來：它的 reduce 覆寫 2026-08-26 少了 `:not(:disabled)`，具體度
     // 輸給正常那條、按壓在 reduce 之下照樣縮，而當時 D18 沒有涵蓋這一頁、D14 涵蓋了卻只
     // 驗 transition-duration 不驗 transform——兩條加起來還是漏。
-    { path: '/sim', selector: '#sim-toolbar button:not(:disabled)' },
-  ] as const;
+    // ⚠️ 排除 `#sim-sheet-close`：那是 2026-09-22 手機版重排加的 sheet 把手，桌機
+    // `display: none`（量不到 transform，`scaleOf` 回 null），手機上它是純把手不是動作鈕。
+    // ⚠️ `open`：同一次重排把 /sim 的工具列在 ≤720px 收成底部 sheet，不先按 ⋯ 升起來的話
+    // 手機 project 量到的是一個 `visibility: hidden` 的按鈕。
+    {
+      path: '/sim',
+      selector: '#sim-toolbar button:not(:disabled):not(#sim-sheet-close)',
+      open: '#sim-fab-more',
+    },
+  ] as const satisfies readonly { path: string; selector: string; open?: string }[];
+
+  /** 手機版把工具列收進 sheet 的頁面要先開起來；桌機那顆入口是 display:none，直接跳過。 */
+  const openIfNeeded = async (open?: string): Promise<void> => {
+    if (!open) return;
+    const fab = page.locator(open);
+    if (await fab.isVisible()) await fab.click();
+  };
 
   const pressed = async (selector: string) => {
     const el = page.locator(selector).first();
@@ -753,6 +768,7 @@ test('D18. 按住時縮一下，放開回原狀；reduce 之下整組關掉', as
     // ⚠️ 等進場動畫收掉再測：那段期間 animation 的 both 填充會壓過 :active 的 transform。
     await expect.poll(() => page.evaluate(() => !document.documentElement.hasAttribute('data-enter')),
       { timeout: 5000 }).toBe(true);
+    await openIfNeeded((c as { open?: string }).open);
 
     const normal = await pressed(c.selector);
     expect.soft(scaleOf(normal.held), `${c.path} 的 ${c.selector} 按住時沒有縮`).toBeLessThan(1);
@@ -760,6 +776,7 @@ test('D18. 按住時縮一下，放開回原狀；reduce 之下整組關掉', as
 
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await page.goto(c.path);
+    await openIfNeeded((c as { open?: string }).open);
     const reduced = await pressed(c.selector);
     expect.soft(reduced.held, `reduce 之下 ${c.path} 的 ${c.selector} 按住時仍然會縮`).toBe('none');
   }

@@ -89,14 +89,58 @@ async function openSim(page: Page): Promise<void> {
  * ⚠️ **兩個方向都要算**：工具列與（手機版的）底部抽屜擋的是上下，而桌機的側欄擋的是右邊
  * ——第一版只算了上下，5201 剛好落在側欄底下，Playwright 點到的是 `<aside>`，症狀是
  * 「側欄一直停在空狀態」，看起來完全像程式沒接上點選。
- * 量的兩個都是**真的 DOM**（`#sim-toolbar`／`#sim-panel`），不是畫布內容。
+ * 量的都是**真的 DOM**（`#sim-toolbar`／`#sim-panel`／`#sim-scrim`），不是畫布內容。
+ *
+ * ⚠️ **只扣「現在真的看得見」的遮蔽物**（2026-09-22）：手機版的工具列是收起來的 sheet，
+ * `visibility: hidden` ＋ `translateY(101%)`，它的 `getBoundingClientRect().bottom` 會落在
+ * 視窗**底下**——照舊拿它當安全區上緣的話整個安全區會變成空的，而症狀是「每顆節點都搬不
+ * 進可點擊範圍」，看起來完全像畫布壞了。
  */
 async function safeBox(page: Page): Promise<{ left: number; top: number; right: number; bottom: number }> {
-  const top = await page.locator('#sim-toolbar').evaluate(e => e.getBoundingClientRect().bottom);
-  const panel = await page.locator('#sim-panel').evaluate(e => e.getBoundingClientRect());
-  const { width: vw, height: vh } = page.viewportSize()!;
-  const isDrawer = panel.left <= 1;   // 手機版抽屜是全寬貼底的
-  return { left: 0, top, right: isDrawer ? vw : panel.left, bottom: isDrawer ? panel.top : vh };
+  return page.evaluate(() => {
+    const visible = (id: string): DOMRect | null => {
+      const el = document.getElementById(id);
+      if (!el) return null;
+      const cs = getComputedStyle(el);
+      if (cs.display === 'none' || cs.visibility === 'hidden') return null;
+      return el.getBoundingClientRect();
+    };
+    const host = document.getElementById('canvas-host')!.getBoundingClientRect();
+    let left = Math.max(0, host.left);
+    let top = Math.max(0, host.top);
+    let right = Math.min(innerWidth, host.right);
+    let bottom = Math.min(innerHeight, host.bottom);
+    for (const id of ['sim-toolbar', 'sim-panel', 'sim-scrim']) {
+      const r = visible(id);
+      if (!r || r.bottom <= top || r.top >= bottom || r.right <= left || r.left >= right) continue;
+      if (r.left <= left + 1 && r.right >= right - 1) {
+        // 橫跨整個寬度：從上緣或下緣侵入（手機版的工具列 sheet 與抽屜都是這一種）。
+        if (r.top <= top + 1) top = Math.max(top, r.bottom);
+        else bottom = Math.min(bottom, r.top);
+      } else if (r.right >= right - 1) right = Math.min(right, r.left);   // 桌機側欄貼右
+      else if (r.top <= top + 1) top = Math.max(top, r.bottom);           // 桌機工具列貼左上
+    }
+    return { left, top, right, bottom };
+  });
+}
+
+/**
+ * 工具列在手機版是收起來的底部 sheet，桌機版一直在畫面上。
+ * 要碰工具列裡任何一顆控制項的測試都得先走這裡，否則手機 project 會在
+ * 「element is not visible」上紅一片。
+ */
+async function openTools(page: Page): Promise<void> {
+  const fab = page.locator('#sim-fab-more');
+  if (!(await fab.isVisible())) return;                       // 桌機
+  if (await page.locator('#sim-toolbar.is-open').count()) return;
+  await fab.click();
+  await expect(page.locator('#sim-toolbar')).toBeVisible();
+}
+
+/** 收起工具列 sheet（桌機是 no-op）。點畫布之前一定要收，遮罩會把點擊整片吃掉。 */
+async function closeTools(page: Page): Promise<void> {
+  const scrim = page.locator('#sim-scrim');
+  if (await scrim.isVisible()) await scrim.click();
 }
 
 type Rect = { left: number; top: number; width: number; height: number };
@@ -120,6 +164,7 @@ const outsideSafe = (r: Rect, s: { left: number; top: number; right: number; bot
  * 打到 1001）。`nodeScreenRect()` 回的就是圖示那一格，沒有這個問題。
  */
 async function tapNode(page: Page, id: string): Promise<void> {
+  await closeTools(page);   // sheet 的遮罩會把畫布上的點擊整片吃掉
   const safe = await safeBox(page);
   const cx = (safe.left + safe.right) / 2;
   const cy = (safe.top + safe.bottom) / 2;
@@ -166,7 +211,9 @@ test('S0. 骨架：初始只有起始骰子、資源 0，工具列每一項都�
   expect((await owned(page)).sort()).toEqual([...FREE_IDS].sort());
 
   // 工具列每一項都要在，而且**摸得到**（不是被裁在視窗外）。手機版第一版把它做成一條
-  // 橫捲的列，「重置」之後的按鈕整批看不到，而畫面上沒有任何東西說可以往右滑。
+  // 橫捲的列，「重置」之後的按鈕整批看不到，而畫面上沒有任何東西說可以往右滑；
+  // 現在手機版是底部 sheet（桌機仍是頂端那一條），所以先按 ⋯ 升起來再驗。
+  await openTools(page);
   for (const id of ['sim-initial-toggle', 'sim-limit-toggle', 'sim-undo', 'sim-redo', 'sim-abilities', 'sim-export', 'sim-reset']) {
     await expect(page.locator(`#${id}`)).toBeVisible();
     const inView = await page.locator(`#${id}`).evaluate(el => {
@@ -251,6 +298,7 @@ test('S4. 一鍵點亮：鏈上有沒勾的初始骰子時一顆都不解，並�
 test('S5. 勾選初始骰子不花錢；勾掉會連帶取消依賴它的節點', async ({ page }) => {
   await openSim(page);
   const id = OPTIONAL_IDS[0]!;
+  await openTools(page);
   await page.locator('#sim-initial-toggle').click();
   await page.locator(`[data-initial="${id}"]`).check();
   await expect(totals(page).owned).toHaveText(`${FREE_IDS.length + 1} / ${NODE_COUNT}`);
@@ -263,6 +311,7 @@ test('S5. 勾選初始骰子不花錢；勾掉會連帶取消依賴它的節點'
 
 test('S6. 資源上限：會超出的操作被擋下來，總資源不變', async ({ page }) => {
   await openSim(page);
+  await openTools(page);
   await page.locator('#sim-limit-toggle').click();
   await page.locator('#sim-limit-core').fill('1');
   await page.locator('#sim-limit-toggle').click();   // 收起選單，免得蓋住畫布
@@ -281,10 +330,12 @@ test('S7. undo／redo 回到操作前的完整狀態', async ({ page }) => {
   const after = await totals(page).total.textContent();
   await expect(page.locator('#sim-undo')).toBeEnabled();
 
+  await openTools(page);
   await page.locator('#sim-undo').click();
   await expect(totals(page).total).toHaveText('核心 0 ／金幣 0');
   await expect.poll(() => owned(page)).not.toContain(READY);
 
+  await openTools(page);
   await page.locator('#sim-redo').click();
   await expect(totals(page).total).toHaveText(after!);
 });
@@ -292,6 +343,7 @@ test('S7. undo／redo 回到操作前的完整狀態', async ({ page }) => {
 test('S8. 重新整理之後接續上次的規劃', async ({ page }) => {
   await openSim(page);
   await tapNode(page, READY);
+  await openTools(page);
   await page.locator('#sim-initial-toggle').click();
   await page.locator(`[data-initial="${OPTIONAL_IDS[0]}"]`).check();
   const before = { total: await totals(page).total.textContent(), owned: await totals(page).owned.textContent() };
@@ -305,6 +357,7 @@ test('S8. 重新整理之後接續上次的規劃', async ({ page }) => {
 test('S9. 重置回到初始狀態並清掉存檔', async ({ page }) => {
   await openSim(page);
   await tapNode(page, READY);
+  await openTools(page);
   await page.locator('#sim-reset').click();
   await expect(totals(page).owned).toHaveText(`${FREE_IDS.length} / ${NODE_COUNT}`);
   await page.reload({ waitUntil: 'networkidle' });
@@ -314,6 +367,7 @@ test('S9. 重置回到初始狀態並清掉存檔', async ({ page }) => {
 test('S10. 能力彙總把同名效果合起來，Esc 關得掉', async ({ page }) => {
   await openSim(page);
   await tapNode(page, TIER_F);
+  await openTools(page);
   await page.locator('#sim-abilities').click();
   await expect(page.locator('#sim-ability-modal')).toBeVisible();
   // 1109 是「所有骰子傷害」——五個系都有同名節點，所以歸在「全部骰子」而不是「自然」。
@@ -387,6 +441,7 @@ test('S14. 匯出把規劃寫進剪貼簿', async ({ page, context }) => {
   await context.grantPermissions(['clipboard-read', 'clipboard-write']);
   await openSim(page);
   await tapNode(page, READY);
+  await openTools(page);
   await page.locator('#sim-export').click();
   await expect(page.locator('#sim-toast')).toContainText('已複製到剪貼簿');
   const text = await page.evaluate(() => navigator.clipboard.readText());
@@ -430,6 +485,7 @@ test('S16. 資源上限只擋會變貴的方向，降成本的操作永遠放行
   const before = (await totals(page).total.textContent())!;
 
   // 填一個「現在已經超過」的上限——玩家的實際用法就是先規劃、事後才填。
+  await openTools(page);
   await page.locator('#sim-limit-toggle').click();
   await page.locator('#sim-limit-gold').fill('1000');
   await page.locator('#sim-limit-toggle').click();
@@ -461,6 +517,7 @@ test('S17. 等級滑桿一次拖得完，而且整段拖曳只算一步復原', 
   await expect(page.locator('.sim-level-value')).toHaveText('Lv.100 / 100');
 
   // 每動一級推一步的話，這裡要按 99 次才回得去。
+  await openTools(page);
   await page.locator('#sim-undo').click();
   await expect(page.locator('.sim-level-value')).toHaveText('Lv.1 / 100');
 });
@@ -490,6 +547,7 @@ test('S17b. 連續調整等級不會把滑桿元素換掉（拖曳斷掉的根�
 test('S20. 操作被擋下來時，面板與高亮仍然跟著切到新選的節點', async ({ page }) => {
   await openSim(page);
   // 把上限填成 0/0，讓接下來每一次「取得」都必定失敗。
+  await openTools(page);
   await page.locator('#sim-limit-toggle').click();
   await page.locator('#sim-limit-core').fill('0');
   await page.locator('#sim-limit-gold').fill('0');
@@ -583,17 +641,228 @@ test('S19. toast 是常駐的 live region，不靠 hidden 收放', async ({ page
   await expect(el).toContainText('請先在「初始骰子」勾選');
 });
 
-test('S12. 手機版：抽屜不蓋住著作權聲明，而且整頁不捲動', async ({ page, isMobile }) => {
-  test.skip(!isMobile, '桌機的側欄貼在右側，不會蓋到 footer');
+/**
+ * ⚠️ 2026-09-22 改寫。舊版驗的是「footer 有一截露在抽屜上方」（`footTop < panelTop`）——
+ * 那條在著作權還留在頁面上時成立，而它光那兩行就在 390×844 上吃掉 73px 的畫布。
+ * 現在 sim.ts 在 ≤720px 把 `<footer>` 搬進抽屜最底，所以要驗的改成「它在抽屜裡、而且
+ * 捲到底讀得到」。**這是刻意推翻一條既有不變量，不是回歸。**
+ */
+test('S12. 手機版：著作權在抽屜裡讀得到，而且整頁仍然不捲動', async ({ page, isMobile }) => {
+  test.skip(!isMobile, '桌機的著作權留在頁面底部，不搬進側欄');
+  await openSim(page);
+  await expect(page.locator('#sim-panel footer')).toContainText('111 Percent Inc.');
+  expect(await page.evaluate(() => document.documentElement.scrollHeight > innerHeight + 1)).toBe(false);
+
+  // 把抽屜拉到最大再捲到底：著作權要真的落進可視範圍，不是只存在於 DOM。
+  const seen = await page.evaluate(async () => {
+    const panel = document.getElementById('sim-panel')!;
+    document.documentElement.style.setProperty('--sim-panel-user-h', `${innerHeight * 0.8}px`);
+    await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+    panel.scrollTop = panel.scrollHeight;
+    await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+    const f = panel.querySelector('footer')!.getBoundingClientRect();
+    const p = panel.getBoundingClientRect();
+    return f.top < p.bottom && f.bottom > p.top;
+  });
+  expect(seen, '著作權捲到底仍不在抽屜的可視範圍內').toBe(true);
+});
+
+/**
+ * 2026-09-22 手機版重排的四條驗收，全部是**幾何斷言**（CLAUDE.md：動版面不看截圖）。
+ * 改之前在 390×844 量到的基準：畫布可見高度 368px ／ 844 ＝ 44%。
+ */
+test('S24. 手機版：畫布拿到視窗八成以上的高度', async ({ page, isMobile }) => {
+  test.skip(!isMobile, '桌機的工具列與側欄本來就常駐，這條講的是手機版面');
   await openSim(page);
   const geo = await page.evaluate(() => {
-    const foot = document.querySelector('footer')!.getBoundingClientRect();
+    const host = document.getElementById('canvas-host')!.getBoundingClientRect();
     const panel = document.getElementById('sim-panel')!.getBoundingClientRect();
-    return { footTop: foot.top, panelTop: panel.top, scrollable: document.documentElement.scrollHeight > innerHeight + 1 };
+    const bar = document.getElementById('sim-toolbar')!.getBoundingClientRect();
+    return {
+      visible: Math.min(host.bottom, panel.top) - Math.max(host.top, 0),
+      vh: innerHeight,
+      // 工具列收起時整個在視窗底下，一個像素都不准蓋到畫布。
+      barTop: bar.top,
+    };
   });
-  expect(geo.footTop).toBeLessThan(geo.panelTop);   // footer 有一截露在抽屜上方
-  expect(geo.scrollable).toBe(false);
-  await expect(page.locator('footer')).toContainText('111 Percent Inc.');
+  expect(geo.visible / geo.vh, `畫布只拿到 ${Math.round(geo.visible)}px / ${geo.vh}px`)
+    .toBeGreaterThanOrEqual(0.8);
+  expect(geo.barTop).toBeGreaterThanOrEqual(geo.vh);
+});
+
+test('S25. 手機版：兩個下拉都夾在視口內，五個上限輸入框都摸得到', async ({ page, isMobile }) => {
+  test.skip(!isMobile, '桌機的工具列貼左上，下拉不會撞到右邊界');
+  await openSim(page);
+  await openTools(page);
+  for (const id of ['sim-initial', 'sim-limit']) {
+    await page.locator(`#${id}-toggle`).click();
+    const box = await page.locator(`#${id}-menu`).evaluate(el => {
+      const r = el.getBoundingClientRect();
+      return { left: r.left, right: r.right, vw: innerWidth };
+    });
+    expect(box.left, `#${id}-menu 左緣溢出`).toBeGreaterThanOrEqual(-0.5);
+    expect(box.right, `#${id}-menu 右緣溢出（視窗寬 ${box.vw}）`).toBeLessThanOrEqual(box.vw + 0.5);
+    await page.locator(`#${id}-toggle`).click();
+  }
+
+  // 「摸得到」＝那一點上最上層的元素就是它自己。⚠️ 只驗 `.click()` 不 timeout 是不夠的：
+  // Playwright 在被完全蓋住時仍可能點得成功（2026-09-20 在 /sim 桌機版實測過）。
+  await page.locator('#sim-limit-toggle').click();
+  const reachable = await page.evaluate(() =>
+    [...document.querySelectorAll<HTMLInputElement>('#sim-limit-menu input')].map(el => {
+      const r = el.getBoundingClientRect();
+      const top = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+      return { id: el.id, ok: top === el };
+    }));
+  expect(reachable.length).toBeGreaterThanOrEqual(3);
+  expect(reachable.filter(x => !x.ok)).toEqual([]);
+});
+
+test('S26. 手機版：選了節點之後詳情的主按鈕看得到而且點得到', async ({ page, isMobile }) => {
+  test.skip(!isMobile, '桌機的側欄是整條，詳情不會被抽屜高度夾到');
+  await openSim(page);
+  await tapNode(page, WITH_KIDS);
+  const cta = await page.evaluate(() => {
+    const el = document.querySelector<HTMLElement>('#sim-detail .cta');
+    if (!el) return null;
+    const r = el.getBoundingClientRect();
+    const p = document.getElementById('sim-panel')!.getBoundingClientRect();
+    const top = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+    return { inside: r.top >= p.top - 0.5 && r.bottom <= p.bottom + 0.5, hit: el.contains(top) };
+  });
+  expect(cta, '詳情裡沒有主按鈕').not.toBeNull();
+  expect(cta!.inside, '主按鈕被抽屜的高度切在框外').toBe(true);
+  expect(cta!.hit, '主按鈕被別的元素蓋住').toBe(true);
+
+  // ⚠️ **矮螢幕要掃全部節點**：抽屜有 80dvh 的上限，而「缺少前置／需達 Lv.N」那幾行 warn
+  // 會把主按鈕推得很低——只驗一顆是驗不到的（2026-09-22 /code-review 在 iPhone SE 上
+  // 抓到 2503 的主按鈕落在框外）。節點**不寫死 id**：改版多一顆長描述的節點要自己會紅。
+  await page.setViewportSize({ width: 375, height: 568 });
+  await page.waitForTimeout(300);
+  const outside = await page.evaluate(async () => {
+    const panel = document.getElementById('sim-panel')!;
+    const bad: { id: string; over: number }[] = [];
+    for (const btn of document.querySelectorAll<HTMLElement>('.tree-a11y-node[data-id]')) {
+      document.documentElement.style.setProperty('--sim-panel-user-h', '56px');   // 每顆都從收起開始
+      btn.click();
+      await new Promise(r => requestAnimationFrame(r));
+      const cta = panel.querySelector('#sim-detail .cta');
+      if (!cta) continue;
+      const r = cta.getBoundingClientRect();
+      const p = panel.getBoundingClientRect();
+      if (r.bottom > p.bottom + 0.5 || r.top < p.top - 0.5) {
+        bad.push({ id: btn.dataset['id']!, over: Math.round(r.bottom - p.bottom) });
+      }
+    }
+    return bad;
+  });
+  expect(outside, '375×568 下有節點的主按鈕落在抽屜可視範圍外').toEqual([]);
+});
+
+test('S27. 手機版：浮動鍵永遠浮在抽屜上緣之上，而且拖曳過的高度會留著', async ({ page, isMobile }) => {
+  test.skip(!isMobile, '桌機沒有浮動鍵');
+  await openSim(page);
+
+  // 三種高度都要成立：收起、拖到一半、拖到上限。
+  for (const ratio of [null, 0.45, 0.8]) {
+    if (ratio !== null) {
+      await page.evaluate(r => document.documentElement.style.setProperty('--sim-panel-user-h', `${innerHeight * r}px`), ratio);
+      await page.waitForTimeout(120);   // 等 ResizeObserver 把 --sim-panel-h 寫回去
+    }
+    const fabs = await page.evaluate(() =>
+      [...document.querySelectorAll<HTMLElement>('#sim-fabs button')].map(el => {
+        const r = el.getBoundingClientRect();
+        const top = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+        return { id: el.id, hit: el.contains(top), above: r.bottom <= document.getElementById('sim-panel')!.getBoundingClientRect().top + 0.5 };
+      }));
+    expect(fabs).toHaveLength(2);
+    expect(fabs.filter(f => !f.hit), `抽屜 ${ratio ?? '收起'} 時浮動鍵被蓋住`).toEqual([]);
+    expect(fabs.filter(f => !f.above), `抽屜 ${ratio ?? '收起'} 時浮動鍵沒有浮在抽屜上方`).toEqual([]);
+  }
+
+  // 拖把手改高度 → 重整之後沿用。用真的滑鼠事件（同 tapNode 的理由）。
+  const handle = (await page.locator('#sim-panel-handle').boundingBox())!;
+  const cx = handle.x + handle.width / 2;
+  const cy = handle.y + handle.height / 2;
+  await page.mouse.move(cx, cy);
+  await page.mouse.down();
+  await page.mouse.move(cx, cy - 200, { steps: 10 });
+  await page.mouse.up();
+  const dragged = await page.locator('#sim-panel').evaluate(el => el.getBoundingClientRect().height);
+  expect(dragged).toBeGreaterThan(200);
+
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.waitForFunction(() => Boolean(window.__tree));
+  const restored = await page.locator('#sim-panel').evaluate(el => el.getBoundingClientRect().height);
+  expect(Math.abs(restored - dragged), `重整後高度 ${restored} 沒有沿用 ${dragged}`).toBeLessThan(2);
+
+  // ⚠️ 收合一次不准把拖出來的高度洗掉（2026-09-22 /code-review 抓到：偏好只存一個「目前
+  // 高度」時，收合會把它覆寫成把手的 56，再展開只會回到 50% 的預設值）。
+  const panelH = () => page.locator('#sim-panel').evaluate(el => el.getBoundingClientRect().height);
+  await page.locator('#sim-panel-handle').click();
+  expect(await panelH(), '點一下沒有收合').toBeLessThan(80);
+  await page.locator('#sim-panel-handle').click();
+  const reopened = await panelH();
+  expect(Math.abs(reopened - dragged), `收合再展開變成 ${reopened}，沒有回到拖出來的 ${dragged}`).toBeLessThan(2);
+
+  // ⚠️ 上面那一段只走記憶體裡的 `openPanelH`，**存進去的那一份要另外驗**：反例實測把
+  // `writePanelPref` 寫壞、記憶體那條留著時，上面三行仍然全綠。收合之後重整要 (a) 回到
+  // 收合狀態、(b) 再展開仍然回得到拖出來的高度。
+  await page.locator('#sim-panel-handle').click();          // 收合
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.waitForFunction(() => Boolean(window.__tree));
+  expect(await panelH(), '收合狀態沒有被記住').toBeLessThan(80);
+  await page.locator('#sim-panel-handle').click();
+  const afterReload = await panelH();
+  expect(Math.abs(afterReload - dragged), `重整後展開變成 ${afterReload}，沒有回到 ${dragged}`).toBeLessThan(2);
+});
+
+/**
+ * ⚠️ `pointercancel` 之後**不會**再有 `pointerup`（Android 的邊緣返回手勢、長按選單、
+ * 旋轉螢幕都會派發它）。拖曳狀態沒清掉的話，`pointermove` 掛在 window 上——之後使用者
+ * 在畫布上平移都會變成在改抽屜高度（2026-09-22 /code-review 實測：56 → 673）。
+ * 這裡刻意用合成事件：要測的就是「非正常結束」這條路，真滑鼠派不出 pointercancel。
+ */
+test('S28. 手機版：拖曳被 pointercancel 中斷之後，畫布上的滑動不會再改抽屜高度', async ({ page, isMobile }) => {
+  test.skip(!isMobile, '桌機沒有可拖曳的抽屜把手');
+  await openSim(page);
+  const moved = await page.evaluate(() => {
+    const handle = document.getElementById('sim-panel-handle')!;
+    const panel = document.getElementById('sim-panel')!;
+    const b = handle.getBoundingClientRect();
+    const opt = { bubbles: true, cancelable: true, pointerId: 1, pointerType: 'touch', clientX: b.x + b.width / 2, clientY: b.y + b.height / 2 };
+    const before = panel.getBoundingClientRect().height;
+    handle.dispatchEvent(new PointerEvent('pointerdown', opt));
+    handle.dispatchEvent(new PointerEvent('pointercancel', opt));
+    dispatchEvent(new PointerEvent('pointermove', { ...opt, clientY: 120 }));   // 畫布上隨便滑一下
+    return { before, after: panel.getBoundingClientRect().height };
+  });
+  expect(moved.after, `被 pointercancel 中斷後抽屜仍然跟著滑動走（${moved.before} → ${moved.after}）`)
+    .toBeCloseTo(moved.before, 0);
+});
+
+test('S29. 手機版：搜尋 sheet 升起時兩顆浮動鍵仍然點得到', async ({ page, isMobile }) => {
+  test.skip(!isMobile, '桌機沒有浮動鍵');
+  await openSim(page);
+  await page.locator('#sim-fab-search').click();
+  await expect(page.locator('#sim-toolbar')).toBeVisible();
+  // ⚠️ 搜尋模式的 sheet 只有一列高，兩顆鍵明明露在它上方——但遮罩與浮動鍵同為 z-index 6
+  // 時由 DOM 順序決勝，遮罩排在後面就把它們整片吃掉，「按 ⋯ 換模式」那條路用指標永遠
+  // 走不到（2026-09-22 /code-review 抓到）。這條守遮罩必須低一階。
+  const fabs = await page.evaluate(() =>
+    [...document.querySelectorAll<HTMLElement>('#sim-fabs button')].map(el => {
+      const r = el.getBoundingClientRect();
+      const top = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+      return { id: el.id, hit: el.contains(top), blocker: top?.id || top?.tagName };
+    }));
+  expect(fabs).toHaveLength(2);
+  expect(fabs.filter(f => !f.hit)).toEqual([]);
+
+  // 真的切得過去：⋯ 按下去要換成完整 sheet，不是只把搜尋收掉。
+  await page.locator('#sim-fab-more').click();
+  await expect(page.locator('#sim-toolbar')).toHaveClass(/is-open/);
+  await expect(page.locator('#sim-toolbar')).not.toHaveClass(/is-search/);
+  await expect(page.locator('#sim-reset')).toBeVisible();
 });
 
 test('S22. 側欄三列合計帶貨幣圖，核心與金幣永遠各一張；文字仍是舊格式', async ({ page }) => {
