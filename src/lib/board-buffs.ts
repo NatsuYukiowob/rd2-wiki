@@ -91,10 +91,19 @@ export interface BuffSide {
 
 export interface BuffInput extends BuffSide {
   /**
-   * 合作模式的隊友盤。對戰模式是 undefined——那條路徑與這個欄位出現之前逐項相同。
-   * ⚠️ 只有排序（方向 0）與共鳴兩條規則讀得到它，其餘五條不跨盤（客戶端 IsCoop 的呼叫者掃過）。
+   * 合作模式的另一盤。對戰模式是 undefined——那條路徑與這個欄位出現之前逐項相同。
+   * ⚠️ 只有排序（單一方向）與共鳴兩條規則讀得到它，其餘五條不跨盤（客戶端 IsCoop 的呼叫者掃過）。
    */
-  partner?: BuffSide;
+  partner?: BuffSide & {
+    /**
+     * 那一盤上「會跨盤打到這一盤」的排序方向（畫面方向）。**沒有預設，兩個呼叫端都要自己指定。**
+     *
+     * ⚠️ 客戶端只有一個方向會跨盤，而畫面上兩盤各自指向對方（實機 2026-09-22 驗過：上面那盤
+     * 箭頭 ↓ 才加到下面那盤），所以這個值在兩份計算裡是相反的：算我的盤時隊友盤畫在上面 → 2，
+     * 算隊友盤時我的盤畫在下面 → 0。給定值寫死成同一個的話，會有一盤靜靜地完全不生效。
+     */
+    crossDir: Dir;
+  };
   /**
    * 跨盤來源在明細文字裡的稱呼（`排序（<這個字> 第 1 列第 2 格 ↑）：…`）。預設「隊友盤」。
    *
@@ -227,14 +236,15 @@ export function boardBuffs(input: BuffInput): CellBuffs[] {
       add('alignment', [j], `排序（${where(j)} ${isSeven(a) ? '四向' : badgeText(a)!.glyph}）：攻擊 +${pct(v)}%`);
     }
 
-    // 跨盤排序：隊友盤上方向 0（或 7 骰點）的排序骰，對我這一欄的整欄三格施加。
+    // 跨盤排序：另一盤上箭頭指著這一盤（crossDir；或 7 骰點四向）的排序骰，對我這一欄的整欄三格施加。
     // ⚠️ 不是射線延伸：客戶端無條件對同一欄（同 W）的 H'=0,1,2 三格施加，與施加者自己在哪一列無關。
-    // ⚠️ 只有方向 0 跨盤；方向 1／2／3 沒有 coop 分支。
+    // ⚠️ 客戶端只有一個方向有 coop 分支（另外三個方向沒有），對到畫面上就是「指向對方那一盤」的
+    //    那一個——所以方向要由呼叫端傳（crossDir），這裡不能寫死，見 BuffInput.partner 的說明。
     const myCol = cellPos(i).col;
     const acrossAligns = partner
       ? cellsIn(partner.board, ALIGNMENT_ID).filter(j => {
           const a = partner.board[j]!;
-          return (isSeven(a) || a.dir === 0) && cellPos(j).col === myCol;
+          return (isSeven(a) || a.dir === partner.crossDir) && cellPos(j).col === myCol;
         })
       : [];
     for (const j of acrossAligns) {

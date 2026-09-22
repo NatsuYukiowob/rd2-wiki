@@ -227,7 +227,10 @@ if (grid && deckH && deckRow && deckLegend && picker && pickerClose && live && c
     const { self, other } = sidesFor(active);
     return boardBuffs({
       ...self.buffSide(),
-      partner: coop ? other.buffSide() : undefined,
+      // ⚠️ crossDir 是「另一盤上會跨盤打到這一盤的排序方向」，兩份剛好相反：算我的盤時隊友盤畫在
+      // 上面，它箭頭往下（2）那顆才打到我；算隊友盤那一份時我的盤在下面，要的是箭頭往上（0）。
+      // 兩邊寫同一個值的話，會有一盤靜靜地完全沒有跨盤排序。
+      partner: coop ? { ...other.buffSide(), crossDir: other === me ? 0 : 2 } : undefined,
       // ⚠️ 明細文字裡的「另一盤」要照**使用者看到的**那一盤講：算隊友盤的加成時 other 就是
       // 使用者自己的盤，照 boardBuffs() 的預設印出來會寫成「隊友盤」，指到相反的地方。
       partnerLabel: other === me ? MY_BOARD : PARTNER_BOARD,

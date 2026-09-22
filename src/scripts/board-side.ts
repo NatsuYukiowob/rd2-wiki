@@ -162,7 +162,11 @@ export function createSide(dom: SideDom, opts: SideOptions): Side {
   const runeOf = (): ((id: string) => number | null) =>
     boardRunes(opts.offgame.effects, levelSource(state.mode, opts.simSave()));
 
-  /** 這一盤餵給 boardBuffs() 的樣子。要算跨盤加成時，兩盤各拿自己的這個當對方的 `partner`。 */
+  /**
+   * 這一盤餵給 boardBuffs() 的樣子。要算跨盤加成時，兩盤各拿自己的這個當對方的 `partner`
+   * ——⚠️ 那裡還要補上 `crossDir`（跨盤的排序方向，兩盤相反），這裡給不出來：它是版面決定的，
+   * 這一盤自己不知道畫在上面還是下面。
+   */
   const buffSide = (): BuffSide => ({
     board: state.board,
     params: id => opts.statParams[id] ?? [],
