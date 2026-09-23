@@ -387,7 +387,8 @@
 #board-grid.hide-pips .cell-pips, #partner-grid.hide-pips .cell-pips { visibility: hidden; }
 /* 工具列跟著骰盤本體置中：它是浮在骰盤正下方的一列按鈕，骰盤本身已經置中，工具列留在
    左邊會顯得跟上面那塊對不齊。justify-content 不影響 #board-tools 自己的框大小
-   （B3d／B8d 驗的是尺寸，不是位置），所以跟「按下前後尺寸不變」不衝突。 */
+   （B3d／B8d 驗的是尺寸，不是位置），所以跟「按下前後尺寸不變」不衝突。
+   按鈕外觀在 components.css 的 `.btn`（2026-09-23）；「隱藏星數」開著是金框，框寬不變所以尺寸不跳。 */
 #board-tools {
   display: flex;
   flex-wrap: wrap;
@@ -395,22 +396,6 @@
   gap: var(--space-3);
   margin-top: var(--space-5);
 }
-/* ⚠️ 靜止是 --surface-1，hover 才是 --surface-3。CLAUDE.md 的三階是
-   「靜態頁的面 → 1／浮在畫布上的 chrome → 2／hover 與選中的填色 → 3」；
-   把靜止的按鈕設成 3，它就跟拖曳落點高亮 .board-cell.drop-target 同色了。 */
-#board-tools button {
-  padding: var(--space-2) var(--space-4);
-  background: var(--surface-1);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--r-pill);
-  color: var(--fg);
-  cursor: pointer;
-  font-size: var(--fs-sm);
-}
-#board-tools button:hover { background: var(--surface-3); }
-/* 「隱藏星數」開著時的視覺：只換底色（跟選中的三階同一色），不加文字也不加會改變尺寸的
-   指示元素——按鈕文字固定不變，寬度才不會跳動（見 board.astro 與 board.ts 的同一段註解）。 */
-#board-hide-pips[aria-pressed="true"] { background: var(--surface-3); }
 #board-export-out { margin-top: var(--space-5); }
 #board-export-img { max-width: 100%; border-radius: var(--r-md); }
 .board-hint { color: var(--muted); font-size: var(--fs-sm); }
@@ -424,10 +409,10 @@
    三列一起列——漏掉一列的長相是「這一頁的切換鈕有的按下去會縮、有的不會」，而兩者外觀相同。
    內層 `:is()` 的具體度是三個 id 裡最高的 (1,0,0)，跟原本單寫 #offgame-mode 一樣，外層 `:is()`
    算出來的具體度因此一個字都沒變（下面減少動態那兩條要跟這裡逐字相同，理由見該處）。 */
-:is(#board-tools button, #picker-close, .picker-dice, .pips-row button, .sp-row button, :is(#board-coop-mode, #offgame-mode, #partner-offgame-mode) button:not([aria-disabled="true"])) {
+:is(#picker-close, .picker-dice, .pips-row button, .sp-row button, :is(#board-coop-mode, #offgame-mode, #partner-offgame-mode) button:not([aria-disabled="true"])) {
   transition: transform var(--t-press) var(--e-out);
 }
-:is(#board-tools button, #picker-close, .picker-dice, .pips-row button, .sp-row button, :is(#board-coop-mode, #offgame-mode, #partner-offgame-mode) button:not([aria-disabled="true"])):not(:disabled):active {
+:is(#picker-close, .picker-dice, .pips-row button, .sp-row button, :is(#board-coop-mode, #offgame-mode, #partner-offgame-mode) button:not([aria-disabled="true"])):not(:disabled):active {
   transform: scale(var(--p-press));
 }
 
@@ -603,15 +588,15 @@
    按壓回饋之後才需要。新增元件時記得同一件事：動效與「怎麼關掉它」要放在同一個檔。 */
 @media (prefers-reduced-motion: reduce) {
   /* ⚠️ 選擇器要跟上面那兩條**一模一樣**，包含 `:is()` 的包法與 `:not(:disabled)`。
-     `:is()` 的具體度等於它引數裡最高的那一個——`:is(#board-tools button, …):not(:disabled):active`
+     `:is()` 的具體度等於它引數裡最高的那一個——`:is(#picker-close, …):not(:disabled):active`
      是 (1,3,1)（最高的引數是切換鈕那一條 `… button:not([aria-disabled="true"])` ＝ (1,1,1)，
-     再加 `:not(:disabled)` 與 `:active` 各一），而攤開來寫的 `#board-tools button:active`
-     只有 (1,1,1)，會被壓過去。
+     再加 `:not(:disabled)` 與 `:active` 各一），而攤開來寫的 `#picker-close:active`
+     只有 (1,1,0)，會被壓過去。
      2026-08-26 實測踩到：reduce 之下按鈕照樣縮，是 E2E 的 D18 抓出來的。 */
-  :is(#board-tools button, #picker-close, .picker-dice, .pips-row button, .sp-row button, :is(#board-coop-mode, #offgame-mode, #partner-offgame-mode) button:not([aria-disabled="true"])) {
+  :is(#picker-close, .picker-dice, .pips-row button, .sp-row button, :is(#board-coop-mode, #offgame-mode, #partner-offgame-mode) button:not([aria-disabled="true"])) {
     transition: none;
   }
-  :is(#board-tools button, #picker-close, .picker-dice, .pips-row button, .sp-row button, :is(#board-coop-mode, #offgame-mode, #partner-offgame-mode) button:not([aria-disabled="true"])):not(:disabled):active {
+  :is(#picker-close, .picker-dice, .pips-row button, .sp-row button, :is(#board-coop-mode, #offgame-mode, #partner-offgame-mode) button:not([aria-disabled="true"])):not(:disabled):active {
     transform: none;
   }
 }

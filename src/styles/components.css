@@ -123,6 +123,78 @@ a.row-card:active {
   box-shadow: inset 0 1px 3px rgb(0 0 0 / 55%), inset 0 -1px 0 var(--hair);
 }
 
+/* 實體按鈕（2026-09-23 骰桌 PR ③）：鍵帽＝漸層面＋上緣 --hair 高光＋下緣 --depth 的硬邊。
+   按下去縮一下、把硬邊收掉——「鍵被按進去了」。配色分兩種：.btn-pri（金，一頁最多一顆）、.btn-alt。
+   ⚠️ 硬邊用 box-shadow 不用 border-bottom：border 會改變盒子高度，按下去收掉時整條工具列跳 3px
+   （B3d／B8d 量的就是工具列尺寸）。
+   ⚠️ 不要在 :active 裡寫 transition-duration（單值會覆寫整份清單，理由見 .card）。 */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-btn);
+  color: var(--fg);
+  font: inherit;
+  font-size: var(--fs-sm);
+  line-height: 1.2;
+  cursor: pointer;
+  transition:
+    transform var(--t-press) var(--e-out),
+    box-shadow var(--t-press) var(--e-out),
+    filter var(--t-fast) var(--e-out);
+}
+.btn-alt {
+  background: var(--surface-2);
+  background: var(--btn-alt-bg);
+  box-shadow: inset 0 1px 0 var(--hair), 0 var(--depth) 0 var(--ink);
+}
+.btn-pri {
+  background: var(--gold);
+  background: var(--btn-pri-bg);
+  border-color: var(--btn-pri-line);
+  color: var(--btn-pri-fg);
+  font-weight: 700;
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 45%), 0 var(--depth) 0 var(--btn-pri-edge);
+}
+.btn:not(:disabled):hover {
+  filter: brightness(1.1);
+}
+/* 開著的切換鈕（aria-pressed，例如「隱藏星數」）＝選中狀態，跟 .chip 的選中同一組：金框＋金色混底。 */
+.btn[aria-pressed='true'] {
+  border-color: var(--gold);
+  background: var(--surface-3);
+  background: color-mix(in srgb, var(--gold) 16%, var(--surface-2));
+}
+/* ⚠️ 寫在 :hover 與 [aria-pressed] 之後：同具體度，後到者勝。 */
+.btn-alt:not(:disabled):active {
+  box-shadow: inset 0 1px 0 var(--hair), 0 0 0 var(--ink);
+  transform: scale(var(--p-press));
+}
+.btn-pri:not(:disabled):active {
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 45%), 0 0 0 var(--btn-pri-edge);
+  transform: scale(var(--p-press));
+}
+.btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+/* 高對比模式：漸層與厚度都會消失，框線是唯一的輪廓；選中改用 Highlight 讓它跟沒選中分得出來
+   （系統色換掉作者的框色之後，金框與一般框會變成同一個 ButtonBorder）。 */
+@media (forced-colors: active) {
+  .btn {
+    border-color: ButtonBorder;
+  }
+  .btn[aria-pressed='true'] {
+    forced-color-adjust: none;
+    border-color: Highlight;
+    background: Highlight;
+    color: HighlightText;
+  }
+}
+
 /* --- 首頁 --- */
 /* 六張入口：桌機 3×2、窄一點 2×3、手機一欄。minmax 的下限決定斷點，不用 media query。
    auto-fill 而不是 auto-fit，理由同 `.guide-cards.is-content` 的註解。 */
@@ -423,6 +495,7 @@ a.row-card:active {
 @media (prefers-reduced-motion: reduce) {
   .card,
   .row-card,
+  .btn,
   .chip,
   .chip .branch-dot {
     transition: none;
@@ -432,6 +505,8 @@ a.row-card:active {
   a.card:active,
   a.row-card:hover,
   a.row-card:active,
+  .btn-alt:not(:disabled):active,
+  .btn-pri:not(:disabled):active,
   .chip:active {
     transform: none;
   }

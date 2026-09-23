@@ -222,9 +222,9 @@ const offgamePayload = {
          「隱藏星數」用 aria-pressed 表達開關狀態，視覺上只換底色（跟 hover 共用同一色階），
          不加會撐寬按鈕的圖示或文字——理由同一段見 board.css 的骰盤區塊。 -->
     <div id="board-tools">
-      <button type="button" id="board-clear">清空骰盤</button>
-      <button type="button" id="board-export">產生分享圖</button>
-      <button type="button" id="board-hide-pips" aria-pressed="false">隱藏星數</button>
+      <button type="button" id="board-clear" class="btn btn-alt">清空骰盤</button>
+      <button type="button" id="board-export" class="btn btn-pri">產生分享圖</button>
+      <button type="button" id="board-hide-pips" class="btn btn-alt" aria-pressed="false">隱藏星數</button>
     </div>
 
       <!-- 明細面板：卡片只放數值，來源拆解放這裡（Yuki 2026-09-19：避免卡片過大）。內容由

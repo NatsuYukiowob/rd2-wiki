@@ -76,6 +76,9 @@
   --r-sm: 6px;
   --r-md: 8px;
   --r-lg: 12px;
+  /* 按鈕（.btn／.seg）專用的一階：比卡片的 --r-lg 小、比晶片的 --r-md 大——按鈕要看起來是
+     「能按下去的實體鍵」，不是卡片也不是標籤（spec §4.2）。 */
+  --r-btn: 10px;
   --r-pill: 999px;
 
   /* 字級：--fs-base 是 1rem，往下三階給輔助資訊、往上四階給標題。
@@ -141,6 +144,15 @@
      （dice.css，--shadow-1）。**調 --face-float 的時候記得那四個不會跟著動**——要不要把
      它們一起收進來是視覺決定，得先給 Yuki 看對照圖（2026-08-26 code review 提出）。 */
   --face-float: inset 0 1px 0 var(--hair), var(--shadow-3);
+  /* 實體按鍵兩組（spec §4.3）。主按鈕＝金色鍵帽：字色對底色 8.34:1；--btn-pri-edge 是鍵帽下緣的
+     厚度色（取代 --ink，金色鍵帽底下接深墨色會像一條黑縫）、--btn-pri-line 是框線。
+     次按鈕＝深紫鍵帽，厚度沿用 --ink。
+     ⚠️ 金色只給主按鈕與選中狀態（spec §8）——一頁最多一顆 .btn-pri。 */
+  --btn-pri-bg: linear-gradient(#ffe39a, #f5bc48);
+  --btn-pri-fg: #3a2604;
+  --btn-pri-edge: #8a5c12;
+  --btn-pri-line: #b98422;
+  --btn-alt-bg: linear-gradient(#3a3060, #2c2549);
 
   /* 微互動的節奏（2026-08-26 PR ⑥ 依 Yuki 在動效實驗室定的值調整）。
      跟 --slide-ms 是兩回事：那個是換頁，這幾個是 hover／按壓／進場這種即時回饋。
