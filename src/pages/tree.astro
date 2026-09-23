@@ -41,7 +41,7 @@ const TYPES: Array<[string, string]> = [
       <!-- 手機版才顯示（見下面 CSS）：篩選收進頂部抽屜，預設收起，點這顆按鈕展開/收起
            #filters（切 .open class，接線見 tree-canvas.ts）。桌機版 #filters 本來就常駐
            顯示，不需要這顆按鈕，靠 CSS 媒體查詢隱藏。 -->
-      <button id="filters-toggle" type="button" aria-label="展開篩選" aria-controls="filters">篩選</button>
+      <button id="filters-toggle" class="btn btn-alt" type="button" aria-label="展開篩選" aria-controls="filters">篩選</button>
       <input id="search" type="search" placeholder="搜尋節點名稱、效果、關鍵字…" aria-label="搜尋節點" />
       <!--
         篩選結果的播報。看不見，但仍在無障礙樹裡（.sr-only 用 clip-path，不是 display:none）。
@@ -78,7 +78,7 @@ const TYPES: Array<[string, string]> = [
          只是版面位置與顯示時機不同（CSS 媒體查詢互斥顯示）。 -->
     <nav id="branch-nav" aria-label="分支快速跳轉">
       {BRANCHES.map(([value, label]) => (
-        <button type="button" data-branch={value}>{label}</button>
+        <button type="button" class="chip" data-branch={value}><span class={`branch-dot branch-${value}`} aria-hidden="true"></span>{label}</button>
       ))}
     </nav>
   </div>
@@ -92,7 +92,7 @@ const TYPES: Array<[string, string]> = [
        button[data-branch]，第 18 個任務的 E2E 已經寫死這個結構）。 -->
   <div id="branch-chips">
     {BRANCHES.map(([value, label]) => (
-      <button type="button" data-branch={value}>{label}</button>
+      <button type="button" class="chip" data-branch={value}><span class={`branch-dot branch-${value}`} aria-hidden="true"></span>{label}</button>
     ))}
   </div>
 </Base>
@@ -247,20 +247,11 @@ const TYPES: Array<[string, string]> = [
        的話按鈕會比上面的搜尋框往左凸出 8px（2026-08-18 人工檢視回報）。改動時兩邊一起改。 */
     padding: var(--space-2) var(--space-4);
   }
-  #branch-nav button {
-    background: var(--surface-2);
-    color: var(--fg);
-    border: 1px solid var(--border);
-    border-radius: var(--r-xs);
-    padding: var(--space-2) var(--space-3);
-    font: inherit;
-    font-size: var(--fs-xs);
-    cursor: pointer;
-    white-space: nowrap;
-  }
-  #branch-nav button:hover {
-    background: var(--surface-3);
-    border-color: var(--gold);
+  /* 分支跳轉鈕的外觀是共用的 `.chip`（2026-09-23 骰桌 PR ④）。它們是動作鈕不是篩選：沒有選中狀態，
+     色點常亮——`.chip .branch-dot` 預設的 0.45 是篩選鈕「這一系沒開」的意思，放在這裡會說謊。
+     ⚠️ 選擇器要到 (1,1,0) 才蓋得過 `.chip .branch-dot` 的 (0,2,0)。 */
+  :is(#branch-nav, #branch-chips) .branch-dot {
+    opacity: 1;
   }
 
   /* 手機版分支切換列：預設（桌機寬度）不顯示，下面的手機媒體查詢會改成固定在畫面底部的
@@ -269,45 +260,25 @@ const TYPES: Array<[string, string]> = [
   #branch-chips {
     display: none;
   }
-  #branch-chips button {
-    background: var(--surface-2);
-    color: var(--fg);
-    border: 1px solid var(--border);
-    border-radius: var(--r-xs);
-    padding: var(--space-2) var(--space-3);
-    font: inherit;
-    font-size: var(--fs-xs);
-  }
 
   /* 展開／收起篩選面板。2026-08-22 起桌機也有這顆（以前只在手機版顯示，桌機的篩選鈕常駐
-     攤在工具列上）。 */
+     攤在工具列上）。外觀在 components.css 的 `.btn`（2026-09-23）；這裡只留金點與箭頭需要的間距。 */
   #filters-toggle {
-    display: inline-flex;
-    align-items: center;
     gap: var(--space-2);
-    background: var(--surface-2);
-    color: var(--fg);
-    border: 1px solid var(--border);
-    border-radius: var(--r-xs);
-    padding: var(--space-2) var(--space-3);
-    font: inherit;
-    cursor: pointer;
   }
-  #filters-toggle:hover {
-    border-color: var(--border-strong);
-  }
-  /* 按下去縮一下（2026-08-26 PR ⑥）。⚠️ #filters-toggle 縮的是**按鈕本體**，它的 ::after
-     箭頭已經有自己的 transform（展開時轉向），兩者不會互相蓋掉——一個在元素上、一個在
-     偽元素上。 */
-  :is(#filters-toggle, #filter-clear, #branch-chips button) {
+  /* 按下去縮一下（2026-08-26 PR ⑥）。`#filters-toggle`（`.btn`）與分支跳轉鈕（`.chip`）的按壓在
+     components.css，跟著元件走（2026-09-23）。 */
+  #filter-clear {
     transition: transform var(--t-press) var(--e-out);
   }
-  :is(#filters-toggle, #filter-clear, #branch-chips button):active {
+  #filter-clear:active {
     transform: scale(var(--p-press));
   }
   /* 展開狀態：箭頭轉向。選擇器綁 aria-expanded，樣式與無障礙狀態不會各講各的。
      桌機的面板是往右邊長出來的，所以箭頭是左右向（▸ 收起／◂ 展開），不是上下。
-     手機版是往下掉的抽屜，下面的媒體查詢換回 ▾。 */
+     手機版是往下掉的抽屜，下面的媒體查詢換回 ▾。
+     ⚠️ 按下去時 `.btn` 縮的是**按鈕本體**，這個箭頭已經有自己的 transform（展開時轉向），兩者不會
+     互相蓋掉——一個在元素上、一個在偽元素上。 */
   #filters-toggle::after {
     content: '▸';
     color: var(--muted);
@@ -449,25 +420,27 @@ const TYPES: Array<[string, string]> = [
       box-shadow: var(--shadow-3);
       z-index: 5;
     }
+    /* 320px 五顆要塞得下（`.chip` 的 --space-3 內距＋色點在 320px 超出 8px，CL3）。 */
+    #branch-chips .chip {
+      padding-inline: var(--space-2);
+    }
   }
 
   /* 減少動態：篩選開關這一份（2026-08-26 從舊的 `global.css` 總表搬過來）。
      ⚠️ 它必須待在這裡：#filters-toggle 的本體就在這份 scoped style 裡，
      全站 CSS 那邊沒有任何一條規則定義它。放進 dice.css 的話 /tree 根本載不到。 */
   @media (prefers-reduced-motion: reduce) {
-    #filters-toggle,
+    /* 按鈕本體的 transition 由 components.css 的 `.btn` reduce 關掉，這裡只管兩個偽元素。 */
     #filters-toggle::before,
     #filters-toggle::after {
       transition: none;
     }
-    /* ⚠️ 這兩條的選擇器要跟上面那兩條**一模一樣**（連 `:is()` 的包法都要一樣）。
-       `:is()` 的具體度等於引數裡最高的那一個——`:is(#filters-toggle, …, #branch-chips button):active`
-       是 (1,1,1)，攤開來寫的 `#filters-toggle:active` 只有 (1,1,0)，會被壓過去。
-       2026-08-26 實測踩到：reduce 之下按鈕照樣縮，是 E2E 的 D18 抓出來的。 */
-    :is(#filters-toggle, #filter-clear, #branch-chips button) {
+    /* ⚠️ 這兩條的選擇器要跟上面那兩條**一模一樣**：`#filter-clear:active` 是 (1,1,0)，跟上面同一條。
+       2026-08-26 實測踩過「reduce 之下按鈕照樣縮」（選擇器包法不同、具體度輸掉），是 E2E 的 D18 抓出來的。 */
+    #filter-clear {
       transition: none;
     }
-    :is(#filters-toggle, #filter-clear, #branch-chips button):active {
+    #filter-clear:active {
       transform: none;
     }
   }
