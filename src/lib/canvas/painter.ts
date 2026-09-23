@@ -24,7 +24,7 @@ import { centerAlpha, edgeAlpha, edgeColor, focusAlpha, labelVisible, nodeAlpha,
 export interface Ctx2D extends Pick<CanvasRenderingContext2D,
   'save' | 'restore' | 'setTransform' | 'clearRect' | 'beginPath' | 'moveTo' | 'lineTo' | 'arc' | 'closePath' | 'rect'
   | 'stroke' | 'fill' | 'drawImage' | 'fillText' | 'strokeText' | 'setLineDash' | 'measureText'> {
-  globalAlpha: number; lineWidth: number; strokeStyle: string | CanvasGradient | CanvasPattern; fillStyle: string | CanvasGradient | CanvasPattern;
+  globalAlpha: number; globalCompositeOperation: GlobalCompositeOperation; lineWidth: number; strokeStyle: string | CanvasGradient | CanvasPattern; fillStyle: string | CanvasGradient | CanvasPattern;
   font: string; textAlign: CanvasTextAlign; textBaseline: CanvasTextBaseline; lineCap: CanvasLineCap; lineJoin: CanvasLineJoin;
   shadowBlur: number; shadowColor: string; shadowOffsetY: number;
   // 目標瀏覽器都支援，但 lib.dom.d.ts 的簽名跟這裡用到的 radii 形狀（單一數字）對不齊時容易
@@ -93,11 +93,21 @@ export function drawStatic(ctx: Ctx2D, scene: Scene, view: ViewGeometry, theme: 
     ctx.strokeStyle = theme.edge; ctx.lineWidth = EDGE_W; ctx.lineCap = 'round';
     ctx.globalAlpha = centerAlpha(state, state.filteredOut.size === 0) * 0.96;
     for (const [x, y] of c.links) { ctx.beginPath(); ctx.moveTo(c.x, c.y); ctx.lineTo(x, y); ctx.stroke(); }
-    ctx.globalAlpha = centerAlpha(state, state.filteredOut.size === 0);
+    const alpha = centerAlpha(state, state.filteredOut.size === 0);
     // Ruling B：AssetStore 沒有 hires('../tree-center') 這種相對路徑用法，樞紐圖走通用的
     // image(url) 快取，url 就是 scene.center.url（tree.json 產物給的 /assets/tree-center.webp）。
     const img = assets.image(c.url);
-    if (img) ctx.drawImage(img, c.x - c.w / 2, c.y - c.h / 2, c.w, c.h);
+    if (img) {
+      // 跟半透明節點同一件事（見 drawEdges 之後那段）：淡出時先挖掉底下的放射線再畫。
+      if (alpha < 1) {
+        ctx.globalCompositeOperation = 'destination-out'; ctx.globalAlpha = 1;
+        ctx.drawImage(img, c.x - c.w / 2, c.y - c.h / 2, c.w, c.h);
+        ctx.globalCompositeOperation = 'source-over';
+      }
+      ctx.globalAlpha = alpha;
+      ctx.drawImage(img, c.x - c.w / 2, c.y - c.h / 2, c.w, c.h);
+    }
+    ctx.globalAlpha = alpha;
     // textBaseline 明寫（T5）：`drawLabel()` 也設 'alphabetic'，但那是在這行之後才跑的，
     // 這裡靠的是「前面沒有人改過 ctx 的預設值」——離屏位圖那張 ctx 是共用且長命的，
     // 任何人在前面插一行就會讓樞紐標籤默默移位。
@@ -105,6 +115,12 @@ export function drawStatic(ctx: Ctx2D, scene: Scene, view: ViewGeometry, theme: 
     ctx.globalAlpha = 1;
   }
   drawEdges(ctx, scene, theme, state);
+  // 半透明的節點會透出底下穿過它的邊（邊畫到節點中心）。先用節點圖本身的 alpha 當模子、
+  // destination-out 把那塊的邊挖掉，再照 nodeAlpha 畫上去：圖示淡了，但後面不會有線。
+  // 挖的時候不能帶陰影，否則陰影範圍也會被挖成一圈透明。
+  ctx.globalCompositeOperation = 'destination-out'; ctx.globalAlpha = 1;
+  for (const n of scene.nodes) if (nodeAlpha(state, n.id) < 1) drawNodeImage(ctx, n, assets, useHires);
+  ctx.globalCompositeOperation = 'source-over';
   for (const n of scene.nodes) {
     ctx.globalAlpha = nodeAlpha(state, n.id);
     // Ruling H：陰影不吃 transform，1.5／1 這兩個 world 單位常數要自己乘 dk 換算成裝置像素。
