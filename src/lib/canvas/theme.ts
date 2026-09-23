@@ -2,9 +2,8 @@
  * canvas 沒有 CSS 層疊，顏色與字型要自己從 token 讀。**預設值必須等於 tokens.css 的正本**——
  * 它只在沒有版面引擎（linkedom）時用到，但漂移了就是兩份色碼（已刪的舊 SVG 渲染器曾有第二份金色色碼的坑）。
  *
- * ⚠️ 2026-09-06 對 tokens.css 逐值核對過一次，DEFAULT_THEME 有兩個值跟原始 brief 草稿不一致，
- * 已改成以 tokens.css 為準（詳見這個任務的報告檔）：`fg` 是 `#f3f1f6` 不是 `#f7f3ff`；
- * `borderStrong` 是 `#575563` 不是 `#4a4655`。
+ * ⚠️ `tests/lib/canvas/theme.test.ts` 逐值比對這裡與 tokens.css（2026-09-23 補的；
+ * 之前只驗 gold／edge，其餘四個漂過一次才被人工發現）。
  */
 export interface Theme {
   bg: string;
@@ -20,12 +19,12 @@ export interface Theme {
 }
 
 export const DEFAULT_THEME: Theme = {
-  bg: '#17161a',
-  fg: '#f3f1f6',
+  bg: '#18142a',
+  fg: '#f5f1ff',
   edge: '#a89ad3',
   gold: '#ffd66f',
-  surface1: '#26252b',
-  borderStrong: '#575563',
+  surface1: '#28213f',
+  borderStrong: '#5d5090',
   font: "'Noto Sans TC', 'Microsoft JhengHei', sans-serif",
   fontNum: "'Archivo', 'Noto Sans TC', 'Microsoft JhengHei', sans-serif",
   labelPx: 12, // --fs-xs: 0.75rem，用預設 16px 根字級換算

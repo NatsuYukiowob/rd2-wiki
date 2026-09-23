@@ -5,20 +5,19 @@
  * 避免各頁面各自定義出不一致的顏色。
  */
 :root {
-  /* 炭燼（2026-08-26）。**這裡刻意不再等於遊戲原圖的底色**（原本是 `#2f2942`，取自原圖的
-     背景矩形）。理由是原圖的底色與卡片面同色系，`--bg` 到 `--surface-1` 的對比只有 1.04，
-     凹進去的元素在卡片上看不出層次；魔法紫疊在紫底上也只有 3.94。換成中性炭燼之後兩者
-     分別是 1.19 與 4.51，而且屬性色一個都不用動。
-     ⚠️ 節點底盤仍是遊戲原作的色（`#453e60`／`#423a5b`）：那是烤進 `data/icons/` 238 張 PNG
-     的點陣圖，239 顆裡有 193 顆的底盤直接是遊戲貼圖，CSS 與 SVG 都改不動（2026-08-26 實測，
-     見 tools/render-nodes.ts）。所以「站台底色跟著原圖走」這條約束到此為止，別再拿它當理由。 */
-  --bg: #17161a;
-  --fg: #f3f1f6;
-  --muted: #a5a2ae;
+  /* 骰桌（2026-09-23）。**底色回到紫色系，跟節點底盤（`#453e60`／`#423a5b`，烤進 data/icons/
+     238 張 PNG、改不動）同一個色系**，畫布不再是「紫色補丁貼在灰底上」。
+     2026-08-26 離開暗紫的理由是舊色階太擠（`--bg`→`--surface-1` 只有 1.04），不是紫色本身；
+     這一版的色階各階 1.07–1.18、底到卡片 1.17，與炭燼同級，魔法紫疊在卡片上 4.52、
+     `--muted` 疊在 `--surface-3` 上 4.88（全部過 4.5）。對比數字見
+     docs/superpowers/specs/2026-09-23-visual-redesign-design.md §4.1（不進版控）。 */
+  --bg: #18142a;
+  --fg: #f5f1ff;
+  --muted: #b0a8c8;
   --gold: #ffd66f;
   /* 局外加成的貢獻（/board 數值卡片的括號），對應遊戲局內面板的綠色。站台只有深色主題，一組值。 */
   --bonus: #7ee08a;
-  --border: #3f3e49;
+  --border: #463b6e;
   /* 詳情卡片換頁的節奏。**JS 會讀這兩個值**（src/scripts/tree-canvas.ts 的 SLIDE_MS），
      動畫收尾的時機跟這裡同步——只改 CSS 不改 JS 的話，收尾會在動畫還沒跑完就把
      inline style 清掉，看起來像動到一半被切斷。
@@ -98,16 +97,16 @@
      上面。三階由低到高：卡片 → 浮起的列與選單 → hover／選中的填色。
      舊的 --panel 已經拆掉：一個東西兩個名字，正是這一輪要收掉的漂移來源。 */
   /* --surface-0 比卡片還低一階，只給「凹進去」的元素用（目前是 /dice 的數值 pill）。
-     ⚠️ 它不是「比 --bg 再深一階」：舊暗紫階梯裡 --surface-0 確實比 --bg 深（對比 1.13），
-     炭燼階梯裡反過來比 --bg 淺（1.06）。這不影響任何畫面，因為 .stat-pill 只出現在卡片
-     （--surface-1）上、從不貼著 --bg；要看的是 --surface-0 → --surface-1 這一階＝1.11。
-     那一階比舊的 1.18 淺，但 --border 疊在 --surface-1 上從 1.31 升到 1.44，pill 的邊界
-     反而更清楚，所以沒有補償。要再深就往 #17161b 走（回到 1.18），代價是它與 --bg 同值。 */
-  --surface-0: #1d1c21;
-  --surface-1: #26252b;
-  --surface-2: #302f37;
-  --surface-3: #3c3b45;
-  --border-strong: #575563;
+     它比 --bg 淺（對比 1.07）不是更深——這不影響任何畫面，因為 .stat-pill 只出現在卡片
+     （--surface-1）上、從不貼著 --bg；要看的是 --surface-0 → --surface-1 這一階＝1.10。 */
+  --surface-0: #1f1935;
+  --surface-1: #28213f;
+  --surface-2: #342b52;
+  --surface-3: #3f3563;
+  --border-strong: #5d5090;
+  /* 頁頂暈光：body 背景的第一層，只在頁面頂端一圈微微提亮，讓 --bg 不是一整片死平的紫。
+     是 <image>（漸層）不是顏色，所以只能放在 background-image 那一層，不能拿去當 color。 */
+  --bg-glow: radial-gradient(ellipse 80% 60% at 50% 0%, #221b3c, transparent 70%);
 
   /* 陰影：跟表面層次配對用。--shadow-3 是浮在畫布上的東西（下拉選單、詳情面板）。 */
   --shadow-1: 0 1px 2px rgb(0 0 0 / 25%);
@@ -121,9 +120,15 @@
      你漏了一個。這是這一輪一路在收的漂移類別（--panel、render.ts 的金色、board-export 的
      fallback 都是同一族）。
      疊放順序有意義：inset 高光在最上、下緣硬邊次之、外圈柔影在最外。 */
-  --hair: rgb(255 255 255 / 7%);
-  --face: inset 0 1px 0 var(--hair), 0 2px 0 rgb(0 0 0 / 35%), var(--shadow-2);
-  --face-lift: inset 0 1px 0 var(--hair), 0 calc(2px + var(--p-lift)) 0 rgb(0 0 0 / 35%), var(--shadow-3);
+  --hair: rgb(255 255 255 / 12%);
+  /* 實體厚度（2026-09-23 骰桌）：面的下緣那條硬邊的顏色與厚度。紫底上 rgb(0 0 0 / 35%) 會
+     糊成一片髒灰，改用一個比 --bg 更深的紫（--ink）；厚度從 2px 加到 3px，面才「站得起來」。
+     ⚠️ --depth 一定要是 token：元件裡寫 `0 3px 0` 會被 tokens.test.ts 的裸 px 檢查放過
+     （box-shadow 不在掃描名單），然後 --face-lift 的 calc 就跟它對不上。 */
+  --ink: #0f0c1c;
+  --depth: 3px;
+  --face: inset 0 1px 0 var(--hair), inset 0 0 0 1px rgb(255 255 255 / 3%), 0 var(--depth) 0 var(--ink), var(--shadow-2);
+  --face-lift: inset 0 1px 0 var(--hair), inset 0 0 0 1px rgb(255 255 255 / 3%), 0 calc(var(--depth) + var(--p-lift)) 0 var(--ink), var(--shadow-3);
   /* 浮在畫布上的面（詳情面板、下拉選單）不要下緣硬邊：硬邊在講「它坐在某個平面上」，
      而這兩個東西沒有坐在任何東西上。
      ⚠️ **這一輪只換了兩個**：`#detail`（detail.css）與 `#site-nav .nav-menu-items`
@@ -213,7 +218,7 @@
 /* 減少動態：把 --face-lift 的下緣硬邊壓回跟 --face 同一階。
  *
  * 起因（2026-08-26 code review）：`components.css`／`dice.css` 的 reduce 區塊只關掉
- * `transform`，硬邊仍然是 `calc(2px + var(--p-lift))` = 4px——卡片不動、影子卻往下掉 2px，
+ * `transform`，硬邊仍然是 `calc(var(--depth) + var(--p-lift))` = 5px——卡片不動、影子卻往下掉 2px，
  * 影子脫離了它應該在追的那個元素。
  *
  * ⚠️ **為什麼改在這裡而不是在元件的 reduce 區塊裡寫 `--p-lift: 0px`**：那樣沒有用，實測
@@ -226,6 +231,6 @@
  * 守門：`tests/e2e/chrome.spec.ts` 的 D7b（reduce 之下硬邊不准比靜止時大）。 */
 @media (prefers-reduced-motion: reduce) {
   :root {
-    --face-lift: inset 0 1px 0 var(--hair), 0 2px 0 rgb(0 0 0 / 35%), var(--shadow-3);
+    --face-lift: inset 0 1px 0 var(--hair), inset 0 0 0 1px rgb(255 255 255 / 3%), 0 var(--depth) 0 var(--ink), var(--shadow-3);
   }
 }

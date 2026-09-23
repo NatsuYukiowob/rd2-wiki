@@ -53,13 +53,13 @@ function cssVar(name: string, fallback: string): string {
 
 function palette() {
   return {
-    bg: cssVar('--bg', '#17161a'),
-    surface: cssVar('--surface-1', '#26252b'),
-    chip: cssVar('--surface-2', '#302f37'),
-    borderStrong: cssVar('--border-strong', '#575563'),
-    border: cssVar('--border', '#3f3e49'),
-    fg: cssVar('--fg', '#f3f1f6'),
-    muted: cssVar('--muted', '#a5a2ae'),
+    bg: cssVar('--bg', '#18142a'),
+    surface: cssVar('--surface-1', '#28213f'),
+    chip: cssVar('--surface-2', '#342b52'),
+    borderStrong: cssVar('--border-strong', '#5d5090'),
+    border: cssVar('--border', '#463b6e'),
+    fg: cssVar('--fg', '#f5f1ff'),
+    muted: cssVar('--muted', '#b0a8c8'),
     gold: cssVar('--gold', '#ffd66f'),
   };
 }
