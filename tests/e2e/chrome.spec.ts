@@ -8,7 +8,7 @@ import { test, expect } from '@playwright/test';
 import { resolveColor, settleEnter } from './probe';
 import sharp from 'sharp';
 
-test('D1. 導覽列沾在視窗頂端，圖鑑的篩選列沾在導覽列正下方，兩者都不被卡片蓋掉', async ({ page }) => {
+test('D1. 導覽列沾在視窗頂端，圖鑑的篩選列沾在導覽列正下方，兩者都不被卡片蓋掉', { tag: '@mobile' }, async ({ page }) => {
   await page.goto('/dice');
   const nav = page.locator('#site-nav');
   const filters = page.locator('.filter-bar');
@@ -132,7 +132,7 @@ test('D5. 鍵盤 Tab 過去的元素一定有焦點框（全站共用的那一�
  * 條件式跳過，那是假綠。現在把視窗高度寫死成 1600，前提就由測試自己保證；哪天 /guide 真的
  * 長到 1600 以上，會**紅在下面那句 expect**（附說明），而不是消失。
  */
-test('D6. 內容不滿一屏時 footer 沉到視窗底部，不會停在畫面中間', async ({ page }) => {
+test('D6. 內容不滿一屏時 footer 沉到視窗底部，不會停在畫面中間', { tag: '@mobile' }, async ({ page }) => {
   const VH = 1600;
   await page.setViewportSize({ width: page.viewportSize()!.width, height: VH });
   await page.goto('/guide');
@@ -182,7 +182,7 @@ test('D7. 卡片換頁的過場時間吃 --slide-ms；使用者要求減少動�
   expect(reduced.card, 'hover 抬升的過場沒有被關掉').toBe('0s');
 });
 
-test('D9. 導覽列永遠是一行：每一項都在同一列，高度不吃掉畫面', async ({ page }) => {
+test('D9. 導覽列永遠是一行：每一項都在同一列，高度不吃掉畫面', { tag: '@mobile' }, async ({ page }) => {
   // 沾頂的導覽列一換行就等於永久佔掉畫面。手機寬度下中文會在任意兩字之間斷開，
   // 實測 Pixel 7 上「rd2-wiki」「骰子樹」「圖鑑」各折成兩行，nav 高到 190px。
   await page.goto('/dice');
@@ -256,7 +256,7 @@ test('D12. 篩選切換鈕換行時列與列之間有縫，而且焦點框不被
   expect(clip.groupOverflowX).toBe('visible');
 });
 
-test('D13. 窄螢幕：導覽列自己橫向捲動，不換行也不把整份文件推寬', async ({ page, isMobile }) => {
+test('D13. 窄螢幕：導覽列自己橫向捲動，不換行也不把整份文件推寬', { tag: '@mobile' }, async ({ page, isMobile }) => {
   // 2026-08-23 加了第六個入口「骰子樹-模擬器(beta)」之後，六項在 320px 要 389px，塞不下。
   // 裁決（Yuki 指定）是「讓他可以左右拖動即可」——但捲的必須是**導覽列自己**：
   // 讓整份文件橫捲會踩到 /board 的 B13（320／360／390／412 都不得出現橫向捲動），
@@ -719,7 +719,7 @@ test('D17b. 減少動態：進場整組不跑，而且卡片是看得見的', as
  * ⚠️ 卡片是 `<a>`，在原地放開會觸發 click 導航掉、元素就不見了——所以放開前一定要先把
  * 游標移開（實測過：不移開的話讀「放開後」那一步會在 locator timeout 掛掉）。
  */
-test('D18. 按住時縮一下，放開回原狀；reduce 之下整組關掉', async ({ page }) => {
+test('D18. 按住時縮一下，放開回原狀；reduce 之下整組關掉', { tag: '@mobile' }, async ({ page }) => {
   const CASES = [
     { path: '/', selector: '.home-card' },
     { path: '/dice', selector: '.chip' },
@@ -863,7 +863,7 @@ test('D20. 品牌標不改連結名稱、看得見、高對比模式下不消失
  * 告訴使用者「這裡還能往右滑」的線索。品牌標多了 20px 之後，Pixel 7（412px）上它被整個
  * 推出畫面，下拉裡那幾頁在手機上等於沒有入口。
  */
-test('D21. 手機導覽列最後一項至少露出一截，看得出還能往右滑', async ({ page, isMobile }) => {
+test('D21. 手機導覽列最後一項至少露出一截，看得出還能往右滑', { tag: '@mobile' }, async ({ page, isMobile }) => {
   test.skip(!isMobile, '桌機導覽列放得下全部項目，沒有捲動');
   await page.goto('/');
   const r = await page.evaluate(() => {

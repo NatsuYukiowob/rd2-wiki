@@ -200,7 +200,7 @@ const totals = (page: Page) => ({
   owned: page.locator('#sim-owned-count'),
 });
 
-test('S0. 骨架：初始只有起始骰子、資源 0，工具列每一項都在', async ({ page }) => {
+test('S0. 骨架：初始只有起始骰子、資源 0，工具列每一項都在', { tag: '@mobile' }, async ({ page }) => {
   await openSim(page);
   const t = totals(page);
   await expect(t.owned).toHaveText(`${FREE_IDS.length} / ${NODE_COUNT}`);
@@ -384,7 +384,7 @@ test('S10. 能力彙總把同名效果合起來，Esc 關得掉', async ({ page 
   await expect(page.locator('#sim-ability-modal')).toBeHidden();
 });
 
-test('S11. 拖曳畫布不算點選', async ({ page }) => {
+test('S11. 拖曳畫布不算點選', { tag: '@mobile' }, async ({ page }) => {
   await openSim(page);
   const box = await nodeRect(page, READY);
   const safe = await safeBox(page);
@@ -412,7 +412,7 @@ test('S11. 拖曳畫布不算點選', async ({ page }) => {
  * ⚠️ 為什麼不是靠 S1：S1 只點一顆，而那一顆恰好沒被蓋到就永遠是綠的——把 `pointer-events`
  * 與「符文標籤預設隱藏」兩條防線同時拿掉，S1 照樣過。**逐顆掃**才守得住。
  */
-test('S13. 每顆節點的圖示中心命中的是它自己，不是隔壁那顆', async ({ page }) => {
+test('S13. 每顆節點的圖示中心命中的是它自己，不是隔壁那顆', { tag: '@mobile' }, async ({ page }) => {
   await openSim(page);
   // canvas 版的命中判定是 `hit.ts` 的純幾何（scene 的節點矩形，由後往前找），不再牽涉
   // 標籤的 pointer-events——但「哪一顆蓋住哪一顆」這件事仍然只有把 241 顆全掃一遍才看得見：
@@ -657,7 +657,7 @@ test('S19. toast 是常駐的 live region，不靠 hidden 收放', async ({ page
  * 現在 sim.ts 在 ≤720px 把 `<footer>` 搬進抽屜最底，所以要驗的改成「它在抽屜裡、而且
  * 捲到底讀得到」。**這是刻意推翻一條既有不變量，不是回歸。**
  */
-test('S12. 手機版：著作權在抽屜裡讀得到，而且整頁仍然不捲動', async ({ page, isMobile }) => {
+test('S12. 手機版：著作權在抽屜裡讀得到，而且整頁仍然不捲動', { tag: '@mobile' }, async ({ page, isMobile }) => {
   test.skip(!isMobile, '桌機的著作權留在頁面底部，不搬進側欄');
   await openSim(page);
   await expect(page.locator('#sim-panel footer')).toContainText('111 Percent Inc.');
@@ -681,7 +681,7 @@ test('S12. 手機版：著作權在抽屜裡讀得到，而且整頁仍然不捲
  * 2026-09-22 手機版重排的四條驗收，全部是**幾何斷言**（CLAUDE.md：動版面不看截圖）。
  * 改之前在 390×844 量到的基準：畫布可見高度 368px ／ 844 ＝ 44%。
  */
-test('S24. 手機版：畫布拿到視窗八成以上的高度', async ({ page, isMobile }) => {
+test('S24. 手機版：畫布拿到視窗八成以上的高度', { tag: '@mobile' }, async ({ page, isMobile }) => {
   test.skip(!isMobile, '桌機的工具列與側欄本來就常駐，這條講的是手機版面');
   await openSim(page);
   const geo = await page.evaluate(() => {
@@ -700,7 +700,7 @@ test('S24. 手機版：畫布拿到視窗八成以上的高度', async ({ page, 
   expect(geo.barTop).toBeGreaterThanOrEqual(geo.vh);
 });
 
-test('S25. 手機版：兩個下拉都夾在視口內，持有資源輸入框都摸得到', async ({ page, isMobile }) => {
+test('S25. 手機版：兩個下拉都夾在視口內，持有資源輸入框都摸得到', { tag: '@mobile' }, async ({ page, isMobile }) => {
   test.skip(!isMobile, '桌機的工具列貼左上，下拉不會撞到右邊界');
   await openSim(page);
   await openTools(page);
@@ -728,7 +728,7 @@ test('S25. 手機版：兩個下拉都夾在視口內，持有資源輸入框都
   expect(reachable.filter(x => !x.ok)).toEqual([]);
 });
 
-test('S26. 手機版：選了節點之後詳情的主按鈕看得到而且點得到', async ({ page, isMobile }) => {
+test('S26. 手機版：選了節點之後詳情的主按鈕看得到而且點得到', { tag: '@mobile' }, async ({ page, isMobile }) => {
   test.skip(!isMobile, '桌機的側欄是整條，詳情不會被抽屜高度夾到');
   await openSim(page);
   await tapNode(page, WITH_KIDS);
@@ -769,7 +769,7 @@ test('S26. 手機版：選了節點之後詳情的主按鈕看得到而且點得
   expect(outside, '375×568 下有節點的主按鈕落在抽屜可視範圍外').toEqual([]);
 });
 
-test('S27. 手機版：浮動鍵永遠浮在抽屜上緣之上，而且拖曳過的高度會留著', async ({ page, isMobile }) => {
+test('S27. 手機版：浮動鍵永遠浮在抽屜上緣之上，而且拖曳過的高度會留著', { tag: '@mobile' }, async ({ page, isMobile }) => {
   test.skip(!isMobile, '桌機沒有浮動鍵');
   await openSim(page);
 
@@ -833,7 +833,7 @@ test('S27. 手機版：浮動鍵永遠浮在抽屜上緣之上，而且拖曳過
  * 在畫布上平移都會變成在改抽屜高度（2026-09-22 /code-review 實測：56 → 673）。
  * 這裡刻意用合成事件：要測的就是「非正常結束」這條路，真滑鼠派不出 pointercancel。
  */
-test('S28. 手機版：拖曳被 pointercancel 中斷之後，畫布上的滑動不會再改抽屜高度', async ({ page, isMobile }) => {
+test('S28. 手機版：拖曳被 pointercancel 中斷之後，畫布上的滑動不會再改抽屜高度', { tag: '@mobile' }, async ({ page, isMobile }) => {
   test.skip(!isMobile, '桌機沒有可拖曳的抽屜把手');
   await openSim(page);
   const moved = await page.evaluate(() => {
@@ -851,7 +851,7 @@ test('S28. 手機版：拖曳被 pointercancel 中斷之後，畫布上的滑動
     .toBeCloseTo(moved.before, 0);
 });
 
-test('S29. 手機版：搜尋 sheet 升起時兩顆浮動鍵仍然點得到', async ({ page, isMobile }) => {
+test('S29. 手機版：搜尋 sheet 升起時兩顆浮動鍵仍然點得到', { tag: '@mobile' }, async ({ page, isMobile }) => {
   test.skip(!isMobile, '桌機沒有浮動鍵');
   await openSim(page);
   await page.locator('#sim-fab-search').click();
@@ -884,7 +884,7 @@ test('S22. 側欄三列合計帶貨幣圖，核心與金幣永遠各一張；文
   await expect(t.total.locator('.currency-icon').nth(1)).toHaveAttribute('src', '/currency/gold.png');
 });
 
-test('S30. 側欄是 .panel 的面但仍貼邊；工具列的面是 --face-float', async ({ page, isMobile }) => {
+test('S30. 側欄是 .panel 的面但仍貼邊；工具列的面是 --face-float', { tag: '@mobile' }, async ({ page, isMobile }) => {
   await openSim(page);
   const panel = page.locator('#sim-panel');
   const s = await panel.evaluate(el => {
@@ -913,7 +913,7 @@ test('S30. 側欄是 .panel 的面但仍貼邊；工具列的面是 --face-float
     .toContain('inset');
 });
 
-test('S31. 工具列是 .btn、復原重做是圖示且停用看得出來；詳情的行動鈕是金色主按鈕；手機 sheet 的把手不是 .btn', async ({ page, isMobile }) => {
+test('S31. 工具列是 .btn、復原重做是圖示且停用看得出來；詳情的行動鈕是金色主按鈕；手機 sheet 的把手不是 .btn', { tag: '@mobile' }, async ({ page, isMobile }) => {
   await openSim(page);
   await openTools(page);
   const btns = page.locator('#sim-toolbar button:not(#sim-sheet-close)');

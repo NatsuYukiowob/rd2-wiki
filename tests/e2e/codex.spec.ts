@@ -59,7 +59,7 @@ test('C2. 圖鑑篩選會隱藏卡片並更新計數；全部取消勾選＝不�
   await expect(cards.first()).toBeVisible();
 });
 
-test('C3. 卡片裡的 #關鍵字 就地換頁：左右滑動過場、卡片高度不變、可以往下疊、← 與 Esc 都退得掉', async ({ page }) => {
+test('C3. 卡片裡的 #關鍵字 就地換頁：左右滑動過場、卡片高度不變、可以往下疊、← 與 Esc 都退得掉', { tag: '@mobile' }, async ({ page }) => {
   await page.goto('/dice');
   // 第一張「描述或覺醒裡有關鍵字」的卡片。底下的命中測試是在頁面內自己 click 的
   // （要在同一個 task 裡連續取樣），兩邊都用「第一個含 kw-link 的卡片」這個定義。
@@ -208,7 +208,7 @@ test('C3c. 同時只開一張卡片：換一張會收掉前一張，Esc 關的�
   await expect(secondLink, 'Esc 之後焦點要回到剛才點的那個連結').toBeFocused();
 });
 
-test('C4. 導覽列的「遊戲介紹」選單能用鍵盤開、Esc 關，且焦點回到觸發它的地方', async ({ page }) => {
+test('C4. 導覽列的「遊戲介紹」選單能用鍵盤開、Esc 關，且焦點回到觸發它的地方', { tag: '@mobile' }, async ({ page }) => {
   await page.goto('/');
   const menu = page.locator('#site-nav .nav-menu');
   const summary = menu.locator('summary');
@@ -328,7 +328,7 @@ test('C7. 41 顆骰子的四個檔位數值全部是伺服器輸出的 HTML', as
   expect(html, '吞噬骰子的目標是正規化過的「範圍內」').toContain('範圍內');
 });
 
-test('C8. 切檔只換數字：41 張卡片的 pill 區塊高度在四個檔位全都不動', async ({ page }) => {
+test('C8. 切檔只換數字：41 張卡片的 pill 區塊高度在四個檔位全都不動', { tag: '@mobile' }, async ({ page }) => {
   await page.goto('/dice');
   const card = page.locator('.dice-card').filter({ hasText: '火骰子' }).first();
   const pills = card.locator('.stat-pill');
@@ -431,7 +431,7 @@ test('C11. 沒有 JS 時檔位照樣切得動（整塊是純 CSS）', async ({ b
   await ctx.close();
 });
 
-test('C12. 卡片頂緣的分支色線：真的畫得出來，翻到關鍵字頁也不會被蓋掉', async ({ page }) => {
+test('C12. 卡片頂緣的分支色線：真的畫得出來，翻到關鍵字頁也不會被蓋掉', { tag: '@mobile' }, async ({ page }) => {
   // 那條線是 `.dice-card::after`（PR ④）。偽元素在 DOM 裡沒有節點，`toBeVisible()` 之類
   // 的斷言一條都用不上——只有量像素會說話。
   //

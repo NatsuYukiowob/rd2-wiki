@@ -19,7 +19,7 @@ async function tokenColor(page: Page, name: string): Promise<string> {
   }, name);
 }
 
-test('CL1. #detail 是 .panel（桌機浮動卡片、手機抽屜仍然歸零）；#toolbar 的面是 --face-float', async ({ page, isMobile }) => {
+test('CL1. #detail 是 .panel（桌機浮動卡片、手機抽屜仍然歸零）；#toolbar 的面是 --face-float', { tag: '@mobile' }, async ({ page, isMobile }) => {
   await page.goto('/tree?node=5201');
   const detail = page.locator('#detail');
   await expect(detail).toBeVisible();
@@ -69,7 +69,7 @@ test('CL2. #filters-toggle 是 .btn：10px 圓角、實體厚度；有篩選時�
     .toBe(gold);
 });
 
-test('CL3. 分支跳轉鈕是 .chip＋常亮的分支色點；手機 320px 五顆塞得下', async ({ page, isMobile }) => {
+test('CL3. 分支跳轉鈕是 .chip＋常亮的分支色點；手機 320px 五顆塞得下', { tag: '@mobile' }, async ({ page, isMobile }) => {
   if (isMobile) await page.setViewportSize({ width: 320, height: 640 });
   await page.goto('/tree');
   const sel = isMobile ? '#branch-chips button' : '#branch-nav button';

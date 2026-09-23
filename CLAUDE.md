@@ -21,6 +21,15 @@
   當受測站台，測到的是 dev server 不是 `dist/`。開著預覽時用 `E2E_PORT=4399 npm run e2e`。
 - **`npx playwright test` 不會重新建置**（`npm run e2e` 才有 `pree2e`）。拿它做「改壞看會不會紅」
   的抽查時，順序必須是：改壞 → `npm run build` → `npx playwright test -g …` → 還原 → 再 build。
+- **開發中只跑受影響的 spec，全套留到收尾跑一次**：task 內用
+  `npm run build && npx playwright test tests/e2e/<檔>.spec.ts --project=desktop`，動到手機版面才加
+  `--project=mobile`。全套（`npm run e2e`）只在 PR 收尾跑；修正後重跑**紅掉的那幾個檔**，不是再跑全套。
+  改了共用 CSS／`chrome.css`／發版前，用 `E2E_MOBILE_ALL=1 npm run e2e` 讓 mobile 跑完整一次。
+- **mobile project 只跑標了 `@mobile` 的測試**（`playwright.config.ts` 的 `grep`）。新測試有 `isMobile`
+  分支、`test.skip(!isMobile, …)`、或驗的幾何在手機寬度會不同 → 寫成 `test('…', { tag: '@mobile' }, …)`。
+  漏標不會紅，只會讓手機分支永遠沒被執行。
+- **不要調高 `workers`**：3 workers 時 mobile 的 `/sim`、`/tree` 會穩定出現 Chromium `Page crashed`。
+  全套紅在 `Page crashed`／`Target crashed` 時，先單跑該檔確認，不要當成程式 bug 追。
 - **文件裡不要寫測試條數、節點數這類會隨改動漂移的數字**，寫了就會說謊而 CI 擋不住
   （banner 犯過一次）。要數字就當場跑。
 

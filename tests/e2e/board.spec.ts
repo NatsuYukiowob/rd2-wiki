@@ -359,7 +359,7 @@ test('B3b. 同種同等疊在一起不會合成（決策 5）', async ({ page })
   await expect(page.locator(mine('.board-cell[data-index="1"] .cell-pips'))).toHaveText('2');
 });
 
-test('B3c. 拖曳結束不會順手打開挑選網格', async ({ page }) => {
+test('B3c. 拖曳結束不會順手打開挑選網格', { tag: '@mobile' }, async ({ page }) => {
   // 這條守的是一個實測過的 bug：pointerdown 的 preventDefault() 擋不掉 click，
   // 而 setPointerCapture 會把那一發 click 的 target 導回來源元素。沒有這條，
   // 每次拖曳都會展開挑選網格、把骰盤往下推 400px，而 B2–B5 只看格子內容，全部躲過。
@@ -433,7 +433,7 @@ test('B3g. 滑鼠只移動幾個 px 仍算原地點一下：不會被誤判成�
   await expect(page.locator('#dice-picker')).toBeVisible();
 });
 
-test('B3h. 觸控拖曳結束後緊接著的按下：justDragged 不會卡住（I1 成因 A）', async ({ page, isMobile }) => {
+test('B3h. 觸控拖曳結束後緊接著的按下：justDragged 不會卡住（I1 成因 A）', { tag: '@mobile' }, async ({ page, isMobile }) => {
   // 觸控拖曳結束後瀏覽器根本不送 click（拖曳不是 tap），justDragged 若只靠 startDrag()
   // 內部重置就會卡在 true，直到下一次真的觸發 startDrag() 才清得掉——點空槽（getPayload()
   // 回 null，startDrag 不會跑）永遠清不掉它。用真觸控（CDP Input.dispatchTouchEvent）
@@ -471,7 +471,7 @@ test('B3h. 觸控拖曳結束後緊接著的按下：justDragged 不會卡住（
   await expect(page.locator('#dice-picker')).toBeVisible();
 });
 
-test('B3i. 兩指同時拖曳：落地的是第一根手指拖的骰子，沒有殘留的拖曳影像（I3）', async ({ page, isMobile }) => {
+test('B3i. 兩指同時拖曳：落地的是第一根手指拖的骰子，沒有殘留的拖曳影像（I3）', { tag: '@mobile' }, async ({ page, isMobile }) => {
   // 全分支 review 實測：dragging 是單一模組變數，第二根手指的 startDrag 會覆蓋第一根的
   // 參照——第一根手指落地時用到第二根手指的 payload，第一個 .drag-ghost 永遠沒人 remove()
   // （重整才消失）。只在 mobile project 跑：需要真正的多點觸控。
@@ -518,7 +518,7 @@ test('B3i. 兩指同時拖曳：落地的是第一根手指拖的骰子，沒有
   await expect(page.locator('.drag-ghost')).toHaveCount(0);
 });
 
-test('B3d. 工具列與組合列的尺寸不隨擺放狀態改變', async ({ page }) => {
+test('B3d. 工具列與組合列的尺寸不隨擺放狀態改變', { tag: '@mobile' }, async ({ page }) => {
   // spec §4 的硬要求，對應 /tree 既有的 O2。沒有這條的話「按鈕文字固定不變」
   // 「三個元素永遠都在」就只是註解——註解不會在有人改壞時說話。
   await page.goto('/board');
@@ -808,7 +808,7 @@ test('B8b. 連按兩次產生分享圖，第二張仍然顯示得出來', async 
     page.locator('#board-export-img').evaluate((el: HTMLImageElement) => el.naturalWidth), { timeout: EXPORT_TIMEOUT }).toBe(1200);
 });
 
-test('B8d. 產生分享圖之後，工具列與組合列的尺寸仍然不變', async ({ page }) => {
+test('B8d. 產生分享圖之後，工具列與組合列的尺寸仍然不變', { tag: '@mobile' }, async ({ page }) => {
   // B3d 在 Task 4 驗過「挑骰子＋拖曳不會改變工具列尺寸」，但那時 #board-export 的 handler
   // 還不存在。這一條接手另一半：輸出區塊出現時只准把 footer 往下推，不准動到工具列。
   await page.goto('/board');
@@ -873,7 +873,7 @@ test('B8e. 匯出流程有效能天花板：連續多次取中位數不超過門
   expect(median, `連續 ${N} 次匯出耗時（ms，已排序）＝${sorted.join(', ')}`).toBeLessThan(THRESHOLD_MS);
 });
 
-test('B9. 手機寬度下版面不橫向捲，骰盤的 touch-action 是 none', async ({ page, isMobile }) => {
+test('B9. 手機寬度下版面不橫向捲，骰盤的 touch-action 是 none', { tag: '@mobile' }, async ({ page, isMobile }) => {
   // ⚠️ 用 test.skip 而不是 `if (isMobile) { … }`，跟 tree.spec.ts:191 的 J／W／Y 一致。
   // 包在 if 裡的話，desktop project 跑的是一條「開一頁、零斷言、回報 passed」的測試——
   // 而且無法自證它有跑過：mobile project 哪天被移除或改名，兩邊都綠、手機版面零覆蓋。
@@ -903,7 +903,7 @@ test('B9. 手機寬度下版面不橫向捲，骰盤的 touch-action 是 none', 
   expect(deck.y).toBeGreaterThan(grid.y);
 });
 
-test('B10. 兩個小標與其下方內容區塊一起置中，標題與說明文字維持靠左', async ({ page }) => {
+test('B10. 兩個小標與其下方內容區塊一起置中，標題與說明文字維持靠左', { tag: '@mobile' }, async ({ page }) => {
   // 置中量的是各元素自己的框相對 <main> 的左右留白，不是它們「裡面」的東西有沒有置中——
   // 後者只要 justify-content: center 就能造假：元素本身仍貼齊頁面兩側（留白 0），
   // 量出來的數字會騙過「留白相等」這條斷言。
@@ -964,7 +964,7 @@ test('B10. 兩個小標與其下方內容區塊一起置中，標題與說明文
   expect(h1x).toBeLessThanOrEqual(deckBox.x);
 });
 
-test('B11. 「隱藏星數」切換 .cell-pips 顯示，且不改變工具列尺寸', async ({ page }) => {
+test('B11. 「隱藏星數」切換 .cell-pips 顯示，且不改變工具列尺寸', { tag: '@mobile' }, async ({ page }) => {
   await page.goto('/board');
   const box = async (sel: string) => (await page.locator(sel).boundingBox())!;
 
@@ -1032,7 +1032,7 @@ test('B12. 隱藏星數之後產生的分享圖，骰盤格取樣像素跟顯示
   expect(hidden, '隱藏星數後分享圖的骰盤格取樣沒有變化＝ hidePips 沒有真的傳進 renderShareImage').not.toBe(visible);
 });
 
-test('B13. I5：組合列在 320／360／390／412px 都排成 5 個不折行', async ({ page, isMobile }) => {
+test('B13. I5：組合列在 320／360／390／412px 都排成 5 個不折行', { tag: '@mobile' }, async ({ page, isMobile }) => {
   // 只在 mobile project 跑：CSS 用 `(hover: none) and (pointer: coarse)` 判斷，跟 D9／O2
   // 那批既有測試同一套判準（畫面寬度不是判準，觸控能力才是）。desktop project 的瀏覽器
   // context 沒有觸控能力，這裡的媒體查詢永遠不成立，測了也只是空跑。
@@ -1148,7 +1148,7 @@ test('B15. 強化列：空槽 disabled、夾在 1–15、同種骰子共用、�
   await expect(page.locator(mine('.sp-value[data-slot="0"]'))).toHaveText('Lv.5');
 });
 
-test('B15b. 強化 Lv.1 → Lv.15 組合列尺寸不變（min-width 容得下 Lv.15）', async ({ page }) => {
+test('B15b. 強化 Lv.1 → Lv.15 組合列尺寸不變（min-width 容得下 Lv.15）', { tag: '@mobile' }, async ({ page }) => {
   await page.goto('/board');
   await pickInto(page, 0, dice[0]!.id, 1);
   const d0 = (await page.locator('#deck-row').boundingBox())!;
@@ -1161,7 +1161,7 @@ test('B15b. 強化 Lv.1 → Lv.15 組合列尺寸不變（min-width 容得下 Lv
 
 // 手機版 320px 每槽約 51px，扣掉 ◀ ▶ 後值只剩約 19px，放不下「Lv.15」→ 只顯示數字＋圖例
 // （Yuki 2026-09-19）。只在 mobile project 跑，理由同 B13。
-test('B15c. 手機版強化列只顯示數字＋圖例，320px 下不溢出槽寬、按得到', async ({ page, isMobile }) => {
+test('B15c. 手機版強化列只顯示數字＋圖例，320px 下不溢出槽寬、按得到', { tag: '@mobile' }, async ({ page, isMobile }) => {
   test.skip(!isMobile, '僅手機版（CSS 用 hover:none/pointer:coarse 判斷）');
   await page.goto('/board');
   await page.setViewportSize({ width: 320, height: 900 });
@@ -1306,7 +1306,7 @@ test('B19. 鍵盤：焦點停在有骰子的格子顯示卡片、方向鍵換格
   await expect(card, 'held 的 Escape 不關卡片').toBeVisible();
 });
 
-test('B20. 觸控：點一下開卡片；觸控拖曳之後，下一次點一下仍然一次就開', async ({ page, isMobile }) => {
+test('B20. 觸控：點一下開卡片；觸控拖曳之後，下一次點一下仍然一次就開', { tag: '@mobile' }, async ({ page, isMobile }) => {
   // justDragged 那一族的回歸測項：觸控拖曳結束瀏覽器不送 click。開卡片不綁 click，所以不受影響——
   // 這條守的就是「不受影響」。只在 mobile project 跑（desktop context 沒有 hasTouch）。
   test.skip(!isMobile, '僅手機版（需要真觸控事件）');
@@ -1346,7 +1346,7 @@ test('B20. 觸控：點一下開卡片；觸控拖曳之後，下一次點一下
   await expect(page.locator(mine('.board-cell[data-index="8"]'))).toHaveAttribute('aria-describedby', 'dice-card');
 });
 
-test('B21. 開卡片不推動版面，四個角的格子開出的卡片都完整落在視窗內（桌機與 320px）', async ({ page, isMobile }) => {
+test('B21. 開卡片不推動版面，四個角的格子開出的卡片都完整落在視窗內（桌機與 320px）', { tag: '@mobile' }, async ({ page, isMobile }) => {
   await page.goto('/board');
   if (isMobile) await page.setViewportSize({ width: 320, height: 640 });
   await pickInto(page, 0, dice[0]!.id, 7);
@@ -1543,7 +1543,7 @@ test('B15e. 組合列已經沒有這種骰子了，骰盤上留下的那顆仍�
   await expect(page.locator('#dice-card .dice-card-title')).toHaveText(`${fire.name} · 1 骰點 · 強化 Lv.5`);
 });
 
-test('B23. 局外加成切換在「我的隊伍」標題下、隊伍列正上方；三顆按鈕與群組名稱', async ({ page, isMobile }) => {
+test('B23. 局外加成切換在「我的隊伍」標題下、隊伍列正上方；三顆按鈕與群組名稱', { tag: '@mobile' }, async ({ page, isMobile }) => {
   await page.goto('/board');
   const group = page.locator('#offgame-mode');
   await expect(group).toHaveAttribute('role', 'group');
@@ -1565,7 +1565,7 @@ test('B23. 局外加成切換在「我的隊伍」標題下、隊伍列正上方
   }
 });
 
-test('B24. 明細面板：寬桌機在骰盤右側且骰盤仍以 main 置中；窄視窗在工具列下方；手機在頁面最底', async ({ page, isMobile }) => {
+test('B24. 明細面板：寬桌機在骰盤右側且骰盤仍以 main 置中；窄視窗在工具列下方；手機在頁面最底', { tag: '@mobile' }, async ({ page, isMobile }) => {
   await page.goto('/board');
   const panel = page.locator('#dice-detail');
   await expect(panel).toHaveAttribute('aria-label', '加成明細');
@@ -2033,7 +2033,7 @@ test('B38. 跨路徑：鍵盤拿起中按 R、挑選網格開著點角標、別�
   await expect(page.locator(mine('.board-cell[data-index="0"]'))).toHaveAttribute('aria-describedby', 'dice-card');
 });
 
-test('B39. 角標完整落在格子裡、不壓到骰點（桌機與 320px）；頁面不橫向捲', async ({ page, isMobile }) => {
+test('B39. 角標完整落在格子裡、不壓到骰點（桌機與 320px）；頁面不橫向捲', { tag: '@mobile' }, async ({ page, isMobile }) => {
   await page.goto('/board');
   if (isMobile) await page.setViewportSize({ width: 320, height: 640 });
   await pickInto(page, 0, ALIGN, 6);
@@ -2223,7 +2223,7 @@ test('B45. 預設是對戰模式：隊友盤與隊友控制項都不在無障礙
   expect(reachable).toBe(0);
 });
 
-test('B46. 切到合作：長出隊友盤，視覺順序與 DOM 順序一致（Tab 跟著 DOM 走，不跟 CSS order）', async ({ page }) => {
+test('B46. 切到合作：長出隊友盤，視覺順序與 DOM 順序一致（Tab 跟著 DOM 走，不跟 CSS order）', { tag: '@mobile' }, async ({ page }) => {
   await page.goto('/board');
   await page.locator('#board-coop-mode button[data-coop="on"]').click();
   await expect(page.locator('#partner-grid')).toBeVisible();
@@ -2254,7 +2254,7 @@ test('B46. 切到合作：長出隊友盤，視覺順序與 DOM 順序一致（T
   expect(inDomOrder, `DOM 順序不是 ${ORDER.join(' → ')}`).toBe(true);
 });
 
-test('B47. 切回對戰：隊友盤收起來、我的隊伍列搬回原位、骰盤幾何回到切換前、明細不再描述隊友的骰子', async ({ page }) => {
+test('B47. 切回對戰：隊友盤收起來、我的隊伍列搬回原位、骰盤幾何回到切換前、明細不再描述隊友的骰子', { tag: '@mobile' }, async ({ page }) => {
   await page.goto('/board');
   const before = await page.locator('#board-grid').boundingBox();
   await page.locator('#board-coop-mode button[data-coop="on"]').click();
@@ -2421,7 +2421,7 @@ test('B49. 合作模式：跨盤拖曳一律不作用，同盤照常；工具列
  * 前面**——每一個選擇器都要自己帶 `#board-grid` / `#partner-grid` 前綴，少一個就會靜靜地拿到
  * 隊友那一盤，然後「自己跟自己比」永遠對齊。
  */
-test('B50. 合作版面：兩盤與隊伍列逐項對齊、分隔線在兩盤之間、切換鈕的位置與選中狀態', async ({ page }) => {
+test('B50. 合作版面：兩盤與隊伍列逐項對齊、分隔線在兩盤之間、切換鈕的位置與選中狀態', { tag: '@mobile' }, async ({ page }) => {
   await page.goto('/board');
 
   // 先看**對戰**模式：切換鈕排在說明文字之下、骰盤之上（跟桌機同一個位置）。
@@ -2637,7 +2637,7 @@ test('B51. 合作模式在寬桌機：明細面板跨滿整個 stage、不被隊
  * 一個視窗高，那個手勢就做不出來（測試裡的 dragBetween() 自己就斷言這件事）。
  * 對戰模式再嚴一點：骰盤與隊伍列本來就都落在首屏內，直接釘住，不要退步。
  */
-test('B52. 320px：兩條隊伍列都不溢出容器，拖曳的兩端能同時在一個視窗裡（對戰與合作）', async ({ page, isMobile }) => {
+test('B52. 320px：兩條隊伍列都不溢出容器，拖曳的兩端能同時在一個視窗裡（對戰與合作）', { tag: '@mobile' }, async ({ page, isMobile }) => {
   test.skip(!isMobile, '這條測的是觸控版面');
   await page.setViewportSize({ width: 320, height: 640 });
   await page.goto('/board');
