@@ -75,6 +75,20 @@ export default defineConfig({
   },
   projects: [
     { name: 'desktop', use: { ...devices['Desktop Chrome'] } },
-    { name: 'mobile', use: { ...devices['Pixel 7'] } },
+    // mobile 只跑標了 `@mobile` 的測試（2026-09-23 起）。
+    // 為什麼：全套兩個 project 各跑一遍，mobile 佔 56% 時間（實測 desktop 3m14s／mobile 4m05s），
+    // 但大多數測試驗的是跟寬度、觸控無關的行為，兩邊驗的是同一件事。
+    // 什麼要標：測試裡有 `isMobile` 分支或 `test.skip(!isMobile, …)`、或斷言的幾何／版面在
+    // 412px＋觸控下會不同（抽屜、sheet、nav 自捲動、卡片版面）。新測試若屬這類，**記得加 tag**，
+    // 否則它的手機分支永遠不會被執行——測試照樣全綠。`test.skip(!isMobile)` 沒加 tag 的話
+    // 兩邊都不會跑（desktop skip、mobile 被 grep 濾掉）。
+    // 要完整跑一次 mobile（改了共用 CSS、發版前）：`E2E_MOBILE_ALL=1 npm run e2e`。
+    // ⚠️ 不要調高 workers：3 workers 全套連跑 6 次，每次 mobile 的 /sim、/tree 都有 4–8 條
+    //   Chromium 當掉（Page crashed／SEGV），單跑那兩頁或 2 workers 都不會。
+    {
+      name: 'mobile',
+      use: { ...devices['Pixel 7'] },
+      grep: process.env.E2E_MOBILE_ALL ? undefined : /@mobile/,
+    },
   ],
 });

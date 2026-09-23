@@ -19,7 +19,7 @@ async function tokenColor(page: Page, name: string): Promise<string> {
   }, name);
 }
 
-test('BL1. /board 頁首是 .page-head、小標是 .sec-title；頁首左緣與骰盤左緣在同一條線上', async ({ page }) => {
+test('BL1. /board 頁首是 .page-head、小標是 .sec-title；頁首左緣與骰盤左緣在同一條線上', { tag: '@mobile' }, async ({ page }) => {
   await page.goto('/board');
   await expect(page.locator('h1.page-head')).toHaveCount(1);
   // 三個 .board-h2：隊友的隊伍（預設 hidden）、我的隊伍、骰盤。明細面板的標題是 .detail-h，不算。
@@ -32,7 +32,7 @@ test('BL1. /board 頁首是 .page-head、小標是 .sec-title；頁首左緣與�
   expect(Math.abs(h1 - grid), `頁首左緣 ${h1} 與骰盤左緣 ${grid} 不在同一條對齊軸上`).toBeLessThanOrEqual(1);
 });
 
-test('BL2. 工具列：分享圖是金色主按鈕、其餘是次按鈕；10px 圓角、3px 實體厚度；按住只縮放並收掉厚度', async ({ page, isMobile }) => {
+test('BL2. 工具列：分享圖是金色主按鈕、其餘是次按鈕；10px 圓角、3px 實體厚度；按住只縮放並收掉厚度', { tag: '@mobile' }, async ({ page, isMobile }) => {
   await page.goto('/board');
   const look = (sel: string) => page.locator(sel).evaluate(el => {
     const s = getComputedStyle(el);
@@ -88,7 +88,7 @@ test('BL2b. 按住時整顆按鈕縮放（不是只有厚度變）', async ({ pa
   expect(m[0], `按住時沒有縮放（${t}）`).toBeLessThan(1);
 });
 
-test('BL3. 三列切換鈕是 .seg：凹槽容器、選中＝金框、切換不改寬度；沒有存檔的「我的 /sim」無回饋；高對比下選中分得出來', async ({ page, isMobile }) => {
+test('BL3. 三列切換鈕是 .seg：凹槽容器、選中＝金框、切換不改寬度；沒有存檔的「我的 /sim」無回饋；高對比下選中分得出來', { tag: '@mobile' }, async ({ page, isMobile }) => {
   await page.goto('/board');
   const gold = await tokenColor(page, '--gold');
   const muted = await tokenColor(page, '--muted');

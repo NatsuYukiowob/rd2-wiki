@@ -275,7 +275,7 @@ test('鍵盤可聚焦並以 Enter 選取節點', async ({ page }) => {
   expect((await treeState(page)).selected).toBe('1001');
 });
 
-test('手機版預設聚焦單一分支且有分支 chip', async ({ page, isMobile }) => {
+test('手機版預設聚焦單一分支且有分支 chip', { tag: '@mobile' }, async ({ page, isMobile }) => {
   test.skip(!isMobile, '僅手機版');
   await page.goto('/tree');
   await waitTree(page);
@@ -338,7 +338,7 @@ async function canvasFingerprint(page: Page): Promise<string> {
   return `${r.left.toFixed(1)},${r.top.toFixed(1)},${r.width.toFixed(2)}`;
 }
 
-test('首屏資產體積在預算內', async ({ page }) => {
+test('首屏資產體積在預算內', { tag: '@mobile' }, async ({ page }) => {
   // ⚠️ 舊版是假綠的（review 報告 C06）：`page.on('response', async r => …)` 的回呼是
   // async，Playwright 不會 await 它，`await r.allHeaders()` 還沒回來 goto 就結束了——
   // 同一頁重跑量到 196KB～646KB 不等。而且靠 content-length，壓縮回應根本沒有這個標頭。
@@ -393,7 +393,7 @@ test('首屏資產體積在預算內', async ({ page }) => {
 // A–J：yuki 追加的「這個網站真的能用」證據，以及四個 bug 的修正驗證
 // ---------------------------------------------------------------------------
 
-test('B. 縮放錨點跟手：滾輪縮放後，節點維持在同一螢幕座標', async ({ page, isMobile }) => {
+test('B. 縮放錨點跟手：滾輪縮放後，節點維持在同一螢幕座標', { tag: '@mobile' }, async ({ page, isMobile }) => {
   await goToNatureBranch(page, isMobile);
   await bringIntoView(page, '1002');
   const r0 = await nodeRect(page, '1002');
@@ -411,7 +411,7 @@ test('B. 縮放錨點跟手：滾輪縮放後，節點維持在同一螢幕座�
   expect(r1.width, '滾輪應該真的把畫面放大了').toBeGreaterThan(r0.width * 1.2);
 });
 
-test('D. 拖曳畫布放開在空白處，選取不會被誤觸清除', async ({ page }) => {
+test('D. 拖曳畫布放開在空白處，選取不會被誤觸清除', { tag: '@mobile' }, async ({ page }) => {
   await page.goto('/tree');
   await waitTree(page);
   await clickNode(page, '1001');
@@ -568,7 +568,7 @@ test('F. 畫布快照：預設／選取／篩選／縮放四種狀態都畫得�
   await expect(host).toHaveScreenshot('tree-zoomed-1001.png', chrome);
 });
 
-test('J. 手機版篩選抽屜：展開後不蓋住工具列，而且關得掉', async ({ page, isMobile }) => {
+test('J. 手機版篩選抽屜：展開後不蓋住工具列，而且關得掉', { tag: '@mobile' }, async ({ page, isMobile }) => {
   test.skip(!isMobile, '僅手機版：篩選抽屜只在手機版存在');
   await page.goto('/tree');
 
@@ -617,7 +617,7 @@ test('J. 手機版篩選抽屜：展開後不蓋住工具列，而且關得掉',
   await expect(filters).toBeHidden();
 });
 
-test('U. 畫布頁不該捲動：畫布剛好填滿 nav 與 footer 之間', async ({ page }) => {
+test('U. 畫布頁不該捲動：畫布剛好填滿 nav 與 footer 之間', { tag: '@mobile' }, async ({ page }) => {
   // 舊 bug：`#canvas-host { height: calc(100vh - 110px) }`，而 nav ＋ footer 實測是
   // 124.53（桌機）／165.47（手機），每個尺寸多出 15–55px 的捲動；捲到底時 fixed 的
   // #tree-controls 會跟 nav 之間裂開一條縫。這是「寫死版面偏移量」在這個 repo 的第四次。
@@ -672,7 +672,7 @@ test('V. 窄桌機視窗下詳情卡片不壓在分支側欄上，也不被推�
   }
 });
 
-test('W. 手機版 footer 的著作權聲明不被底部分支 chip 蓋住', async ({ page, isMobile }) => {
+test('W. 手機版 footer 的著作權聲明不被底部分支 chip 蓋住', { tag: '@mobile' }, async ({ page, isMobile }) => {
   test.skip(!isMobile, '僅手機版：#branch-chips 只在手機版存在');
   // 頁面改成不捲動之後，fixed 的 chip 列會永遠疊在 footer 上緣，而 footer 第二行是
   // 「遊戲圖示與文字著作權屬 111 Percent Inc.」——手機上會完全讀不到，而且沒有捲動可以
@@ -702,7 +702,7 @@ test('W. 手機版 footer 的著作權聲明不被底部分支 chip 蓋住', asy
   expect(m.overflow, '讓位之後仍不該捲得動').toBeLessThanOrEqual(0);
 });
 
-test('K. 手機版詳情面板的重置警告不被底部分支 chip 蓋住（spec §2.1 強制要求的災情警告）', async ({ page, isMobile }) => {
+test('K. 手機版詳情面板的重置警告不被底部分支 chip 蓋住（spec §2.1 強制要求的災情警告）', { tag: '@mobile' }, async ({ page, isMobile }) => {
   test.skip(!isMobile, '僅手機版：#branch-chips 疊在 #detail 底部的重疊問題只在手機版存在（桌機沒有 #branch-chips）');
   await page.goto('/tree?node=1001');
   // renderDetail()（NodeDetail.ts）固定把「骰子樹重置需要初期化券…」這段警告放在 #detail
@@ -941,7 +941,7 @@ test('N3. 置中平移期間，卡片一次到位不跟著滑（閃爍修正）'
     '每幀都改變視角時，卡片的重新定位不可以被餓死').toBeLessThan(20);
 });
 
-test('N4. 節點卡片：桌機橫式兩欄、手機單欄，重置警告跨兩欄', async ({ page, isMobile }) => {
+test('N4. 節點卡片：桌機橫式兩欄、手機單欄，重置警告跨兩欄', { tag: '@mobile' }, async ({ page, isMobile }) => {
   await page.goto('/tree?node=1001');
   await expect(page.locator('#detail')).toBeVisible();
   await page.waitForTimeout(400); // 置中平移跑完再量
@@ -1104,7 +1104,7 @@ function topViewTitle(page: Page) {
   return topView(page).locator('h2');
 }
 
-test('O. 搜尋命中時鏡頭帶到結果、狀態列說明命中幾個、清除鈕能回到原狀', async ({ page }) => {
+test('O. 搜尋命中時鏡頭帶到結果、狀態列說明命中幾個、清除鈕能回到原狀', { tag: '@mobile' }, async ({ page }) => {
   // 這條守的是 image9 回報的死路：搜尋只命中兩三個節點時，畫面上是 236 個淡掉的節點加 243
   // 條淡掉的邊，數量壓過那幾個命中的目標，看起來就像「什麼都沒發生」；而 ?q= 不會因為點
   // 空白處而清掉（那只清 ?node=），使用者會覺得畫面卡住了、也找不到回去的路。
@@ -1175,7 +1175,7 @@ test('O. 搜尋命中時鏡頭帶到結果、狀態列說明命中幾個、清�
   expect(focusable, '看不見的清除鈕仍然可以被 Tab 聚焦').toBe(false);
 });
 
-test('O2. 工具列的大小與篩選鈕的位置不隨篩選狀態改變', async ({ page, isMobile }) => {
+test('O2. 工具列的大小與篩選鈕的位置不隨篩選狀態改變', { tag: '@mobile' }, async ({ page, isMobile }) => {
   // Yuki 2026-08-22 回報：「符合 xx 個節點」一彈出來就把工具列撐大。實測桌機 1280 下
   // 工具列從 1037 撐到 1209px，而且狀態列夾在搜尋框與篩選鈕之間，整排篩選鈕會往右跳 171px；
   // 手機版直接多長一列（61 → 103px）。邊打字邊跳，最難用的正是這種。
@@ -1211,7 +1211,7 @@ test('O2. 工具列的大小與篩選鈕的位置不隨篩選狀態改變', asyn
   }
 });
 
-test('O3. 篩選面板收得起來也展得開，桌機平移畫布不會把它關掉', async ({ page, isMobile }) => {
+test('O3. 篩選面板收得起來也展得開，桌機平移畫布不會把它關掉', { tag: '@mobile' }, async ({ page, isMobile }) => {
   // Yuki 2026-08-22：桌機以前沒有收合，篩選鈕永遠攤在工具列上佔掉畫布上方一整條。
   await page.goto('/tree');
   const toggle = page.locator('#filters-toggle');
@@ -1308,7 +1308,7 @@ test('Q. 導覽列的「貢獻」入口目前不曝光（FEATURES.contributeLink
   expect(res.status()).toBe(200);
 });
 
-test('O4. 篩選面板是左右伸縮的過場：箭頭朝左右、寬度逐格變化、工具列高度不跳', async ({ page, isMobile }) => {
+test('O4. 篩選面板是左右伸縮的過場：箭頭朝左右、寬度逐格變化、工具列高度不跳', { tag: '@mobile' }, async ({ page, isMobile }) => {
   await page.goto('/tree');
   const toggle = page.locator('#filters-toggle');
 
