@@ -202,15 +202,15 @@
   /* 中文與內文：只用系統堆疊，不自架字型檔（CJK 字型體積過大）。 */
   --font: 'Noto Sans TC', 'Microsoft JhengHei', sans-serif;
 
-  /* 數字與代號用的拉丁字型（2026-08-26）。自架 12.3KB 的 Archivo 拉丁 subset，
+  /* 數字與代號用的拉丁字型（2026-08-26）。自架 18.3KB 的 Baloo 2 拉丁 subset（2026-09-23 骰桌改版取代 Archivo：圓潤的數字是手遊感的一大半），
      @font-face 在 base.css，來源與重製指令在 public/fonts/README.md。
-     ⚠️ **Archivo 沒有中文字**，所以這個堆疊一定要把 --font 的成員接在後面：掛了這個
+     ⚠️ **Baloo 2 沒有中文字**，所以這個堆疊一定要把 --font 的成員接在後面：掛了這個
      字型的位置（.meta／.stat-v／.game-id／.nav-updated）文字是中英混排，中文得靠後備
-     退回系統字型。只寫 `Archivo, sans-serif` 的話中文會掉到瀏覽器預設 sans-serif，
+     退回系統字型。只寫 `'Baloo 2', sans-serif` 的話中文會掉到瀏覽器預設 sans-serif，
      跟旁邊同一句話的其他中文長得不一樣。
      ⚠️ 只給「數字與代號」用，不要拿去當標題字。中文標題的個性來自字重與字距
      （見 base.css 的 h1/h2/h3），不是拉丁 display face——那只會讓標題裡的數字跳出來。 */
-  --font-num: 'Archivo', 'Noto Sans TC', 'Microsoft JhengHei', sans-serif;
+  --font-num: 'Baloo 2', 'Noto Sans TC', 'Microsoft JhengHei', sans-serif;
 }
 
 /* 減少動態：把 --face-lift 的下緣硬邊壓回跟 --face 同一階。

@@ -288,7 +288,7 @@ describe('board-export 的色票 fallback', () => {
  * 系統字型，不報錯、不影響版面以外的任何行為。E2E 的 D15 從瀏覽器那一端驗同一件事；
  * 這裡是靜態這一端，跑得快、而且在 `npm test` 就會紅，不必等到 e2e。
  */
-describe('自架字型（Archivo）', () => {
+describe('自架字型（Baloo 2）', () => {
   const BASE_FILE = `${STYLE_DIR}/base.css`;
 
   it('@font-face 指到的檔案真的在 public/ 底下', () => {
@@ -307,15 +307,15 @@ describe('自架字型（Archivo）', () => {
   /**
    * 體積上限。spec 給的門檻是 30KB（Yuki 2026-08-26 拍板：超過就不載這個字型）。
    * 這條攔的是「有人照 README 重跑 subset，但漏了 --unicodes 或 wght 裁切」——上游的完整
-   * 拉丁 subset 是 34.1KB，直接放進來會過門檻而沒有任何東西說話。
+   * 拉丁 subset 約 33KB，直接放進來會過門檻而沒有任何東西說話。
    */
   it('出貨的 woff2 不超過 30KB', () => {
-    const bytes = statSync('public/fonts/archivo-latin-500-700.woff2').size;
+    const bytes = statSync('public/fonts/baloo2-latin-500-700.woff2').size;
     expect(bytes, `字型檔 ${(bytes / 1024).toFixed(1)}KB 超過 30KB 門檻——`
       + '八成是重跑 subset 時漏了 --unicodes 或 varLib.instancer 那一步').toBeLessThanOrEqual(30 * 1024);
   });
 
-  it('--font-num 是「Archivo ＋ --font 的全部成員」，中文才不會掉到瀏覽器預設', () => {
+  it('--font-num 是「Baloo 2 ＋ --font 的全部成員」，中文才不會掉到瀏覽器預設', () => {
     const tokens = stripComments(readFileSync(TOKENS_FILE, 'utf8'));
     const defined = new Map(
       [...tokens.matchAll(/^\s{2}(--[a-z0-9-]+):\s*([^;]+);/gm)].map(m => [m[1]!, m[2]!.trim()]),
@@ -331,8 +331,8 @@ describe('自架字型（Archivo）', () => {
     expect(split(fontNum!)[0], `--font-num 的第一順位（${split(fontNum!)[0]}）跟 @font-face 宣告的`
       + `字型名（${face}）對不起來，整個字型等於沒掛`).toBe(face);
 
-    // ⚠️ Archivo 沒有中文字。掛著 --font-num 的位置全是中英混排，所以後面**必須**原封不動
-    // 接上 --font 的全部成員；只寫 `Archivo, sans-serif` 的話中文會掉到瀏覽器預設 sans-serif，
+    // ⚠️ Baloo 2 只做了拉丁 subset，沒有中文字。掛著 --font-num 的位置全是中英混排，所以後面**必須**原封不動
+    // 接上 --font 的全部成員；只寫 `'Baloo 2', sans-serif` 的話中文會掉到瀏覽器預設 sans-serif，
     // 跟同一句話裡其他中文長得不一樣。
     expect(split(fontNum!).slice(1), '--font-num 後面接的不是 --font 的完整清單，中文會掉到瀏覽器預設')
       .toEqual(split(font!));

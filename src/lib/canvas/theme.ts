@@ -26,7 +26,7 @@ export const DEFAULT_THEME: Theme = {
   surface1: '#28213f',
   borderStrong: '#5d5090',
   font: "'Noto Sans TC', 'Microsoft JhengHei', sans-serif",
-  fontNum: "'Archivo', 'Noto Sans TC', 'Microsoft JhengHei', sans-serif",
+  fontNum: "'Baloo 2', 'Noto Sans TC', 'Microsoft JhengHei', sans-serif",
   labelPx: 12, // --fs-xs: 0.75rem，用預設 16px 根字級換算
   shadow: 'rgb(10 7 18 / 48%)',
 };
