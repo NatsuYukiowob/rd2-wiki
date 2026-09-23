@@ -87,3 +87,45 @@ test('BL2b. 按住時整顆按鈕縮放（不是只有厚度變）', async ({ pa
   const m = t === 'none' ? [1] : t.match(/matrix\(([^)]+)\)/)![1]!.split(',').map(Number);
   expect(m[0], `按住時沒有縮放（${t}）`).toBeLessThan(1);
 });
+
+test('BL3. 三列切換鈕是 .seg：凹槽容器、選中＝金框、切換不改寬度；沒有存檔的「我的 /sim」無回饋；高對比下選中分得出來', async ({ page, isMobile }) => {
+  await page.goto('/board');
+  const gold = await tokenColor(page, '--gold');
+  const muted = await tokenColor(page, '--muted');
+  await expect(page.locator('#board-coop-mode .seg, #offgame-mode .seg, #partner-offgame-mode .seg')).toHaveCount(3);
+  const radius = await page.locator('#offgame-mode .seg').evaluate(el => getComputedStyle(el).borderTopLeftRadius);
+  expect(radius).toBe('10px');
+
+  const border = (sel: string) => page.locator(sel).evaluate(el => getComputedStyle(el).borderTopColor);
+  expect(await border('#board-coop-mode button[data-coop="off"]'), '選中的不是金框').toBe(gold);
+  expect(await border('#board-coop-mode button[data-coop="on"]'), '沒選中的框應該是透明').toBe('rgba(0, 0, 0, 0)');
+
+  const width = (sel: string) => page.locator(sel).evaluate(el => el.getBoundingClientRect().width);
+  const before = [await width('#board-coop-mode'), await width('#offgame-mode')];
+  await page.locator('#board-coop-mode button[data-coop="on"]').click();
+  await expect(page.locator('#board-coop-mode button[data-coop="on"]')).toHaveAttribute('aria-pressed', 'true');
+  const after = [await width('#board-coop-mode'), await width('#offgame-mode')];
+  expect(Math.abs(after[0]! - before[0]!), '模式切換改變了寬度').toBeLessThanOrEqual(0.5);
+  expect(Math.abs(after[1]! - before[1]!), '局外加成列的寬度跟著模式變了').toBeLessThanOrEqual(0.5);
+
+  // 這個 context 是乾淨的，沒有 /sim 存檔 ⇒「我的 /sim」是 aria-disabled。
+  const sim = page.locator('#offgame-mode button[data-mode="sim"]');
+  await expect(sim).toHaveAttribute('aria-disabled', 'true');
+  expect(await sim.evaluate(el => getComputedStyle(el).color), '沒有存檔的「我的 /sim」不是 --muted').toBe(muted);
+  if (!isMobile) {
+    await sim.scrollIntoViewIfNeeded(); // page.mouse 不會自己捲動（同 BL2）
+    const b = (await sim.boundingBox())!;
+    await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2);
+    await page.mouse.down();
+    await page.waitForTimeout(150);
+    const t = await sim.evaluate(el => getComputedStyle(el).transform);
+    await page.mouse.move(0, 0);
+    await page.mouse.up();
+    expect(t, '按不了的鈕按下去仍然縮了').toBe('none');
+  }
+
+  await page.emulateMedia({ forcedColors: 'active' });
+  const on = await border('#board-coop-mode button[data-coop="on"]');
+  const off = await border('#board-coop-mode button[data-coop="off"]');
+  expect(on, '高對比模式下選中與沒選中的框色一樣').not.toBe(off);
+});

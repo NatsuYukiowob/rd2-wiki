@@ -195,6 +195,61 @@ a.row-card:active {
   }
 }
 
+/* 分段切換（2026-09-23 骰桌 PR ③）：一條凹槽裡並排幾顆互斥的鈕，選中那顆是金框鍵帽。
+   骨子裡是 `<button aria-pressed>`（/board 的狀態機綁在這上面），不是 radio。
+   ⚠️ 沒選中的框是 transparent 不是 0：選中換成金框時寬度才不跳（BL3）。
+   ⚠️ aria-disabled 不是 :disabled，hover／按壓要自己排除（/board 沒有 /sim 存檔時的「我的 /sim」）。 */
+.seg {
+  display: inline-flex;
+  gap: var(--space-h);
+  padding: var(--space-h);
+  border-radius: var(--r-btn);
+  background: var(--surface-0);
+  box-shadow: inset 0 1px 3px rgb(0 0 0 / 55%), inset 0 -1px 0 var(--hair);
+}
+/* ⚠️ 直向內距是 --space-h 不是 --space-1：凹槽自己上下各有 --space-h，兩者加起來＝一顆獨立按鈕的
+   --space-1——整條切換列的外高跟換成 .seg 之前一樣。/board 320px 的首屏是量到剩 1–2px 的
+   （B52「對戰：隊伍列掉出首屏」），這一列多長 4px 隊伍列就掉出首屏。 */
+.seg > button {
+  padding: var(--space-h) var(--space-3);
+  border: 1px solid transparent;
+  border-radius: calc(var(--r-btn) - var(--space-h));
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  cursor: pointer;
+  transition:
+    background-color var(--t-fast) var(--e-out),
+    color var(--t-fast) var(--e-out),
+    transform var(--t-press) var(--e-out);
+}
+.seg > button:not([aria-disabled='true']):hover {
+  color: var(--fg);
+}
+.seg > button[aria-pressed='true'] {
+  border-color: var(--gold);
+  background: var(--surface-3);
+  background: color-mix(in srgb, var(--gold) 16%, var(--surface-2));
+  color: var(--fg);
+}
+.seg > button:not([aria-disabled='true']):active {
+  transform: scale(var(--p-press));
+}
+.seg > button[aria-disabled='true'] {
+  cursor: not-allowed;
+}
+@media (forced-colors: active) {
+  .seg > button {
+    border-color: ButtonBorder;
+  }
+  .seg > button[aria-pressed='true'] {
+    forced-color-adjust: none;
+    border-color: Highlight;
+    background: Highlight;
+    color: HighlightText;
+  }
+}
+
 /* --- 首頁 --- */
 /* 六張入口：桌機 3×2、窄一點 2×3、手機一欄。minmax 的下限決定斷點，不用 media query。
    auto-fill 而不是 auto-fit，理由同 `.guide-cards.is-content` 的註解。 */
@@ -496,6 +551,7 @@ a.row-card:active {
   .card,
   .row-card,
   .btn,
+  .seg > button,
   .chip,
   .chip .branch-dot {
     transition: none;
@@ -507,6 +563,7 @@ a.row-card:active {
   a.row-card:active,
   .btn-alt:not(:disabled):active,
   .btn-pri:not(:disabled):active,
+  .seg > button:not([aria-disabled='true']):active,
   .chip:active {
     transform: none;
   }

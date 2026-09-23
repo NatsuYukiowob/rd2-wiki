@@ -34,13 +34,9 @@
    三顆按鈕文字固定、用 aria-pressed 表達選中（同「隱藏星數」），切換不改變寬度。
    沒有存檔的提示（#offgame-nosave）是它的最後一個子元素、跟按鈕同一行；放不下時（手機 320px）
    換到下一行、各行置中——那是預期的，不是跑版。 */
-/* ⚠️ 這一頁有**三列**長得一樣的切換鈕：模式切換（#board-coop-mode）、我的局外加成（#offgame-mode）、
-   隊友的局外加成（#partner-offgame-mode）。下面每一條都要三個一起列——漏掉一列的後果不是「少了
-   圓角」那麼輕：瀏覽器預設的按鈕不認得 aria-pressed，`true` 與 `false` 會畫成逐像素相同的灰鈕，
-   畫面上完全看不出現在是哪個模式、隊友那一盤套的是哪一段局外加成（而那一項會讓卡片上的
-   數字差到 2.5 倍）。
-   ⚠️ 用 `:is()` 包三個 id 是為了讓具體度停在 (1,0,0)——`:is()` 取引數裡最高的那一個，三個都是 id，
-   所以跟原本單寫 `#offgame-mode` 完全相同，檔尾「按壓回饋」與「減少動態」那兩組 `:is()` 不必重算。 */
+/* 三列的按鈕外觀在 components.css 的 `.seg`（2026-09-23）；這裡只留三列共用的版面（置中、換行、字級）。
+   ⚠️ 三列都要包 `.seg`——漏一列的話那一列的按鈕退回瀏覽器預設的灰鈕，而預設按鈕不認得
+   aria-pressed，B50 守這件事。 */
 :is(#board-coop-mode, #offgame-mode, #partner-offgame-mode) {
   display: flex;
   flex-wrap: wrap;
@@ -52,20 +48,6 @@
   font-size: var(--fs-sm);
 }
 .offgame-label { color: var(--muted); }
-:is(#board-coop-mode, #offgame-mode, #partner-offgame-mode) button {
-  padding: var(--space-1) var(--space-3);
-  background: var(--surface-1);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--r-pill);
-  color: var(--fg);
-  font: inherit;
-  cursor: pointer;
-}
-:is(#board-coop-mode, #offgame-mode, #partner-offgame-mode) button:not([aria-disabled="true"]):hover { background: var(--surface-3); }
-:is(#board-coop-mode, #offgame-mode, #partner-offgame-mode) button[aria-pressed="true"] { background: var(--surface-3); border-color: var(--gold); }
-/* 沒有 /sim 存檔時的「我的 /sim」：aria-disabled 不是 :disabled，外觀要自己給——hover 與按壓回饋
-   也要自己排除（上面的 :hover 與檔尾按壓那兩條的 :not([aria-disabled="true"])）。 */
-:is(#board-coop-mode, #offgame-mode, #partner-offgame-mode) button[aria-disabled="true"] { color: var(--muted); cursor: not-allowed; }
 /* 兩列局外加成各有一個「沒有存檔」提示，兩個都要——只寫我這一列的話隊友那一句會以內文字級、
    前景色印出來，看起來像一句正式的說明而不是附註。⚠️ 這裡只給顏色與字級，**不給 display**：
    兩個都是 JS 切 hidden 的 <span>，給了 display 就會壓過 [hidden]（同檔案中段那個防護區塊）。 */
@@ -405,14 +387,11 @@
    ⚠️ **刻意不含 `.board-cell`**：格子的主要互動是拖曳，而 `:active` 在整段拖曳期間都成立，
    格子會從按下的那一刻一路縮著直到放開。抓起來的回饋由 .dragging 那一路負責，不是這裡。
    ⚠️ `.pips-row button:disabled` 也要排除：按不動的東西不該有按下去的回饋。
-   ⚠️ 切換鈕那一項用的是檔頭那組 `:is(#board-coop-mode, #offgame-mode, #partner-offgame-mode)`，
-   三列一起列——漏掉一列的長相是「這一頁的切換鈕有的按下去會縮、有的不會」，而兩者外觀相同。
-   內層 `:is()` 的具體度是三個 id 裡最高的 (1,0,0)，跟原本單寫 #offgame-mode 一樣，外層 `:is()`
-   算出來的具體度因此一個字都沒變（下面減少動態那兩條要跟這裡逐字相同，理由見該處）。 */
-:is(#picker-close, .picker-dice, .pips-row button, .sp-row button, :is(#board-coop-mode, #offgame-mode, #partner-offgame-mode) button:not([aria-disabled="true"])) {
+   工具列（.btn）與三列切換（.seg）的按壓在 components.css，跟著元件走（2026-09-23）。 */
+:is(#picker-close, .picker-dice, .pips-row button, .sp-row button) {
   transition: transform var(--t-press) var(--e-out);
 }
-:is(#picker-close, .picker-dice, .pips-row button, .sp-row button, :is(#board-coop-mode, #offgame-mode, #partner-offgame-mode) button:not([aria-disabled="true"])):not(:disabled):active {
+:is(#picker-close, .picker-dice, .pips-row button, .sp-row button):not(:disabled):active {
   transform: scale(var(--p-press));
 }
 
@@ -589,14 +568,13 @@
 @media (prefers-reduced-motion: reduce) {
   /* ⚠️ 選擇器要跟上面那兩條**一模一樣**，包含 `:is()` 的包法與 `:not(:disabled)`。
      `:is()` 的具體度等於它引數裡最高的那一個——`:is(#picker-close, …):not(:disabled):active`
-     是 (1,3,1)（最高的引數是切換鈕那一條 `… button:not([aria-disabled="true"])` ＝ (1,1,1)，
-     再加 `:not(:disabled)` 與 `:active` 各一），而攤開來寫的 `#picker-close:active`
-     只有 (1,1,0)，會被壓過去。
+     是 (1,2,0)（最高的引數 `#picker-close` ＝ (1,0,0)，再加 `:not(:disabled)` 與 `:active`
+     各一），而攤開來寫的 `.pips-row button:active` 只有 (0,2,1)，會被壓過去。
      2026-08-26 實測踩到：reduce 之下按鈕照樣縮，是 E2E 的 D18 抓出來的。 */
-  :is(#picker-close, .picker-dice, .pips-row button, .sp-row button, :is(#board-coop-mode, #offgame-mode, #partner-offgame-mode) button:not([aria-disabled="true"])) {
+  :is(#picker-close, .picker-dice, .pips-row button, .sp-row button) {
     transition: none;
   }
-  :is(#picker-close, .picker-dice, .pips-row button, .sp-row button, :is(#board-coop-mode, #offgame-mode, #partner-offgame-mode) button:not([aria-disabled="true"])):not(:disabled):active {
+  :is(#picker-close, .picker-dice, .pips-row button, .sp-row button):not(:disabled):active {
     transform: none;
   }
 }
