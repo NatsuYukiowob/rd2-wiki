@@ -117,3 +117,41 @@ test('ST3b. 按住圖鑑卡片裡的檔位切換鈕，整張卡片不跟著縮',
   const m = t === 'none' ? [1, 0, 0, 1] : t.match(/matrix\(([^)]+)\)/)![1]!.split(',').map(Number);
   expect([m[0], m[3]], `按住卡片裡的切換鈕時整張卡片被縮放了（${t}）`).toEqual([1, 1]);
 });
+
+const HOME_ENTRIES = ['/tree', '/dice', '/board', '/sim', '/events', '/guide'];
+
+test('ST4. 首頁 6 張入口依序排好、stagger 連號，320px 不撐出橫捲；有 GitHub 原始碼連結', async ({ page }) => {
+  await page.goto('/');
+  const cards = page.locator('.home-links .home-card');
+  await expect(cards).toHaveCount(6);
+  const info = await cards.evaluateAll(els => els.map(el => ({
+    href: el.getAttribute('href'), i: (el as HTMLElement).style.getPropertyValue('--i').trim(),
+  })));
+  expect(info.map(x => x.href)).toEqual(HOME_ENTRIES);
+  expect(info.map(x => x.i), '進場 stagger 的 --i 要 0–5 連號').toEqual(['0', '1', '2', '3', '4', '5']);
+
+  const repo = page.locator('a[href="https://github.com/NatsuYukiowob/rd2-wiki"]');
+  await expect(repo).toHaveCount(1);
+  await expect(repo).toBeVisible();
+
+  await page.setViewportSize({ width: 320, height: 700 });
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+  expect(overflow, '320px 下首頁撐出橫捲').toBeLessThanOrEqual(0);
+});
+
+test('ST4b. 靜態頁的可見文字裡沒有文字箭頭 → ←，改成 SVG 圖示', async ({ page }) => {
+  for (const path of ['/', '/guide', '/guide/status', '/dice', '/events', '/events/chuseok-2026', '/no-such-page']) {
+    await page.goto(path);
+    const text = await page.locator('main, section').first().innerText();
+    expect(text, `${path} 還有文字箭頭`).not.toMatch(/[→←]/);
+  }
+  // /dice 卡片裡點開關鍵字，「在骰子樹搜尋」那條是 JS 生出來的，上面掃不到。
+  await page.goto('/dice');
+  // 同 codex.spec.ts 的 C3：第一張含 `a.kw-link` 的卡片、點它的第一個關鍵字。
+  const card = page.locator('.dice-card').filter({ has: page.locator('a.kw-link') }).first();
+  await card.locator('a.kw-link').first().click();
+  const search = card.locator('.card-term-search').first();
+  await expect(search).toBeVisible();
+  expect(await search.innerText()).not.toMatch(/→/);
+  await expect(search.locator('svg.icon')).toHaveCount(1);
+});

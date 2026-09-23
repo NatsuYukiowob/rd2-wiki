@@ -19,6 +19,10 @@ export const ICONS = {
     + '<circle cx="12" cy="12" r="1.8" fill="currentColor"/>'
     + '<circle cx="16" cy="16" r="1.8" fill="currentColor"/>',
   ),
+  /** 往前（連結的「進去」）。取代文字 `→`。 */
+  arrow: svg('<path d="M5 12h13M13 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>'),
+  /** 往回（「← 活動」這種回上一層的路標）。 */
+  back: svg('<path d="M19 12H6M11 6l-6 6 6 6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>'),
 } as const;
 
 export type IconName = keyof typeof ICONS;

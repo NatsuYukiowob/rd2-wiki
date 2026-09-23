@@ -35,7 +35,8 @@ test('EV1. 每一場活動在索引上各有一張卡片，連到自己那一頁
     await expect(card).toHaveCount(1);
     await expect(card.locator('.event-badge')).toHaveText(`${ev.version} 客戶端`);
     // 「N 項內容」是從資料算的，不是寫死在版面上。
-    await expect(card.locator('.event-more')).toHaveText(`${rowCount(ev)} 項內容 →`);
+    await expect(card.locator('.event-more')).toHaveText(`${rowCount(ev)} 項內容`);
+    await expect(card.locator('.event-more svg.icon'), '「N 項內容」後面沒有箭頭圖示').toHaveCount(1);
   }
 });
 

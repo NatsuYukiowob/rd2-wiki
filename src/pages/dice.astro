@@ -139,6 +139,7 @@ const BRANCHES = Object.entries(BRANCH_ZH);
 
 <script>
   import { cssMs } from '../lib/css-ms.js';
+  import { ICONS } from '../lib/icons.js';
 
   // --- 篩選 ---
   // 勾選框 → 隱藏不符合的卡片。刻意不用 URL 狀態同步（那是 /tree 的契約，它有選取節點與
@@ -258,7 +259,7 @@ const BRANCHES = Object.entries(BRANCH_ZH);
     back.type = 'button';
     back.className = 'card-term-back';
     back.setAttribute('aria-label', '返回');
-    back.textContent = '←';
+    back.innerHTML = ICONS.back;
     const title = document.createElement('p');
     title.className = 'card-term-title';
     title.style.color = entry.color;
@@ -278,7 +279,8 @@ const BRANCHES = Object.entries(BRANCH_ZH);
       const search = document.createElement('a');
       search.className = 'card-term-search';
       search.href = `/tree?q=${encodeURIComponent(term)}`;
-      search.textContent = `在骰子樹搜尋 #${term} →`;
+      search.textContent = `在骰子樹搜尋 #${term}`;
+      search.insertAdjacentHTML('beforeend', ICONS.arrow);
       view.append(search);
     }
     return view;

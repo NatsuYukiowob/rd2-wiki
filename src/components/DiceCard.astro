@@ -14,6 +14,7 @@ import { AWAKENING_CONDITION, BRANCH_ZH } from '../lib/labels';
 import { DICE_CARD_ICON_PX } from '../lib/dice-icon';
 import type { GlossaryIndex } from '../lib/glossary-groups';
 import type { DiceStatEntry, TreeNode, UpgradeCostTable } from '../lib/types';
+import { ICONS } from '../lib/icons';
 
 interface Props {
   node: TreeNode;
@@ -135,7 +136,7 @@ const modeName = `stat-mode-${node.id}`;
       )
     }
 
-    <a class="card-link" href={`/tree?node=${node.id}`}>在骰子樹查看前置鏈 →</a>
+    <a class="card-link" href={`/tree?node=${node.id}`}>在骰子樹查看前置鏈<Fragment set:html={ICONS.arrow} /></a>
   </div>
 
   <!--

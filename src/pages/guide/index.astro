@@ -8,6 +8,7 @@ import { buildGlossary, GROUPS, GUIDE_PAGES } from '../../lib/glossary-groups';
 import tacticsRaw from '../../../data/tactics.json';
 import bossRaw from '../../../data/boss.json';
 import type { Boss, GlossaryRecord, Tactic, TreeData } from '../../lib/types';
+import { ICONS } from '../../lib/icons';
 
 const tree = data as unknown as TreeData;
 const keywords = keywordsRaw as Record<string, GlossaryRecord>;
@@ -46,7 +47,7 @@ const pages = GUIDE_PAGES.map(page => ({
           </span>
           <h2>{page.title}</h2>
           <p>{page.intro}</p>
-          <p class="note">{page.count} 條 →</p>
+          <p class="note">{page.count} 條<Fragment set:html={ICONS.arrow} /></p>
         </a>
       ))}
     </div>
@@ -65,12 +66,12 @@ const pages = GUIDE_PAGES.map(page => ({
       <a class="guide-card card" href="/tactic" style={`--i:${pages.length}`}>
         <h2>戰術</h2>
         <p>對戰與合作模式中的戰術效果，可依階段篩選，也能切換看合作模式的版本。</p>
-        <p class="note">{tacticCount} 條 →</p>
+        <p class="note">{tacticCount} 條<Fragment set:html={ICONS.arrow} /></p>
       </a>
       <a class="guide-card card" href="/boss" style={`--i:${pages.length + 1}`}>
         <h2>Boss</h2>
         <p>對戰與合作模式中會出現的 Boss，以及各自的技能效果。</p>
-        <p class="note">{bossCount} 種 →</p>
+        <p class="note">{bossCount} 種<Fragment set:html={ICONS.arrow} /></p>
       </a>
     </div>
   </section>

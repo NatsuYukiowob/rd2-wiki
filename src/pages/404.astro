@@ -10,13 +10,14 @@
 // 於是無限多個不存在的網址都被判成首頁的重複內容，`/robots.txt` 與 `/sitemap.xml`
 // 也因此「看起來存在」（見 tests/e2e/seo.spec.ts 的說明）。
 import Base from '../layouts/Base.astro';
+import { ICONS } from '../lib/icons';
 ---
 
 <Base title="找不到頁面" noIndex>
-  <section style="padding:2rem">
+  <section class="page">
     <h1 class="page-head">找不到這一頁</h1>
-    <p style="color:var(--muted)">網址可能打錯了，或這一頁已經搬走。</p>
-    <p><a href="/tree">開啟骰子樹 →</a></p>
+    <p class="lede">網址可能打錯了，或這一頁已經搬走。</p>
+    <p><a href="/tree">開啟骰子樹<Fragment set:html={ICONS.arrow} /></a></p>
     <p><a href="/">回首頁</a></p>
   </section>
 </Base>
