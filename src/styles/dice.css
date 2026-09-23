@@ -135,13 +135,11 @@
   align-items: baseline;
   gap: var(--space-2);
   padding: var(--space-h) var(--space-3);
-  background: var(--surface-0);
-  border: 1px solid var(--border);
+  /* 底色、凹陷與透明框色在 components.css 的 `.pill`。⚠️ 這裡只准寫 border-width／
+     border-style 兩個長寫：`border` 簡寫會把 `.pill` 的透明框色重設回 currentColor。 */
+  border-width: 1px;
+  border-style: solid;
   border-radius: var(--r-pill);
-  /* 凹陷：pill 的底色只比卡片低一階（--surface-0 → --surface-1 對比 1.10），單靠色差
-     說不出「嵌進去」。上緣的內陰影補上那個資訊。方向跟 --face 的 --hair 正好相反，
-     兩者一起看才成立：卡片往前凸、pill 往後凹。 */
-  box-shadow: inset 0 1px 3px rgb(0 0 0 / 55%);
   /* 切檔時只有透明度會變。**尺寸不動這件事不是這裡守的**，是 .stat-v 的 inline-grid 疊放
      （見下面）——41 張卡片排在 CSS grid 裡，任何一顆 pill 變寬都可能多擠出一列而把同一列的
      鄰居一起撐高，同 /tree 工具列那條「會出現／消失的東西尺寸不准變」的教訓。 */

@@ -179,3 +179,20 @@ test('ST5. 篩選鈕：8px 圓角、選中＝金框、選中的色點有該分�
     expect(gap, `${path} 的晶片黏在一起`).not.toBe('normal');
   }
 });
+
+test('ST6. 列式卡片圓角 12px、有實體厚度；數值 pill 沒有可見邊框、是凹槽', async ({ page }) => {
+  for (const [path, sel] of [['/events', '.event-card-link'], ['/boss', '.battle-item']] as const) {
+    await page.goto(path);
+    const s = await page.locator(sel).first().evaluate(el => {
+      const c = getComputedStyle(el); return { radius: c.borderTopLeftRadius, shadow: c.boxShadow };
+    });
+    expect(s.radius, `${sel} 圓角`).toBe('12px');
+    expect(s.shadow, `${sel} 沒有實體厚度`).toMatch(/0px 3px 0px 0px/);
+  }
+  await page.goto('/dice');
+  const pill = await page.locator('.stat-pill').first().evaluate(el => {
+    const c = getComputedStyle(el); return { border: c.borderTopColor, shadow: c.boxShadow };
+  });
+  expect(pill.border, 'pill 還有可見邊框').toBe('rgba(0, 0, 0, 0)');
+  expect(pill.shadow, 'pill 沒有內凹陰影').toContain('inset');
+});

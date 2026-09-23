@@ -22,22 +22,9 @@
   display: flex;
   gap: var(--space-4);
   padding: var(--space-4);
-  border: 1px solid var(--border);
-  border-radius: var(--r-lg);
-  background: var(--surface-1);
-  box-shadow: var(--face);
+  /* 面、邊框、過場與 hover／按壓在 components.css 的 `.row-card`（2026-09-23 骰桌 PR ②）。 */
   color: inherit;
   text-decoration: none;
-  transition: transform var(--t-fast) var(--e-out), box-shadow var(--t-fast) var(--e-out);
-}
-
-.event-card-link:hover {
-  transform: translateY(calc(-1 * var(--p-lift)));
-  box-shadow: var(--face-lift);
-}
-
-.event-card-link:active {
-  transform: scale(var(--p-press));
 }
 
 /* 縮圖是**裝飾**（`alt=""`）：卡片上的名稱與摘要已經說完了它是什麼，給它一個 alt
@@ -257,19 +244,6 @@
 
 /* 減少動態：卡片的抬升與按壓都收掉。⚠️ 選擇器要跟被覆寫的那一條長得一模一樣，
    否則具體度輸掉、規則照樣生效（`/board` 與 `/tree` 為此紅過一次，D18 守著同一件事）。 */
-@media (prefers-reduced-motion: reduce) {
-  .event-card-link {
-    transition: none;
-  }
-
-  .event-card-link:hover {
-    transform: none;
-  }
-
-  .event-card-link:active {
-    transform: none;
-  }
-}
 
 /* 遊戲內實機截圖。桌機並排、窄螢幕堆疊，單張不超過一個手機畫面的高度——它是佐證，
    不是主角，放大看細節是點進去的事。 */

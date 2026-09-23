@@ -87,6 +87,42 @@ a.card:active {
   transform: translateY(calc(-1 * var(--p-lift))) scale(var(--p-press));
 }
 
+/* 列式卡片：/events 索引、/tactic、/boss、/rift-shop 的一列一條。跟 .card 同一個面，
+   但沒有卡片頭（列上沒有分支可言），hover 只換框色與影子；整列是連結的才抬升（a.row-card）。 */
+.row-card {
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  box-shadow: var(--face);
+  transition:
+    border-color var(--t-fast) var(--e-out),
+    box-shadow var(--t-fast) var(--e-out),
+    transform var(--t-press) var(--e-out);
+}
+.row-card:hover {
+  border-color: var(--border-strong);
+  box-shadow: var(--face-lift);
+}
+a.row-card:hover {
+  transform: translateY(calc(-1 * var(--p-lift)));
+}
+a.row-card:active {
+  box-shadow: var(--face);
+  transform: translateY(calc(-1 * var(--p-lift))) scale(var(--p-press));
+}
+
+/* 凹槽：底色比所在的面低一階（--surface-0）、上緣內陰影、沒有框。
+   方向跟 --face 的 --hair 正好相反，兩者一起看才成立：卡片往前凸、pill 往後凹。
+   ⚠️ 框線是**透明**不是拿掉：`border: 0` 會讓每顆 pill 窄 2px，而 /dice 的 pill 會 wrap，
+   寬度一變就可能多擠出一列、把同一列的卡片一起撐高（C8 守的那件事）。
+   ⚠️ 框的寬度與樣式寫在頁面檔（dice.css 的 `.stat-pill`），那邊只能用長寫：頁面檔比這裡
+   後載入，`border` 簡寫會連 border-color 一起重設成 currentColor、把這裡的透明蓋掉。 */
+.pill {
+  background: var(--surface-0);
+  border-color: transparent;
+  box-shadow: inset 0 1px 3px rgb(0 0 0 / 55%), inset 0 -1px 0 var(--hair);
+}
+
 /* --- 首頁 --- */
 /* 六張入口：桌機 3×2、窄一點 2×3、手機一欄。minmax 的下限決定斷點，不用 media query。
    auto-fill 而不是 auto-fit，理由同 `.guide-cards.is-content` 的註解。 */
@@ -386,6 +422,7 @@ a.card:active {
 /* 減少動態：跨頁共用元件這一份。理由與寫法見 chrome.css 檔尾同一段。 */
 @media (prefers-reduced-motion: reduce) {
   .card,
+  .row-card,
   .chip,
   .chip .branch-dot {
     transition: none;
@@ -393,6 +430,8 @@ a.card:active {
   .card:hover,
   a.card:focus-visible,
   a.card:active,
+  a.row-card:hover,
+  a.row-card:active,
   .chip:active {
     transform: none;
   }
