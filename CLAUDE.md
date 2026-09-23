@@ -554,7 +554,7 @@ npm run compare -- <beforeURL> <afterURL>  # computed-style 逐元素比對，�
   連成一條線，看起來像被劃掉（`dice.css` 的 `.awakening-head` 記著這個實測）。粗體中文最小 `--fs-sm`。
 - **標題（`h1/h2/h3`）的個性來自 `font-weight: 700` ＋ `letter-spacing: 0.02em`**，規則在
   `base.css`，⚠️ 不要用拉丁 display face 排標題（Baloo 2 只有拉丁 subset，只會讓標題裡的數字跳出來）。
-- **數字與代號用 `--font-num`（自架的 Baloo 2 拉丁 subset，18.3KB；2026-09-23 取代 Archivo）**：`.meta`／`.stat-v`／
+- **數字與代號用 `--font-num`（自架的 Baloo 2 拉丁 subset，17.9KB；2026-09-23 取代 Archivo）**：`.meta`／`.stat-v`／
   `.game-id`／`.nav-updated`。字型檔在 `public/fonts/`，來源與重製指令在該處的 `README.md`。
   ⚠️ 三個容易踩的點：(一) `--font-num` 後面**必須**原封不動接上 `--font` 的全部成員，Baloo 2
   沒有中文字，只寫 `'Baloo 2', sans-serif` 會讓同一句話裡的中文掉到瀏覽器預設；(二) 路徑走
@@ -685,6 +685,10 @@ npm run compare -- <beforeURL> <afterURL>  # computed-style 逐元素比對，�
   不是縮字級、也不是拿掉入口。捲的必須是 `#site-nav` 自己——讓整份文件橫捲會踩到 `/board` 的
   B13。`overflow-x` 一設 `overflow-y` 就會被算成 `auto`，而「遊戲介紹」的下拉是絕對定位掛在 nav
   底下的，**一定要明確寫 `overflow-y: visible`**，否則它會被整個裁掉。D13 守。
+- ⚠️ **≤720px 的品牌只留骰點圖示**（`.brand-text` 用 clip-path 視覺隱藏，不能 `display: none`——它是
+  連結唯一的無障礙名稱）。導覽列捲軸是藏起來的，**露出半截的最後一項是唯一的「還能往右滑」線索**；
+  圖示多出的 20px 曾把「遊戲介紹」整個推出 Pixel 7 的畫面。D21 守（最後一項要露出一截），
+  加寬導覽列任何一項之前先想這條。
 - **工具列的尺寸不准隨篩選狀態改變**（浮在畫布上的盒子，寬度一變整排東西跟著跳，而且是邊打字邊跳）。
   「符合 N 個節點」那句話已整個拿掉。⚠️ 金點的 `::before` 要**一直存在**、平常 `background: transparent`
   ——只在 `.active` 才長出 `content` 的話按鈕會寬 16px，問題原地復發。⚠️ `清除篩選` 用

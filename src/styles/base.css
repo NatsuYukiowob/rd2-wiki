@@ -13,7 +13,7 @@
  * 去補一行 `font-weight: 500`**：那一行會連帶把同一句話裡退回 --font 的中文也加粗，而
  * 12px 的粗體中文橫筆畫會糊成一條線（見 dice.css 的 .awakening-head）。
  *
- * font-display: swap ＋ **刻意不做 preload**：字型只有 18.3KB 且同源，但掛著它的元素在
+ * font-display: swap ＋ **刻意不做 preload**：字型只有 17.9KB 且同源，但掛著它的元素在
  * 部分頁面／視窗下全部是 display:none（手機版的 .nav-updated），preload 會在那些頁面白拿
  * 一個沒人用的請求（手機版的 /guide、/board、/changelog、/about、/sim、首頁全部沒有
  * --font-num 的可見文字）。
@@ -25,7 +25,8 @@
  * 同一列鄰居被撐高」沒有發生。
  * 換 `font-display: optional` 可以把這點位移歸零，代價是**測試會變不穩**：optional 只給
  * 瀏覽器約 100ms，CI 上冷啟動的 serve 有機會錯過，D15／D16 就會偶發紅。權衡之後留 swap。
- * （Archivo 時期的量測；Baloo 2 的數字更寬，2026-09-23 換字型時以 E2E C8 重驗卡片不 reflow。） */
+ * （Archivo 時期的量測。2026-09-23 換成 Baloo 2 時實測：導覽列日期、`.game-id` 反而比 Archivo 窄，
+ * 只有 `.stat-v` 寬 2px；1280／721／412／320 四個寬度下沒有任何 pill 或 meta 換行。） */
 @font-face {
   font-family: 'Baloo 2';
   font-style: normal;

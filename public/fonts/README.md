@@ -1,6 +1,6 @@
 # Baloo 2（拉丁 subset）
 
-`baloo2-latin-500-700.woff2` — 18.3 KB。掛在 `--font-num` 的位置（`.meta`／`.stat-v`／`.game-id`／
+`baloo2-latin-500-700.woff2` — 17.9 KB。掛在 `--font-num` 的位置（`.meta`／`.stat-v`／`.game-id`／
 `.nav-updated` 等「數字與代號」），中文一律不走它（沒有中文字，會自動退回 `--font`）。
 2026-09-23 骰桌改版取代 Archivo。
 
@@ -9,7 +9,7 @@
 ## 這個檔是怎麼來的
 
 上游是 Google Fonts 供應的 Baloo 2 拉丁 subset（可變字體，wght 400–800，約 33 KB）。
-兩道加工壓到 18.3 KB：
+兩道加工壓到 17.9 KB：
 
 ```sh
 UA="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"

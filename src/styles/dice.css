@@ -151,7 +151,7 @@
   background: var(--surface-0);
   border: 1px solid var(--border);
   border-radius: var(--r-pill);
-  /* 凹陷：pill 的底色只比卡片低一階（--surface-0 → --surface-1 對比 1.11），單靠色差
+  /* 凹陷：pill 的底色只比卡片低一階（--surface-0 → --surface-1 對比 1.10），單靠色差
      說不出「嵌進去」。上緣的內陰影補上那個資訊。方向跟 --face 的 --hair 正好相反，
      兩者一起看才成立：卡片往前凸、pill 往後凹。 */
   box-shadow: inset 0 1px 3px rgb(0 0 0 / 55%);
