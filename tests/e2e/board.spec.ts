@@ -919,7 +919,7 @@ test('B10. 兩個小標與其下方內容區塊一起置中，標題與說明文
   const gridGap = await gaps('#board-grid');
   expect(Math.abs(gridGap.left - gridGap.right), `#board-grid 左右留白 ${gridGap.left} / ${gridGap.right}`).toBeLessThanOrEqual(2);
 
-  // 標題與說明文字仍然靠左：跟頁面的內距左緣對齊，彼此的左邊界完全相同
+  // 標題與說明文字仍然靠左、彼此左緣相同（2026-09-23 起兩者的左緣對齊骰盤左緣，見 board.css 的頁首對齊軸；BL1 守）
   // （置中的是 .board-h2／#deck-row／#board-grid 這三塊，不是整個 .board-page）。
   const h1x = (await page.locator('h1').boundingBox())!.x;
   const ledeX = (await page.locator('.lede').boundingBox())!.x;
