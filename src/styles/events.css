@@ -122,7 +122,7 @@
 }
 
 /* 徽章講的是「內含這場活動的客戶端版本」。用 --font-num 排版本號，跟站上其他數字一致；
-   ⚠️ 後面必須接上 --font 的全部成員（Archivo 沒有中文字），所以直接用 token 不要自己拼。 */
+   ⚠️ 後面必須接上 --font 的全部成員（Baloo 2 沒有中文字），所以直接用 token 不要自己拼。 */
 .event-badge {
   padding: var(--space-h) var(--space-2);
   border: 1px solid var(--border);

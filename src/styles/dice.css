@@ -83,7 +83,7 @@
 /* 遊戲內部代號（D000 這種）。
    ⚠️ font-family **一定要明寫**，不能靠繼承 .meta：它是 <code>，而 base.css 的
    `code, pre` 會把它拉去 ui-monospace（實測過——沒寫這一行時 computed 是 ui-monospace
-   10.8px，整塊 Archivo 就這一格沒跟上）。
+   10.8px，整塊 Baloo 2 就這一格沒跟上）。
    ⚠️ letter-spacing 也要明寫成 normal：它繼承 .meta 的 --ls-label，而 0.1em 疊在四個
    拉丁字上會把最後一個字推出右邊那塊底色（字距是加在每個字後面的，包含最後一個）。
    中文標籤要字距、拉丁代號不要。 */
@@ -171,7 +171,7 @@
 }
 .stat-pill .stat-v {
   color: var(--fg);
-  /* 純數字，走 Archivo。它的數字比系統中文字型的全形數字窄且齊，是這整塊面板改字型
+  /* 純數字，走 Baloo 2。數字是半形、比系統中文字型的全形數字窄，是這整塊面板改字型
      最有感的地方。 */
   font-family: var(--font-num);
   font-size: var(--fs-md);
