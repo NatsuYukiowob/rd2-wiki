@@ -49,6 +49,10 @@
 #site-nav .brand {
   display: inline-flex;
   align-items: center;
+  /* 手機版只剩圖示（見 720px 那段）時，這個盒子會縮成圖示的 20px 高、被 nav 的
+     align-items: center 置中，top 跟其他項目差 2.8px——aria-current 的金線（::before，貼底）
+     也跟著錯位。撐滿列高就跟文字項目同高（D9 量的就是各項 top 一致）。 */
+  align-self: stretch;
   gap: var(--space-2);
   color: var(--gold);
 }
@@ -73,7 +77,7 @@
 /* 「上次更新 2026-08-23」——中英混排，日期走 Baloo 2、中文退回 --font。
    ⚠️ tabular-nums **不等於「日期換一天寬度不變」**，不要照著這樣寫註解或測試。實測
    （2026-08-26，Chromium headless、16px）：Chrome 把每個字形的前進寬度四捨五入到整數像素，
-   字形前進寬度被四捨五入到整數像素，數字寬度在 16px 下不保證一致。這一行是給支援次像素前進寬度的環境用的保險
+   數字寬度在 16px 下不保證一致。這一行是給支援次像素前進寬度的環境用的保險
    （字型裡確實帶著 tnum，見 public/fonts/README.md），不是這個字級下的保證。
    這個 span 是 `margin-left: auto`，右緣釘死，寬度變動只會讓文字往左長，不推擠任何東西。 */
 #site-nav .nav-updated {
@@ -92,6 +96,16 @@
      版面同一個 720px。 */
   #site-nav .nav-updated {
     display: none;
+  }
+  /* 手機版的品牌只留骰點圖示（2026-09-23 骰桌 PR ① review）：圖示多出的 20px 把「遊戲介紹」
+     整個推出 Pixel 7 的畫面，而捲軸是藏起來的，露出半截的最後一項是唯一的「還能往右滑」線索。
+     拿掉文字省下約 70px（E2E 的 D21 守）。⚠️ 文字只能視覺隱藏、不能 display:none——它是這個
+     連結唯一的無障礙名稱（圖示 aria-hidden），D20 驗名稱仍是「rd2-wiki」。
+     跟 `.sr-only` 同一招（clip-path），但不寫 1px 寬高：絕對定位已經讓它不佔版面。 */
+  #site-nav .brand .brand-text {
+    position: absolute;
+    clip-path: inset(50%);
+    white-space: nowrap;
   }
 }
 

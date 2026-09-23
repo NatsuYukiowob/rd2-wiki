@@ -105,8 +105,11 @@
   --surface-3: #3f3563;
   --border-strong: #5d5090;
   /* 頁頂暈光：body 背景的第一層，只在頁面頂端一圈微微提亮，讓 --bg 不是一整片死平的灰。
-     是 <image>（漸層）不是顏色，所以只能放在 background-image 那一層，不能拿去當 color。 */
-  --bg-glow: radial-gradient(ellipse 80% 60% at 50% 0%, #1f1e24, transparent 70%);
+     是 <image>（漸層）不是顏色，所以只能放在 background-image 那一層，不能拿去當 color。
+     ⚠️ 縱向半徑一定要是固定長度（40rem → 在 448px 處淡完），不能寫百分比：`html` 沒有背景，
+     body 的背景延伸到整份文件，百分比是對**整頁高度**算的——`/dice` 在桌機 1,800px 深處、
+     手機 4,500px 深處都還亮著（2026-09-23 review 實測）。E2E 的 D22 守。 */
+  --bg-glow: radial-gradient(ellipse 80% 40rem at 50% 0%, #1f1e24, transparent 70%);
 
   /* 陰影：跟表面層次配對用。--shadow-3 是浮在畫布上的東西（下拉選單、詳情面板）。 */
   --shadow-1: 0 1px 2px rgb(0 0 0 / 25%);
@@ -204,7 +207,7 @@
   /* 中文與內文：只用系統堆疊，不自架字型檔（CJK 字型體積過大）。 */
   --font: 'Noto Sans TC', 'Microsoft JhengHei', sans-serif;
 
-  /* 數字與代號用的拉丁字型（2026-08-26）。自架 18.3KB 的 Baloo 2 拉丁 subset（2026-09-23 骰桌改版取代 Archivo：圓潤的數字是手遊感的一大半），
+  /* 數字與代號用的拉丁字型（2026-08-26）。自架 17.9KB 的 Baloo 2 拉丁 subset（2026-09-23 骰桌改版取代 Archivo：圓潤的數字是手遊感的一大半），
      @font-face 在 base.css，來源與重製指令在 public/fonts/README.md。
      ⚠️ **Baloo 2 沒有中文字**，所以這個堆疊一定要把 --font 的成員接在後面：掛了這個
      字型的位置（.meta／.stat-v／.game-id／.nav-updated）文字是中英混排，中文得靠後備

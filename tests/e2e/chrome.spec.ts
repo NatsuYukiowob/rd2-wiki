@@ -6,6 +6,7 @@
 // 這一份就是把那類東西釘住。
 import { test, expect } from '@playwright/test';
 import { resolveColor, settleEnter } from './probe';
+import sharp from 'sharp';
 
 test('D1. 導覽列沾在視窗頂端，圖鑑的篩選列沾在導覽列正下方，兩者都不被卡片蓋掉', async ({ page }) => {
   await page.goto('/dice');
@@ -370,7 +371,7 @@ test('D14. 減少動態的規則拆到各檔之後沒有漏掉任何一條', asy
     await expect.soft(el, `${c.path} 上找不到 ${c.selector}`).toBeAttached();
     // 同上一個形狀的理由：找不到就跳過，不要讓 el.hover() 卡 30 秒把整個 test 中止掉。
     if (!(await el.count())) continue;
-    // --face-lift 的下緣硬邊：`calc(2px + var(--p-lift))`，hover 時該從 2px 長到 4px。
+    // --face-lift 的下緣硬邊：`calc(var(--depth) + var(--p-lift))`，hover 時該從 3px 長到 5px。
     // ⚠️ 一定要等過場跑完再讀（--t-fast 是 90ms），否則讀到的是 2.33px 這種中間值。
     const edge = (shadow: string) =>
       shadow.match(/rgba?\([^)]*\)\s+0px\s+([\d.]+)px\s+0px\s+0px(?!\s+inset)/)?.[1];
@@ -839,6 +840,56 @@ test('D20. 品牌標不改連結名稱、看得見、高對比模式下不消失
   expect(Math.abs(box.width - box.height), '品牌標被壓扁了').toBeLessThan(0.5);
 
   await page.emulateMedia({ forcedColors: 'active' });
-  const color = await icon.evaluate(el => getComputedStyle(el).color);
-  expect(color, 'forced-colors 下品牌標的顏色是透明的').not.toMatch(/rgba\(0, 0, 0, 0\)|transparent/);
+  // ⚠️ 量 svg 自己的 `color` 沒用：forced-colors 下它一律是系統的 LinkText，圖示就算寫死
+  // `stroke="#ffd66f"` 也照樣通過（2026-09-23 review 抓到）。要量的是真正畫出來的那兩樣——
+  // 外框的 stroke 與骰點的 fill——有沒有跟著連結的系統色走。
+  const r = await link.evaluate(a => ({
+    link: getComputedStyle(a).color,
+    stroke: getComputedStyle(a.querySelector('svg.icon rect')!).stroke,
+    fill: getComputedStyle(a.querySelector('svg.icon circle')!).fill,
+  }));
+  expect(r.link, 'forced-colors 下連結色是透明的').not.toMatch(/rgba\(0, 0, 0, 0\)|transparent/);
+  expect({ stroke: r.stroke, fill: r.fill }, 'forced-colors 下品牌標沒有跟著系統色走（寫死了色碼？）')
+    .toEqual({ stroke: r.link, fill: r.link });
+});
+
+/**
+ * D21. 窄螢幕上導覽列最後一項（「遊戲介紹」下拉）至少露出一截（2026-09-23 骰桌 PR ① review）。
+ * 導覽列的捲軸是藏起來的（`scrollbar-width: none`），畫面邊緣「被切掉一半的那一項」是唯一
+ * 告訴使用者「這裡還能往右滑」的線索。品牌標多了 20px 之後，Pixel 7（412px）上它被整個
+ * 推出畫面，下拉裡那幾頁在手機上等於沒有入口。
+ */
+test('D21. 手機導覽列最後一項至少露出一截，看得出還能往右滑', async ({ page, isMobile }) => {
+  test.skip(!isMobile, '桌機導覽列放得下全部項目，沒有捲動');
+  await page.goto('/');
+  const r = await page.evaluate(() => {
+    const last = document.querySelector('#site-nav .nav-menu > summary')!.getBoundingClientRect();
+    return { left: last.left, vw: document.documentElement.clientWidth };
+  });
+  expect(r.left, `「遊戲介紹」從 ${r.left}px 開始，視窗只有 ${r.vw}px——整個被推出畫面了`)
+    .toBeLessThan(r.vw - 12);
+});
+
+/**
+ * D22. 頁頂暈光只在頁頂（2026-09-23 骰桌 PR ① review）。
+ * `html` 沒有背景，body 的背景會延伸到整份文件，漸層的百分比半徑因此是對**整頁高度**算的：
+ * `/dice` 在桌機上 1,800px 深處、手機上 4,500px 深處都還亮著——「頁頂暈光」變成半張頁面。
+ * 半徑要是固定長度。量法：把內容藏起來，捲到離頁頂 1,500px 的地方取一個像素，要等於 --bg。
+ */
+test('D22. 頁頂暈光不會隨頁面變長而往下延伸', async ({ page, isMobile }) => {
+  test.skip(isMobile, '手機 project 截圖會把觸控版面換掉（CLAUDE.md「測試環境」）；桌機量到就夠');
+  await page.goto('/dice');
+  await page.addStyleTag({ content: 'main, footer, #site-nav { visibility: hidden !important; }' });
+  const bg = await page.evaluate(() => {
+    window.scrollTo(0, 1200);
+    const probe = document.createElement('div');
+    probe.style.color = getComputedStyle(document.documentElement).getPropertyValue('--bg');
+    document.body.appendChild(probe);
+    const c = getComputedStyle(probe).color; probe.remove();
+    return c.match(/\d+/g)!.slice(0, 3).map(Number);
+  });
+  const { width } = page.viewportSize()!;
+  const png = await page.screenshot({ clip: { x: Math.round(width / 2), y: 300, width: 1, height: 1 } });
+  const px = await sharp(png).raw().toBuffer();
+  expect([px[0], px[1], px[2]], '離頁頂 1,500px 的地方還有暈光').toEqual(bg);
 });
