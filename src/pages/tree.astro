@@ -248,8 +248,12 @@ const TYPES: Array<[string, string]> = [
     padding: var(--space-2) var(--space-4);
   }
   /* 分支跳轉鈕的外觀是共用的 `.chip`（2026-09-23 骰桌 PR ④）。它們是動作鈕不是篩選：沒有選中狀態，
-     色點常亮——`.chip .branch-dot` 預設的 0.45 是篩選鈕「這一系沒開」的意思，放在這裡會說謊。
+     字色與色點都是「開著」的樣子——`.chip` 預設的 --muted 字色與 `.chip .branch-dot` 的 0.45
+     是篩選鈕「這一系沒開」的意思，放在這裡會說謊（CL3）。
      ⚠️ 選擇器要到 (1,1,0) 才蓋得過 `.chip .branch-dot` 的 (0,2,0)。 */
+  :is(#branch-nav, #branch-chips) .chip {
+    color: var(--fg);
+  }
   :is(#branch-nav, #branch-chips) .branch-dot {
     opacity: 1;
   }

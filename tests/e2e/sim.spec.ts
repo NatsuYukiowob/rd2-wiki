@@ -925,6 +925,15 @@ test('S31. 工具列是 .btn、復原重做是圖示且停用看得出來；詳�
     await expect(page.locator(`${id} > svg.icon`)).toHaveCount(1);
     await expect(page.locator(id)).toHaveAttribute('aria-label', /.+/);
   }
+  // 長相：可按的工具列鈕是 .btn-alt 的紫色鍵帽（漸層、--r-btn、下緣厚度）。只驗 class 的話，
+  // 有人寫回 `#sim-toolbar button { background…; border-radius… }` 會安靜地蓋掉 .btn 而照樣綠。
+  const key = await page.locator('#sim-reset').evaluate(el => {
+    const c = getComputedStyle(el);
+    return { img: c.backgroundImage, radius: c.borderTopLeftRadius, shadow: c.boxShadow };
+  });
+  expect(key.img, '工具列鈕沒有次按鈕的紫色漸層').toContain('linear-gradient');
+  expect(key.radius, '工具列鈕不是 --r-btn').toBe('10px');
+  expect(key.shadow, '工具列鈕沒有實體厚度').toMatch(/0px 3px 0px 0px/);
   // 停用：開頁時沒有歷史可以復原。看得出來（opacity < 1）、按不動（transform 維持 none）。
   const undo = page.locator('#sim-undo');
   await expect(undo).toBeDisabled();
@@ -944,6 +953,8 @@ test('S31. 工具列是 .btn、復原重做是圖示且停用看得出來；詳�
     const grip = page.locator('#sim-sheet-close');
     await expect(grip).toBeVisible();
     expect(await grip.evaluate(el => el.classList.contains('btn')), '把手不該是 .btn').toBe(false);
+    // 刪掉 `#sim-toolbar button` 之後把手的 cursor／color 要由它自己的規則補回（Review Focus 3）。
+    expect(await grip.evaluate(el => getComputedStyle(el).cursor), '把手不是 pointer').toBe('pointer');
     expect(await grip.evaluate(el => {
       const r = el.getBoundingClientRect();
       const top = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
