@@ -1,7 +1,7 @@
 # rd2-wiki
 
 《Random Dice 2》互動式骰子樹攻略站。Astro 靜態站，部署在 Cloudflare Pages
-（https://rd2-wiki.pages.dev/），GitHub `NatsuYukiowob/rd2-wiki`（public）。
+（https://rd2wiki.org/），GitHub `NatsuYukiowob/rd2-wiki`（public）。
 
 > 這份檔案只收「開工前不讀就會做錯，而且讀程式碼讀不到」的事。單點成因與實測數字寫在
 > 該處的程式碼註解裡（`src/`＋`tools/` 有 25% 是註解），歷史沿革看 git log 與 PR。
@@ -1543,7 +1543,7 @@ colors 重新著色，那張樹本來就看得見，等於用自己的無障礙�
   `/404/`，等於邀請搜尋引擎去索引那個網址）。
 - ⚠️ **`seo.spec.ts` 的「未知路徑回 404」在本機是假綠。** E2E 的 webServer 是 `serve dist`，它對找不到
   的檔案本來就回 404——soft 404 是 **Cloudflare Pages 那端**的行為。那條守的是「本機沒退步」，真正的
-  驗收只能在部署後對正式站做：`curl -o /dev/null -w '%{http_code}\n' https://rd2-wiki.pages.dev/no-such-page` 要回 404。
+  驗收只能在部署後對正式站做：`curl -o /dev/null -w '%{http_code}\n' https://rd2wiki.org/no-such-page` 要回 404。
 
 ## README 與門面素材
 

@@ -24,7 +24,7 @@ function fakeDb(n = 42): { db: D1Like; sqls: string[] } {
 
 function ctx(method: string, db: D1Like, headers: Record<string, string> = {}) {
   return {
-    request: new Request('https://rd2-wiki.pages.dev/api/hits', { method, headers }),
+    request: new Request('https://rd2wiki.org/api/hits', { method, headers }),
     env: { DB: db },
   };
 }

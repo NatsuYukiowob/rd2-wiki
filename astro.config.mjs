@@ -7,7 +7,7 @@ import sitemap from '@astrojs/sitemap';
 export default defineConfig({
   // `site` 同時餵三個地方：sitemap 裡的 <loc>、Base.astro 的 canonical 與 og:url。
   // 換網域（#27）時只改這一行，不要在版面裡再寫死一次。
-  site: 'https://rd2-wiki.pages.dev',
+  site: 'https://rd2wiki.org',
   output: 'static',
   // sitemap 不帶任何選項是刻意的。
   // ⚠️ 一開始寫了 `filter: page => !page.includes('/404')`，怕 404 頁被收進去——實測
