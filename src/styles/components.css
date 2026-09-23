@@ -379,3 +379,12 @@
   vertical-align: -0.15em;
   margin-inline-end: var(--space-h);
 }
+
+/* inline SVG 圖示（src/lib/icons.ts）。1em 見方跟著所在文字的字級走，顏色吃 currentColor。
+   flex: none：放進 flex 容器時不准被壓扁（圖示被壓窄會變形，而且沒有任何東西會報錯）。 */
+.icon {
+  width: 1em;
+  height: 1em;
+  flex: none;
+  vertical-align: -0.125em;
+}

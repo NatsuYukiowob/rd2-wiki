@@ -821,3 +821,24 @@ test('D19. 窄螢幕：「遊戲介紹」的下拉浮在導覽列外面，每一
   // 模糊是**搬到 ::before**，不是拿掉：底色只有 88% 不透明，沒有模糊時後面的內文看得出字。
   expect(r.blur, '手機版導覽列的模糊不見了').toContain('blur');
 });
+
+/**
+ * D20. 導覽列的骰點品牌標（2026-09-23 骰桌 PR ①）。
+ * 三件事：(一) 加了圖示之後連結的無障礙名稱仍是「rd2-wiki」（圖示 aria-hidden，不能把名字弄髒）；
+ * (二) 圖示真的有尺寸、在連結裡面；(三) forced-colors 下顏色跟著系統色走，不是透明——
+ * 寫死色碼的 SVG 在高對比模式會跟背景融在一起。
+ */
+test('D20. 品牌標不改連結名稱、看得見、高對比模式下不消失', async ({ page }) => {
+  await page.goto('/');
+  const link = page.locator('#site-nav .brand');
+  await expect(link).toHaveAccessibleName('rd2-wiki');
+  const icon = link.locator('svg.icon');
+  await expect(icon).toBeVisible();
+  const box = (await icon.boundingBox())!;
+  expect(box.width, '品牌標沒有寬度').toBeGreaterThan(12);
+  expect(Math.abs(box.width - box.height), '品牌標被壓扁了').toBeLessThan(0.5);
+
+  await page.emulateMedia({ forcedColors: 'active' });
+  const color = await icon.evaluate(el => getComputedStyle(el).color);
+  expect(color, 'forced-colors 下品牌標的顏色是透明的').not.toMatch(/rgba\(0, 0, 0, 0\)|transparent/);
+});
