@@ -272,17 +272,23 @@ test('C6. 篩選切換鈕外觀是按鈕、骨子裡仍是 checkbox：鍵盤操�
   const outline = await chip.evaluate(el => getComputedStyle(el).outlineStyle);
   expect(outline, '鍵盤焦點時整顆鈕沒有外框').not.toBe('none');
 
-  // 選中與否要看得出來：開著的鈕邊框走該分支的顏色。
+  // 選中與否要看得出來：開著的鈕是金框，「哪一系」由色點的分支色光暈承擔
+  // （2026-09-23 骰桌：舊版是邊框走分支色）。
   await page.keyboard.press(' ');
   await expect(nature).toBeChecked();
-  const branch = await resolveColor(page, '--nature');
+  const [gold, branch] = [await resolveColor(page, '--gold'), await resolveColor(page, '--nature')];
   // ⚠️ 一定要 poll。邊框色有 120ms 的過場，按完 Space 立刻讀會讀到中途的混色
   // （實測 rgb(151,79,97)，介於 --border 與 --nature 之間），寫成一次性斷言會偶爾紅。
   await expect
     .poll(() => chip.evaluate(el => getComputedStyle(el).borderTopColor), {
-      message: '開啟中的切換鈕沒有走分支色',
+      message: '開啟中的切換鈕不是金框',
     })
-    .toBe(branch);
+    .toBe(gold);
+  await expect
+    .poll(() => chip.locator('.branch-dot').evaluate(el => getComputedStyle(el).boxShadow), {
+      message: '開啟中的切換鈕色點沒有分支色光暈',
+    })
+    .toContain(branch);
 });
 
 // ---------------------------------------------------------------------------

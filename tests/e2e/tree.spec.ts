@@ -1402,7 +1402,7 @@ test('P. 工具列對齊：搜尋框與分支側欄切齊同一條左邊界，�
 // 這條守的是 `:is(.dice-card, .chip)[data-branch=…]`（--branch 的供應者）必須留在
 // Base 級的檔（components.css）——它一旦被搬進頁面級的 dice.css，/tree 的五顆分支切換鈕
 // 會全部掉回 fallback `var(--gold)`，而顏色不對這件事沒有任何幾何斷言看得出來。
-test('P2. /tree 篩選面板的分支切換鈕勾選後邊框走該分支的顏色', async ({ page }) => {
+test('P2. /tree 篩選面板的分支切換鈕勾選後，色點帶該分支色的光暈', async ({ page }) => {
   await page.goto('/tree');
   // 手機版 #filters 收在抽屜裡、預設不顯示（同上面 O2/O3 那組測試），要先展開才點得到。
   const filters = page.locator('#filters');
@@ -1413,13 +1413,14 @@ test('P2. /tree 篩選面板的分支切換鈕勾選後邊框走該分支的顏�
   await expect(checkbox).toBeChecked();
 
   const nature = await resolveColor(page, '--nature');
-  // ⚠️ 一定要 poll：border-color 有 var(--t-fast) 的過場，勾選當下讀會讀到過場中途的混色
+  // 色點光暈走分支色（2026-09-23 骰桌：選中的框改成金色，「哪一系」改由色點承擔）。
+  // ⚠️ 一定要 poll：box-shadow 有 var(--t-fast) 的過場，勾選當下讀會讀到過場中途的混色
   // （同 codex.spec.ts C6 那條的理由），一次性斷言會偶爾紅。
   await expect
-    .poll(() => chip.evaluate(el => getComputedStyle(el).borderTopColor), {
-      message: '#filters 的分支切換鈕勾選後沒有走分支色（--branch 供應者可能被搬出 Base 級的檔）',
+    .poll(() => chip.locator('.branch-dot').evaluate(el => getComputedStyle(el).boxShadow), {
+      message: '#filters 的分支切換鈕勾選後色點沒有分支色光暈（--branch 供應者可能被搬出 Base 級的檔）',
     })
-    .toBe(nature);
+    .toContain(nature);
 });
 
 test('R. 分頁標題不帶破折號，分頁圖示指向實際存在的檔案', async ({ page }) => {

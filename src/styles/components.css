@@ -190,7 +190,7 @@ a.card:active {
   padding: var(--space-1) var(--space-3);
   background: var(--surface-1);
   border: 1px solid var(--border);
-  border-radius: var(--r-pill);
+  border-radius: var(--r-md);
   color: var(--muted);
   font: inherit;
   font-size: var(--fs-sm);
@@ -230,8 +230,9 @@ a.card:active {
   border-color: var(--border-strong);
   color: var(--fg);
 }
-/* 選中：邊框與底色都走該分支的顏色，一眼看得出開著的是哪幾系。
-   底色只混 18%，不是整顆塗滿——五顆同時亮起來時，塗滿會比底下的卡片還搶眼。
+/* 選中＝金色面（2026-09-23 骰桌）。金色只給「主按鈕與選中狀態」（spec §8）；
+   「開著的是哪一系」改由色點承擔——選中的色點全亮並帶自己的分支色光暈（見 .branch-dot）。
+   舊版是邊框走分支色，五顆同時開著時畫面上是五種顏色的框，跟卡片頭的系色搶。
 
    三種「開著」共用同一組樣式：包 checkbox 的 label（`:has(input:checked)`）、
    「全部」那種動作鈕（`[data-active]`）、以及 `aria-pressed` 的切換鈕（/tactic 的「合作模式」）。
@@ -240,16 +241,15 @@ a.card:active {
 .chip:has(input:checked),
 .chip[data-active],
 .chip[aria-pressed='true'] {
-  border-color: var(--branch, var(--gold));
+  border-color: var(--gold);
   /* 前一行是 fallback，理由同 #site-nav。 */
   background: var(--surface-3);
-  background: color-mix(in srgb, var(--branch, var(--gold)) 18%, var(--surface-1));
+  background: color-mix(in srgb, var(--gold) 16%, var(--surface-2));
   color: var(--fg);
-  /* 內發光：底色只混 18%（見上），單靠它在五顆同時亮起時分不出誰開著。光暈往內收，
-     邊框那一圈才是被強調的東西——往外發光的話它會跟隔壁那顆的光暈糊在一起。
-     前一行同樣是 color-mix 的 fallback：不支援的引擎退回一層中性內陰影，不會變成沒有。 */
+  /* 內發光：光暈往內收，邊框那一圈才是被強調的東西——往外發光的話它會跟隔壁那顆的光暈
+     糊在一起。前一行同樣是 color-mix 的 fallback：不支援的引擎退回一層中性內陰影。 */
   box-shadow: inset 0 0 11px rgb(255 255 255 / 6%);
-  box-shadow: inset 0 0 11px color-mix(in srgb, var(--branch, var(--gold)) calc(var(--p-glow) * 100%), transparent);
+  box-shadow: inset 0 0 11px color-mix(in srgb, var(--gold) calc(var(--p-glow) * 100%), transparent);
 }
 /* 按下去縮一下。切換鈕是這一頁最常被戳的東西，而它「有沒有生效」是靠底色變化——
    底色的過場走 --e-spring／--t-med（見上），200ms 對「我按到了嗎」來說太慢，這條補上
@@ -289,10 +289,13 @@ a.card:active {
 .chip .branch-dot {
   margin-right: 0;
   opacity: 0.45;
-  transition: opacity var(--t-fast) var(--e-out);
+  transition:
+    opacity var(--t-fast) var(--e-out),
+    box-shadow var(--t-fast) var(--e-out);
 }
 .chip:has(input:checked) .branch-dot {
   opacity: 1;
+  box-shadow: 0 0 var(--space-2) var(--branch, var(--gold));
 }
 
 /*
@@ -414,9 +417,10 @@ a.card:active {
   margin: 0 0 var(--space-5);
   padding: var(--space-3) var(--space-4);
   background: var(--surface-2);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--r-md);
-  box-shadow: var(--shadow-1);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  /* 它浮在捲動中的卡片上方（sticky），所以是 --face-float、不要下緣硬邊。 */
+  box-shadow: var(--face-float);
 }
 .filter-count {
   margin: 0 0 0 auto;
