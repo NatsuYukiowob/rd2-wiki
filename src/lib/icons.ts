@@ -26,6 +26,10 @@ export const ICONS = {
   arrow: svg('<path d="M5 12h13M13 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>', undefined, 'icon-trail'),
   /** 往回（「← 活動」這種回上一層的路標）。 */
   back: svg('<path d="M19 12H6M11 6l-6 6 6 6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>', undefined, 'icon-lead'),
+  /** 步進的「減」（‹）。按鈕裡唯一的內容，名字由按鈕的 aria-label 給。 */
+  prev: svg('<path d="M15 6l-6 6 6 6" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>'),
+  /** 步進的「加」（›）。 */
+  next: svg('<path d="M9 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>'),
 } as const;
 
 export type IconName = keyof typeof ICONS;

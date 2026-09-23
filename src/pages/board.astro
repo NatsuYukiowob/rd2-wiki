@@ -22,6 +22,7 @@
 // 不讀 tree.json 的 `icon` 欄位：那是骰子樹節點圖（帶底板），/board 刻意要換掉的正是它。
 import Base from '../layouts/Base.astro';
 import '../styles/board.css';
+import { ICONS } from '../lib/icons';
 import { treeData as data } from '../lib/tree-data';
 import boardIconsRaw from '../../data/board-icons.json';
 import nodeTextRaw from '../../data/nodes.json';
@@ -109,15 +110,15 @@ const offgamePayload = {
             aria-label={`隊友第 ${slot + 1} 槽，尚未選擇骰子，按下選擇`}>
             <span class="deck-dice-empty" aria-hidden="true">＋</span>
           </button>
-          <div class="pips-row">
-            <button type="button" class="pips-dec" data-slot={slot} disabled aria-label={`隊友第 ${slot + 1} 槽降低骰面點數`}>◀</button>
+          <div class="pips-row step">
+            <button type="button" class="pips-dec" data-slot={slot} disabled aria-label={`隊友第 ${slot + 1} 槽降低骰面點數`}><Fragment set:html={ICONS.prev} /></button>
             <span class="pips-value" data-slot={slot}>1</span>
-            <button type="button" class="pips-inc" data-slot={slot} disabled aria-label={`隊友第 ${slot + 1} 槽提高骰面點數`}>▶</button>
+            <button type="button" class="pips-inc" data-slot={slot} disabled aria-label={`隊友第 ${slot + 1} 槽提高骰面點數`}><Fragment set:html={ICONS.next} /></button>
           </div>
-          <div class="sp-row">
-            <button type="button" class="sp-dec" data-slot={slot} disabled aria-label={`隊友第 ${slot + 1} 槽降低強化等級`}>◀</button>
+          <div class="sp-row step">
+            <button type="button" class="sp-dec" data-slot={slot} disabled aria-label={`隊友第 ${slot + 1} 槽降低強化等級`}><Fragment set:html={ICONS.prev} /></button>
             <span class="sp-value" data-slot={slot}><span class="sp-prefix">Lv.</span><span class="sp-num">1</span></span>
-            <button type="button" class="sp-inc" data-slot={slot} disabled aria-label={`隊友第 ${slot + 1} 槽提高強化等級`}>▶</button>
+            <button type="button" class="sp-inc" data-slot={slot} disabled aria-label={`隊友第 ${slot + 1} 槽提高強化等級`}><Fragment set:html={ICONS.next} /></button>
           </div>
         </div>
       ))}
@@ -158,19 +159,19 @@ const offgamePayload = {
           <!-- 等級列：⚠️ 三個元素永遠都在，沒有骰子時只是 disabled。
                用 display 收放會讓整條組合列的寬度隨狀態跳動（CLAUDE.md
                「工具列的尺寸不准隨篩選狀態改變」那一段記過同一個問題）。 -->
-          <div class="pips-row">
-            <button type="button" class="pips-dec" data-slot={slot} disabled aria-label={`第 ${slot + 1} 槽降低骰面點數`}>◀</button>
+          <div class="pips-row step">
+            <button type="button" class="pips-dec" data-slot={slot} disabled aria-label={`第 ${slot + 1} 槽降低骰面點數`}><Fragment set:html={ICONS.prev} /></button>
             <span class="pips-value" data-slot={slot}>1</span>
-            <button type="button" class="pips-inc" data-slot={slot} disabled aria-label={`第 ${slot + 1} 槽提高骰面點數`}>▶</button>
+            <button type="button" class="pips-inc" data-slot={slot} disabled aria-label={`第 ${slot + 1} 槽提高骰面點數`}><Fragment set:html={ICONS.next} /></button>
           </div>
           <!-- 強化列：局內 SP 強化 Lv（1–15），以骰子種類為單位共用——同一種骰子放在兩槽時兩槽同步，
                換掉槽裡的骰子後，骰盤上留下的舊骰子保留它最後的 Lv（src/scripts/board.ts 的 spLevels）。
                三個元素永遠都在、沒有骰子時只是 disabled，理由同上面的等級列。
                手機版只顯示數字（.sp-prefix 隱藏），哪一排是什麼交給下方的 #deck-legend。 -->
-          <div class="sp-row">
-            <button type="button" class="sp-dec" data-slot={slot} disabled aria-label={`第 ${slot + 1} 槽降低強化等級`}>◀</button>
+          <div class="sp-row step">
+            <button type="button" class="sp-dec" data-slot={slot} disabled aria-label={`第 ${slot + 1} 槽降低強化等級`}><Fragment set:html={ICONS.prev} /></button>
             <span class="sp-value" data-slot={slot}><span class="sp-prefix">Lv.</span><span class="sp-num">1</span></span>
-            <button type="button" class="sp-inc" data-slot={slot} disabled aria-label={`第 ${slot + 1} 槽提高強化等級`}>▶</button>
+            <button type="button" class="sp-inc" data-slot={slot} disabled aria-label={`第 ${slot + 1} 槽提高強化等級`}><Fragment set:html={ICONS.next} /></button>
           </div>
         </div>
       ))}
