@@ -19,7 +19,7 @@ export interface Theme {
 }
 
 export const DEFAULT_THEME: Theme = {
-  bg: '#18142a',
+  bg: '#17161a',
   fg: '#f5f1ff',
   edge: '#a89ad3',
   gold: '#ffd66f',
