@@ -496,7 +496,8 @@ a.row-card:active {
   flex: none;
   vertical-align: -0.125em;
 }
-/* 文字後面（或前面）接一個箭頭圖示時的間距。用 margin 不用 gap：這些連結是行內元素。 */
-:is(a, .note, .event-more) > .icon:last-child { margin-inline-start: var(--space-1); }
-/* `.brand` 除外：品牌標的圖示與文字之間已經有 gap（chrome.css）。 */
-:is(a:not(.brand), .note) > .icon:first-child { margin-inline-end: var(--space-1); }
+/* 文字後面（或前面）接一個箭頭圖示時的間距。用 margin 不用 gap：這些連結是行內元素。
+   哪一側由圖示自己的 class 決定（見 icons.ts 的 `extra`），⚠️ 不要改回 :first-child／:last-child
+   ——它們不計文字節點，「圖示＋文字」裡圖示兩者都是，兩側都會多 4px（E2E ST4c）。 */
+:is(a, .note, .event-more) > .icon-trail { margin-inline-start: var(--space-1); }
+a > .icon-lead { margin-inline-end: var(--space-1); }

@@ -8,8 +8,11 @@
  * 每個圖示都是裝飾（旁邊一定有文字），所以 aria-hidden ＋ focusable="false"；顏色只准
  * currentColor／none（`tests/lib/icons.test.ts` 守），尺寸由 `.icon`（components.css）給 1em。
  */
-const svg = (body: string, viewBox = '0 0 24 24'): string =>
-  `<svg class="icon" viewBox="${viewBox}" aria-hidden="true" focusable="false">${body}</svg>`;
+// `extra` 是額外的 class：箭頭用它標出自己在文字的哪一側（`icon-trail`／`icon-lead`），間距規則
+// 靠它而不是 `:first-child`／`:last-child`——後兩者不計文字節點，「圖示＋一段文字」的連結裡
+// 圖示同時是 first 與 last child，兩側都會吃到間距（2026-09-23 /code-review）。
+const svg = (body: string, viewBox = '0 0 24 24', extra = ''): string =>
+  `<svg class="icon${extra ? ` ${extra}` : ''}" viewBox="${viewBox}" aria-hidden="true" focusable="false">${body}</svg>`;
 
 export const ICONS = {
   /** 骰點品牌標：圓角骰面＋對角三點（骰子的「3」）。 */
@@ -20,9 +23,9 @@ export const ICONS = {
     + '<circle cx="16" cy="16" r="1.8" fill="currentColor"/>',
   ),
   /** 往前（連結的「進去」）。取代文字 `→`。 */
-  arrow: svg('<path d="M5 12h13M13 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>'),
+  arrow: svg('<path d="M5 12h13M13 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>', undefined, 'icon-trail'),
   /** 往回（「← 活動」這種回上一層的路標）。 */
-  back: svg('<path d="M19 12H6M11 6l-6 6 6 6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>'),
+  back: svg('<path d="M19 12H6M11 6l-6 6 6 6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>', undefined, 'icon-lead'),
 } as const;
 
 export type IconName = keyof typeof ICONS;
