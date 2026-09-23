@@ -582,7 +582,7 @@ npm run compare -- <beforeURL> <afterURL>  # computed-style 逐元素比對，�
   ⚠️ **不要在 `:active` 裡寫 `transition-duration: var(--t-press)`**——那是單值，會把同一份
   清單裡每個屬性的長度一起覆寫掉（切換鈕的 spring 就是這樣被關掉的）。
   ⚠️ 停用的按鈕要 `:not(:disabled)`。
-- **進場動畫**：`[data-enter] :is(.home-card, .guide-card, .dice-card)` 掛 `rise`（`base.css`）。
+- **進場動畫**：`[data-enter] :is(.home-card, .guide-card, .dice-card, .event-card-link)` 掛 `rise`（`base.css`）。
   `--i` 由 Astro 在建置時寫成 inline style，**夾上限的動作只在 CSS**
   （`min(var(--i, 0), var(--p-stagger-max))`），模板不准自己 `Math.min`。
   ⚠️ `data-enter` 由 `Base.astro` `<head>` 裡一支**同步的 `is:inline` script** 掛上、載入後由
@@ -629,6 +629,20 @@ npm run compare -- <beforeURL> <afterURL>  # computed-style 逐元素比對，�
   拿同一個 `readdirSync` 運算式跟自己比，恆真，已修正）。
   `tests/e2e/chrome.spec.ts` 的 D1–D12 守沾頂、`--nav-h`、`aria-current`、焦點框、footer 沉底、過場時間。
 
+### 共用元件（2026-09-23 骰桌 PR ②）
+
+靜態頁的外觀一律來自 `components.css` 的共用 class，頁面專屬 class（`.home-card`、`.battle-item`…）
+仍然掛著（測試與 JS 抓它們），但只留那一頁才有的版面差異。**新頁面先套共用 class，不要再長一種。**
+
+| class | 掛在哪 | 說明 |
+|---|---|---|
+| `.page-head` | 每頁唯一的 `<h1>` | 900 字重＋`--ink` 字影。掛在 h1 本身，不是容器 |
+| `.sec-title` | 段落 `<h2>` | 金色菱形 `::before`；附註沿用各頁 class（`.battle-group-note`） |
+| `.card` | `.home-card`／`.guide-card`／`.dice-card` | 頭部 `--branch`（無則 `--edge`）漸層；按壓縮放**只給 `a.card`** |
+| `.row-card` | `.event-card-link`／`.battle-item` | 同一個面、無卡片頭；抬升只給 `a.row-card` |
+| `.chip` ＋ `.filter-bar` | 篩選鈕與沾頂篩選列 | 選中＝金色面；「哪一系」由色點光暈承擔 |
+| `.pill` | `.stat-pill` | 凹槽；框線是**透明**不是拿掉（寬度不准變，C8） |
+
 ### 十一個 CSS 檔
 
 `src/styles/global.css`（2029 行）2026-08-26 拆成九個按作用域劃分的檔案（同日 `/tactic`
@@ -642,10 +656,10 @@ npm run compare -- <beforeURL> <afterURL>  # computed-style 逐元素比對，�
 | `base.css` | 全站重置（`*`／`html`／`body`／`main`／`footer`／`a`／`pre`）＋ `.sr-only` | Base |
 | `chrome.css` | 全站導覽列 `#site-nav`（含「遊戲介紹」下拉） | Base |
 | `content.css` | 靜態內容頁共用 `.page`（首頁／圖鑑／遊戲介紹）＋首頁訪客計數器 `#hit-counter`＋詞彙頁 `.kw-*` | Base |
-| `components.css` | 跨頁共用元件：篩選切換鈕 `.chip`、**沾頂篩選列 `.filters`／`.filter-count`**、`--branch` 供應者（`:is(.dice-card, .chip)[data-branch=…]`）、分支色點 `.branch-dot`、首頁卡片、遊戲介紹索引卡 | Base |
+| `components.css` | 跨頁共用元件：篩選切換鈕 `.chip`、**沾頂篩選列 `.filter-bar`／`.filter-count`**、`--branch` 供應者（`:is(.dice-card, .chip)[data-branch=…]`）、分支色點 `.branch-dot`、首頁卡片、遊戲介紹索引卡 | Base |
 | `detail.css` | `/tree` 詳情面板 `#detail`（含視圖堆疊換頁動畫） | `/tree` |
 | `canvas.css` | 畫布**容器**：版面骨架（`body`／`main`／`#canvas-host`）、兩張 `<canvas>` 的定位、隱形節點按鈕清單 `.tree-a11y*`。⚠️ 畫布**內容**的外觀不在這裡（見 `src/lib/canvas/theme.ts`） | `/tree`、`/sim` |
-| `dice.css` | `/dice` 圖鑑：卡片網格 `.codex-grid`、`.dice-card` 本體、關鍵字卡片 `.card-term*`、數值面板 `.dice-stats`、篩選列 `.filters` | `/dice` |
+| `dice.css` | `/dice` 圖鑑：卡片網格 `.codex-grid`、`.dice-card` 本體、關鍵字卡片 `.card-term*`、數值面板 `.dice-stats` | `/dice` |
 | `board.css` | `/board` 骰盤編輯器：`.board-*`／`#board-*`、組合列 `#deck-row`／`.deck-*`、選骰面板 `#dice-picker`／`.picker-*` | `/board` |
 | `battle.css` | `/tactic`、`/boss` 與 `/rift-shop` 共用的橫列清單：`.battle-*` | `/tactic`、`/boss`、`/rift-shop` |
 | `events.css` | `/events` 活動：卡片 `.event-*`、**全站第一份 `<table>` 樣式**（其他頁要用表格時從這裡拿） | `/events` |
@@ -664,8 +678,8 @@ npm run compare -- <beforeURL> <afterURL>  # computed-style 逐元素比對，�
 - **兩個容易分錯的分派**：`--branch` 供應者留在 `components.css` 不進 `dice.css`——它是
   `.chip[data-branch]` 的唯一來源，而 `.chip` 用在 `/tree` 的篩選面板；`.chip-xs` 同理留在
   `components.css`，它跟 `.chip` 具體度相同 (0,1,0)，只靠檔案順序排在後面才贏。
-- ⚠️ **`.filters` 2026-08-26 從 `dice.css` 搬到 `components.css`**（`/tactic` 也用它）。找沾頂
-  篩選列的樣式要去 `components.css`，不是 `dice.css`。搬動用 `npm run compare` 驗過：`/dice` 的
+- ⚠️ **沾頂篩選列 `.filter-bar`（2026-09-23 前叫 `.filters`）在 `components.css`**（2026-08-26 從
+  `dice.css` 搬過來，`/tactic`、`/rift-shop` 也用它）。找它的樣式要去 `components.css`，不是 `dice.css`。搬動用 `npm run compare` 驗過：`/dice` 的
   `<main>` 位元組完全相同，computed style 零差異（只剩進場動畫在飛行中的取樣雜訊）。
 
 ### 版面的硬規則
@@ -726,8 +740,9 @@ npm run compare -- <beforeURL> <afterURL>  # computed-style 逐元素比對，�
   箭頭被拉成一條金色橫槓掉到導覽列外面。**兩條規則各贏一半，這種半套生效比整條失效難認得多。** D3 守。
   同一族的第二次：`#site-nav [aria-current='page']` 的具體度 (1,1,0) 輸給 `#site-nav .nav-menu > summary`
   的 (1,1,1)，下拉拿得到金線卻拿不到金字，選擇器要把 summary 一起列進去。D11 守。
-- ⚠️ **`.dice-card` 的分支色條必須是 `border-left`，不能用 `::before`**：`.card-term` 是 `inset: 0`
-  的絕對定位覆蓋層，定位基準是卡片的**內距框**，會蓋掉任何畫在內距框裡的東西。
+- ⚠️ **`.dice-card` 的分支色條是頂緣 `::after`（`z-index: 2`）**：`.card-term` 是 `inset: 0` 的絕對定位
+  覆蓋層，會蓋掉任何畫在內距框裡的東西——包括 `.card` 背景上的頭部漸層；開著詞彙層時分支識別只剩
+  頂緣那條（E2E C12）。
 - ⚠️ **`body` 變 flex column 之後，`main` 要寫 `width: 100%; margin-inline: auto`**，不能留
   `margin: 0 auto`——水平方向的 auto 邊界會取消 stretch，main 縮到內容寬。這個坑踩過兩次。
 - ⚠️ **拿掉可見文字時不要把 live region 一起拿掉。** `.sr-only` 一律用 `clip-path` 視覺隱藏，
