@@ -833,7 +833,7 @@ test('D19. 窄螢幕：「遊戲介紹」的下拉浮在導覽列外面，每一
  * (二) 圖示真的有尺寸、在連結裡面；(三) forced-colors 下顏色跟著系統色走，不是透明——
  * 寫死色碼的 SVG 在高對比模式會跟背景融在一起。
  */
-test('D20. 品牌標不改連結名稱、看得見、高對比模式下不消失', async ({ page }) => {
+test('D20. 品牌標不改連結名稱、看得見、高對比模式下不消失', { tag: '@mobile' }, async ({ page }) => {
   await page.goto('/');
   const link = page.locator('#site-nav .brand');
   await expect(link).toHaveAccessibleName('rd2-wiki');
