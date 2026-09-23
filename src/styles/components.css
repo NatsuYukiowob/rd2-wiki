@@ -1,3 +1,50 @@
+/* ==========================================================================
+   共用元件（2026-09-23 骰桌 PR ②）
+   --------------------------------------------------------------------------
+   同一種東西各頁各長一種（頁首 3 種、區塊標題 3 種、卡片 5 種、篩選列 3 種）的收斂點。
+   頁面專屬 class 仍然留著（測試與 JS 抓它們），外觀一律從這裡的共用 class 來；
+   頁面檔只留「這一頁才有」的版面差異（欄寬、間距、內距）。
+   ========================================================================== */
+
+/* 頁首：每頁唯一的 h1。900 字重＋往下 2px 的 --ink 字影＝「壓印在桌面上的字」。
+   系統中文字型不一定有 900，退回 700 也成立（字影才是主要的差別）。 */
+.page-head {
+  font-weight: 900;
+  text-shadow: 0 var(--space-h) 0 var(--ink);
+}
+
+/* 區塊標題：金色菱形＋標題（＋可選的附註，沿用各頁自己的 class，例如 .battle-group-note）。
+   取代三種舊寫法：首頁與詞條區的左邊金線、/guide 的裸標題、/boss 的後接附註。
+   ⚠️ display: flex 的具體度只有 (0,1,0)，`.battle-group-head[hidden]` (0,2,0) 仍然贏——
+   /rift-shop 篩掉的那一組標題靠這個消失（E2E ST2b）。 */
+.sec-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-3);
+  font-size: var(--fs-xl);
+}
+.sec-title::before {
+  content: '';
+  flex: none;
+  align-self: center;
+  width: 0.5em;
+  height: 0.5em;
+  border-radius: var(--space-h);
+  background: var(--gold);
+  box-shadow: 0 0 var(--space-2) var(--gold);
+  box-shadow: 0 0 var(--space-2) color-mix(in srgb, var(--gold) 55%, transparent);
+  transform: rotate(45deg);
+}
+/* 高對比模式會把背景改成 Canvas，菱形就跟底色融在一起。它是裝飾，但留著比消失好認。 */
+@media (forced-colors: active) {
+  .sec-title::before {
+    forced-color-adjust: none;
+    background: CanvasText;
+    box-shadow: none;
+  }
+}
+
 /* --- 首頁 --- */
 .home-links {
   display: grid;
@@ -54,13 +101,8 @@
 .home-changelog {
   padding-top: 0;
 }
-/* 跟 .kw-section h2 同一種樣子：內容頁的 <h2> 一律左邊一條金線。之前只有詞條區塊有，
-   首頁的「更新日誌」是裸標題，同一種東西兩種長相。 */
 .home-changelog h2 {
   margin: 0 0 var(--space-3);
-  padding-left: var(--space-3);
-  border-left: 4px solid var(--gold);
-  font-size: var(--fs-lg);
 }
 .log-entry {
   padding: var(--space-3) 0;
@@ -299,7 +341,6 @@
    只隔一個網格，用 --fs-2xl 會變成兩個一樣大的標題互相打架。 */
 .guide-h2 {
   margin: var(--space-7) 0 var(--space-2);
-  font-size: var(--fs-xl);
 }
 
 .guide-swatch {

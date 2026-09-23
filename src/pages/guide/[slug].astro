@@ -39,7 +39,7 @@ const total = sections.reduce((n, s) => n + s.items.length, 0);
     {sections.map(section => (
       <section class="kw-section">
         {/* 一頁只有一組時不重印組標題——標題會跟 h1 幾乎一樣，只是把版面推長一截。 */}
-        {sections.length > 1 && <h2 class="sec-title" style={`border-left-color:${section.group.color}`}>{section.group.title}</h2>}
+        {sections.length > 1 && <h2 class="sec-title">{section.group.title}</h2>}
         {sections.length > 1 && <p class="note">{section.group.blurb}</p>}
         <div class="kw-list">
           {section.items.map(item => (
