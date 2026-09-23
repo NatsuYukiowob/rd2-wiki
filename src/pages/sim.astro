@@ -109,7 +109,7 @@ const optional = [...ctx.optional]
   <!-- 側欄常駐顯示資源合計——那是這一頁存在的理由，不該藏在要點開的地方。
        選了節點時下半部才出現詳情。手機版整個變成**可拖曳高度**的底部抽屜：預設只露出
        把手那一列（總計與已取得仍然看得到，只是分項收在下面），拖上來才是完整側欄。 -->
-  <aside id="sim-panel">
+  <aside id="sim-panel" class="panel">
     <!-- 抽屜把手（桌機 display:none）：拖曳改高度、點一下收合／展開。
          ⚠️ 它是收起狀態下唯一看得到的一列，高度固定不隨狀態變（同工具列那條）。 -->
     <button type="button" id="sim-panel-handle" aria-expanded="false" aria-label="展開資源合計">
@@ -166,7 +166,7 @@ const optional = [...ctx.optional]
     border-right: 1px solid var(--border);
     border-bottom: 1px solid var(--border);
     border-bottom-right-radius: var(--r-md);
-    box-shadow: var(--shadow-3);
+    box-shadow: var(--face-float);
   }
 
   #sim-toolbar input[type='search'],
@@ -311,9 +311,11 @@ const optional = [...ctx.optional]
     width: 22rem;
     padding: var(--space-3);
     overflow-y: auto;
-    background: var(--surface-2);
-    border-left: 1px solid var(--border);
-    box-shadow: var(--shadow-3);
+    /* 面在 components.css 的 `.panel`（2026-09-23 骰桌 PR ④）。這裡只把它收回「貼右邊的全高側欄」：
+       框只留左邊一條、沒有圓角（spec §1 不改版面結構）。⚠️ border-width 用長寫——`border` 簡寫會連
+       border-color 一起重設成 currentColor，把 .panel 的 --border 蓋掉。 */
+    border-width: 0 0 0 1px;
+    border-radius: 0;
   }
 
   #sim-totals h2 {
@@ -679,8 +681,9 @@ const optional = [...ctx.optional]
          把手底下露出半行。 */
       padding: 0 var(--space-3);
       overscroll-behavior: contain;
-      border-top: 1px solid var(--border);
-      border-left: none;
+      /* 抽屜：只有上框、上兩角圓（跟 sheet 同一個圓角）。長寫理由同桌機那條。 */
+      border-width: 1px 0 0;
+      border-radius: var(--r-lg) var(--r-lg) 0 0;
     }
 
     #sim-panel > :last-child {

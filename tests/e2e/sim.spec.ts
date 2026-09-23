@@ -883,3 +883,32 @@ test('S22. 側欄三列合計帶貨幣圖，核心與金幣永遠各一張；文
   await expect(t.total.locator('.currency-icon').first()).toHaveAttribute('src', '/currency/core.png');
   await expect(t.total.locator('.currency-icon').nth(1)).toHaveAttribute('src', '/currency/gold.png');
 });
+
+test('S30. 側欄是 .panel 的面但仍貼邊；工具列的面是 --face-float', async ({ page, isMobile }) => {
+  await openSim(page);
+  const panel = page.locator('#sim-panel');
+  const s = await panel.evaluate(el => {
+    const c = getComputedStyle(el);
+    return {
+      cls: el.className, shadow: c.boxShadow,
+      tl: c.borderTopLeftRadius, bl: c.borderBottomLeftRadius, top: c.borderTopWidth, left: c.borderLeftWidth,
+    };
+  });
+  expect(s.cls).toContain('panel');
+  expect(s.shadow, '側欄沒有 --face-float 的上緣高光').toContain('inset');
+  if (isMobile) {
+    // 抽屜：上兩角圓、只有上框。
+    expect(s.tl).toBe('12px');
+    expect(s.bl).toBe('0px');
+    expect(s.top).toBe('1px');
+    expect(s.left).toBe('0px');
+  } else {
+    // 桌機：貼右邊的全高側欄，只有左框、沒有圓角（spec §1 不改版面結構）。
+    expect(s.tl).toBe('0px');
+    expect(s.left).toBe('1px');
+    expect(s.top).toBe('0px');
+  }
+  await openTools(page);
+  expect(await page.locator('#sim-toolbar').evaluate(el => getComputedStyle(el).boxShadow), '#sim-toolbar 沒有 --face-float')
+    .toContain('inset');
+});

@@ -87,7 +87,7 @@ const TYPES: Array<[string, string]> = [
       import '../scripts/tree-canvas.ts';
     </script>
   </div>
-  <aside id="detail" hidden></aside>
+  <aside id="detail" class="panel" hidden></aside>
   <!-- 手機版底部的分支切換列（DOM 契約，見 task-17 brief：#branch-chips 內含 5 個
        button[data-branch]，第 18 個任務的 E2E 已經寫死這個結構）。 -->
   <div id="branch-chips">
@@ -148,8 +148,8 @@ const TYPES: Array<[string, string]> = [
     border-bottom: 1px solid var(--border);
     border-right: 1px solid var(--border);
     border-bottom-right-radius: var(--r-md);
-    /* 浮在畫布上的東西要有陰影，否則工具列跟底下的骰子樹只靠一條 1px 框線分開。 */
-    box-shadow: var(--shadow-2);
+    /* 浮在畫布上的東西要有陰影（--face-float：上緣高光＋浮起的陰影，不帶下緣硬邊——它沒有坐在任何平面上）。 */
+    box-shadow: var(--face-float);
   }
 
   #search {
