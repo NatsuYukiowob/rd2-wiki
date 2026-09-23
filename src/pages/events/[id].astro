@@ -15,6 +15,7 @@ import '../../styles/events.css';
 import eventsRaw from '../../../data/events.json';
 import { eventCellHtml, eventIcon } from '../../lib/events';
 import type { GameEvent } from '../../lib/types';
+import { ICONS } from '../../lib/icons';
 
 export function getStaticPaths() {
   return (eventsRaw as GameEvent[]).map(ev => ({ params: { id: ev.id }, props: { ev } }));
@@ -26,7 +27,7 @@ const { ev } = Astro.props as { ev: GameEvent };
 <Base title={ev.name}>
   <section class="page event-page">
     {/* 回索引的路標。這一頁可以被直接連進來（搜尋結果、別人貼的網址），沒有它就只剩導覽列。 */}
-    <p class="event-back"><a href="/events">← 活動</a></p>
+    <p class="event-back"><a href="/events"><Fragment set:html={ICONS.back} />活動</a></p>
 
     <div class="event-head">
       <h1 class="page-head">{ev.name}</h1>

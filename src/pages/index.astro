@@ -4,6 +4,7 @@ import Base from '../layouts/Base.astro';
 import { treeData as data } from '../lib/tree-data';
 import changelogRaw from '../../data/changelog.json';
 import type { Changelog } from '../lib/changelog';
+import { ICONS } from '../lib/icons';
 
 const changelog = changelogRaw as Changelog;
 // 首頁只放最新 3 筆。更久以前的東西對「這個站最近有沒有在動」沒有幫助，卻會把首頁撐長，
@@ -27,18 +28,19 @@ const latestDataInRecent = latestDataEntry !== undefined && recent.includes(late
   <section class="page home-hero">
     <h1 class="page-head">Random Dice 2 wiki</h1>
     <div class="home-links">
-      <a class="home-card card" href="/tree" style="--i:0">
-        <h2>骰子樹 →</h2>
-        <p>可平移縮放的全樹畫布，點節點看前置鏈與累計解鎖成本。</p>
-      </a>
-      <a class="home-card card" href="/dice" style="--i:1">
-        <h2>骰子圖鑑 →</h2>
-        <p>{diceCount} 顆骰子的基本效果與 7 骰點覺醒，一頁看完。</p>
-      </a>
-      <a class="home-card card" href="/guide" style="--i:2">
-        <h2>遊戲介紹 →</h2>
-        <p>骰子描述裡那些帶 # 的官方標記是什麼意思。</p>
-      </a>
+      {[
+        { href: '/tree', title: '骰子樹', desc: '可平移縮放的全樹畫布，點節點看前置鏈與累計解鎖成本。' },
+        { href: '/dice', title: '骰子圖鑑', desc: `${diceCount} 顆骰子的基本效果與 7 骰點覺醒，一頁看完。` },
+        { href: '/board', title: '骰盤', desc: '把骰子擺上骰盤，看每一格的面板數值與盤面加成。' },
+        { href: '/sim', title: '骰子樹模擬器', desc: '在骰子樹上逐顆解鎖、調等級，算出整套規劃要花多少、手上還差多少。' },
+        { href: '/events', title: '活動', desc: '遊戲裡辦過的期間限定活動，逐場列出完整內容。' },
+        { href: '/guide', title: '遊戲介紹', desc: '骰子描述裡那些帶 # 的官方標記是什麼意思。' },
+      ].map((c, i) => (
+        <a class="home-card card" href={c.href} style={`--i:${i}`}>
+          <h2>{c.title}<Fragment set:html={ICONS.arrow} /></h2>
+          <p>{c.desc}</p>
+        </a>
+      ))}
     </div>
 
     <!-- 遊戲版本是玩家在遊戲裡看得到的號碼，更新日期是這個站最後一次跟上游對過資料的日子。
@@ -54,6 +56,11 @@ const latestDataInRecent = latestDataEntry !== undefined && recent.includes(late
          版面改動，所以改綁這個 id。 -->
     <p id="version-info" class="muted">
       遊戲版本v{data.meta.gameVersion}（更新於 {data.meta.updated}）
+    </p>
+
+    <!-- 原始碼連結（2026-09-23 Yuki 要求：全站原本沒有任何一處連到 repo）。 -->
+    <p class="home-repo">
+      <a href="https://github.com/NatsuYukiowob/rd2-wiki">原始碼在 GitHub<Fragment set:html={ICONS.arrow} /></a>
     </p>
   </section>
 

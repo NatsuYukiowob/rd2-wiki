@@ -9,6 +9,7 @@
 // 編碼成一長串 %E3%80%82，也才方便從別頁連過來。
 import { renderStaticText } from '../lib/static-markup';
 import type { GlossaryIndex, GlossaryItem } from '../lib/glossary-groups';
+import { ICONS } from '../lib/icons';
 
 interface Props {
   item: GlossaryItem;
@@ -34,7 +35,7 @@ const desc = renderStaticText(item.desc, whitelist, glossary, index);
     item.usedBy.length > 0 ? (
       /* 只給入口，不列出是哪些節點（2026-08-22 Yuki 指定）：那份清單這裡讀起來只是一串
          名字，玩家真正要問的「它長在樹的哪裡、要多少錢」只有骰子樹答得了。 */
-      <p class="kw-used"><a href={`/tree?q=${encodeURIComponent(item.term)}`}>在骰子樹搜尋 #{item.term} →</a></p>
+      <p class="kw-used"><a href={`/tree?q=${encodeURIComponent(item.term)}`}>在骰子樹搜尋 #{item.term}<Fragment set:html={ICONS.arrow} /></a></p>
     ) : (
       /* 62 條裡有 25 條沒被任何節點文案引用。不隱藏——藏起來玩家會以為站台漏資料，
          標出來才說得清楚「這是遊戲有、但骰子樹上沒有節點用到的機制」。

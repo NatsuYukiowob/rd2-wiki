@@ -88,9 +88,11 @@ a.card:active {
 }
 
 /* --- 首頁 --- */
+/* 六張入口：桌機 3×2、窄一點 2×3、手機一欄。minmax 的下限決定斷點，不用 media query。
+   auto-fill 而不是 auto-fit，理由同 `.guide-cards.is-content` 的註解。 */
 .home-links {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr));
   gap: var(--space-3);
   margin: var(--space-5) 0;
 }
@@ -100,6 +102,9 @@ a.card:active {
   text-decoration: none;
 }
 .home-card h2 {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
   margin: 0 0 var(--space-2);
   font-size: var(--fs-base);
   color: var(--gold);
@@ -108,6 +113,15 @@ a.card:active {
   margin: 0;
   color: var(--muted);
   font-size: var(--fs-sm);
+}
+.home-repo {
+  margin: var(--space-2) 0 0;
+  font-size: var(--fs-sm);
+}
+.home-repo a {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
 }
 
 .home-changelog {
@@ -439,3 +453,7 @@ a.card:active {
   flex: none;
   vertical-align: -0.125em;
 }
+/* 文字後面（或前面）接一個箭頭圖示時的間距。用 margin 不用 gap：這些連結是行內元素。 */
+:is(a, .note, .event-more) > .icon:last-child { margin-inline-start: var(--space-1); }
+/* `.brand` 除外：品牌標的圖示與文字之間已經有 gap（chrome.css）。 */
+:is(a:not(.brand), .note) > .icon:first-child { margin-inline-end: var(--space-1); }

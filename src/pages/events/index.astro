@@ -10,6 +10,7 @@ import '../../styles/events.css';
 import eventsRaw from '../../../data/events.json';
 import { eventIcon } from '../../lib/events';
 import type { GameEvent } from '../../lib/types';
+import { ICONS } from '../../lib/icons';
 
 const events = eventsRaw as GameEvent[];
 
@@ -26,7 +27,7 @@ const rowCount = (ev: GameEvent) => ev.sections.reduce((n, s) => n + s.rows.leng
 
     <div class="event-index">
       {events.map((ev, i) => (
-        // 整張卡片是一個連結（同 `.guide-card`）：點哪裡都進得去，不必去瞄那個「→」。
+        // 整張卡片是一個連結（同 `.guide-card`）：點哪裡都進得去，不必去瞄那個箭頭。
         <a class="event-card-link row-card" href={`/events/${ev.id}`} style={`--i:${i}`}>
           {ev.screenshots?.[0] && (
             <img
@@ -54,7 +55,7 @@ const rowCount = (ev: GameEvent) => ev.sections.reduce((n, s) => n + s.rows.leng
                   <Fragment set:html={eventIcon(c.kind)} />{c.name}
                 </span>
               ))}
-              <span class="event-more">{rowCount(ev)} 項內容 →</span>
+              <span class="event-more">{rowCount(ev)} 項內容<Fragment set:html={ICONS.arrow} /></span>
             </p>
           </div>
         </a>
