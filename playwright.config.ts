@@ -36,6 +36,9 @@ export default defineConfig({
   // 純粹加固，不影響 brief 給定的其他欄位。
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
+  // 固定 2，不吃預設的「核心數砍半」：6 核以上的機器預設就會 ≥3，而 3 workers 時 mobile 的
+  // /sim、/tree 會穩定 Page crashed（見下面 mobile project 的註解；CI 那邊的量測見 ci.yml）。
+  workers: 2,
   expect: {
     // 畫布快照（tests/e2e/tree.spec.ts 的 F）比對的是 Canvas 2D 的輸出，不是 DOM 排版，
     // 而 Canvas 2D **在同一台機器上重跑也不是逐位元組重現的**：前置鏈節點的標籤與金色光暈
@@ -83,7 +86,7 @@ export default defineConfig({
     // 否則它的手機分支永遠不會被執行——測試照樣全綠。`test.skip(!isMobile)` 沒加 tag 的話
     // 兩邊都不會跑（desktop skip、mobile 被 grep 濾掉）。
     // 要完整跑一次 mobile（改了共用 CSS、發版前）：`E2E_MOBILE_ALL=1 npm run e2e`。
-    // ⚠️ 不要調高 workers：3 workers 全套連跑 6 次，每次 mobile 的 /sim、/tree 都有 4–8 條
+    // ⚠️ 不要調高 workers（上面固定為 2）：3 workers 全套連跑 6 次，每次 mobile 的 /sim、/tree 都有 4–8 條
     //   Chromium 當掉（Page crashed／SEGV），單跑那兩頁或 2 workers 都不會。
     {
       name: 'mobile',

@@ -2200,7 +2200,7 @@ test('B44. 分享圖：設定過的角標畫在格子左上角，「?」不畫',
   expect(await sample(), '隱藏星數把角標也藏掉了').toBe(set);
 });
 
-test('B45. 預設是對戰模式：隊友盤與隊友控制項都不在無障礙樹裡', async ({ page }) => {
+test('B45. 預設是對戰模式：隊友盤與隊友控制項都不在無障礙樹裡', { tag: '@mobile' }, async ({ page }) => {
   await page.goto('/board');
   await expect(page.locator('#board-coop-mode button[data-coop="off"]')).toHaveAttribute('aria-pressed', 'true');
   // 切換鈕本身看得見（它是進入合作模式的唯一入口）；被按下的是「對戰」那一顆。
