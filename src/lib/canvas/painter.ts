@@ -56,7 +56,8 @@ function clear(ctx: Ctx2D, view: ViewGeometry, dpr: number): void {
   const [w, h] = view.cssSize;
   ctx.clearRect(0, 0, w * dpr, h * dpr);
 }
-function drawNodeImage(ctx: Ctx2D, n: SceneNode, assets: AssetStore, useHires: boolean): void {
+/** 畫一顆節點的圖示（有 2× 就用、沒有退回 sprite）。匯出圖片的精簡版也用它畫單顆圖示——呼叫端把節點的 x/y/w/h 換成格子裡的位置。 */
+export function drawNodeImage(ctx: Ctx2D, n: SceneNode, assets: AssetStore, useHires: boolean): void {
   // 只問「載好了嗎」，不要求載入（AssetStore.loadedHires 的說明）：畫一幀對每一顆節點各要一張
   // 2× 圖等於整棵樹一次抓完，視錐預載就沒有意義了。沒載好就用 sprite，之後圖到了 version 一變，
   // 靜態層的快取失效、這裡自然換成高解析那張。

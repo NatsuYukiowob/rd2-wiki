@@ -1190,6 +1190,15 @@ PNG，檔名＝內容 sha256 前 12 碼，`addIcon()` 直接重用）＋ `data/b
   ⚠️ **不要寫回 `#sim-toolbar button`**：它會壓過 `.btn`，而且連手機 sheet 的把手 `#sim-sheet-close`
   （不是 `.btn`）一起蓋到。長相由 `sim.spec.ts` 的 S30／S31 守。
 
+- **匯出圖片（2026-09-23）**：工具列「匯出圖片」→ 精簡版（依系別的已取得節點圖示牆，寬 1080）／
+  完整版（整棵樹 2×）。內容與版面在 `src/lib/sim-image.ts`（純函式），畫圖在
+  `src/scripts/sim-export-image.ts`。⚠️ 完整版直接呼叫 `drawStatic()`，狀態走 `simPaintFor()`
+  ＋ `exportPaintState()`（清掉選取／搜尋淡出／焦點）——**不要為匯出在 `painter.ts` 開分支**；
+  畫面與匯出共用 `src/lib/sim-paint.ts`，改「哪些邊算走過」只改那一份。⚠️ 出圖前用
+  `AssetStore.settled()` 等圖示全部結束（15 秒上限）：畫面那個 store 只預載視錐內的。
+  ⚠️ 完整版像素要 < 16,777,216（iOS Safari canvas 上限，超過畫出空白圖而不報錯），
+  `sim-image.test.ts` 守。S32–S34 守下載、尺寸、選單不溢出。
+
 #### 手機版（≤720px）的版面是另一套（2026-09-22 重排）
 
 改之前在 390×844 量到：nav 50.6 ＋ 工具列 87（兩列、fixed、蓋住畫布頂端）＋ footer 著作權 73
