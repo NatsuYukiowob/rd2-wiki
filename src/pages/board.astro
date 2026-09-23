@@ -84,8 +84,10 @@ const offgamePayload = {
          ⚠️ 兩顆鈕的 aria-pressed 就是「現在是哪個模式」的初始值，跟腳本裡 `coop = false` 是
          同一件事的兩份宣告——改預設值要兩邊一起改，否則開頁時畫面與狀態對不起來。 -->
     <div id="board-coop-mode" role="group" aria-label="對戰或合作">
-      <button type="button" data-coop="off" aria-pressed="true">對戰</button>
-      <button type="button" data-coop="on" aria-pressed="false">合作</button>
+      <span class="seg">
+        <button type="button" data-coop="off" aria-pressed="true">對戰</button>
+        <button type="button" data-coop="on" aria-pressed="false">合作</button>
+      </span>
     </div>
 
     <!-- 隊友的隊伍列與局外加成切換。預設 hidden；結構與「我的隊伍」逐項相同。
@@ -93,9 +95,11 @@ const offgamePayload = {
     <h2 class="board-h2 sec-title" id="partner-deck-h" hidden>隊友的隊伍</h2>
     <div id="partner-offgame-mode" role="group" aria-label="隊友的局外加成" hidden>
       <span class="offgame-label" aria-hidden="true">局外加成</span>
-      <button type="button" data-mode="none" aria-pressed="false">不含</button>
-      <button type="button" data-mode="sim" aria-pressed="false">我的 /sim</button>
-      <button type="button" data-mode="max" aria-pressed="true">全滿</button>
+      <span class="seg">
+        <button type="button" data-mode="none" aria-pressed="false">不含</button>
+        <button type="button" data-mode="sim" aria-pressed="false">我的 /sim</button>
+        <button type="button" data-mode="max" aria-pressed="true">全滿</button>
+      </span>
       <span id="partner-offgame-nosave" hidden>沒有找到 <a href="/sim">/sim</a> 的存檔</span>
     </div>
     <div id="partner-deck-row" role="group" aria-label="隊友的隊伍" hidden>
@@ -133,9 +137,11 @@ const offgamePayload = {
          沒有存檔的提示是這一列的最後一個子元素，跟按鈕同一行（放不下時換行，見 board.css）。 -->
     <div id="offgame-mode" role="group" aria-label="局外加成">
       <span class="offgame-label" aria-hidden="true">局外加成</span>
-      <button type="button" data-mode="none" aria-pressed="true">不含</button>
-      <button type="button" data-mode="sim" aria-pressed="false">我的 /sim</button>
-      <button type="button" data-mode="max" aria-pressed="false">全滿</button>
+      <span class="seg">
+        <button type="button" data-mode="none" aria-pressed="true">不含</button>
+        <button type="button" data-mode="sim" aria-pressed="false">我的 /sim</button>
+        <button type="button" data-mode="max" aria-pressed="false">全滿</button>
+      </span>
       <span id="offgame-nosave" hidden>沒有找到 <a href="/sim">/sim</a> 的存檔</span>
     </div>
     <div id="deck-row" role="group" aria-label="我的隊伍">
