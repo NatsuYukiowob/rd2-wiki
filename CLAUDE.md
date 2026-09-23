@@ -528,13 +528,14 @@ npm run compare -- <beforeURL> <afterURL>  # computed-style 逐元素比對，�
 | 組 | token | 說明 |
 |---|---|---|
 | 間距 | `--space-h/1..7` | 4px 網格（`--space-h` 是唯一半階 2px） |
-| 圓角 | `--r-xs/sm/md/lg/pill` | 4/6/8/12/999px（2026-09-23 骰桌放大一階） |
+| 圓角 | `--r-xs/sm/md/lg/btn/pill` | 4/6/8/12/10/999px（2026-09-23 骰桌放大一階；`--r-btn` 只給 `.btn`／`.seg`） |
 | 字級 | `--fs-xs/sm/md/base/lg/xl/2xl/3xl` | 0.75→2.4rem（2026-08-26 拉開對比，見下） |
 | 表面 | `--surface-1/2/3`、`--border-strong` | 見下 |
 | 陰影 | `--shadow-1/2/3`、`--ring` | `--shadow-3` 給浮在畫布上的東西 |
 | 動效 | `--t-fast/press/med/slow`、`--e-out/in-out/spring`、`--p-lift/press/stagger/stagger-max/glow` | 見下 |
 | 面的質感 | `--hair`、`--ink`、`--depth`、`--face`／`--face-lift`／`--face-float`、`--p-lift` | 見下 |
 | 排印 | `--font`、`--font-num`、`--ls-label` | 見下 |
+| 按鈕 | `--btn-pri-bg/fg/edge/line`、`--btn-alt-bg` | 實體鍵帽兩組，見共用元件的 `.btn` |
 
 - **表面分層**：靜態頁的面 → `--surface-1`；浮在畫布上的 chrome（`#toolbar`、`#detail`、
   `#branch-chips`、下拉選單、`/dice` 的篩選列）→ `--surface-2`；hover／選中的填色 → `--surface-3`。
@@ -629,7 +630,7 @@ npm run compare -- <beforeURL> <afterURL>  # computed-style 逐元素比對，�
   拿同一個 `readdirSync` 運算式跟自己比，恆真，已修正）。
   `tests/e2e/chrome.spec.ts` 的 D1–D12 守沾頂、`--nav-h`、`aria-current`、焦點框、footer 沉底、過場時間。
 
-### 共用元件（2026-09-23 骰桌 PR ②）
+### 共用元件（2026-09-23 骰桌 PR ②③）
 
 靜態頁的外觀一律來自 `components.css` 的共用 class，頁面專屬 class（`.home-card`、`.battle-item`…）
 仍然掛著（測試與 JS 抓它們），但只留那一頁才有的版面差異。**新頁面先套共用 class，不要再長一種。**
@@ -642,6 +643,10 @@ npm run compare -- <beforeURL> <afterURL>  # computed-style 逐元素比對，�
 | `.row-card` | `.event-card-link`／`.battle-item` | 同一個面、無卡片頭；抬升只給 `a.row-card` |
 | `.chip` ＋ `.filter-bar` | 篩選鈕與沾頂篩選列 | 選中＝金色面；「哪一系」由色點光暈承擔 |
 | `.pill` | `.stat-pill` | 凹槽；框線是**透明**不是拿掉（寬度不准變，C8） |
+| `.btn` ＋ `.btn-pri`／`.btn-alt` | 動作按鈕（`/board` 工具列） | 實體鍵帽：`--r-btn`、下緣 `--depth` 硬邊（box-shadow，不是 border——按下收掉時尺寸不能跳）；**一頁最多一顆 `.btn-pri`**；`[aria-pressed]` 開著＝金框 |
+| `.seg` | 分段切換（`/board` 三列） | 凹槽容器＋`<button aria-pressed>`；沒選中的框是**透明**不是 0（切換不跳寬度）；按鈕直向內距 `--space-h`，凹槽＋按鈕的外高＝一顆獨立按鈕（`/board` 320px 首屏，B52） |
+| `.step` | 「‹ 值 ›」步進 | 圖示是 `ICONS.prev`／`next`，名字在 `aria-label`；內距刻意小（`/board` 320px 的欄寬，B52） |
+| `.panel` | 側欄與浮在內容旁的面 | `--surface-2`＋`--face-float`（不帶硬邊）；浮層（`#dice-picker`、`#dice-card`）不用它 |
 
 ### 十一個 CSS 檔
 
@@ -656,7 +661,7 @@ npm run compare -- <beforeURL> <afterURL>  # computed-style 逐元素比對，�
 | `base.css` | 全站重置（`*`／`html`／`body`／`main`／`footer`／`a`／`pre`）＋ `.sr-only` | Base |
 | `chrome.css` | 全站導覽列 `#site-nav`（含「遊戲介紹」下拉） | Base |
 | `content.css` | 靜態內容頁共用 `.page`（首頁／圖鑑／遊戲介紹）＋首頁訪客計數器 `#hit-counter`＋詞彙頁 `.kw-*` | Base |
-| `components.css` | 跨頁共用元件：篩選切換鈕 `.chip`、**沾頂篩選列 `.filter-bar`／`.filter-count`**、`--branch` 供應者（`:is(.dice-card, .chip)[data-branch=…]`）、分支色點 `.branch-dot`、首頁卡片、遊戲介紹索引卡 | Base |
+| `components.css` | 跨頁共用元件：按鈕 `.btn`、分段切換 `.seg`、步進 `.step`、面板 `.panel`、篩選切換鈕 `.chip`、**沾頂篩選列 `.filter-bar`／`.filter-count`**、`--branch` 供應者（`:is(.dice-card, .chip)[data-branch=…]`）、分支色點 `.branch-dot`、首頁卡片、遊戲介紹索引卡 | Base |
 | `detail.css` | `/tree` 詳情面板 `#detail`（含視圖堆疊換頁動畫） | `/tree` |
 | `canvas.css` | 畫布**容器**：版面骨架（`body`／`main`／`#canvas-host`）、兩張 `<canvas>` 的定位、隱形節點按鈕清單 `.tree-a11y*`。⚠️ 畫布**內容**的外觀不在這裡（見 `src/lib/canvas/theme.ts`） | `/tree`、`/sim` |
 | `dice.css` | `/dice` 圖鑑：卡片網格 `.codex-grid`、`.dice-card` 本體、關鍵字卡片 `.card-term*`、數值面板 `.dice-stats` | `/dice` |
@@ -979,6 +984,11 @@ PNG，檔名＝內容 sha256 前 12 碼，`addIcon()` 直接重用）＋ `data/b
 
 `src/scripts/board.ts` 的 `diceMeta` 是從 `#dice-picker` 的 `<img src>` 讀回來的，所以拖曳、骰盤格、
 分享圖三處畫面全部自動跟著換，不必維護第二份路徑。
+
+- **外觀全部來自共用元件**（2026-09-23 骰桌 PR ③）：工具列是 `.btn`、三列切換是 `.seg`、步進是 `.step`、
+  明細是 `.panel`。⚠️ `board.css` 的舊規則幾乎全是 id 選擇器（具體度 (1,x,x)），在這一頁加外觀規則時
+  **寫在共用元件上**，不要再寫回 `#board-tools button` 這種選擇器——它會安靜地壓過 (0,1,0) 的共用 class，
+  而 board.spec 只驗行為與尺寸、不驗長相（`tests/e2e/board-look.spec.ts` 驗長相）。
 
 ### `/tactic` 戰術與 `/boss`
 
