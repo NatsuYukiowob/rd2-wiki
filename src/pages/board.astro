@@ -73,7 +73,7 @@ const offgamePayload = {
 
 <Base title="骰盤">
   <section class="page board-page">
-    <h1>骰盤</h1>
+    <h1 class="page-head">骰盤</h1>
     <p class="lede">
       骰盤模擬工具，選擇骰子後將骰子直接拖入骰盤。
     </p>
@@ -90,7 +90,7 @@ const offgamePayload = {
 
     <!-- 隊友的隊伍列與局外加成切換。預設 hidden；結構與「我的隊伍」逐項相同。
          隊友的符文等級我們永遠拿不到，所以這一組的預設是「全滿」＝上界，不是「不含」。 -->
-    <h2 class="board-h2" id="partner-deck-h" hidden>隊友的隊伍</h2>
+    <h2 class="board-h2 sec-title" id="partner-deck-h" hidden>隊友的隊伍</h2>
     <div id="partner-offgame-mode" role="group" aria-label="隊友的局外加成" hidden>
       <span class="offgame-label" aria-hidden="true">局外加成</span>
       <button type="button" data-mode="none" aria-pressed="false">不含</button>
@@ -125,7 +125,7 @@ const offgamePayload = {
     <!-- ⚠️ id 是給腳本抓的：合作模式下這個標題要跟 #offgame-mode／#deck-row／#deck-legend
          整組搬到骰盤下方（board.ts 的 myDeckBlock()）。沒有 id 就只能靠「#offgame-mode 的前
          一個元素」這種位置推論，而那正是搬家會動到的東西。 -->
-    <h2 class="board-h2" id="deck-h">我的隊伍</h2>
+    <h2 class="board-h2 sec-title" id="deck-h">我的隊伍</h2>
     <!-- 局外加成切換：卡片數值要不要疊上骰子樹的符文／玩家被動。「我的 /sim」唯讀 /sim 的存檔，
          這一頁仍然不寫任何東西。預設值由 src/scripts/board.ts 依「讀不讀得到存檔」決定。
          三顆按鈕永遠都在、文字固定（寬度不跳），沒有存檔時「我的 /sim」只是 aria-disabled——
@@ -200,7 +200,7 @@ const offgamePayload = {
     <!-- 骰盤這一段：寬桌機排成三欄（1fr｜骰盤｜1fr），明細面板在右欄；手機是 display: contents，
          裡面四個元素直接參與 .board-page 的 flex order（見 board.css）。 -->
     <div class="board-stage">
-    <h2 class="board-h2">骰盤</h2>
+    <h2 class="board-h2 sec-title">骰盤</h2>
     <!-- 隊友盤。欄定義與 #board-grid 完全相同——兩個 grid 用同一組欄寬就會逐欄對齊，
          視覺上是一個 5×6 的連續網格（分隔線只是視覺，不進無障礙樹）。 -->
     <div id="partner-grid" role="group" aria-label="隊友的骰盤，5 欄 3 列" hidden>

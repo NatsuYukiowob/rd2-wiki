@@ -2,7 +2,7 @@
    骰盤編輯器（/board）
    -------------------------------------------------------------------------- */
 /* 兩個小標（「我的隊伍」／「骰盤」）也要置中，跟它們各自下面那塊內容（#deck-row／
-   #board-grid）對齊在同一條中線上（標題 h1 與 .lede 維持靠左不動，見 .page h1／.page .lede）。
+   #board-grid）對齊在同一條中線上（標題 h1 與 .lede 文字靠左、左緣對齊骰盤左緣，見下面的頁首對齊軸）。
    ⚠️ 用 `width: fit-content` ＋ `margin-inline: auto`，不是單純 `text-align: center`：
    後者只會在**這個 h2 自己滿版的框**裡把文字置中，框本身仍貼齊頁面左右邊界（0 留白）——
    E2E（B10）量的是元素自己的 boundingBox，那樣量出來會被誤判成「已經置中」，量不出後面
@@ -11,12 +11,21 @@
    `width: fit-content`（#deck-row）還是 `max-width`（#board-grid），兩者一樣是相對同一個
    父層置中，所以小標的中線會跟它們的中線重合，不是各自對齊到不同的基準。 */
 .board-h2 {
-  font-size: var(--fs-lg);
   margin: var(--space-6) 0 var(--space-3);
   width: fit-content;
   margin-inline: auto;
 }
-/* 置中「我的隊伍」本體（標題與說明文字維持靠左，見 .page h1／.page .lede，這裡不動它們）。
+/* 頁首跟骰盤同一條對齊軸（2026-09-23 骰桌 PR ③）：h1 與導言收成骰盤的寬度、置中，文字仍靠左
+   ——左緣於是正好落在骰盤左緣，不再是「標題貼頁面左邊、底下的內容置中」兩條軸。
+   寬桌機的三欄版面裡骰盤在中欄，中欄寬度也是 --board-w，所以同一條規則兩種版面都對得上。
+   字級由 .sec-title 給（components.css）：這裡同具體度又排在後面，寫 font-size 會把它蓋掉。
+   ⚠️ 手機（觸控）版面在下面的媒體查詢裡清掉：.board-page 那裡是 flex column，
+   `margin-inline: auto` 會取消 stretch、把標題縮成內容寬再置中（同 #board-grid 那個坑）。 */
+.board-page > :is(h1, .lede) {
+  max-width: var(--board-w);
+  margin-inline: auto;
+}
+/* 置中「我的隊伍」本體（標題與說明文字靠左，見上面的頁首對齊軸）。
    ⚠️ 用 `width: fit-content` 而不是單純加 `justify-content: center`：後者只會讓 5 個槽在
    #deck-row 這個滿版容器**內部**置中，量測 #deck-row 自己的 boundingBox 仍然是貼齊頁面
    左右邊界（0 留白）；`width: fit-content` 讓容器本身收縮成內容寬度，`margin-inline: auto`
@@ -469,6 +478,8 @@
      ⚠️ 改號碼要整組一起看：order 是整數，中間插一個就得把後面每一個都往後推。 */
   .board-page > h1 { order: 0; }
   .board-page > .lede { order: 1; }
+  /* 頁首對齊軸那條在這裡清掉（理由見該處）：手機的骰盤本來就滿版，左緣天然對齊。 */
+  .board-page > :is(h1, .lede) { max-width: none; margin-inline: 0; }
   /* 模式切換鈕：跟桌機同一個位置（說明文字之下、骰盤之上）。
      ⚠️ 少了這一行它會掉回預設的 order: 0，跟 h1 同號而 DOM 在 h1 之後 → 夾在標題與說明文字
      中間。那是**對戰模式**也看得到的跑版，不是合作模式才有的。 */
