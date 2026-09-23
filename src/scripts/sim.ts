@@ -345,13 +345,13 @@ function renderDetailPanel(): void {
   const missing = missingParents(node.id, state, ctx);
 
   let action: string;
-  if (free) action = '<button type="button" class="cta" disabled>起始骰子（一開始就有）</button>';
+  if (free) action = '<button type="button" class="cta btn btn-pri" disabled>起始骰子（一開始就有）</button>';
   else if (optional) {
     action = owned
-      ? '<button type="button" class="cta danger" data-uncheck>取消勾選（會連帶取消後續）</button>'
-      : '<button type="button" class="cta" data-check>我已經有這顆了</button>';
-  } else if (owned) action = '<button type="button" class="cta danger" data-remove>取消此節點（會連帶取消後續）</button>';
-  else if (avail) action = `<button type="button" class="cta" data-unlock>取得 · ${costHtml(node.unlockCost)}</button>`;
+      ? '<button type="button" class="cta danger btn btn-alt" data-uncheck>取消勾選（會連帶取消後續）</button>'
+      : '<button type="button" class="cta btn btn-pri" data-check>我已經有這顆了</button>';
+  } else if (owned) action = '<button type="button" class="cta danger btn btn-alt" data-remove>取消此節點（會連帶取消後續）</button>';
+  else if (avail) action = `<button type="button" class="cta btn btn-pri" data-unlock>取得 · ${costHtml(node.unlockCost)}</button>`;
   else {
     // ⚠️ 不可以只說「還缺前置」：太陽骰子的三顆前置全在手上時它照樣點不開，那句話會讓玩家
     // 對著一棵已經解完的前置鏈找不到問題在哪。缺前置與等級不夠是兩句不同的話，各印各的。
@@ -363,7 +363,7 @@ function renderDetailPanel(): void {
       lines.push(`${esc(m.name)}需達 Lv.${m.rank}（目前 ${m.owned ? `Lv.${m.level}` : '未取得'}）`);
     }
     action = lines.map(t => `<p class="note warn">${t}</p>`).join('')
-      + '<button type="button" class="cta" data-path>一鍵點亮到這裡</button>';
+      + '<button type="button" class="cta btn btn-pri" data-path>一鍵點亮到這裡</button>';
   }
 
   box.innerHTML = `

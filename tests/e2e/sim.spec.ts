@@ -912,3 +912,58 @@ test('S30. 側欄是 .panel 的面但仍貼邊；工具列的面是 --face-float
   expect(await page.locator('#sim-toolbar').evaluate(el => getComputedStyle(el).boxShadow), '#sim-toolbar 沒有 --face-float')
     .toContain('inset');
 });
+
+test('S31. 工具列是 .btn、復原重做是圖示且停用看得出來；詳情的行動鈕是金色主按鈕；手機 sheet 的把手不是 .btn', async ({ page, isMobile }) => {
+  await openSim(page);
+  await openTools(page);
+  const btns = page.locator('#sim-toolbar button:not(#sim-sheet-close)');
+  const n = await btns.count();
+  expect(n).toBeGreaterThanOrEqual(7);
+  expect(await page.locator('#sim-toolbar button.btn.btn-alt:not(#sim-sheet-close)').count(), '工具列按鈕沒有全部是 .btn-alt').toBe(n);
+  expect(await page.locator('#sim-toolbar').innerText(), '還有 ↶ ↷ 文字').not.toMatch(/[↶↷]/);
+  for (const id of ['#sim-undo', '#sim-redo']) {
+    await expect(page.locator(`${id} > svg.icon`)).toHaveCount(1);
+    await expect(page.locator(id)).toHaveAttribute('aria-label', /.+/);
+  }
+  // 停用：開頁時沒有歷史可以復原。看得出來（opacity < 1）、按不動（transform 維持 none）。
+  const undo = page.locator('#sim-undo');
+  await expect(undo).toBeDisabled();
+  expect(Number(await undo.evaluate(el => getComputedStyle(el).opacity)), '停用的復原鈕看不出停用').toBeLessThan(1);
+  if (!isMobile) {
+    await undo.scrollIntoViewIfNeeded();
+    const b = (await undo.boundingBox())!;
+    await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2);
+    await page.mouse.down();
+    await page.waitForTimeout(150);
+    const t = await undo.evaluate(el => getComputedStyle(el).transform);
+    await page.mouse.move(0, 0);
+    await page.mouse.up();
+    expect(t, '停用的鈕按下去仍然縮了').toBe('none');
+  } else {
+    // sheet 的把手：不是 .btn，而且真人點得到（中心點命中它自己，不是被別的東西蓋住）。
+    const grip = page.locator('#sim-sheet-close');
+    await expect(grip).toBeVisible();
+    expect(await grip.evaluate(el => el.classList.contains('btn')), '把手不該是 .btn').toBe(false);
+    expect(await grip.evaluate(el => {
+      const r = el.getBoundingClientRect();
+      const top = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+      return el === top || el.contains(top);
+    }), '把手被蓋住了').toBe(true);
+  }
+
+  // 詳情的行動鈕：點一顆可取得的節點會直接取得，所以主按鈕要用「還不能取得」的 1301 看——
+  // 它的行動鈕是金色的「一鍵點亮到這裡」（S20 用同一顆：離 1001 夠近，手機抽屜升起也點得到）。
+  await closeTools(page);
+  await tapNode(page, '1301');
+  const cta = page.locator('#sim-detail .cta');
+  await expect(cta).toHaveCount(1);
+  const c = await cta.evaluate(el => ({ cls: el.className, img: getComputedStyle(el).backgroundImage, w: el.getBoundingClientRect().width, pw: el.parentElement!.getBoundingClientRect().width }));
+  expect(c.cls).toContain('btn-pri');
+  expect(c.img, '行動鈕沒有金色漸層').toContain('linear-gradient');
+  expect(c.w, '行動鈕沒有撐滿側欄寬度').toBeGreaterThan(c.pw * 0.9);
+  // 已取得的節點（READY 點一下就取得）＝破壞性的「取消此節點」：次按鈕，不是金色。
+  await tapNode(page, READY);
+  await expect(page.locator('#sim-detail .cta.danger')).toHaveCount(1);
+  expect(await page.locator('#sim-detail .cta.danger').evaluate(el => el.className)).toContain('btn-alt');
+  expect(await page.locator('.btn-pri').count(), '一頁最多一顆 .btn-pri').toBeLessThanOrEqual(1);
+});
