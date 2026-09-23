@@ -12,20 +12,20 @@ import { readTree } from '../../helpers/read-tree';
 const data = readTree() as TreeData;
 const scene = buildScene(data);
 function fakeCtx() {
-  const calls: { op: string; args: unknown[]; alpha: number; dash: number[]; shadowBlur: number }[] = [];
+  const calls: { op: string; args: unknown[]; alpha: number; dash: number[]; shadowBlur: number; comp: string }[] = [];
   let dash: number[] = [];
-  const ctx = new Proxy({ globalAlpha: 1, shadowBlur: 0 } as Record<string, unknown>, {
+  const ctx = new Proxy({ globalAlpha: 1, shadowBlur: 0, globalCompositeOperation: 'source-over' } as Record<string, unknown>, {
     get(t, p: string) {
       if (p in t) return t[p];
       if (p === 'setLineDash') return (d: number[]) => { dash = d; };
       if (p === 'measureText') return (s: string) => ({ width: s.length * 8 });
-      return (...args: unknown[]) => { calls.push({ op: p, args, alpha: t.globalAlpha as number, dash, shadowBlur: t.shadowBlur as number }); };
+      return (...args: unknown[]) => { calls.push({ op: p, args, alpha: t.globalAlpha as number, dash, shadowBlur: t.shadowBlur as number, comp: t.globalCompositeOperation as string }); };
     },
     // 屬性設定也記一筆（只記 textBaseline）：T5 要驗的是「有沒有自己設」，
     // 那是一次賦值、不是一次呼叫，只記呼叫的話這件事在假 ctx 上完全看不見。
     set(t, p: string, v) {
       t[p] = v;
-      if (p === 'textBaseline') calls.push({ op: 'set:textBaseline', args: [v], alpha: t.globalAlpha as number, dash, shadowBlur: t.shadowBlur as number });
+      if (p === 'textBaseline') calls.push({ op: 'set:textBaseline', args: [v], alpha: t.globalAlpha as number, dash, shadowBlur: t.shadowBlur as number, comp: t.globalCompositeOperation as string });
       return true;
     },
   }) as unknown as Ctx2D;
@@ -67,6 +67,31 @@ describe('drawStatic', () => {
     drawStatic(ctx, scene, view, DEFAULT_THEME, s, fakeAssets, 1, false);
     const alphas = calls.filter(c => c.op === 'drawImage').map(c => c.alpha);
     expect(alphas.filter(a => a === 0.25)).toHaveLength(scene.nodes.length - 1);
+  });
+  it('半透明節點先 destination-out 挖掉底下的邊再畫：挖的那一筆滿 alpha、無陰影，排在所有邊之後；滿亮的節點不挖', () => {
+    const { ctx, calls } = fakeCtx();
+    const s = { ...emptyPaintState(), selected: '1001', chain: new Set(['1001']), shadows: true };
+    drawStatic(ctx, scene, view, DEFAULT_THEME, s, fakeAssets, 1, false);
+    const imgs = calls.map((c, i) => ({ ...c, i })).filter(c => c.op === 'drawImage');
+    const cut = imgs.filter(c => c.comp === 'destination-out');
+    const paint = imgs.filter(c => c.comp === 'source-over');
+    expect(cut).toHaveLength(scene.nodes.length - 1);
+    expect(paint).toHaveLength(scene.nodes.length);
+    expect(cut.every(c => c.alpha === 1 && c.shadowBlur === 0)).toBe(true);
+    let lastStroke = -1; calls.forEach((c, i) => { if (c.op === 'stroke') lastStroke = i; });
+    expect(cut[0]!.i).toBeGreaterThan(lastStroke);
+    expect(cut.at(-1)!.i).toBeLessThan(paint[0]!.i);
+    // 樞紐圖同理：淡出時先挖、再以 centerAlpha 畫
+    const { ctx: c3, calls: k3 } = fakeCtx();
+    const hub = { width: 1, height: 1 };
+    drawStatic(c3, scene, view, DEFAULT_THEME, s, { ...fakeAssets, image: () => hub } as unknown as AssetStore, 1, false);
+    const hubCalls = k3.filter(c => c.op === 'drawImage' && c.args[0] === hub);
+    expect(hubCalls.map(c => c.comp)).toEqual(['destination-out', 'source-over']);
+    expect(hubCalls[1]!.alpha).toBeLessThan(1);
+    // 沒有任何淡出時一顆都不挖（預設視角不多花 241 次 drawImage）
+    const { ctx: c2, calls: k2 } = fakeCtx();
+    drawStatic(c2, scene, view, DEFAULT_THEME, emptyPaintState(), fakeAssets, 1, false);
+    expect(k2.filter(c => c.comp === 'destination-out')).toHaveLength(0);
   });
   it('繪製順序：clearRect 在第一筆 stroke 之前、所有邊的 stroke 在第一筆節點 drawImage 之前、常駐標籤的 fillText 在最後一筆節點 drawImage 之後', () => {
     const { ctx, calls } = fakeCtx();
