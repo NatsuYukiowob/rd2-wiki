@@ -521,42 +521,43 @@ npm run compare -- <beforeURL> <afterURL>  # computed-style 逐元素比對，�
 兩格、不綁 `:root` 區塊，故意不合併九個檔一起掃），寫到別處會讓那條檢查對那個 token 失效。
 
 ⚠️ **`--surface-0` 比卡片還低一階**，只給「凹進去」的元素用（目前是 `/dice` 的數值 pill）。
-它**不是**「比 `--bg` 再深一階」：2026-08-26 換成炭燼配色之後，`--surface-0` 反而比 `--bg` 淺
-（對比 1.06；舊暗紫配色是深 1.13）。要看的一直都是 `--surface-0` → `--surface-1` 那一階，
+它**不是**「比 `--bg` 再深一階」：2026-09-23 骰桌色階下 `--surface-0` 比 `--bg` 淺
+（對比 1.07）。要看的一直都是 `--surface-0` → `--surface-1` 那一階，
 `.stat-pill` 只出現在卡片上、從不貼著 `--bg`。理由與備援值寫在 `tokens.css` 該處。
 
 | 組 | token | 說明 |
 |---|---|---|
 | 間距 | `--space-h/1..7` | 4px 網格（`--space-h` 是唯一半階 2px） |
-| 圓角 | `--r-xs/sm/md/lg/pill` | 3/4/5/7/999px（2026-08-26 整體收小一階） |
+| 圓角 | `--r-xs/sm/md/lg/pill` | 4/6/8/12/999px（2026-09-23 骰桌放大一階） |
 | 字級 | `--fs-xs/sm/md/base/lg/xl/2xl/3xl` | 0.75→2.4rem（2026-08-26 拉開對比，見下） |
 | 表面 | `--surface-1/2/3`、`--border-strong` | 見下 |
 | 陰影 | `--shadow-1/2/3`、`--ring` | `--shadow-3` 給浮在畫布上的東西 |
 | 動效 | `--t-fast/press/med/slow`、`--e-out/in-out/spring`、`--p-lift/press/stagger/stagger-max/glow` | 見下 |
-| 面的質感 | `--hair`、`--face`／`--face-lift`／`--face-float`、`--p-lift` | 見下 |
+| 面的質感 | `--hair`、`--ink`、`--depth`、`--face`／`--face-lift`／`--face-float`、`--p-lift` | 見下 |
 | 排印 | `--font`、`--font-num`、`--ls-label` | 見下 |
 
 - **表面分層**：靜態頁的面 → `--surface-1`；浮在畫布上的 chrome（`#toolbar`、`#detail`、
   `#branch-chips`、下拉選單、`/dice` 的篩選列）→ `--surface-2`；hover／選中的填色 → `--surface-3`。
   舊的 `--panel` 已刪除——一個東西兩個名字正是要收掉的漂移來源。
 - **面的質感用 `--face-*`，不要在元件裡自己疊 box-shadow**（2026-08-26 PR ④）。三個是同一個
-  配方的三個狀態：`--face` 靜止（上緣 `--hair` 高光 ＋ 下緣硬邊 ＋ `--shadow-2`）、`--face-lift`
+  配方的三個狀態：`--face` 靜止（上緣 `--hair` 高光 ＋ 下緣硬邊 ＋ `--shadow-2`；硬邊顏色是 `--ink`、厚度是
+  `--depth`（3px），不是黑色半透明）、`--face-lift`
   hover（硬邊跟著 `--p-lift` 長）、`--face-float` 浮在畫布上的面（**不要下緣硬邊**——硬邊在講
   「它坐在某個平面上」，而 `#detail`／下拉選單沒有坐在任何東西上）。抄散到元件檔就是四份會漂
   的複本，跟 `--panel`、畫布金色的第二份定義同一族（畫布的顏色現在只有 `src/lib/canvas/theme.ts`
   一份，開機時從 token 讀出來）。
 - **hover 抬升一律 `var(--p-lift)`**，不要再寫死 `translateY(-2px)`：`--face-lift` 的下緣硬邊
-  是用 `calc(2px + var(--p-lift))` 跟著它算的，寫死就對不上。
+  是用 `calc(var(--depth) + var(--p-lift))` 跟著它算的，寫死就對不上。
 - **字級級距 2026-08-26 拉到 3.2 倍**（0.75 / 0.84 / 0.92 / 1 / 1.2 / 1.45 / 1.85 / 2.4rem）。
   舊的 0.78→1.9 只有 2.4 倍，八階擠在一起，標題與輔助文字得靠顏色和粗細去分。
   ⚠️ `--fs-xs` 現在是 **12px**，那個尺寸的中文**一律不准再加 `font-weight: 600`**——橫筆畫會
   連成一條線，看起來像被劃掉（`dice.css` 的 `.awakening-head` 記著這個實測）。粗體中文最小 `--fs-sm`。
 - **標題（`h1/h2/h3`）的個性來自 `font-weight: 700` ＋ `letter-spacing: 0.02em`**，規則在
-  `base.css`，⚠️ 不要用拉丁 display face 排標題（Archivo 沒有中文字，只會讓標題裡的數字跳出來）。
-- **數字與代號用 `--font-num`（自架的 Archivo 拉丁 subset，14.7KB）**：`.meta`／`.stat-v`／
+  `base.css`，⚠️ 不要用拉丁 display face 排標題（Baloo 2 只有拉丁 subset，只會讓標題裡的數字跳出來）。
+- **數字與代號用 `--font-num`（自架的 Baloo 2 拉丁 subset，18.3KB；2026-09-23 取代 Archivo）**：`.meta`／`.stat-v`／
   `.game-id`／`.nav-updated`。字型檔在 `public/fonts/`，來源與重製指令在該處的 `README.md`。
-  ⚠️ 三個容易踩的點：(一) `--font-num` 後面**必須**原封不動接上 `--font` 的全部成員，Archivo
-  沒有中文字，只寫 `Archivo, sans-serif` 會讓同一句話裡的中文掉到瀏覽器預設；(二) 路徑走
+  ⚠️ 三個容易踩的點：(一) `--font-num` 後面**必須**原封不動接上 `--font` 的全部成員，Baloo 2
+  沒有中文字，只寫 `'Baloo 2', sans-serif` 會讓同一句話裡的中文掉到瀏覽器預設；(二) 路徑走
   `/fonts/` 不是 `/assets/fonts/`——`public/assets/` 整個在 `.gitignore`（build:data 的產出
   目錄），放進去 CI 與線上會 404；(三) `.game-id` 是 `<code>`，`base.css` 的 `code, pre` 會把它
   搶去 `ui-monospace`，那個位置的 `font-family` **一定要明寫**。
@@ -567,7 +568,7 @@ npm run compare -- <beforeURL> <afterURL>  # computed-style 逐元素比對，�
   `kern`／`tnum` 一起砍掉。守門：`tokens.test.ts` 驗體積 ≤30KB，E2E 的 **D15b** 用 CDP 的
   `CSS.getPlatformFontsForNode` 驗純拉丁節點只用到一種字型。
   ⚠️ **`tabular-nums` 不等於「數字等寬」**：Chromium 把字形前進寬度四捨五入到整數像素，
-  16px 下 Archivo 的數字仍是 9px／10px 兩種。不要拿「換一天寬度不變」寫註解或斷言。
+  數字寬度在 16px 下不保證一致。不要拿「換一天寬度不變」寫註解或斷言。
 - **小標籤的字距走 `--ls-label`（0.1em）**，只給 `--fs-xs` 級的標籤用（`.dice-card .meta`、
   `.stat-pill .stat-k`）。⚠️ 不要往內文或 1rem 的整句中文擴——中文加字距會把行內的詞界抹平，
   整行變成等距字塊（`#detail .meta` 因此刻意只掛 `--font-num`、不掛字距）。
@@ -609,7 +610,7 @@ npm run compare -- <beforeURL> <afterURL>  # computed-style 逐元素比對，�
   `:is()` 的具體度等於它引數裡最高的那一個，攤開來寫會比包起來寫低一階而輸掉。
   2026-08-26 實測踩過（`/board` 與 `/tree` 的按壓在 reduce 之下照樣縮，E2E 的 D18 抓到）。
   ⚠️ **`tokens.css` 也有一個 reduce 區塊，而且它是唯一一個改 token 而不是改元件的**：
-  重新宣告 `--face-lift`，把下緣硬邊從 `calc(2px + var(--p-lift))` 壓回 2px。理由與「為什麼
+  重新宣告 `--face-lift`，把下緣硬邊從 `calc(var(--depth) + var(--p-lift))` 壓回 `--depth`。理由與「為什麼
   不能在元件的 reduce 區塊裡覆寫 `--p-lift`」寫在該處——**自訂屬性的 `var()` 代換是在宣告
   它的那個元素上算完再繼承的**，在子元素上改來源變數影響不到已經算完的那一份。
 - ⚠️ **`:has()` 與 `color-mix()` 都要有退化路徑。** 切換鈕的「選中」完全靠 `:has(input:checked)`
