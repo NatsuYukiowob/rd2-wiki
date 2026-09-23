@@ -1428,6 +1428,14 @@ colors 重新著色，那張樹本來就看得見，等於用自己的無障礙�
   `test.skip`（沒有 `CI`／`E2E_SNAPSHOTS` 環境變數）。點陣圖比對吃字型——同一份 dist 在這台開發機與
   ubuntu-latest 裸 runner 上，241 顆標籤全部不一樣（2026-09-06 PR #65 第一次 CI 10,973 px 紅）。
   升 `@playwright/test` 時 ci.yml 的 `container:` tag 與 package.json 兩個 script 的 tag 要一起改。
+  ⚠️ **畫面改了、快照卻照樣綠是常態，不代表沒改到**：除了 `maxDiffPixelRatio`，每個像素還有一道色差門檻，
+  半透明區域的變化常整片落在門檻底下（2026-09-23 PR #77：兩張各變 7k／9k px，舊基準圖照樣過）。
+  而 `--update-snapshots` 預設只重寫**比對失敗**的圖，所以 `e2e:snapshots:update` 也不會寫進去——
+  要讓基準圖跟上新畫面得 `npm run e2e:snapshots -- --update-snapshots=all`，再拿 `git show HEAD:<png>`
+  逐像素比一次，確認變的只有該變的那幾張。
+  ⚠️ **worktree 的 `node_modules` 是 symlink 時**，容器只掛了 `$PWD`、解不到 `@playwright/test`：
+  手動 `docker run` 多掛一個 `-v <主 checkout>/node_modules:/work/node_modules:ro`，並先在宿主
+  `npm run build`（容器內 build 會撞唯讀的 node_modules）。
 - linkedom 沒有 canvas，也不會更新 `document.activeElement` → 這兩類行為只能靠 E2E 驗。
   `painter.ts` 的單元測試因此用 Proxy 假造 `Ctx2D` 記錄呼叫（`tests/lib/canvas/painter.test.ts`），
   驗的是「畫了幾次、用什麼 alpha／dash／shadowBlur 畫的」，**不是畫出來長什麼樣**。
