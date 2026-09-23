@@ -56,9 +56,10 @@ test('CL2. #filters-toggle 是 .btn：10px 圓角、實體厚度；有篩選時�
   expect(idle.img, '不是次按鈕的紫色漸層').toContain('linear-gradient');
   expect(idle.shadow, '沒有實體厚度').toMatch(/0px 3px 0px 0px/);
 
-  // 開面板、勾一個分支：金點亮起、寬度不變（O2 守的同一件事，換成 .btn 之後再釘一次）。
-  await btn.click();
-  await page.locator('#filters .chip[data-branch="nature"]').click();
+  // 有篩選生效：金點亮起、寬度不變（O2 守的同一件事，換成 .btn 之後再釘一次）。
+  // 用搜尋框觸發（同 O2）：先開面板再點晶片會撞上面板的展開過場——晶片還在移動、被畫布
+  // 或搜尋框擋住點擊，全套平行跑時 20 次紅 8 次。
+  await page.locator('#search').fill('僵硬');
   await expect(btn).toHaveClass(/active/);
   const on = await look();
   expect(Math.abs(on.w - idle.w), `篩選生效後按鈕寬度 ${idle.w} → ${on.w}`).toBeLessThanOrEqual(0.5);
