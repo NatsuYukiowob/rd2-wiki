@@ -12,7 +12,6 @@
 import { treeData as rawData } from '../lib/tree-data.js';
 import rawTables from '../../data/passive-upgrade-cost.json';
 import { mountCanvasTree } from '../lib/canvas/canvas-tree.js';
-import { edgeKey } from '../lib/canvas/state.js';
 import {
   DESKTOP_ICON_TARGET_PX, MOBILE_ICON_TARGET_PX, minReadableScale,
 } from '../lib/canvas/view.js';
@@ -21,10 +20,13 @@ import {
   buildSimContext, initialSimState, ownedIds, isAvailable, missingParents, missingPrereqRanks,
   unlockNode, removeNode, setNodeLevel, setInitialDice, pathTo, unlockMany,
   simTotals, maxSelectableLevel, minSelectableLevel, summarizeAbilities, resourceGap,
-  edgeWasUsed, edgeIsLinked,
 } from '../lib/sim.js';
 import type { AbilityGroup, GapEntry, SimHoldings, SimState } from '../lib/sim.js';
 import { SIM_STORAGE_KEY, deserializeSim, serializeSim, simReport } from '../lib/sim-io.js';
+import { simPaintFor } from '../lib/sim-paint.js';
+import { buildScene, type Scene } from '../lib/canvas/scene.js';
+import { compactSections, headerTotalLine } from '../lib/sim-image.js';
+import { renderCompactImage, renderFullImage } from './sim-export-image.js';
 import { levelTableFor, upgradeExtraCost } from '../lib/upgrade-tiers.js';
 import { costHtml, currencyIcon, mythicIcon, simCostHtml } from '../lib/cost-html.js';
 import { subCost, zeroCost } from '../lib/cost.js';
@@ -197,31 +199,7 @@ function gapRow(g: GapEntry): string {
  * 一行，239 個牌子全部留在畫面上，全套測試綠、截圖才看得出來。
  */
 function renderCanvas(): void {
-  const owned = ownedIds(state, ctx);
-  const available = new Set(
-    data.nodes.filter(n => !owned.has(n.id) && isAvailable(n.id, state, ctx)).map(n => n.id),
-  );
-  const linked = new Set<string>();
-  const active = new Set<string>();
-  const ready = new Set<string>();
-  for (const [from, to] of data.edges) {
-    // 三階：沒到手＝暗、兩端都在手上＝正常亮度（edgeIsLinked）、真的走過＝再加金色
-    // （edgeWasUsed，是 linked 的子集）。少了中間那階，火骰子連著風與冰那兩條（三顆都是
-    // 遊戲一開始就送的）不是被畫成金線＝看起來像自己解過，就是跟沒走到的路一樣暗。
-    if (edgeIsLinked(from, to, state, ctx)) linked.add(edgeKey(from, to));
-    if (edgeWasUsed(from, to, state, ctx)) active.add(edgeKey(from, to));
-    if (owned.has(from) && !owned.has(to) && isAvailable(to, state, ctx)) ready.add(edgeKey(from, to));
-  }
-  tree.setState({
-    sim: {
-      owned, available, selected, linked, active, ready,
-      // 只帶已取得的等級：painter 也只畫 owned 的牌子，未取得的節點送過去只是白佔快取簽章。
-      levels: new Map([...owned].map(id => [id, state.levels.get(id) ?? 1])),
-      // 上限走 maxSelectableLevel 而不是 node.maxLevel：查不到費用表的節點在模擬器裡根本
-      // 不能升級（回 1），painter 的 `max <= 1` 就是靠這個判斷「這顆不該有牌子」。
-      maxLevels: new Map(data.nodes.map(n => [n.id, maxSelectableLevel(n, ctx)])),
-    },
-  });
+  tree.setState({ sim: simPaintFor(state, ctx, data, selected) });
 }
 
 // 太陽核心只在有值時才印：三列合計是側欄常駐的東西，為一個只有太陽骰子那一支花得到的
@@ -511,13 +489,13 @@ $('sim-detail').addEventListener('change', e => {
 
 // --- 事件：工具列 ------------------------------------------------------------
 function closeMenus(): void {
-  for (const id of ['sim-initial', 'sim-limit']) {
+  for (const id of ['sim-initial', 'sim-limit', 'sim-image']) {
     $(`${id}-menu`).setAttribute('hidden', '');
     $(`${id}-toggle`).setAttribute('aria-expanded', 'false');
   }
 }
 
-for (const id of ['sim-initial', 'sim-limit']) {
+for (const id of ['sim-initial', 'sim-limit', 'sim-image']) {
   const toggle = $(`${id}-toggle`);
   const menu = $(`${id}-menu`);
   toggle.addEventListener('click', e => {
@@ -574,6 +552,76 @@ $('sim-export').addEventListener('click', async () => {
     setTimeout(() => ta.remove(), 8000);
   }
 });
+
+// --- 匯出圖片 ---------------------------------------------------------------
+// 場景只在第一次匯出時才建（畫面那份在 controller 裡、不對外）。
+let exportScene: Scene | null = null;
+/** 上一張圖的 blob URL，換新圖時收掉，不然每按一次就漏一份（同 /board）。 */
+let lastImageUrl: string | null = null;
+let exporting = false;
+
+async function exportImage(kind: 'compact' | 'full'): Promise<void> {
+  if (exporting) return;
+  exporting = true;
+  const buttons = ['sim-image-toggle', 'sim-export-compact', 'sim-export-full'].map(id => $<HTMLButtonElement>(id));
+  for (const b of buttons) b.disabled = true;
+  closeMenus();
+  try {
+    exportScene ??= buildScene(data);
+    // 內容在按下去那一刻就決定（參數先求值），產生途中玩家再改規劃不會混進這張圖。
+    const total = headerTotalLine(state, ctx);
+    const canvas = kind === 'compact'
+      ? await renderCompactImage(exportScene, compactSections(state, ctx), total)
+      : await renderFullImage(exportScene, simPaintFor(state, ctx, data, null), total);
+    const blob = await new Promise<Blob | null>(res => canvas.toBlob(res, 'image/png'));
+    if (!blob) {
+      toast('圖片產生失敗');
+      return;
+    }
+    if (lastImageUrl) URL.revokeObjectURL(lastImageUrl);
+    lastImageUrl = URL.createObjectURL(blob);
+    const name = `rd2-sim-${kind}.png`;
+    $<HTMLImageElement>('sim-image-out').src = lastImageUrl;
+    const save = $<HTMLAnchorElement>('sim-image-save');
+    save.href = lastImageUrl;
+    save.download = name;
+    $<HTMLDialogElement>('sim-image-dialog').showModal();
+    const a = document.createElement('a');
+    a.href = lastImageUrl;
+    a.download = name;
+    a.click();
+    toast('圖片已產生');
+  } catch {
+    // 沒有這個 catch 的話任何例外都只是一個未捕捉的 rejection：按鈕恢復可按、
+    // 什麼都沒出現——使用者看到的是「按了沒反應」（board.ts 同一條理由）。
+    toast('圖片產生失敗');
+  } finally {
+    exporting = false;
+    for (const b of buttons) b.disabled = false;
+    // 失敗時對話框沒開：焦點隨著被停用的選項掉到 <body>，接回入口。
+    if (!$<HTMLDialogElement>('sim-image-dialog').open) restoreExportFocus();
+  }
+}
+
+/**
+ * 焦點接回「匯出圖片」入口。按下的選項在產生前就被停用、選單也收起，焦點於是掉到 `<body>`
+ * ——對話框記住的「關閉後回到哪」也就是 `<body>`，鍵盤使用者一關掉就被丟回頁首。
+ * 只在焦點真的掉到 `<body>` 時才接，不搶走使用者自己移到別處的焦點。
+ */
+function restoreExportFocus(): void {
+  const a = document.activeElement;
+  // 關閉那一刻焦點可能還停在已隱藏的對話框裡（「關閉」鈕），瀏覽器要到下一次畫面更新才把它
+  // 修正成 <body>——所以「在對話框裡」也要算進來，只看 <body> 會漏掉滑鼠按「關閉」這條路。
+  if (a === null || a === document.body || $('sim-image-dialog').contains(a)) {
+    $<HTMLButtonElement>('sim-image-toggle').focus();
+  }
+}
+
+$('sim-export-compact').addEventListener('click', () => { void exportImage('compact'); });
+$('sim-export-full').addEventListener('click', () => { void exportImage('full'); });
+$('sim-image-close').addEventListener('click', () => { $<HTMLDialogElement>('sim-image-dialog').close(); });
+// Esc 與「關閉」都走 close 事件（瀏覽器在它之前已經把焦點還給記住的原焦點＝<body>）。
+$('sim-image-dialog').addEventListener('close', restoreExportFocus);
 
 // --- 能力彙總 ---------------------------------------------------------------
 function renderAbilities(): void {

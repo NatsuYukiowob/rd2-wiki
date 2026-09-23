@@ -53,3 +53,44 @@ describe('AssetStore（沒有 Image／createImageBitmap 的環境）', () => {
     expect(store.version).toBe(0);
   });
 });
+
+// 匯出圖片（/sim）只畫一次，得等圖全部到了才畫；畫面那條路是「圖到了再重畫」，用不到這個。
+describe('AssetStore.settled()', () => {
+  it('等所有請求結束（成功或失敗）才 resolve', async () => {
+    const reqs: { onload: (() => void) | null; onerror: (() => void) | null }[] = [];
+    class FakeImage {
+      decoding = 'async';
+      onload: (() => void) | null = null;
+      onerror: (() => void) | null = null;
+      set src(_url: string) { reqs.push(this); }
+    }
+    vi.stubGlobal('Image', FakeImage);
+    try {
+      const store = new AssetStore('/assets/sprite.webp', '/assets/icons', vi.fn());
+      store.wantHires(['a', 'b']);
+      let done = false;
+      const p = store.settled().then(() => { done = true; });
+      const tick = async () => { for (let i = 0; i < 5; i++) await Promise.resolve(); };
+      await tick();
+      expect(done).toBe(false);
+      reqs[0]!.onload!();   // sprite 成功
+      reqs[1]!.onerror!();  // a 失敗
+      await tick();
+      expect(done).toBe(false); // b 還在載
+      reqs[2]!.onload!();
+      await p;
+      expect(done).toBe(true);
+      expect(store.sprite).not.toBeNull();
+      expect(store.loadedHires('a')).toBeNull();
+      expect(store.loadedHires('b')).not.toBeNull();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('沒有 Image 的環境（請求立刻失敗）也會 resolve', async () => {
+    const store = new AssetStore('/assets/sprite.webp', '/assets/icons', vi.fn());
+    store.wantHires(['a']);
+    await expect(store.settled()).resolves.toBeUndefined();
+  });
+});

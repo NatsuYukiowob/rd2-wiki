@@ -20,6 +20,8 @@ export type Drawable = ImageBitmap | HTMLImageElement;
 export class AssetStore {
   private readonly cache = new Map<string, Drawable | 'loading' | 'failed'>();
   private ver = 0;
+  /** 還沒結束的載入請求。給 `settled()` 用：匯出圖片要等圖全部到了才畫。 */
+  private readonly pending = new Set<Promise<void>>();
 
   constructor(
     private readonly spriteUrl: string,
@@ -64,6 +66,15 @@ export class AssetStore {
   }
 
   /**
+   * 等目前所有載入請求結束（載好或失敗）。**只給匯出圖片用**：畫面是「圖到了再重畫一次」，
+   * 等不等都對；匯出只畫一次，沒等到的圖就永遠缺在那張 PNG 上。等待期間新發出的請求
+   * 也會等（迴圈到 pending 清空為止）。逾時由呼叫端處理，這裡不設上限。
+   */
+  async settled(): Promise<void> {
+    while (this.pending.size > 0) await Promise.all([...this.pending]);
+  }
+
+  /**
    * 泛用單張圖快取：第一次呼叫某個 url 會開始載（記 `'loading'`）並回傳 `null`；
    * 載入中或載入失敗（記 `'failed'`，不重試）再次呼叫也回傳 `null`；載好之後回傳圖本身，
    * 並在載好那一刻（只有那一刻）讓 `version` +1、呼叫一次 `onReady()`。
@@ -72,13 +83,15 @@ export class AssetStore {
     const cur = this.cache.get(url);
     if (cur === undefined) {
       this.cache.set(url, 'loading');
-      this.load(url).then(img => {
+      const p: Promise<void> = this.load(url).then(img => {
         this.cache.set(url, img ?? 'failed');
+        this.pending.delete(p);
         if (img) {
           this.ver++;
           this.onReady();
         }
       });
+      this.pending.add(p);
       return null;
     }
     return cur === 'loading' || cur === 'failed' ? null : cur;

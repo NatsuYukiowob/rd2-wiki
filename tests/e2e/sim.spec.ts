@@ -20,6 +20,7 @@
 // debugApi）。等級牌畫得對不對由 tests/lib/canvas/painter.test.ts 用假的 2D context 守
 // （「只有 owned 且 maxLevel>1 才畫牌、牌上文字是當前/上限」），畫面上的等級則改讀側欄的
 // `.sim-level-value`——那是玩家真正看數字的地方。
+import { readFileSync } from 'node:fs';
 import { test, expect, type Page } from '@playwright/test';
 import { readTree } from '../helpers/read-tree';
 
@@ -45,6 +46,7 @@ declare global {
 }
 
 const tree = readTree() as {
+  meta: { viewBox: [number, number, number, number] };
   nodes: { id: string; name: string; type: string; maxLevel: number; unlockVia: string; unlockCost: { core: number; gold: number }; unlockPaid?: true }[];
 };
 
@@ -214,7 +216,7 @@ test('S0. 骨架：初始只有起始骰子、資源 0，工具列每一項都�
   // 橫捲的列，「重置」之後的按鈕整批看不到，而畫面上沒有任何東西說可以往右滑；
   // 現在手機版是底部 sheet（桌機仍是頂端那一條），所以先按 ⋯ 升起來再驗。
   await openTools(page);
-  for (const id of ['sim-initial-toggle', 'sim-limit-toggle', 'sim-undo', 'sim-redo', 'sim-abilities', 'sim-export', 'sim-reset']) {
+  for (const id of ['sim-initial-toggle', 'sim-limit-toggle', 'sim-undo', 'sim-redo', 'sim-abilities', 'sim-export', 'sim-image-toggle', 'sim-reset']) {
     await expect(page.locator(`#${id}`)).toBeVisible();
     const inView = await page.locator(`#${id}`).evaluate(el => {
       const r = el.getBoundingClientRect();
@@ -455,6 +457,65 @@ test('S14. 匯出把規劃寫進剪貼簿', async ({ page, context }) => {
   expect(text).toContain('Random Dice 2 骰子樹模擬結果');
   expect(text).toMatch(/總資源：核心 [\d,]+ ／金幣 [\d,]+/);
   expect(text).toContain(READY);
+});
+
+/** 讀 PNG 的 IHDR 寬高（位元組 16–23，big-endian）。 */
+function pngSize(buf: Buffer): [number, number] {
+  return [buf.readUInt32BE(16), buf.readUInt32BE(20)];
+}
+
+// 手機也跑：對話框要疊在升起的工具列 sheet 上面，下載與關閉在觸控版面下也要走得通。
+test('S32. 匯出圖片：精簡版下載 1080 寬的 PNG，並在對話框顯示', { tag: '@mobile' }, async ({ page }) => {
+  await openSim(page);
+  await tapNode(page, READY);
+  await openTools(page);
+  await page.locator('#sim-image-toggle').click();
+  const [dl] = await Promise.all([
+    page.waitForEvent('download'),
+    page.locator('#sim-export-compact').click(),
+  ]);
+  expect(dl.suggestedFilename()).toBe('rd2-sim-compact.png');
+  expect(pngSize(readFileSync((await dl.path())!))[0]).toBe(1080);
+  await expect(page.locator('#sim-image-dialog')).toBeVisible();
+  await expect(page.locator('#sim-image-out')).toHaveJSProperty('complete', true);
+  await expect(page.locator('#sim-toast')).toContainText('圖片已產生');
+  await page.locator('#sim-image-close').click();
+  await expect(page.locator('#sim-image-dialog')).toBeHidden();
+  // 焦點要回到入口：按下的選項在產生前就被停用、選單收起，對話框記住的「原焦點」是 <body>，
+  // 不接回來的話鍵盤使用者一關掉對話框就被丟回頁首（2026-09-24 final review 抓到）。
+  await expect(page.locator('#sim-image-toggle')).toBeFocused();
+});
+
+test('S33. 匯出圖片：完整版是 2× 整棵樹，產生中入口停用', async ({ page }) => {
+  await openSim(page);
+  await openTools(page);
+  await page.locator('#sim-image-toggle').click();
+  const dlP = page.waitForEvent('download', { timeout: 30_000 });
+  await page.locator('#sim-export-full').click();
+  // 連按防護：產生中入口是停用的。
+  await expect(page.locator('#sim-image-toggle')).toBeDisabled();
+  const dl = await dlP;
+  expect(dl.suggestedFilename()).toBe('rd2-sim-full.png');
+  // 2× 整棵樹 ＋ 標題列 140（src/lib/sim-image.ts 的 FULL.headerH）× 2。
+  const [, , vw, vh] = tree.meta.viewBox;
+  expect(pngSize(readFileSync((await dl.path())!))).toEqual([vw * 2, (vh + 140) * 2]);
+  await expect(page.locator('#sim-image-toggle')).toBeEnabled();
+});
+
+// 手機寬度才是這條要守的：選單掛在工具列上，窄螢幕最容易被推出視口（S25 同一族）。
+test('S34. 匯出圖片的選單不超出視口、兩個選項點得到', { tag: '@mobile' }, async ({ page }) => {
+  await openSim(page);
+  await openTools(page);
+  await page.locator('#sim-image-toggle').click();
+  const box = (await page.locator('#sim-image-menu').boundingBox())!;
+  const vw = page.viewportSize()!.width;
+  expect(box.x).toBeGreaterThanOrEqual(0);
+  expect(box.x + box.width).toBeLessThanOrEqual(vw);
+  for (const id of ['sim-export-compact', 'sim-export-full']) {
+    const b = (await page.locator(`#${id}`).boundingBox())!;
+    const hit = await page.evaluate(([x, y]) => document.elementFromPoint(x!, y!)?.id ?? null, [b.x + b.width / 2, b.y + b.height / 2]);
+    expect(hit).toBe(id);
+  }
 });
 
 

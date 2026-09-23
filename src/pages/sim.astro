@@ -81,6 +81,16 @@ const optional = [...ctx.optional]
     <button type="button" id="sim-redo" class="btn btn-alt" disabled aria-label="重做"><Fragment set:html={ICONS.redo} /></button>
     <button type="button" id="sim-abilities" class="btn btn-alt">能力彙總</button>
     <button type="button" id="sim-export" class="btn btn-alt">匯出</button>
+
+    <div class="sim-menu">
+      <button type="button" id="sim-image-toggle" class="btn btn-alt" aria-expanded="false" aria-controls="sim-image-menu">
+        匯出圖片
+      </button>
+      <div class="sim-menu-body" id="sim-image-menu" hidden>
+        <button type="button" id="sim-export-compact" class="btn btn-alt">精簡版</button>
+        <button type="button" id="sim-export-full" class="btn btn-alt">完整版</button>
+      </div>
+    </div>
     <button type="button" id="sim-reset" class="btn btn-alt">重置</button>
   </div>
 
@@ -134,6 +144,18 @@ const optional = [...ctx.optional]
       <p class="note">點畫布上的節點看它的詳情；前置都解開的節點點一下就會取得。</p>
     </div>
   </aside>
+
+  <!-- 匯出圖片的輸出。⚠️ iOS Safari 對 <a download> 不可靠（同 /board），所以圖一定要
+       顯示出來讓人長按儲存；自動下載只是順便。原生 <dialog> 的 showModal() 自帶焦點困住與 Esc。 -->
+  <dialog id="sim-image-dialog" aria-labelledby="sim-image-title">
+    <h2 id="sim-image-title">規劃圖</h2>
+    <p class="note">已開始下載；沒有下載的話長按圖片即可儲存。</p>
+    <img id="sim-image-out" alt="骰子樹規劃圖" />
+    <div class="sim-image-actions">
+      <a id="sim-image-save" class="btn btn-alt" download>下載</a>
+      <button type="button" id="sim-image-close" class="btn btn-alt">關閉</button>
+    </div>
+  </dialog>
 
   <div id="sim-ability-modal" hidden>
     <div class="sim-modal-box" role="dialog" aria-modal="true" aria-labelledby="sim-ability-title">
@@ -230,6 +252,54 @@ const optional = [...ctx.optional]
     margin: 0 0 var(--space-2);
     color: var(--muted);
     font-size: var(--fs-xs);
+  }
+
+  /* 匯出圖片的兩個選項直排。⚠️ 要 :not([hidden])：直接設 display 會壓過 [hidden]，
+     選單就收不起來（`.battle-item[hidden]` 那一族）。 */
+  #sim-image-menu:not([hidden]) {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+
+  #sim-image-dialog {
+    max-width: min(40rem, calc(100vw - var(--space-3) * 2));
+    max-height: calc(100dvh - var(--space-5) * 2);
+    padding: var(--space-4);
+    color: var(--fg);
+    background: var(--surface-2);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--r-lg);
+    box-shadow: var(--shadow-3);
+  }
+
+  #sim-image-dialog::backdrop {
+    background: rgb(0 0 0 / 60%);
+  }
+
+  #sim-image-dialog h2 {
+    margin: 0;
+    font-size: var(--fs-lg);
+  }
+
+  #sim-image-dialog .note {
+    margin: var(--space-1) 0 0;
+    color: var(--muted);
+    font-size: var(--fs-sm);
+  }
+
+  #sim-image-out {
+    display: block;
+    max-width: 100%;
+    max-height: 60dvh;
+    margin-block: var(--space-3);
+    object-fit: contain;
+  }
+
+  .sim-image-actions {
+    display: flex;
+    gap: var(--space-2);
+    justify-content: flex-end;
   }
 
   .sim-check {
