@@ -29,7 +29,7 @@ const { ev } = Astro.props as { ev: GameEvent };
     <p class="event-back"><a href="/events">← 活動</a></p>
 
     <div class="event-head">
-      <h1>{ev.name}</h1>
+      <h1 class="page-head">{ev.name}</h1>
       {/* 徽章講的是「內含這場活動的客戶端版本」，不是活動的舉辦版本——兩者不是同一件事。 */}
       <span class="event-badge">{ev.version} 客戶端</span>
       {ev.period && (
@@ -72,7 +72,7 @@ const { ev } = Astro.props as { ev: GameEvent };
       return (
       <section class="event-section">
         {/* 頁面標題是 h1，段落標題因此是 h2——標題階層是讀屏的目錄。 */}
-        <h2 id={`s${i + 1}`}>{sec.title}</h2>
+        <h2 class="sec-title" id={`s${i + 1}`}>{sec.title}</h2>
         {sec.note && <p class="note">{sec.note}</p>}
         {/* 表格自己可以橫向捲動（窄螢幕）。⚠️ 不可以讓整份文件橫捲——那是 /board 的 B13
             已經守過的一條。捲動容器要能拿到鍵盤焦點，否則只有滑鼠使用者捲得動。 */}

@@ -19,7 +19,7 @@ const rowCount = (ev: GameEvent) => ev.sections.reduce((n, s) => n + s.rows.leng
 
 <Base title="活動">
   <section class="page">
-    <h1>活動</h1>
+    <h1 class="page-head">活動</h1>
     <p class="lede">
       遊戲裡辦過的期間限定活動，內容取自對應版本的客戶端資料表。點一張卡片看那場活動的完整內容。
     </p>
@@ -27,7 +27,7 @@ const rowCount = (ev: GameEvent) => ev.sections.reduce((n, s) => n + s.rows.leng
     <div class="event-index">
       {events.map((ev, i) => (
         // 整張卡片是一個連結（同 `.guide-card`）：點哪裡都進得去，不必去瞄那個「→」。
-        <a class="event-card-link" href={`/events/${ev.id}`} style={`--i:${i}`}>
+        <a class="event-card-link row-card" href={`/events/${ev.id}`} style={`--i:${i}`}>
           {ev.screenshots?.[0] && (
             <img
               class="event-thumb"

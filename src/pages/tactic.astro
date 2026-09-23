@@ -40,10 +40,10 @@ const coopCount = tactics.filter(t => t.coop).length;
 
 <Base title="戰術">
   <section class="page battle-page" id="tactic-page" data-mode="versus">
-    <h1>戰術</h1>
+    <h1 class="page-head">戰術</h1>
     <p class="lede">對戰與合作模式中的戰術效果。</p>
 
-    <div class="filters" id="tactic-filters">
+    <div class="filter-bar" id="tactic-filters">
       <div role="group" aria-label="依階段篩選">
         <!-- 切換鈕跟 /dice 用同一個 .chip：外觀是按鈕、骨子裡是 <label> 包真的 checkbox，
              鍵盤、螢幕閱讀器的「已勾選」、沒有 JS 時仍是可操作的表單控制項全是免費的。 -->
@@ -81,7 +81,7 @@ const coopCount = tactics.filter(t => t.coop).length;
     <ul class="battle-list" id="tactic-list">
       {tactics.map(t => (
         <li
-          class="battle-item"
+          class="battle-item row-card"
           id={`t${t.id}`}
           data-id={t.id}
           data-stage={t.stage}

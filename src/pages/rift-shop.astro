@@ -63,7 +63,7 @@ const WILLS = [
 
 <Base title="裂縫商店">
   <section class="page battle-page" id="rift-shop-page">
-    <h1>裂縫商店</h1>
+    <h1 class="page-head">裂縫商店</h1>
     <p class="lede">
       合作困難模式的局內商店。擊殺首領與 SP 魔像會掉落<strong>討伐硬幣</strong>，
       在裂縫商店兌換以下 {effects.length} 種裂縫效果。
@@ -79,7 +79,7 @@ const WILLS = [
       </ul>
     </div>
 
-    <div class="filters" id="rift-filters">
+    <div class="filter-bar" id="rift-filters">
       <div role="group" aria-label="依階級篩選">
         {/* 切換鈕跟 /tactic、/dice 用同一個 .chip：外觀是按鈕、骨子裡是 <label> 包真的
             checkbox，鍵盤、螢幕閱讀器的「已勾選」、沒有 JS 時仍可操作全部免費。 */}
@@ -101,7 +101,7 @@ const WILLS = [
       <>
         {/* 組標題與底下那一份清單一起藏（`data-grade` 同時掛在兩者上）——只藏清單的話，
             篩掉的那一組會剩下一個標題孤零零地掛在畫面上。 */}
-        <h2 class="battle-group-head" data-grade={g.grade}>
+        <h2 class="battle-group-head sec-title" data-grade={g.grade}>
           {g.grade}階級
           <span class="battle-group-note">
             <Fragment set:html={coin} />{g.costs.join('／')} 討伐硬幣 · 出現權重 {g.weights.join('／')}
@@ -109,7 +109,7 @@ const WILLS = [
         </h2>
         <ul class="battle-list" data-grade={g.grade}>
           {g.items.map(e => (
-            <li class="battle-item" id={`r${e.id}`} data-id={e.id} data-grade={e.grade}>
+            <li class="battle-item row-card" id={`r${e.id}`} data-id={e.id} data-grade={e.grade}>
               <img
                 class="battle-icon"
                 src={`/assets/rift-shop-icons/${e.icon}.webp`}
