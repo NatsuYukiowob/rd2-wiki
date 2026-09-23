@@ -11,7 +11,7 @@
 import { test, expect } from '@playwright/test';
 
 /** 正式站網址。canonical 與 sitemap 裡的絕對網址都應該長這樣，跟本機測試埠無關。 */
-const SITE = 'https://rd2-wiki.pages.dev';
+const SITE = 'https://rd2wiki.org';
 
 /**
  * 全站現有的頁面：請求路徑 → 建置後的正規路徑（含尾斜線）與分頁名。

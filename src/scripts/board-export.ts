@@ -141,7 +141,7 @@ export async function renderShareImage(input: ExportInput): Promise<HTMLCanvasEl
   ctx.fillStyle = COLORS.muted;
   ctx.font = `24px ${FONT_STACK}`;
   ctx.textAlign = 'right';
-  ctx.fillText('rd2-wiki.pages.dev', imageW - 48, 52);
+  ctx.fillText('rd2wiki.org', imageW - 48, 52);
   ctx.textAlign = 'left';
 
   for (const { side, board, deck, deckLabel } of sides) {

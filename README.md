@@ -7,14 +7,14 @@
 <p align="center">《Random Dice 2》骰子樹非官方玩家攻略站：收錄全部節點、解鎖條件與前置關係。</p>
 
 <p align="center">
-  [<a href="https://rd2-wiki.pages.dev/">開啟網站</a>]
-  [<a href="https://rd2-wiki.pages.dev/tree/">骰子樹</a>]
+  [<a href="https://rd2wiki.org/">開啟網站</a>]
+  [<a href="https://rd2wiki.org/tree/">骰子樹</a>]
   [<a href="./CONTRIBUTING.md">貢獻指南</a>]
-  [<a href="https://rd2-wiki.pages.dev/about/">關於</a>]
+  [<a href="https://rd2wiki.org/about/">關於</a>]
 </p>
 
 <p align="center">
-  <a href="https://rd2-wiki.pages.dev/tree/"><img src="https://img.shields.io/badge/%E9%96%8B%E5%95%9F%E9%AA%B0%E5%AD%90%E6%A8%B9-rd2--wiki.pages.dev-ffd66f?style=for-the-badge&labelColor=17161a" alt="開啟骰子樹" /></a>
+  <a href="https://rd2wiki.org/tree/"><img src="https://img.shields.io/badge/%E9%96%8B%E5%95%9F%E9%AA%B0%E5%AD%90%E6%A8%B9-rd2wiki.org-ffd66f?style=for-the-badge&labelColor=17161a" alt="開啟骰子樹" /></a>
 </p>
 
 <p align="center">
@@ -69,7 +69,7 @@ rd2-wiki 把整棵樹攤平在同一張畫布上：**點一個節點，它在樹
 `data/upgrade-cost.json` 升級花費表、`data/maxlevel-official.json` 官方滿級值）是輔助用的設定檔。
 
 **歡迎送 PR 修正資料。** 動手前請先讀 [`CONTRIBUTING.md`](./CONTRIBUTING.md)——它同時是貢獻指南，
-也是網站 [關於頁](https://rd2-wiki.pages.dev/about/) 的內容來源；裡面寫清楚了資料格式、
+也是網站 [關於頁](https://rd2wiki.org/about/) 的內容來源；裡面寫清楚了資料格式、
 送 PR 前要跑的指令，以及 CI 會擋下哪些改動。
 
 貢獻資料時只會用到這幾個指令：
