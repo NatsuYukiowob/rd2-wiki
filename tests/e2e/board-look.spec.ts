@@ -112,6 +112,14 @@ test('BL3. 三列切換鈕是 .seg：凹槽容器、選中＝金框、切換不�
   const sim = page.locator('#offgame-mode button[data-mode="sim"]');
   await expect(sim).toHaveAttribute('aria-disabled', 'true');
   expect(await sim.evaluate(el => getComputedStyle(el).color), '沒有存檔的「我的 /sim」不是 --muted').toBe(muted);
+  // 光驗 --muted 不夠：沒選中的鈕本來就是 --muted，停用的必須跟「可以按、只是沒選」的鄰居長得不一樣
+  // （觸控沒有游標也沒有 hover，外觀是唯一的線索）。
+  const look = (sel: string) => page.locator(sel).evaluate(el => {
+    const s = getComputedStyle(el);
+    return `${s.color}|${s.opacity}`;
+  });
+  expect(await look('#offgame-mode button[data-mode="sim"]'), '停用的「我的 /sim」跟可按的「全滿」長得一樣')
+    .not.toBe(await look('#offgame-mode button[data-mode="max"]'));
   if (!isMobile) {
     await sim.scrollIntoViewIfNeeded(); // page.mouse 不會自己捲動（同 BL2）
     const b = (await sim.boundingBox())!;
