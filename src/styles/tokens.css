@@ -138,11 +138,10 @@
   /* 浮在畫布上的面（詳情面板、下拉選單）不要下緣硬邊：硬邊在講「它坐在某個平面上」，
      而這兩個東西沒有坐在任何東西上。
      ⚠️ **這一輪只換了兩個**：`#detail`（detail.css）與 `#site-nav .nav-menu-items`
-     （chrome.css）。同一族但**還停在裸 --shadow-* 的**有四個，各自的值本來就不一致，
-     不是這張 PR 弄出來的：`#toolbar`（tree.astro，--shadow-2）、`/tree` 手機版篩選抽屜
-     （tree.astro，--shadow-3）、`/board` 的面板（board.css，--shadow-3）、`/dice` 的篩選列
-     （dice.css，--shadow-1）。**調 --face-float 的時候記得那四個不會跟著動**——要不要把
-     它們一起收進來是視覺決定，得先給 Yuki 看對照圖（2026-08-26 code review 提出）。 */
+     （chrome.css）。同一族但**還停在裸 --shadow-* 的**有兩個：`/tree` 手機版篩選抽屜
+     （tree.astro，--shadow-3）與 `/dice` 的篩選列（dice.css，--shadow-1）。`#toolbar`／`#sim-toolbar`
+     2026-09-23 骰桌 PR ④ 收進來了、`/board` 的面板 PR ③ 改成 `.panel`。**調 --face-float 的時候記得
+     那兩個不會跟著動**——要不要把它們一起收進來是視覺決定，得先給 Yuki 看對照圖（2026-08-26 code review 提出）。 */
   --face-float: inset 0 1px 0 var(--hair), var(--shadow-3);
   /* 實體按鍵兩組（spec §4.3）。主按鈕＝金色鍵帽：字色對底色 8.34:1；--btn-pri-edge 是鍵帽下緣的
      厚度色（取代 --ink，金色鍵帽底下接深墨色會像一條黑縫）、--btn-pri-line 是框線。

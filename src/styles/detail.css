@@ -23,13 +23,11 @@
      （兩軸都是非 visible 才是合法組合——只設 overflow-x 的話 overflow-y 會被算成 auto。） */
   overflow-x: hidden;
   overflow-y: auto;
-  background: var(--surface-2);
+  /* 面（--surface-2、框、--r-lg、--face-float）在 components.css 的 `.panel`（2026-09-23 骰桌 PR ④），
+     這裡只留定位與尺寸。⚠️ 不要在這裡再寫 background／border／border-radius／box-shadow：
+     (1,0,0) 會安靜地壓過 `.panel`。手機抽屜的歸零在 tree.astro 的 720px 媒體查詢裡。 */
   padding: var(--space-3);
   font-size: var(--fs-md);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--r-md);
-  /* --face-float 而不是 --face：面板浮在畫布上，沒有坐在任何平面上，下緣硬邊會說謊。 */
-  box-shadow: var(--face-float);
 }
 #detail h2 {
   margin-top: 0;
