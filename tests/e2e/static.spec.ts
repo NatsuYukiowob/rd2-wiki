@@ -83,3 +83,37 @@ test('ST2b. /rift-shop 篩掉的階級，它的段落標題真的消失（.sec-t
   await first.uncheck();
   await expect(page.locator(`.battle-group-head[data-grade="${grade}"]`)).toBeHidden();
 });
+
+test('ST3. 卡片頭有分支色漸層：/dice 各系不同、首頁與遊戲介紹用中性紫；圓角 12px', async ({ page }) => {
+  await page.goto('/dice');
+  const heads = await page.evaluate(() => {
+    const bg = (sel: string) => getComputedStyle(document.querySelector(sel)!).backgroundImage;
+    return { nature: bg('.dice-card[data-branch="nature"]'), chaos: bg('.dice-card[data-branch="chaos"]'),
+      radius: getComputedStyle(document.querySelector('.dice-card')!).borderTopLeftRadius };
+  });
+  expect(heads.nature, '/dice 卡片沒有頭部漸層').toContain('linear-gradient');
+  expect(heads.nature, '自然與渾沌的卡片頭同色——分支色沒接上').not.toBe(heads.chaos);
+  expect(heads.radius).toBe('12px');
+
+  for (const [path, sel] of [['/', '.home-card'], ['/guide', '.guide-card']] as const) {
+    await page.goto(path);
+    const bg = await page.locator(sel).first().evaluate(el => getComputedStyle(el).backgroundImage);
+    expect(bg, `${sel} 沒有頭部漸層`).toContain('linear-gradient');
+  }
+});
+
+test('ST3b. 按住圖鑑卡片裡的檔位切換鈕，整張卡片不跟著縮', async ({ page, isMobile }) => {
+  test.skip(isMobile, '桌機量到就夠：:active 的規則兩邊一樣');
+  await page.goto('/dice');
+  const card = page.locator('.dice-card').first();
+  const chip = card.locator('.chip-xs').nth(1);
+  const box = (await chip.boundingBox())!;
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.waitForTimeout(150);
+  const t = await card.evaluate(el => getComputedStyle(el).transform);
+  await page.mouse.up();
+  // hover 時卡片會抬升（translateY），所以不能要求 none；要求的是「沒有縮放」：matrix 的 a、d 都是 1。
+  const m = t === 'none' ? [1, 0, 0, 1] : t.match(/matrix\(([^)]+)\)/)![1]!.split(',').map(Number);
+  expect([m[0], m[3]], `按住卡片裡的切換鈕時整張卡片被縮放了（${t}）`).toEqual([1, 1]);
+});

@@ -45,6 +45,48 @@
   }
 }
 
+/* 直式卡片：首頁入口、遊戲介紹索引、/dice 圖鑑。
+   頭部是一段從分支色淡出的漸層（高 3rem）——系色只出現在卡片頭與圓點（spec §8）。
+   沒有分支的卡片退回 --edge（畫布上邊的紫），不用 --gold：金色只給主按鈕與選中狀態。
+   ⚠️ 漸層畫在**背景**上：/dice 的 `.card-term` 覆蓋層開著時會把它蓋掉，那時分支識別由
+   `.dice-card::after` 的頂緣色條撐（z-index 2，dice.css）。
+   ⚠️ 第一行 background 是 color-mix 的 fallback（不支援的引擎整條宣告作廢、退回純色面）。 */
+.card {
+  background: var(--surface-1);
+  background:
+    linear-gradient(
+      color-mix(in srgb, var(--branch, var(--edge)) 32%, transparent),
+      transparent var(--space-7)
+    ) no-repeat,
+    var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  box-shadow: var(--face);
+  color: var(--fg);
+  /* transform 走 --t-press、色與影走 --t-fast（2026-08-26 PR ⑥）：位移是「這東西在動」，
+     要比顏色變化更即時。⚠️ 不要在 :active 裡寫 `transition-duration: var(--t-press)`
+     ——那是**單值**，會把同一份清單裡每一個屬性的長度一起覆寫掉。 */
+  transition:
+    border-color var(--t-fast) var(--e-out),
+    box-shadow var(--t-fast) var(--e-out),
+    transform var(--t-press) var(--e-out);
+}
+.card:hover,
+a.card:focus-visible {
+  border-color: var(--branch, var(--gold));
+  box-shadow: var(--face-lift);
+  transform: translateY(calc(-1 * var(--p-lift)));
+  text-decoration: none;
+}
+/* 按下去的回饋**只給整張是連結的卡片**（a.card）：/dice 的卡片裡有四顆檔位切換鈕，
+   按其中一顆整張卡片跟著縮會像按錯東西（E2E ST3b）。
+   ⚠️ 具體度要贏 :hover，靠寫在後面；transform 要同時寫抬升與縮放（理由見舊版註解：只寫
+   scale 會蓋掉 translateY，按下去先掉回原位再縮）。影子收回 --face。 */
+a.card:active {
+  box-shadow: var(--face);
+  transform: translateY(calc(-1 * var(--p-lift))) scale(var(--p-press));
+}
+
 /* --- 首頁 --- */
 .home-links {
   display: grid;
@@ -55,37 +97,7 @@
 /* 首頁入口卡與遊戲介紹索引卡是同一種東西，共用一份宣告（分開寫過，兩邊逐字相同）。 */
 :is(.home-card, .guide-card) {
   padding: var(--space-4);
-  background: var(--surface-1);
-  border: 1px solid var(--border);
-  border-radius: var(--r-md);
-  box-shadow: var(--face);
-  color: var(--fg);
   text-decoration: none;
-  /* transform 走 --t-press、色與影走 --t-fast（2026-08-26 PR ⑥）：位移是「這東西在動」，
-     要比顏色變化更即時。⚠️ 不要改成在 :active 裡寫 `transition-duration: var(--t-press)`
-     ——那是**單值**，會把同一份清單裡每一個屬性的長度一起覆寫掉。 */
-  transition:
-    border-color var(--t-fast) var(--e-out),
-    box-shadow var(--t-fast) var(--e-out),
-    transform var(--t-press) var(--e-out);
-}
-:is(.home-card, .guide-card):hover,
-:is(.home-card, .guide-card):focus-visible {
-  border-color: var(--gold);
-  box-shadow: var(--face-lift);
-  transform: translateY(calc(-1 * var(--p-lift)));
-  text-decoration: none;
-}
-/* 按下去的回饋（2026-08-26 PR ⑥）。這張 PR 之前全站**一條 :active 規則都沒有**——桌機還有
-   hover 可以講「我碰到了」，手機從按下去到頁面換掉之間完全沒有任何回應。
-   ⚠️ 具體度要贏 :hover：`:is(...):active` 跟 `:is(...):hover` 同具體度，靠寫在後面取勝。
-   移到這條規則前面的話手指按住時仍然是 hover 的樣子（手機的 :hover 會黏住），等於沒做。
-   ⚠️ transform 要**同時**寫抬升與縮放，不能只寫 scale：後者會整個蓋掉 hover 的
-   translateY，卡片按下去會先掉回原位再縮，看起來像抖了一下。
-   影子收回 --face（跟靜止同一階）：抬起來的東西被按下去，影子要跟著收，不然是「浮著又被壓扁」。 */
-:is(.home-card, .guide-card):active {
-  box-shadow: var(--face);
-  transform: translateY(calc(-1 * var(--p-lift))) scale(var(--p-press));
 }
 .home-card h2 {
   margin: 0 0 var(--space-2);
@@ -356,16 +368,14 @@
 
 /* 減少動態：跨頁共用元件這一份。理由與寫法見 chrome.css 檔尾同一段。 */
 @media (prefers-reduced-motion: reduce) {
-  .home-card,
-  .guide-card,
+  .card,
   .chip,
   .chip .branch-dot {
     transition: none;
   }
-  .home-card:hover,
-  .guide-card:hover,
-  .home-card:active,
-  .guide-card:active,
+  .card:hover,
+  a.card:focus-visible,
+  a.card:active,
   .chip:active {
     transform: none;
   }
