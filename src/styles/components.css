@@ -250,6 +250,40 @@ a.row-card:active {
   }
 }
 
+/* 步進（‹ 值 ›，2026-09-23 骰桌 PR ③）：兩顆只有圖示的鈕夾著一個值。
+   ⚠️ 鈕的名字在 aria-label（圖示是 aria-hidden），鈕裡不要再放可見文字。
+   ⚠️ 內距與間距刻意跟舊的 ◀ ▶ 一樣小：/board 手機 320px 的一欄 min-content 就是這一列，
+   多 1px 都會吃掉 B52 釘住的餘裕（見 board.css 觸控區塊那段算式）。 */
+.step {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+.step > button {
+  display: inline-grid;
+  place-items: center;
+  padding: var(--space-h) var(--space-1);
+  border: 0;
+  border-radius: var(--r-sm);
+  background: none;
+  color: var(--fg);
+  font: inherit;
+  cursor: pointer;
+  transition:
+    background-color var(--t-fast) var(--e-out),
+    transform var(--t-press) var(--e-out);
+}
+.step > button:not(:disabled):hover {
+  background: var(--surface-3);
+}
+.step > button:not(:disabled):active {
+  transform: scale(var(--p-press));
+}
+.step > button:disabled {
+  color: var(--muted);
+  cursor: default;
+}
+
 /* --- 首頁 --- */
 /* 六張入口：桌機 3×2、窄一點 2×3、手機一欄。minmax 的下限決定斷點，不用 media query。
    auto-fill 而不是 auto-fit，理由同 `.guide-cards.is-content` 的註解。 */
@@ -552,6 +586,7 @@ a.row-card:active {
   .row-card,
   .btn,
   .seg > button,
+  .step > button,
   .chip,
   .chip .branch-dot {
     transition: none;
@@ -564,6 +599,7 @@ a.row-card:active {
   .btn-alt:not(:disabled):active,
   .btn-pri:not(:disabled):active,
   .seg > button:not([aria-disabled='true']):active,
+  .step > button:not(:disabled):active,
   .chip:active {
     transform: none;
   }

@@ -129,3 +129,17 @@ test('BL3. 三列切換鈕是 .seg：凹槽容器、選中＝金框、切換不�
   const off = await border('#board-coop-mode button[data-coop="off"]');
   expect(on, '高對比模式下選中與沒選中的框色一樣').not.toBe(off);
 });
+
+test('BL4. 骰點與強化的步進鈕是 SVG 圖示，不是 ◀ ▶ 文字；按鈕仍然有名字', async ({ page }) => {
+  await page.goto('/board');
+  const text = await page.locator('#deck-row').innerText();
+  expect(text, '隊伍列還有 ◀ ▶ 文字').not.toMatch(/[◀▶]/);
+  const btns = page.locator('#deck-row :is(.pips-dec, .pips-inc, .sp-dec, .sp-inc)');
+  const n = await btns.count();
+  expect(n).toBe(20);
+  expect(await page.locator('#deck-row :is(.pips-dec, .pips-inc, .sp-dec, .sp-inc) > svg.icon').count()).toBe(n);
+  for (const label of await btns.evaluateAll(els => els.map(el => el.getAttribute('aria-label')))) {
+    expect(label, '步進鈕沒有 aria-label').toBeTruthy();
+  }
+  await expect(page.locator('#deck-row .step')).toHaveCount(10);
+});

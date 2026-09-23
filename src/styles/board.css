@@ -81,20 +81,11 @@
 }
 .deck-dice img { width: 100%; height: 100%; object-fit: contain; }
 .deck-dice-empty { font-size: var(--fs-xl); color: var(--muted); }
+/* 「‹ 值 ›」的排法與按鈕外觀在 components.css 的 `.step`（2026-09-23）；這裡只留字級，
+   以及手機觸控區塊裡把內距與間距再收緊的那兩條（320px 的欄寬靠它們，見該處）。 */
 :is(.pips-row, .sp-row) {
-  display: flex;
-  align-items: center;
-  gap: var(--space-1);
   font-size: var(--fs-sm);
 }
-:is(.pips-row, .sp-row) button {
-  background: none;
-  border: 0;
-  color: var(--fg);
-  cursor: pointer;
-  padding: var(--space-h) var(--space-1);
-}
-:is(.pips-row, .sp-row) button:disabled { color: var(--muted); cursor: default; }
 .pips-value { min-width: 1.5rem; text-align: center; }
 /* 強化值：金色、等寬數字。min-width 要容得下「Lv.15」，否則 Lv.1 → Lv.15 時整條組合列變寬（B15b）。 */
 .sp-value {
@@ -386,12 +377,12 @@
    而手機上沒有 hover 可以講「我碰到了」。
    ⚠️ **刻意不含 `.board-cell`**：格子的主要互動是拖曳，而 `:active` 在整段拖曳期間都成立，
    格子會從按下的那一刻一路縮著直到放開。抓起來的回饋由 .dragging 那一路負責，不是這裡。
-   ⚠️ `.pips-row button:disabled` 也要排除：按不動的東西不該有按下去的回饋。
-   工具列（.btn）與三列切換（.seg）的按壓在 components.css，跟著元件走（2026-09-23）。 */
-:is(#picker-close, .picker-dice, .pips-row button, .sp-row button) {
+   工具列（.btn）、三列切換（.seg）與「‹ 值 ›」（.step）的按壓在 components.css，跟著元件走
+   （2026-09-23）；停用的鈕沒有按壓回饋那條規矩也在那邊。 */
+:is(#picker-close, .picker-dice) {
   transition: transform var(--t-press) var(--e-out);
 }
-:is(#picker-close, .picker-dice, .pips-row button, .sp-row button):not(:disabled):active {
+:is(#picker-close, .picker-dice):not(:disabled):active {
   transform: scale(var(--p-press));
 }
 
@@ -569,12 +560,12 @@
   /* ⚠️ 選擇器要跟上面那兩條**一模一樣**，包含 `:is()` 的包法與 `:not(:disabled)`。
      `:is()` 的具體度等於它引數裡最高的那一個——`:is(#picker-close, …):not(:disabled):active`
      是 (1,2,0)（最高的引數 `#picker-close` ＝ (1,0,0)，再加 `:not(:disabled)` 與 `:active`
-     各一），而攤開來寫的 `.pips-row button:active` 只有 (0,2,1)，會被壓過去。
+     各一），而攤開來寫的 `.picker-dice:active` 只有 (0,2,0)，會被壓過去。
      2026-08-26 實測踩到：reduce 之下按鈕照樣縮，是 E2E 的 D18 抓出來的。 */
-  :is(#picker-close, .picker-dice, .pips-row button, .sp-row button) {
+  :is(#picker-close, .picker-dice) {
     transition: none;
   }
-  :is(#picker-close, .picker-dice, .pips-row button, .sp-row button):not(:disabled):active {
+  :is(#picker-close, .picker-dice):not(:disabled):active {
     transform: none;
   }
 }
