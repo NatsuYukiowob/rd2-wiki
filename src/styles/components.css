@@ -284,6 +284,16 @@ a.row-card:active {
   cursor: default;
 }
 
+/* 面板（2026-09-23 骰桌 PR ③）：側欄與浮在內容旁的資訊面。--face-float 不帶下緣硬邊——
+   它沒有「坐在」任何平面上（理由同 tokens.css 的 --face-float）。
+   /board 的明細先用；PR ④ 的 /sim 側欄與 /tree 詳情卡跟著套。 */
+.panel {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  box-shadow: var(--face-float);
+}
+
 /* --- 首頁 --- */
 /* 六張入口：桌機 3×2、窄一點 2×3、手機一欄。minmax 的下限決定斷點，不用 media query。
    auto-fill 而不是 auto-fit，理由同 `.guide-cards.is-content` 的註解。 */

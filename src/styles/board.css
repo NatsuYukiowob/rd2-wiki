@@ -197,11 +197,9 @@
   max-width: var(--board-w);
   margin: var(--space-5) auto 0;
 }
+/* 面在 components.css 的 `.panel`（2026-09-23）；這裡只留內距與字級。 */
 .detail-box {
   padding: var(--space-3);
-  background: var(--surface-1);
-  border: 1px solid var(--border);
-  border-radius: var(--r-lg);
   font-size: var(--fs-sm);
 }
 .detail-h { margin: 0 0 var(--space-2); font-size: var(--fs-base); }
@@ -286,6 +284,12 @@
   display: grid;
   grid-template-columns: repeat(5, 1fr);
   gap: var(--space-1);
+  /* 盤外框（2026-09-23 骰桌）：格子是凹進去的槽，盤面本身是一塊 --ink 的底板，四周留一圈
+     --space-1 當框。圓角＝格子的 --r-md ＋ 框寬，內外兩圈弧度才同心。
+     ⚠️ padding 算在 max-width 裡（全站 box-sizing: border-box），骰盤外寬不變、格子各窄一點。 */
+  padding: var(--space-1);
+  background: var(--ink);
+  border-radius: calc(var(--r-md) + var(--space-1));
   max-width: var(--board-w);
   margin-inline: auto;
   /* ⚠️ 拖曳靠 pointermove；沒有這一行，手機上一拖就變成捲頁。 */
@@ -321,8 +325,12 @@
   position: relative;
   display: grid;
   place-items: center;
-  background: var(--surface-1);
-  border: 1px solid var(--border);
+  /* 凹槽：中間亮一點的徑向漸層＋上緣內陰影＝「凹進盤面的一格」（spec §5）。
+     前一行是不支援徑向漸層時的純色。框是透明不是拿掉：.drop-target 靠 border-color 畫金框。 */
+  background: var(--surface-0);
+  background: radial-gradient(circle at 50% 40%, var(--surface-1), var(--surface-0) 75%);
+  box-shadow: inset 0 1px 3px rgb(0 0 0 / 55%), inset 0 -1px 0 var(--hair);
+  border: 1px solid transparent;
   border-radius: var(--r-md);
   cursor: pointer;
   padding: 0;

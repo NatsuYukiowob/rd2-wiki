@@ -143,3 +143,24 @@ test('BL4. 骰點與強化的步進鈕是 SVG 圖示，不是 ◀ ▶ 文字；�
   }
   await expect(page.locator('#deck-row .step')).toHaveCount(10);
 });
+
+test('BL5. 明細是 .panel；骰盤格是凹槽（徑向漸層＋內陰影）、盤外框是 --ink', async ({ page }) => {
+  await page.goto('/board');
+  const panel = await page.locator('#dice-detail .detail-box').evaluate(el => {
+    const s = getComputedStyle(el);
+    return { cls: el.className, bg: s.backgroundColor, radius: s.borderTopLeftRadius, shadow: s.boxShadow };
+  });
+  expect(panel.cls).toContain('panel');
+  expect(panel.bg, '明細面板不是 --surface-2').toBe(await tokenColor(page, '--surface-2'));
+  expect(panel.radius).toBe('12px');
+  expect(panel.shadow, '明細面板沒有 --face-float').not.toBe('none');
+
+  const cell = await page.locator('#board-grid .board-cell').first().evaluate(el => {
+    const s = getComputedStyle(el);
+    return { img: s.backgroundImage, shadow: s.boxShadow };
+  });
+  expect(cell.img, '骰盤格不是徑向漸層的凹槽').toContain('radial-gradient');
+  expect(cell.shadow, '骰盤格沒有內陰影').toContain('inset');
+  expect(await page.locator('#board-grid').evaluate(el => getComputedStyle(el).backgroundColor), '盤外框不是 --ink')
+    .toBe(await tokenColor(page, '--ink'));
+});
