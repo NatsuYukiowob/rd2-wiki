@@ -23,6 +23,7 @@ import '../styles/components.css';
 import { treeData as data } from '../lib/tree-data';
 import { FEATURES } from '../lib/flags';
 import { GUIDE_PAGES } from '../lib/glossary-groups';
+import { ICONS } from '../lib/icons';
 
 interface Props {
   title: string;
@@ -136,7 +137,7 @@ const imageUrl = new URL('/favicon.png', Astro.site).href;
          不會跟同頁另一個 <nav id="branch-nav">（桌機側欄分支跳轉）搞混，用來量測
          這個 nav 的實際渲染高度（見 tree-canvas.ts 的 updateNavHeight() 說明）。 -->
     <nav id="site-nav">
-      <a class="brand" href="/" aria-current={path === '/' ? 'page' : undefined}>rd2-wiki</a>
+      <a class="brand" href="/" aria-current={path === '/' ? 'page' : undefined}><Fragment set:html={ICONS.brand} />rd2-wiki</a>
       <a href="/tree" aria-current={isCurrent('/tree') ? 'page' : undefined}>骰子樹</a>
       <a href="/dice" aria-current={isCurrent('/dice') ? 'page' : undefined}>圖鑑</a>
       <a href="/board" aria-current={isCurrent('/board') ? 'page' : undefined}>骰盤</a>

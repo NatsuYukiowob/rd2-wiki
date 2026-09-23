@@ -47,7 +47,16 @@
 }
 
 #site-nav .brand {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
   color: var(--gold);
+}
+
+/* 品牌標比字大一點才讀得出是個骰面；1.25em 在導覽列 16px 上是 20px。 */
+#site-nav .brand .icon {
+  width: 1.25em;
+  height: 1.25em;
 }
 
 /* 導覽列的每一項都不准自己斷行。中文沒有空白，瀏覽器會在任何兩個字之間斷開——Pixel 7 寬度下
