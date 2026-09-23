@@ -35,16 +35,12 @@
 /* 分組標題：/boss 的難度（一般／困難）與 /rift-shop 的階級（一般／稀有／傳說）。
    /tactic 沒有分組，它的分群是靠篩選器做的。
    ⚠️ 這個 h2 出現之後 /boss 的 Boss 名稱降成 h3；`.battle-name` 兩頁共用同一條規則，
-   所以名稱的字級不會因為標籤換了而跟著變（那正是用 class 而不是選 h2/h3 的理由）。 */
+   所以名稱的字級不會因為標籤換了而跟著變（那正是用 class 而不是選 h2/h3 的理由）。
+   外觀（菱形、flex、字級）在 components.css 的 `.sec-title`，這裡只留跟清單的間距。 */
 .battle-group-head {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: var(--space-1) var(--space-2);
   /* 上緣跟前一組拉開一整階，下緣只留一小段——標題要黏在它管的那份清單上，
      不然兩組之間看起來像三個等距的區塊，分不出標題屬於上面還是下面。 */
   margin: var(--space-6) 0 var(--space-3);
-  font-size: var(--fs-xl);
 }
 
 /* ⚠️ 必要，不是保險——跟 `.battle-item[hidden]` 一模一樣的坑：`display: flex`／`grid`

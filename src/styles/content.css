@@ -94,9 +94,6 @@
 }
 .kw-section h2 {
   margin: 0 0 var(--space-2);
-  padding-left: var(--space-3);
-  border-left: 4px solid var(--gold);
-  font-size: var(--fs-xl);
 }
 .kw-list {
   display: grid;

@@ -47,3 +47,39 @@ test('ST1b. /dice 的數值 pill 全部掛著 .pill', async ({ page }) => {
   expect(all).toBeGreaterThan(0);
   expect(await page.locator('.stat-pill.pill').count()).toBe(all);
 });
+
+test('ST2. 頁首 h1 是 900 字重帶 --ink 字影；段落標題前面是一顆旋轉 45° 的金色菱形、沒有左邊金線', async ({ page }) => {
+  for (const path of ['/', '/guide', '/boss', '/events/chuseok-2026']) {
+    await page.goto(path);
+    const h1 = await page.locator('h1.page-head').evaluate(el => {
+      const s = getComputedStyle(el);
+      return { weight: s.fontWeight, shadow: s.textShadow };
+    });
+    expect(h1.weight, `${path} h1 字重`).toBe('900');
+    expect(h1.shadow, `${path} h1 沒有字影`).not.toBe('none');
+
+    const sec = await page.locator('.sec-title').first().evaluate(el => {
+      const b = getComputedStyle(el, '::before');
+      const probe = document.createElement('i');
+      probe.style.color = 'var(--gold)';
+      el.appendChild(probe);
+      const gold = getComputedStyle(probe).color;
+      probe.remove();
+      return { content: b.content, bg: b.backgroundColor, transform: b.transform, gold,
+        borderLeft: getComputedStyle(el).borderLeftWidth };
+    });
+    expect(sec.content, `${path} .sec-title 沒有 ::before`).not.toBe('none');
+    expect(sec.bg, `${path} 菱形不是金色`).toBe(sec.gold);
+    // rotate(45deg) 的 matrix 是 (cos45, sin45, -sin45, cos45, 0, 0)
+    expect(sec.transform, `${path} 菱形沒有轉 45°`).toMatch(/^matrix\(0\.707/);
+    expect(sec.borderLeft, `${path} 舊的左邊金線還在`).toBe('0px');
+  }
+});
+
+test('ST2b. /rift-shop 篩掉的階級，它的段落標題真的消失（.sec-title 的 display:flex 不能壓過 [hidden]）', async ({ page }) => {
+  await page.goto('/rift-shop');
+  const first = page.locator('#rift-filters input[name="grade"]').first();
+  const grade = await first.getAttribute('value');
+  await first.uncheck();
+  await expect(page.locator(`.battle-group-head[data-grade="${grade}"]`)).toBeHidden();
+});
