@@ -196,3 +196,13 @@ test('ST6. 列式卡片圓角 12px、有實體厚度；數值 pill 沒有可見�
   expect(pill.border, 'pill 還有可見邊框').toBe('rgba(0, 0, 0, 0)');
   expect(pill.shadow, 'pill 沒有內凹陰影').toContain('inset');
 });
+
+test('ST4c. 箭頭圖示只在靠文字那一側留間距：返回箭頭在前（右側留）、前進箭頭在後（左側留）', async ({ page }) => {
+  const margins = (sel: string) => page.locator(sel).first().evaluate(el => {
+    const s = getComputedStyle(el); return [s.marginLeft, s.marginRight];
+  });
+  await page.goto('/events/chuseok-2026');
+  expect(await margins('.event-back a .icon'), '「← 活動」的返回箭頭').toEqual(['0px', '4px']);
+  await page.goto('/dice');
+  expect(await margins('.card-link .icon'), '「在骰子樹查看前置鏈 →」的箭頭').toEqual(['4px', '0px']);
+});

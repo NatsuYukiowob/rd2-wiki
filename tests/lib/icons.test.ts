@@ -20,7 +20,10 @@ describe('ICONS', () => {
       expect(root.children.length).toBe(1);
       const svg = root.firstElementChild!;
       expect(svg.tagName.toLowerCase()).toBe('svg');
-      expect(svg.getAttribute('class')).toBe('icon');
+      // 第一個 class 一定是 icon（尺寸由 .icon 給）；額外的只准是標明文字側的 icon-lead／icon-trail。
+      const [first, ...extra] = svg.getAttribute('class')!.split(' ');
+      expect(first).toBe('icon');
+      for (const c of extra) expect(['icon-lead', 'icon-trail']).toContain(c);
       expect(svg.getAttribute('aria-hidden')).toBe('true');
       expect(svg.getAttribute('focusable')).toBe('false');
       expect(svg.getAttribute('viewBox')).toMatch(/^0 0 \d+ \d+$/);
