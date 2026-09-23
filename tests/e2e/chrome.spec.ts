@@ -320,7 +320,7 @@ test('D14. 減少動態的規則拆到各檔之後沒有漏掉任何一條', asy
     // 2026-08-26 PR ⑥ 新增：這兩個檔在那之前**一條 transition 都沒有**，所以也沒有 reduce
     // 區塊；按壓回饋加進去之後才需要。新元件加動效時要記得補同一件事。
     { path: '/board', selector: '#board-tools button' },
-    { path: '/sim', selector: '#sim-toolbar button' },
+    { path: '/sim', selector: '#sim-toolbar .btn' },
     // ⚠️ #filters-toggle 本體（tree.astro:279）沒有 transition，過場在 ::after
     // （:297 transform）與 ::before（:310 background-color）兩個偽元素上。讀元素本身的話
     // 正向控制會直接紅，而且是假紅——所以這兩列指定讀虛擬元素。
@@ -724,13 +724,13 @@ test('D18. 按住時縮一下，放開回原狀；reduce 之下整組關掉', as
     // ⚠️ /sim 一定要列進來：它的 reduce 覆寫 2026-08-26 少了 `:not(:disabled)`，具體度
     // 輸給正常那條、按壓在 reduce 之下照樣縮，而當時 D18 沒有涵蓋這一頁、D14 涵蓋了卻只
     // 驗 transition-duration 不驗 transform——兩條加起來還是漏。
-    // ⚠️ 排除 `#sim-sheet-close`：那是 2026-09-22 手機版重排加的 sheet 把手，桌機
-    // `display: none`（量不到 transform，`scaleOf` 回 null），手機上它是純把手不是動作鈕。
+    // `.btn` 本來就不含 sheet 的把手（`#sim-sheet-close`，它不是動作鈕；桌機 `display: none`，
+    // 量不到 transform）。
     // ⚠️ `open`：同一次重排把 /sim 的工具列在 ≤720px 收成底部 sheet，不先按 ⋯ 升起來的話
     // 手機 project 量到的是一個 `visibility: hidden` 的按鈕。
     {
       path: '/sim',
-      selector: '#sim-toolbar button:not(:disabled):not(#sim-sheet-close)',
+      selector: '#sim-toolbar .btn:not(:disabled)',
       open: '#sim-fab-more',
     },
   ] as const satisfies readonly { path: string; selector: string; open?: string }[];

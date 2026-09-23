@@ -15,6 +15,7 @@
 // tier 是 (maxLevel, unlockCost.gold) 的純函數，那兩個欄位產物裡本來就有，複製一份
 // costTier 欄位進去只是拿 gzip 預算換一個推得出來的值。
 import Base from '../layouts/Base.astro';
+import { ICONS } from '../lib/icons';
 import '../styles/canvas.css';
 import { treeData as data } from '../lib/tree-data';
 import { MYTHIC_CORES } from '../lib/currency';
@@ -45,7 +46,7 @@ const optional = [...ctx.optional]
     <input id="sim-search" type="search" placeholder="搜尋骰子或符文" aria-label="搜尋節點" autocomplete="off" />
 
     <div class="sim-menu">
-      <button type="button" id="sim-initial-toggle" aria-expanded="false" aria-controls="sim-initial-menu">
+      <button type="button" id="sim-initial-toggle" class="btn btn-alt" aria-expanded="false" aria-controls="sim-initial-menu">
         初始骰子<span class="sim-count" id="sim-initial-count">0</span>
       </button>
       <div class="sim-menu-body" id="sim-initial-menu" hidden>
@@ -63,7 +64,7 @@ const optional = [...ctx.optional]
     </div>
 
     <div class="sim-menu">
-      <button type="button" id="sim-limit-toggle" aria-expanded="false" aria-controls="sim-limit-menu">
+      <button type="button" id="sim-limit-toggle" class="btn btn-alt" aria-expanded="false" aria-controls="sim-limit-menu">
         持有資源
       </button>
       <div class="sim-menu-body" id="sim-limit-menu" hidden>
@@ -76,11 +77,11 @@ const optional = [...ctx.optional]
       </div>
     </div>
 
-    <button type="button" id="sim-undo" disabled aria-label="復原">↶</button>
-    <button type="button" id="sim-redo" disabled aria-label="重做">↷</button>
-    <button type="button" id="sim-abilities">能力彙總</button>
-    <button type="button" id="sim-export">匯出</button>
-    <button type="button" id="sim-reset">重置</button>
+    <button type="button" id="sim-undo" class="btn btn-alt" disabled aria-label="復原"><Fragment set:html={ICONS.undo} /></button>
+    <button type="button" id="sim-redo" class="btn btn-alt" disabled aria-label="重做"><Fragment set:html={ICONS.redo} /></button>
+    <button type="button" id="sim-abilities" class="btn btn-alt">能力彙總</button>
+    <button type="button" id="sim-export" class="btn btn-alt">匯出</button>
+    <button type="button" id="sim-reset" class="btn btn-alt">重置</button>
   </div>
 
   <div id="canvas-host">
@@ -183,34 +184,9 @@ const optional = [...ctx.optional]
     width: 11rem;
   }
 
-  #sim-toolbar button {
-    padding: var(--space-1) var(--space-3);
-    font-size: var(--fs-md);
-    color: var(--fg);
-    cursor: pointer;
-    background: var(--surface-1);
-    border: 1px solid var(--border-strong);
-    border-radius: var(--r-sm);
-    transition:
-      background var(--t-fast) var(--e-out),
-      transform var(--t-press) var(--e-out);
-  }
-
-  #sim-toolbar button:hover:not(:disabled) {
-    background: var(--surface-3);
-  }
-
-  /* 按下去縮一下（2026-08-26 PR ⑥）。⚠️ `:not(:disabled)`：模擬器的按鈕會在跑不動的時候
-     停用，按不動的東西不該有按下去的回饋。 */
-  #sim-toolbar button:not(:disabled):active {
-    transform: scale(var(--p-press));
-  }
-
-  #sim-toolbar button:disabled {
-    color: var(--muted);
-    cursor: default;
-    opacity: 0.55;
-  }
+  /* 工具列按鈕的外觀在 components.css 的 `.btn`（2026-09-23 骰桌 PR ④），停用＝半透明、按不動
+     也在那邊。⚠️ 不要在這裡寫回 `#sim-toolbar button`：(1,0,1) 會安靜地壓過 `.btn` 的 (0,1,0)，
+     而且連手機 sheet 的把手（#sim-sheet-close，不是 .btn）一起蓋到。 */
 
   /* 勾了幾顆初始骰子。⚠️ 這個徽章**一直存在**，沒勾時顯示 0 而不是收起來——只在有值時才
      長出來的話按鈕寬度會隨狀態跳動（同 /tree 金點那條）。 */
@@ -413,30 +389,17 @@ const optional = [...ctx.optional]
     color: var(--nature);
   }
 
+  /* 行動鈕的外觀是 `.btn-pri`（取得／勾選／一鍵點亮）與 `.btn-alt`（取消，破壞性）（2026-09-23 骰桌 PR ④）。
+     ⚠️ 這兩條是 (1,1,0)，會壓過 `.btn` 的背景與字色——所以只留版面（撐滿側欄）與 `.danger` 的警示框色。 */
   #sim-detail .cta {
     display: block;
     width: 100%;
     margin-top: var(--space-2);
-    padding: var(--space-2);
-    color: var(--bg);
-    font-size: var(--fs-md);
-    font-weight: 600;
-    cursor: pointer;
-    background: var(--gold);
-    border: none;
-    border-radius: var(--r-sm);
+    text-align: center;
   }
 
   #sim-detail .cta.danger {
-    color: var(--fg);
-    background: transparent;
-    border: 1px solid var(--nature);
-  }
-
-  #sim-detail .cta:disabled {
-    color: var(--muted);
-    cursor: default;
-    background: var(--surface-3);
+    border-color: var(--nature);
   }
 
   /* --- 等級調整 ------------------------------------------------------------- */
@@ -633,10 +596,13 @@ const optional = [...ctx.optional]
       min-width: 6rem;
     }
 
-    /* 把手佔滿一列（`#sim-toolbar` 是 flex-wrap）。內距要指名到 id 才蓋得過
-       `#sim-toolbar button` 的 (1,0,1)。 */
+    /* 把手佔滿一列（`#sim-toolbar` 是 flex-wrap）。把手不是 `.btn`：color／cursor 原本從已刪的
+       `#sim-toolbar button` 來，這裡自己給（Review Focus 3）。 */
     #sim-toolbar #sim-sheet-close {
       display: flex;
+      color: var(--fg);
+      cursor: pointer;
+      font: inherit;
       flex-basis: 100%;
       justify-content: center;
       padding: var(--space-1) 0;
@@ -834,17 +800,6 @@ const optional = [...ctx.optional]
      ⚠️ 這一頁 2026-08-26 之前沒有這一段（它只有一條沒有曲線的 background 過場）；
      PR ⑥ 給按鈕加上按壓回饋之後才需要。 */
   @media (prefers-reduced-motion: reduce) {
-    #sim-toolbar button {
-      transition: none;
-    }
-    /* ⚠️ 選擇器要跟上面那條**一模一樣**，`:not(:disabled)` 也要帶上：
-       `#sim-toolbar button:not(:disabled):active` 是 (1,2,1)，少了 `:not()` 只有 (1,1,1)，
-       會被壓過去。2026-08-26 實測踩到——reduce 之下按鈕照樣縮，是 code review 抓出來的，
-       而 D18 當時沒有把 /sim 列進去、D14 只驗 transition-duration 不驗 transform。 */
-    #sim-toolbar button:not(:disabled):active {
-      transform: none;
-    }
-
     /* 手機版新增的三段過場。⚠️ 選擇器要跟被覆寫的那幾條**一模一樣**（含 `.is-open`），
        少一階具體度就會輸掉——同一族坑 2026-08-26 在這一頁踩過一次。 */
     @media (width <= 720px) {
