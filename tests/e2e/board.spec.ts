@@ -2823,9 +2823,13 @@ test('B54. 合作模式的分享圖：畫布是合作版的高度，隊友盤那
 
   const fire = dice[0]!;
   await pickInto(page, 0, fire.id, 5);
-  await drag(page, '.deck-dice[data-slot="0"]', '.board-cell[data-index="0"]');
+  // ⚠️ 合作模式頁面很長，`drag()` 用的是原始滑鼠座標、不會捲動——兩端在不在視窗裡，取決於前一個
+  // click 把頁面捲到哪。2026-09-23 小標換成 .sec-title（字級大一階，我的盤往下 10px）之後，
+  // 我的盤第 0 格剛好落出 1280×720 的視窗，拖曳送到畫面外。改用會先捲動、並斷言兩端都在視窗裡的
+  // dragBetween()。
+  await dragBetween(page, '.deck-dice[data-slot="0"]', mine, '.board-cell[data-index="0"]', mine);
   await pickInto(page, 0, LIGHT, 5, theirs);
-  await drag(page, '.deck-dice[data-slot="0"]', '.board-cell[data-index="0"]', theirs);
+  await dragBetween(page, '.deck-dice[data-slot="0"]', theirs, '.board-cell[data-index="0"]', theirs);
   await expect(page.locator(mine('.board-cell[data-index="0"] img'))).toBeVisible();
   await expect(page.locator(theirs('.board-cell[data-index="0"] img'))).toBeVisible();
 
