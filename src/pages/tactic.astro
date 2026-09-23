@@ -44,7 +44,7 @@ const coopCount = tactics.filter(t => t.coop).length;
     <p class="lede">對戰與合作模式中的戰術效果。</p>
 
     <div class="filter-bar" id="tactic-filters">
-      <div role="group" aria-label="依階段篩選">
+      <div class="filter-group" role="group" aria-label="依階段篩選">
         <!-- 切換鈕跟 /dice 用同一個 .chip：外觀是按鈕、骨子裡是 <label> 包真的 checkbox，
              鍵盤、螢幕閱讀器的「已勾選」、沒有 JS 時仍是可操作的表單控制項全是免費的。 -->
         <button type="button" id="tactic-all" class="chip">全部</button>
@@ -56,7 +56,7 @@ const coopCount = tactics.filter(t => t.coop).length;
         ))}
       </div>
 
-      <div role="group" aria-label="切換模式">
+      <div class="filter-group" role="group" aria-label="切換模式">
         <!--
           ⚠️ 這顆鈕的文字是**目前正在看的模式**，不是「按下去會變成什麼」（Yuki 2026-08-26 指定）。
           CLAUDE.md 記過「切換鈕文字固定不變」，理由是文字互換會讓沾頂的工具列寬度跳動——

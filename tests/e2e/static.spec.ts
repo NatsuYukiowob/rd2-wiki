@@ -155,3 +155,27 @@ test('ST4b. 靜態頁的可見文字裡沒有文字箭頭 → ←，改成 SVG �
   expect(await search.innerText()).not.toMatch(/→/);
   await expect(search.locator('svg.icon')).toHaveCount(1);
 });
+
+test('ST5. 篩選鈕：8px 圓角、選中＝金框、選中的色點有該分支色的光暈、沒選中的沒有；/tactic 與 /rift-shop 晶片之間有間距', async ({ page }) => {
+  await page.goto('/dice');
+  const r = await page.evaluate(() => {
+    const probe = (v: string) => { const i = document.createElement('i'); i.style.color = `var(${v})`; document.body.appendChild(i); const c = getComputedStyle(i).color; i.remove(); return c; };
+    const on = document.querySelector('#codex-filters .chip[data-branch="nature"]')!;
+    return { gold: probe('--gold'), nature: probe('--nature'),
+      radius: getComputedStyle(on).borderTopLeftRadius, border: getComputedStyle(on).borderTopColor,
+      dotShadow: getComputedStyle(on.querySelector('.branch-dot')!).boxShadow };
+  });
+  expect(r.radius).toBe('8px');
+  expect(r.border, '選中的篩選鈕不是金框').toBe(r.gold);
+  expect(r.dotShadow, '選中的色點沒有分支色光暈').toContain(r.nature);
+
+  await page.uncheck('#codex-filters input[value="nature"]');
+  await expect.poll(() => page.locator('#codex-filters .chip[data-branch="nature"] .branch-dot')
+    .evaluate(el => getComputedStyle(el).boxShadow)).toBe('none');
+
+  for (const path of ['/tactic', '/rift-shop']) {
+    await page.goto(path);
+    const gap = await page.locator('.filter-bar [role="group"]').first().evaluate(el => getComputedStyle(el).columnGap);
+    expect(gap, `${path} 的晶片黏在一起`).not.toBe('normal');
+  }
+});
