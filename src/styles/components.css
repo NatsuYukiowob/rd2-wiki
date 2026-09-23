@@ -235,7 +235,10 @@ a.row-card:active {
 .seg > button:not([aria-disabled='true']):active {
   transform: scale(var(--p-press));
 }
+/* ⚠️ 光靠 cursor 不夠：沒選中的鈕本來就是 --muted，觸控沒有游標也沒有 hover，停用的必須在外觀上
+   跟「可以按、只是沒選」的鄰居分得出來（BL3）。0.5 跟 .btn:disabled 同一個值。 */
 .seg > button[aria-disabled='true'] {
+  opacity: 0.5;
   cursor: not-allowed;
 }
 @media (forced-colors: active) {
