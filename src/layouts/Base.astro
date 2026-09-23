@@ -149,7 +149,7 @@ const imageUrl = new URL('/favicon.png', Astro.site).href;
         事：點外面關掉、按 Esc 關掉。沒有 JS 時它仍然是一個能開能關的選單。
       -->
       <details class="nav-menu">
-        <summary aria-current={guideCurrent ? 'page' : undefined}>遊戲介紹</summary>
+        <summary aria-current={guideCurrent ? 'page' : undefined}>遊戲介紹<Fragment set:html={ICONS.down} /></summary>
         <div class="nav-menu-items">
           <a href="/guide" aria-current={path === '/guide' ? 'page' : undefined}>總覽</a>
           {GUIDE_PAGES.map(page => (

@@ -163,10 +163,9 @@
   color: var(--gold);
 }
 
-/* ⚠️ 一定要用 ::before。`#site-nav .nav-menu > summary::after` 已經拿 ::after 畫下拉的
-   ▾ 箭頭，而那條選擇器的具體度（id＋class＋型別）比 `#site-nav [aria-current='page']`
-   （id＋屬性）高——用 ::after 的話 content 仍是 ▾，卻吃到這裡的絕對定位，箭頭會被拉成
-   一條金色橫槓掉到導覽列外面（2026-08-22 實際發生過）。 */
+/* 金線畫在 ::before。2026-08-22 它一度畫在 ::after，跟當時用 ::after 畫的下拉 ▾ 撞在一起，
+   箭頭被拉成一條金色橫槓掉到導覽列外面。箭頭 2026-09-23 起改成 summary 裡的 SVG，::after
+   空出來了，但金線仍留在 ::before（D3 守）。 */
 #site-nav [aria-current='page']::before {
   content: '';
   position: absolute;
@@ -196,9 +195,10 @@
 #site-nav .nav-menu > summary::-webkit-details-marker {
   display: none;
 }
-#site-nav .nav-menu > summary::after {
-  content: '▾';
-  margin-left: 0.25em;
+/* 下拉箭頭是 inline SVG（ICONS.down，2026-09-23 骰桌：跟全站圖示同一套線條，取代文字 ▾）。
+   font-size 縮它自己（`.icon` 是 1em 見方），不動 summary 的字。 */
+#site-nav .nav-menu > summary > .icon {
+  margin-inline-start: var(--space-1);
   font-size: 0.8em;
   color: var(--muted);
 }
