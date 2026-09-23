@@ -78,6 +78,10 @@ test('CL3. 分支跳轉鈕是 .chip＋常亮的分支色點；手機 320px 五�
   const dots = await page.locator(`${sel} .branch-dot`).evaluateAll(els => els.map(el => getComputedStyle(el).opacity));
   expect(dots, '每顆跳轉鈕都要有色點').toHaveLength(5);
   for (const o of dots) expect(o, '跳轉鈕的色點被壓暗了（0.45 是篩選鈕「這一系沒開」的意思）').toBe('1');
+  // 字色同理：`.chip` 預設的 --muted 是「沒勾選的篩選」，跳轉鈕是動作鈕，要是 --fg。
+  const fg = await tokenColor(page, '--fg');
+  for (const c of await btns.evaluateAll(els => els.map(el => getComputedStyle(el).color)))
+    expect(c, '跳轉鈕的字是 --muted，看起來像沒開的篩選').toBe(fg);
   if (isMobile) {
     const fit = await page.locator('#branch-chips').evaluate(el => ({
       over: el.scrollWidth - el.clientWidth,
