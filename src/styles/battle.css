@@ -68,13 +68,7 @@
   gap: var(--space-3);
   align-items: start;
   padding: var(--space-3);
-  background: var(--surface-1);
-  border: 1px solid var(--border);
-  border-radius: var(--r-md);
-  box-shadow: var(--face);
-  transition:
-    border-color var(--t-fast) var(--e-out),
-    box-shadow var(--t-fast) var(--e-out);
+  /* 面、邊框、過場與 hover 在 components.css 的 `.row-card`（2026-09-23 骰桌 PR ②）。 */
 }
 
 .battle-item[hidden] {
@@ -82,11 +76,6 @@
      ——少了這條，篩選時「隱藏」的那幾條照樣留在畫面上，而計數卻已經扣掉它們
      （`.dice-card[hidden]` 為同一個理由存在）。 */
   display: none;
-}
-
-.battle-item:hover {
-  border-color: var(--border-strong);
-  box-shadow: var(--face-lift);
 }
 
 /* 子選項（69-1／69-2／69-3）縮排掛在母條目底下。用 margin-inline-start 而不是把它們塞進
@@ -183,17 +172,5 @@
   .battle-item[data-sub] {
     /* 手機上縮排會把本來就很窄的文字欄再吃掉一截；子選項靠 `↳` 前綴仍看得出從屬關係。 */
     margin-inline-start: var(--space-2);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  /* ⚠️ 覆寫的選擇器要跟被覆寫那一條長得一模一樣，否則具體度不同會輸掉（2026-08-26 實測，
-     /board 與 /tree 的按壓就是這樣在 reduce 之下照樣縮的）。 */
-  .battle-item {
-    transition: none;
-  }
-
-  .battle-item:hover {
-    box-shadow: var(--face);
   }
 }
