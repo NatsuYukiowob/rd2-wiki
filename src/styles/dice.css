@@ -15,15 +15,7 @@
   flex-direction: column;
   overflow: hidden;
   padding: var(--space-3);
-  background: var(--surface-1);
-  border: 1px solid var(--border);
-  border-radius: var(--r-md);
-  box-shadow: var(--face);
-  /* transform 走 --t-press、色與影走 --t-fast，理由同 components.css 的卡片。 */
-  transition:
-    border-color var(--t-fast) var(--e-out),
-    box-shadow var(--t-fast) var(--e-out),
-    transform var(--t-press) var(--e-out);
+  /* 面、邊框、圓角、過場與 hover 抬升在 components.css 的 `.card`（2026-09-23 骰桌 PR ②）。 */
 }
 /* 頂緣 3px 的屬性色漸層——這是卡片上**唯一**的分支色（Yuki 2026-08-26 拍板拿掉左緣色條，
    兩條同色的線圍成「⌐」太吵，留上面那條就夠）。
@@ -41,11 +33,6 @@
   height: 3px;
   pointer-events: none;
   background: linear-gradient(90deg, var(--branch, var(--gold)), transparent 70%);
-}
-.dice-card:hover {
-  border-color: var(--branch, var(--gold));
-  box-shadow: var(--face-lift);
-  transform: translateY(calc(-1 * var(--p-lift)));
 }
 .dice-card[hidden] {
   display: none; /* 篩選用；這裡要真的收掉版面，跟 /tree 的淡出是兩回事（那裡要保留位置） */
@@ -354,9 +341,6 @@
   .dice-card,
   .dice-card .slide-anim {
     transition: none;
-  }
-  .dice-card:hover {
-    transform: none;
   }
   .card-term-back {
     transition: none;
