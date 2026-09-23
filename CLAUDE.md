@@ -540,6 +540,7 @@ npm run compare -- <beforeURL> <afterURL>  # computed-style 逐元素比對，�
 - **表面分層**：靜態頁的面 → `--surface-1`；浮在畫布上的 chrome（`#toolbar`、`#detail`、
   `#branch-chips`、下拉選單、`/dice` 的篩選列）→ `--surface-2`；hover／選中的填色 → `--surface-3`。
   舊的 `--panel` 已刪除——一個東西兩個名字正是要收掉的漂移來源。
+  2026-09-23 起 `#toolbar`／`#sim-toolbar` 的陰影是 `--face-float`，`#detail`／`#sim-panel` 的面來自 `.panel`。
 - **面的質感用 `--face-*`，不要在元件裡自己疊 box-shadow**（2026-08-26 PR ④）。三個是同一個
   配方的三個狀態：`--face` 靜止（上緣 `--hair` 高光 ＋ 下緣硬邊 ＋ `--shadow-2`；硬邊顏色是 `--ink`、厚度是
   `--depth`（3px），不是黑色半透明）、`--face-lift`
@@ -630,7 +631,7 @@ npm run compare -- <beforeURL> <afterURL>  # computed-style 逐元素比對，�
   拿同一個 `readdirSync` 運算式跟自己比，恆真，已修正）。
   `tests/e2e/chrome.spec.ts` 的 D1–D12 守沾頂、`--nav-h`、`aria-current`、焦點框、footer 沉底、過場時間。
 
-### 共用元件（2026-09-23 骰桌 PR ②③）
+### 共用元件（2026-09-23 骰桌 PR ②③④）
 
 靜態頁的外觀一律來自 `components.css` 的共用 class，頁面專屬 class（`.home-card`、`.battle-item`…）
 仍然掛著（測試與 JS 抓它們），但只留那一頁才有的版面差異。**新頁面先套共用 class，不要再長一種。**
@@ -641,12 +642,12 @@ npm run compare -- <beforeURL> <afterURL>  # computed-style 逐元素比對，�
 | `.sec-title` | 段落 `<h2>` | 金色菱形 `::before`；附註沿用各頁 class（`.battle-group-note`） |
 | `.card` | `.home-card`／`.guide-card`／`.dice-card` | 頭部 `--branch`（無則 `--edge`）漸層；按壓縮放**只給 `a.card`** |
 | `.row-card` | `.event-card-link`／`.battle-item` | 同一個面、無卡片頭；抬升只給 `a.row-card` |
-| `.chip` ＋ `.filter-bar` | 篩選鈕與沾頂篩選列 | 選中＝金色面；「哪一系」由色點光暈承擔 |
+| `.chip` ＋ `.filter-bar` | 篩選鈕與沾頂篩選列 | 選中＝金色面；「哪一系」由色點光暈承擔；`/tree` 的分支跳轉鈕也是 `.chip`（動作鈕、色點常亮，不套 `.filter-bar`） |
 | `.pill` | `.stat-pill` | 凹槽；框線是**透明**不是拿掉（寬度不准變，C8） |
-| `.btn` ＋ `.btn-pri`／`.btn-alt` | 動作按鈕（`/board` 工具列） | 實體鍵帽：`--r-btn`、下緣 `--depth` 硬邊（box-shadow，不是 border——按下收掉時尺寸不能跳）；**一頁最多一顆 `.btn-pri`**；`[aria-pressed]` 開著＝金框 |
+| `.btn` ＋ `.btn-pri`／`.btn-alt` | 動作按鈕（`/board` 工具列、`/tree` 篩選開關、`/sim` 工具列與詳情行動鈕） | 實體鍵帽：`--r-btn`、下緣 `--depth` 硬邊（box-shadow，不是 border——按下收掉時尺寸不能跳）；**一頁最多一顆 `.btn-pri`**；`[aria-pressed]` 開著＝金框 |
 | `.seg` | 分段切換（`/board` 三列） | 凹槽容器＋`<button aria-pressed>`；沒選中的框是**透明**不是 0（切換不跳寬度）；按鈕直向內距 `--space-h`，凹槽＋按鈕的外高＝一顆獨立按鈕（`/board` 320px 首屏，B52） |
 | `.step` | 「‹ 值 ›」步進 | 圖示是 `ICONS.prev`／`next`，名字在 `aria-label`；內距刻意小（`/board` 320px 的欄寬，B52） |
-| `.panel` | 側欄與浮在內容旁的面 | `--surface-2`＋`--face-float`（不帶硬邊）；浮層（`#dice-picker`、`#dice-card`）不用它 |
+| `.panel` | 側欄與浮在內容旁的面（`/board` 明細、`/tree` `#detail`、`/sim` `#sim-panel`） | `--surface-2`＋`--face-float`（不帶硬邊）；浮層（`#dice-picker`、`#dice-card`）不用它；`#sim-panel` 貼邊，只取面不取四邊框與圓角 |
 
 ### 十一個 CSS 檔
 
@@ -1175,6 +1176,10 @@ PNG，檔名＝內容 sha256 前 12 碼，`addIcon()` 直接重用）＋ `data/b
   會落在 `<aside>` 底下，症狀是「側欄一直停在空狀態」。而且**只准扣「現在真的看得見」的遮蔽物**
   （見下面手機版那條）：手機的工具列是收起來的 sheet，它的 `getBoundingClientRect().bottom` 落在
   視窗底下，照舊拿它當安全區上緣會讓整個安全區變成空的，症狀是「每顆節點都搬不進可點擊範圍」。
+- **外觀來自共用元件**（2026-09-23 骰桌 PR ④）：工具列按鈕與詳情行動鈕是 `.btn`（行動鈕＝這一頁唯一的
+  `.btn-pri`；破壞性的「取消…」是 `.btn-alt` ＋ `.danger` 的 `--nature` 框）、側欄是 `.panel`。
+  ⚠️ **不要寫回 `#sim-toolbar button`**：它會壓過 `.btn`，而且連手機 sheet 的把手 `#sim-sheet-close`
+  （不是 `.btn`）一起蓋到。長相由 `sim.spec.ts` 的 S30／S31 守。
 
 #### 手機版（≤720px）的版面是另一套（2026-09-22 重排）
 
