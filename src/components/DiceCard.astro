@@ -51,7 +51,7 @@ const maxUpgrade = upgradeTableApplies(upgradeCostTable, node)
 const modeName = `stat-mode-${node.id}`;
 ---
 
-<article class="dice-card" id={`n${node.id}`} data-branch={node.branch} data-type={node.type} style={`--i:${enterIndex}`}>
+<article class="dice-card card" id={`n${node.id}`} data-branch={node.branch} data-type={node.type} style={`--i:${enterIndex}`}>
   <!-- 卡片本文是「第 0 層」。關鍵字的就地視圖會蓋在它上面，換頁時它跟著往左退、淡出，
        跟 /tree 詳情面板的過場同一種動作——所以它必須是一個可以整塊 transform 的元素，
        不能是一堆散落在 .dice-card 底下的兄弟節點。 -->
@@ -91,7 +91,7 @@ const modeName = `stat-mode-${node.id}`;
         <div class="dice-stats">
           <ul class="stat-pills">
             {stats.stats.map(s => (
-              <li class={`stat-pill${isFixed(s) ? ' is-fixed' : ''}`} title={growthNote(s) ?? undefined}>
+              <li class={`stat-pill pill${isFixed(s) ? ' is-fixed' : ''}`} title={growthNote(s) ?? undefined}>
                 <span class="stat-k">{s.label}</span>
                 <span class="stat-v">
                   {isFixed(s)

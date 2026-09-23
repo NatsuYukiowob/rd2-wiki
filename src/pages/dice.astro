@@ -74,7 +74,7 @@ const BRANCHES = Object.entries(BRANCH_ZH);
 
 <Base title="骰子圖鑑">
   <section class="page">
-    <h1>骰子圖鑑</h1>
+    <h1 class="page-head">骰子圖鑑</h1>
     <p class="lede">
       {nodes.length} 顆骰子的完整資料：基本效果、7 骰點覺醒效果與官方管理 ID。
       符文、玩家被動與支援不在這裡——它們是加在骰子與玩家身上的強化，請從<a href="/tree">骰子樹</a>看它們的位置與前置關係。
@@ -82,7 +82,7 @@ const BRANCHES = Object.entries(BRANCH_ZH);
 
     <!-- 篩選只是把不符合的卡片藏起來，內容一直都在 HTML 裡。沒有 JS 時整頁照常是完整的
          41 張卡片，只是篩不動——這正是這一頁存在的理由，不能反過來讓 JS 決定有沒有內容。 -->
-    <div id="codex-filters" class="filters">
+    <div id="codex-filters" class="filter-bar">
       <!--
         用 <div role="group"> 而不是 <fieldset><legend>：<legend> 是特殊盒子，瀏覽器一律把它
         排在版面之外的自己一列，要把它拉回同一列只能靠 float，而 float 又得靠祖先的

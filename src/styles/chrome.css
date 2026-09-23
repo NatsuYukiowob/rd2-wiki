@@ -6,7 +6,7 @@
  */
 #site-nav {
   /* 沾在視窗頂端（2026-08-22）：/dice 有 41 張卡片、/guide 每頁十幾個詞條，捲到一半就
-     再也回不了導覽列。z-index 要蓋過 /tree 的 #tree-controls（5）與 /dice 的 .filters
+     再也回不了導覽列。z-index 要蓋過 /tree 的 #tree-controls（5）與 /dice 的 .filter-bar
      （20），底下的 .nav-menu-items 才不會被那兩層穿透過來。 */
   position: sticky;
   top: 0;

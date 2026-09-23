@@ -1,5 +1,5 @@
 /* --- 圖鑑 --- */
-/* 篩選列 `.filters`／`.filter-count` 已移到 components.css：/dice 與 /tactic 兩頁共用。 */
+/* 篩選列 `.filter-bar`／`.filter-count` 已移到 components.css：/dice 與 /tactic 兩頁共用。 */
 
 .codex-grid {
   display: grid;

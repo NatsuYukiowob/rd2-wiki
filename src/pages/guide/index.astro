@@ -31,7 +31,7 @@ const pages = GUIDE_PAGES.map(page => ({
 
 <Base title="遊戲介紹">
   <section class="page">
-    <h1>遊戲介紹</h1>
+    <h1 class="page-head">遊戲介紹</h1>
     <p class="lede">
       骰子描述裡那些帶 <code>#</code> 的詞是遊戲的正式標記，共 {termCount} 條。
       這裡按官方給每個標記的底色分組——同色＝同一類機制，分組不是本站的判斷，只有組名是。
@@ -40,7 +40,7 @@ const pages = GUIDE_PAGES.map(page => ({
 
     <div class="guide-cards">
       {pages.map((page, i) => (
-        <a class="guide-card" href={`/guide/${page.slug}`} style={`--i:${i}`}>
+        <a class="guide-card card" href={`/guide/${page.slug}`} style={`--i:${i}`}>
           <span class="guide-swatch" aria-hidden="true">
             {page.colors.map(c => <span style={`background:${c}`}></span>)}
           </span>
@@ -54,7 +54,7 @@ const pages = GUIDE_PAGES.map(page => ({
     <!-- 第二區塊：戰術與 Boss。刻意跟上面那四張分開，而不是塞進同一個網格——上面那段 lede
          講的是「帶 # 的關鍵字標記」，這兩頁不是標記，`.guide-swatch` 那條官方色票對它們
          也沒有意義（它在說「同色＝同一類機制」）。 -->
-    <h2 class="guide-h2">遊戲內容</h2>
+    <h2 class="guide-h2 sec-title">遊戲內容</h2>
     <p class="note">不是關鍵字詞彙，是對戰與合作模式裡會遇到的東西。</p>
 
     <!-- ⚠️ `--i` 要**接續**上面那個網格的序號，不要從 0 重來：那是進場動畫的 stagger 索引，
@@ -62,12 +62,12 @@ const pages = GUIDE_PAGES.map(page => ({
          ⚠️ `is-content` 把軌道換成 `auto-fill`：`auto-fit` 會把空軌道收掉、讓兩張卡片撐滿整列，
          結果它們比正上方那排明顯寬一截。`auto-fill` 保留空軌道，兩張就跟上面同寬。 -->
     <div class="guide-cards is-content">
-      <a class="guide-card" href="/tactic" style={`--i:${pages.length}`}>
+      <a class="guide-card card" href="/tactic" style={`--i:${pages.length}`}>
         <h2>戰術</h2>
         <p>對戰與合作模式中的戰術效果，可依階段篩選，也能切換看合作模式的版本。</p>
         <p class="note">{tacticCount} 條 →</p>
       </a>
-      <a class="guide-card" href="/boss" style={`--i:${pages.length + 1}`}>
+      <a class="guide-card card" href="/boss" style={`--i:${pages.length + 1}`}>
         <h2>Boss</h2>
         <p>對戰與合作模式中會出現的 Boss，以及各自的技能效果。</p>
         <p class="note">{bossCount} 種 →</p>

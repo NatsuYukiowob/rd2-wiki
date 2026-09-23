@@ -58,7 +58,7 @@ const termsOf = (text: string) =>
 
 <Base title="Boss">
   <section class="page battle-page">
-    <h1>Boss</h1>
+    <h1 class="page-head">Boss</h1>
     <p class="lede">
       {/* ⚠️ 兩個數字都從資料算，不要寫死——收一批新 Boss 時忘了改這一句，畫面上跟「這次沒更新」
           長得一模一樣，而 CI 一個字都不會說。 */}
@@ -71,13 +71,13 @@ const termsOf = (text: string) =>
         {/* 組標題。⚠️ 多了這一層之後 Boss 名稱從 h2 降成 h3——標題階層是無障礙的目錄，
             h1 底下直接跳到兩個平行的 h2 群組、每群裡面才是條目，少降一級就會變成
             「組標題與條目同級」，讀屏上整頁是一長串沒有分組的標題。 */}
-        <h2 class="battle-group-head">
+        <h2 class="battle-group-head sec-title">
           {g.difficulty}
           <span class="battle-group-note">{g.note}</span>
         </h2>
         <ul class="battle-list">
           {g.items.map(b => (
-            <li class="battle-item" id={`b${b.id}`}>
+            <li class="battle-item row-card" id={`b${b.id}`}>
               <img
                 class="battle-icon"
                 src={`/assets/boss-icons/${b.icon}.webp`}

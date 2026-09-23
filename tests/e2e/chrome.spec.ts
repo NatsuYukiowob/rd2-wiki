@@ -11,7 +11,7 @@ import sharp from 'sharp';
 test('D1. 導覽列沾在視窗頂端，圖鑑的篩選列沾在導覽列正下方，兩者都不被卡片蓋掉', async ({ page }) => {
   await page.goto('/dice');
   const nav = page.locator('#site-nav');
-  const filters = page.locator('.filters');
+  const filters = page.locator('.filter-bar');
   const navH = (await nav.boundingBox())!.height;
 
   await page.evaluate(() => window.scrollTo(0, 1500));
@@ -27,7 +27,7 @@ test('D1. 導覽列沾在視窗頂端，圖鑑的篩選列沾在導覽列正下�
   // 實際打點：這兩條列的中心點打下去，接到的必須是它們自己裡面的東西，不能是底下捲過來的卡片。
   const hit = await page.evaluate(([nx, ny, fx, fy]) => {
     const name = (el: Element | null) => (el?.closest('#site-nav') ? 'nav'
-      : el?.closest('.filters') ? 'filters'
+      : el?.closest('.filter-bar') ? 'filters'
       : el?.closest('.dice-card') ? 'card' : 'other');
     return {
       nav: name(document.elementFromPoint(nx!, ny!)),
