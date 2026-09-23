@@ -50,7 +50,7 @@ test('D2. --nav-h 在 /tree 以外的頁面也量得到，不是停在 CSS 的 f
   expect(Math.abs(parseFloat(varValue) - navH), '--nav-h 與導覽列實際高度對不上').toBeLessThan(1);
 });
 
-test('D3. 目前分頁標 aria-current，而且沒有把下拉選單的 ▾ 箭頭吃掉', async ({ page }) => {
+test('D3. 目前分頁標 aria-current，而且沒有把下拉選單的箭頭吃掉', async ({ page }) => {
   await page.goto('/dice');
   await expect(page.locator('#site-nav a[href="/dice"][aria-current="page"]')).toHaveCount(1);
   await expect(page.locator('#site-nav a[href="/tree"][aria-current="page"]')).toHaveCount(0);
@@ -66,12 +66,16 @@ test('D3. 目前分頁標 aria-current，而且沒有把下拉選單的 ▾ 箭�
   // 掉到導覽列外面。金線必須待在 ::before。
   const pseudo = await summary.evaluate(el => ({
     afterContent: getComputedStyle(el, '::after').content,
-    afterPosition: getComputedStyle(el, '::after').position,
     beforeContent: getComputedStyle(el, '::before').content,
     beforeBg: getComputedStyle(el, '::before').backgroundColor,
   }));
-  expect(pseudo.afterContent, '下拉箭頭不見了').toContain('▾');
-  expect(pseudo.afterPosition, '下拉箭頭被拉出正常排版').toBe('static');
+  // 2026-09-23 骰桌：箭頭從 ::after 的文字 ▾ 換成 inline SVG（ICONS.down，跟全站圖示同一套線條）。
+  // ::after 不再畫任何東西；箭頭要在 summary 裡、排在正常流程中、而且看得到。
+  expect(pseudo.afterContent, '::after 還留著舊的文字箭頭').toBe('none');
+  const icon = summary.locator(':scope > svg.icon');
+  await expect(icon, '下拉箭頭不見了').toHaveCount(1);
+  await expect(icon).toBeVisible();
+  expect(await icon.evaluate(el => getComputedStyle(el).position), '下拉箭頭被拉出正常排版').toBe('static');
   expect(pseudo.beforeContent, '目前分頁的金線沒畫出來').toBe('""');
   expect(pseudo.beforeBg).toBe(await resolveColor(page, '--gold'));
 });
