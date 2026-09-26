@@ -1,4 +1,4 @@
-import { readFileSync, readdirSync } from 'node:fs';
+import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { createHash } from 'node:crypto';
 import { join } from 'node:path';
@@ -94,6 +94,29 @@ interface HashNamedIconDirScan {
  *
  * @param referenced 「有人引用到」的雜湊集合；不在裡面的檔案就是孤兒檔。
  */
+/**
+ * 圖示檔的 (b)(c) 結果快取，鍵是路徑＋`stat` 的指紋（ino／size／mtime／ctime）。
+ *
+ * 為什麼要有：CLI 一次只跑一輪 validate，快取從頭到尾不會命中、行為與沒有它完全相同；
+ * 但 `tests/tools/validate.test.ts` 每條測試都呼叫一次完整的 `validate()`，每次重讀並雜湊六個
+ * 目錄共 13 MB 的 PNG，佔掉每次呼叫一半以上的時間（2026-09-26 實測：85ms 裡 48ms）。
+ *
+ * ⚠️ 指紋一定要含 `stat`，不能只用路徑：測試會在暫存目錄裡寫壞圖、覆寫同一個檔名再驗，
+ * 只看路徑的話第二次會拿到第一次的雜湊——(b) 安靜地通過，而那正是 (b) 要擋的事。
+ */
+const iconFileCache = new Map<string, { key: string; hash: string; size: { width: number; height: number } | null }>();
+
+function readIconFile(filePath: string): { hash: string; size: { width: number; height: number } | null } {
+  const st = statSync(filePath, { bigint: true });
+  const key = `${st.ino}:${st.size}:${st.mtimeNs}:${st.ctimeNs}`;
+  const hit = iconFileCache.get(filePath);
+  if (hit && hit.key === key) return hit;
+  const buf = readFileSync(filePath);
+  const entry = { key, hash: createHash('sha256').update(buf).digest('hex').slice(0, 12), size: readPngSize(buf) };
+  iconFileCache.set(filePath, entry);
+  return entry;
+}
+
 function checkHashNamedIconDir(
   dir: string,
   referenced: ReadonlySet<string>,
@@ -118,12 +141,10 @@ function checkHashNamedIconDir(
     }
     const expectedHash = fileName.slice(0, -'.png'.length);
     scan.hashes.add(expectedHash);
-    const buf = readFileSync(filePath);
+    const { hash: actualHash, size } = readIconFile(filePath);
     // (b): 檔案內容的 sha256 前 12 碼必須等於檔名，防止「改了內容卻沒改檔名」造成快取污染。
-    const actualHash = createHash('sha256').update(buf).digest('hex').slice(0, 12);
     if (actualHash !== expectedHash) scan.errors.push(`${opts.rule}(b): 圖示 ${filePath} 的內容 sha256 前 12 碼為 ${actualHash}，與檔名不符`);
     // (c): 必須是有效 PNG，且最長邊 ≥ 下限。
-    const size = readPngSize(buf);
     if (!size) {
       scan.errors.push(`${opts.rule}(c): 圖示 ${filePath} 不是有效的 PNG`);
     } else if (Math.max(size.width, size.height) < opts.minLongestEdge) {

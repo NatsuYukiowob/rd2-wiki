@@ -36,6 +36,15 @@ export default defineConfig({
   // 純粹加固，不影響 brief 給定的其他欄位。
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
+  // fullyParallel：讓分片（CI 的 `--shard=i/3`）以「測試」為單位切，而不是以「檔案」。
+  // 不開的話 board.spec.ts 一個檔（桌機約 114 test-seconds，全套最大）整包落在同一片、
+  // 由那片的一個 worker 從頭跑到尾，那片的牆鐘就被它釘死。
+  // 2026-09-26 同一台 4 核機器、同一份 dist 實測三片牆鐘：不開 115／69／100 秒，開了 76／72／103 秒
+  // （最長那片 115 → 103）。本機不分片時總時間不變（250 → 241 秒，在雜訊內）。
+  // ⚠️ 這**不是**多開 worker：worker 數仍然由下面那行固定為 2，CPU 爭用跟以前一樣。
+  // ⚠️ 開了之後同一個檔的測試可能落在不同 worker、不照檔案順序跑——新測試不准依賴
+  //   同檔前一條測試留下的狀態（目前全部 E2E 沒有 `describe.serial`／`beforeAll`，全套實跑全綠）。
+  fullyParallel: true,
   // 固定 2，不吃預設的「核心數砍半」：6 核以上的機器預設就會 ≥3，而 3 workers 時 mobile 的
   // /sim、/tree 會穩定 Page crashed（見下面 mobile project 的註解；CI 那邊的量測見 ci.yml）。
   workers: 2,

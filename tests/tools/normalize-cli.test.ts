@@ -10,9 +10,15 @@ import { join } from 'node:path';
  * 兩條都是 code review（2026-08-22）在純函式測試碰不到的那一層找到的：寫檔的順序、
  * 以及 nodes.json 的路徑怎麼解析——只測純函式的話，兩個都是永遠的綠燈。
  */
+/**
+ * 直接用目前的 node 跑 tsx 的 CLI 入口，不經過 `npx`：`cwd` 是暫存目錄，`npx` 在那裡找不到
+ * 本地的 tsx，每次都要重新解析一輪（2026-09-26 實測三條測試 7.5 秒，大半是 npx 的啟動成本）。
+ * 用 `process.execPath` 而不是 `.bin/tsx`：後者在 Windows 上是 `.cmd` 包裝檔，`execFileSync` 起不來。
+ */
+const TSX_CLI = join(process.cwd(), 'node_modules/tsx/dist/cli.mjs');
 const run = (cwd: string, file: string) => {
   try {
-    const stdout = execFileSync('npx', ['tsx', join(process.cwd(), 'tools/normalize-svg.ts'), file], {
+    const stdout = execFileSync(process.execPath, [TSX_CLI, join(process.cwd(), 'tools/normalize-svg.ts'), file], {
       cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
     });
     return { code: 0, out: stdout };

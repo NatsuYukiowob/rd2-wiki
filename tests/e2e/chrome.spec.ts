@@ -770,8 +770,10 @@ test('D18. 按住時縮一下，放開回原狀；reduce 之下整組關掉', { 
     await page.emulateMedia({ reducedMotion: null });
     await page.goto(c.path);
     // ⚠️ 等進場動畫收掉再測：那段期間 animation 的 both 填充會壓過 :active 的 transform。
-    await expect.poll(() => page.evaluate(() => !document.documentElement.hasAttribute('data-enter')),
-      { timeout: 5000 }).toBe(true);
+    // 用 settleEnter（waitForFunction，逐幀檢查）不用 expect.poll：後者的退避間隔是
+    // 100→250→500→1000ms，`data-enter` 約 1.25 秒移除、要到 1.85 秒那次才看得到，
+    // 五頁 × 兩個 project 每次白等 0.6 秒（2026-09-26 實測）。
+    await settleEnter(page);
     await openIfNeeded((c as { open?: string }).open);
 
     const normal = await pressed(c.selector);
