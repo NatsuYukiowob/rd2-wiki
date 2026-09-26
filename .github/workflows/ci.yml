@@ -145,7 +145,7 @@ jobs:
     # 分片是乾淨的軸：每個 shard 是**自己的一台 runner**，worker 數維持 2、爭用不變，
     # 只是測試變少。同一天實測 `--shard=i/3` 為 60／83／89 秒，最長的那片決定牆鐘。
     # 2026-09-26 起 playwright.config.ts 開了 `fullyParallel`，分片改以測試為單位切，
-    # 不再被 board.spec.ts 整檔卡住一片（本機 4 核實測最長那片 115 → 103 秒，理由見該檔）。
+    # 不再被 board.spec.ts 整檔卡住一片（Claude 雲端容器 4 vCPU／15GB 實測最長那片 115 → 103 秒，理由見該檔）。
     #
     # 為什麼停在 3 片：每片都要重跑 set up job 5 秒＋checkout 1 秒＋setup-node 3 秒＋
     # `npm ci` 6 秒＋裝瀏覽器 11 秒＋`pree2e` 建置 8 秒 ≒ 43 秒固定成本。3 片時 89+43 ≒ 2 分 12 秒，

@@ -12,7 +12,7 @@ import { join } from 'node:path';
  */
 /**
  * 直接用目前的 node 跑 tsx 的 CLI 入口，不經過 `npx`：`cwd` 是暫存目錄，`npx` 在那裡找不到
- * 本地的 tsx，每次都要重新解析一輪（2026-09-26 實測三條測試 7.5 秒，大半是 npx 的啟動成本）。
+ * 本地的 tsx，每次都要重新解析一輪（2026-09-26 Claude 雲端容器 4 vCPU／15GB 實測三條測試 7.5 秒，大半是 npx 的啟動成本）。
  * 用 `process.execPath` 而不是 `.bin/tsx`：後者在 Windows 上是 `.cmd` 包裝檔，`execFileSync` 起不來。
  */
 const TSX_CLI = join(process.cwd(), 'node_modules/tsx/dist/cli.mjs');
