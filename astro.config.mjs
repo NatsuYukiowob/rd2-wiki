@@ -3,6 +3,7 @@
 // public/assets 圖示資產，astro build 再把整站編譯進 dist/。
 import { defineConfig } from 'astro/config';
 import sitemap from '@astrojs/sitemap';
+import devEditor from './tools/dev-editor/integration.ts';
 
 export default defineConfig({
   // `site` 同時餵三個地方：sitemap 裡的 <loc>、Base.astro 的 canonical 與 og:url。
@@ -15,5 +16,6 @@ export default defineConfig({
   // 404 是這個套件預設就排除的。那個 filter 是一行永遠為真的死碼，留著會讓下一個人
   // 以為「排除 404」是我們設定的功勞。`tests/e2e/seo.spec.ts` 的 SEO-2 仍然斷言 sitemap
   // 不含 404——那條守的是上游哪天改掉這個預設。
-  integrations: [sitemap()],
+  // devEditor 只在 `astro dev` 生效（本機文字編輯器，見 CLAUDE.md），build 時是空操作。
+  integrations: [sitemap(), devEditor()],
 });

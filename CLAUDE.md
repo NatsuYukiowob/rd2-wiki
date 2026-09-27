@@ -110,6 +110,28 @@ npm run compare -- <beforeURL> <afterURL>  # computed-style 逐元素比對，�
                      # ⚠️ 不在 CI 上，純靠人記得跑；改動 CSS（尤其是拆檔／搬檔）送 PR 前必跑，見 tools/compare-computed.ts 檔頭
 ```
 
+## 本機文字編輯器（dev only）
+
+`npm run dev` 後右下角有「✎ 編輯」：打開後點頁面上任何一段字，面板列出它在 `data/*.json` 的字串值
+與 `src/` 寫死的原始碼裡的候選，改完存檔直接寫回來源、Vite 自動重整。程式在 `tools/dev-editor/`
+（`core.ts` 純邏輯有單元測試、`integration.ts` 掛 dev server API、`client.ts` 是 overlay）。
+改完照常 `git diff` → 開 PR；面板的「驗證」＝`npm run validate`。
+
+- **只在 `astro dev` 存在**：integration 在 `command !== 'dev'` 時什麼都不做，`dist/` 裡沒有 overlay 也沒有
+  寫檔 API。寫檔 API 只收 127.0.0.1／::1——**用 LAN 或 Tailscale 位址開 dev server 會 403**，要在本機瀏覽器開。
+- **存檔只換那一個字串／那一段原始碼**，不重新序列化整份 JSON（diff 永遠是一行）。存檔帶著點開時的舊值，
+  檔案在這之間被改過就回「衝突」不寫入。`data/` 存檔後自動重跑 `build:data`（`/tree`、`/sim` 讀的是產物）。
+- **原始碼候選是原文切片**：`{nodes.length}` 這種插值、縮排換行都會出現在文字框裡，**別把 `{…}` 刪掉**。
+  畫面上的數字能對上原始碼的 `{…}`（`queryRegex()`），所以畫面上的「N 顆骰子…」找得到 `{nodes.length} 顆骰子…`。
+- **排序靠 `data-astro-source-file`／`-loc`**：Astro 只在 dev toolbar 開著時標這兩個屬性（`annotateSourceFile`），
+  關掉 toolbar 仍然搜得到，只是點到的那個檔不會排最前面。
+- overlay 的樣式刻意寫死 px 與色碼、**不用站台 token**（token 規則不適用 `tools/`）：它是工具不是站台，跟 token
+  綁在一起的話站台改版會連帶改掉編輯器的長相。`tokens.test.ts` 也不掃 `tools/`。
+- 畫在 canvas 上的字（`/tree`、`/sim` 的節點標籤）點不到——用面板的搜尋框直接搜。
+- ⚠️ **改 `integration.ts`／`core.ts` 要重啟 dev server**（integration 在啟動時載入一次）；`client.ts` 會熱更新。
+- ⚠️ 存檔會觸發一到兩次整頁重整（寫檔一次、`build:data` 重產 `tree.json` 再一次），結果靠 sessionStorage
+  ＋ `/result` 在重整後取回，**不要改成只看 `/save` 的回應**——那個回應常常在頁面重整後才到。
+
 ## 不變量（改動後務必重驗）
 
 | 項目 | 值 | 備註 |
