@@ -3,12 +3,7 @@
  * 右下角「✎ 編輯」打開編輯模式 → 點任何一段字 → 面板列出它在 data/*.json 與 src/ 的候選來源 →
  * 改完存檔，Vite 熱更新後頁面自己重整。UI 全放在 shadow DOM，站台 CSS 碰不到它、它也碰不到站台。
  */
-type JsonHit = { file: string; path: (string | number)[]; label: string; value: string };
-type SourceHit = { file: string; start: number; end: number; line: number; value: string };
-type SearchResult = { query: string; sourceFirst: boolean; warnings: string[]; json: JsonHit[]; source: SourceHit[]; more: boolean };
-type SaveResult =
-  | { ok: true; rebuilt: { code: number; out: string } | null; written: string }
-  | { ok: false; conflict?: boolean; error: string };
+import { normSpace, rebuildsAfterSave, type SaveResult, type SearchResult } from './core';
 
 const API = '/__dev-editor';
 const ON_KEY = 'rd2-dev-editor-on';
@@ -112,7 +107,11 @@ function setStatus(msg: string, err = false) {
 
 function closePanel() {
   panel.classList.remove('open');
+  list.replaceChildren(); // ✕／Esc＝放棄面板裡沒存的修改
 }
+
+/** 面板裡有改了還沒存的卡片：新的搜尋會重建列表，先擋下來，不要無聲丟掉。 */
+const hasDirty = () => [...list.querySelectorAll<HTMLElement>('.hit')].some(h => h.dataset.dirty === '1');
 
 document.addEventListener('mousemove', e => {
   if (!on || inOverlay(e) || !(e.target instanceof Element)) { hl.style.display = 'none'; return; }
@@ -154,7 +153,7 @@ window.addEventListener('click', e => {
   if (!text.trim()) { panel.classList.add('open'); setStatus('這裡沒有可以直接點的字（點到的是容器）。點字本身，或在上面的框裡搜尋。'); return; }
   const src = anchor.closest('[data-astro-source-file]');
   const loc = src?.getAttribute('data-astro-source-loc') ?? '';
-  query.value = text.replace(/\s+/g, ' ').trim();
+  query.value = normSpace(text);
   void search({ text, file: src?.getAttribute('data-astro-source-file') ?? undefined, line: Number.parseInt(loc, 10) || undefined });
 }, true);
 
@@ -162,8 +161,12 @@ let searchSeq = 0;
 
 async function search(req: { text?: string; query?: string; file?: string; line?: number }) {
   // 較早送出的搜尋可能比較晚回來（候選查詢退得比較多），只收最後一次的結果。
-  const seq = ++searchSeq;
   panel.classList.add('open');
+  if (hasDirty()) {
+    setStatus('面板裡有還沒存的修改：先存檔，或按 ✕ 放棄後再點。', true);
+    return;
+  }
+  const seq = ++searchSeq;
   list.replaceChildren();
   setStatus('搜尋中…');
   try {
@@ -176,11 +179,11 @@ async function search(req: { text?: string; query?: string; file?: string; line?
       ? `「${r.query}」找到 ${n} 處${r.more ? '（只列前幾筆，請把關鍵字打長一點）' : ''}。Ctrl+Enter 存檔。`
       : `找不到「${r.query}」。畫面上的字可能是組出來的，改成搜其中一小段試試。`) + warn, r.warnings.length > 0);
     const jsonGroup = r.json.length ? [el('div', { className: 'group', textContent: '資料（data/*.json）' }), ...r.json.map(h =>
-      card(`${h.file} › ${h.label}`, h.value, b =>
+      card(`${h.file} › ${h.label}`, h.file, h.value, b =>
         call<SaveResult>('/save', { kind: 'json', file: h.file, path: h.path, ...b })))] : [];
     const sourceGroup = r.source.length ? [el('div', { className: 'group', textContent: '原始碼（src/，寫死的字）' }), ...r.source.map(h =>
       // 存檔成功而頁面沒重整時（改到的檔不在這頁的模組圖裡），下一次存檔的片段終點要跟著新內容走。
-      card(`${h.file}:${h.line}`, h.value, b =>
+      card(`${h.file}:${h.line}`, h.file, h.value, b =>
         call<SaveResult>('/save', { kind: 'source', file: h.file, start: h.start, end: h.start + b.expected.length, ...b })))] : [];
     list.append(...(r.sourceFirst ? [...sourceGroup, ...jsonGroup] : [...jsonGroup, ...sourceGroup]));
   } catch (err) {
@@ -215,22 +218,29 @@ function showResult(p: Pending, r: SaveResult) {
  */
 const isAbort = (err: unknown) => err instanceof TypeError || (err instanceof DOMException && err.name === 'AbortError');
 
-function card(label: string, value: string, save: (body: { next: string; id: string; expected: string }) => Promise<SaveResult>) {
+function card(label: string, file: string, value: string, save: (body: { next: string; id: string; expected: string }) => Promise<SaveResult>) {
   // textarea 的 value 一律是 LF；比對「有沒有改」前把基準值也正規化（CRLF 檔案的片段）。
   let base = value;
   const ta = el('textarea', { value });
+  const saveBtn = el('button', { className: 'primary', textContent: '存檔', onclick: () => void doSave() });
   ta.rows = Math.min(12, value.split('\n').length + 1);
   let saving = false;
   const doSave = async () => {
     if (saving) return; // 連點或按住 Ctrl+Enter：第二次會拿舊值去撞衝突，還會蓋掉 PENDING_KEY
     if (ta.value === base.replace(/\r\n/g, '\n')) { setStatus('內容沒有變動'); return; }
     saving = true;
-    const p: Pending = { id: crypto.randomUUID(), label, at: Date.now() };
+    // http://<LAN IP> 不是 secure context，沒有 crypto.randomUUID()；那裡寫入 API 本來就會 403，但要讓錯誤訊息出得來。
+    const id = globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const p: Pending = { id, label, at: Date.now() };
     writePending(p);
-    setStatus(`存檔中：${label}${/^(data\/|src\/lib\/)/.test(label) ? '（接著重跑 build:data，約數秒）' : ''}`);
+    setStatus(`存檔中：${label}${rebuildsAfterSave(file) ? '（接著重跑 build:data，約數秒）' : ''}`);
     try {
       const r = await save({ next: ta.value, id: p.id, expected: base });
-      if (r.ok) base = r.written; // 同一張卡片再存一次時，舊值要是剛寫進去的內容
+      if (r.ok) {
+        base = r.written; // 同一張卡片再存一次時，舊值要是剛寫進去的內容
+        box.dataset.dirty = '0';
+        if (!file.endsWith('.json')) markStale(box, file);
+      }
       showResult(p, r);
     } catch (err) {
       if (isAbort(err)) {
@@ -250,9 +260,25 @@ function card(label: string, value: string, save: (body: { next: string; id: str
     }
   };
   ta.addEventListener('keydown', e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && !e.repeat) void doSave(); });
-  return el('div', { className: 'hit' },
+  const box = el('div', { className: 'hit' },
     el('div', { className: 'label', textContent: label }), ta,
-    el('div', { className: 'row' }, el('button', { className: 'primary', textContent: '存檔', onclick: () => void doSave() })));
+    el('div', { className: 'row' }, saveBtn));
+  box.dataset.file = file;
+  ta.addEventListener('input', () => { box.dataset.dirty = ta.value === base.replace(/\r\n/g, '\n') ? '0' : '1'; });
+  return box;
+}
+
+/**
+ * 同一個原始碼檔裡的其他卡片：片段位置是搜尋當下的位移，這張存完長度一變，它們的位移就全錯了
+ * （輕則誤報衝突，重則剛好對上一段相同的字而改錯地方）。直接停用，要再改就重新點一次。
+ */
+function markStale(saved: HTMLElement, file: string) {
+  for (const h of list.querySelectorAll<HTMLElement>('.hit')) {
+    if (h === saved || h.dataset.file !== file) continue;
+    h.querySelectorAll<HTMLButtonElement | HTMLTextAreaElement>('button, textarea').forEach(e => { e.disabled = true; });
+    h.dataset.dirty = '0';
+    h.querySelector('.label')!.textContent += '（同檔已改，請重新點一次）';
+  }
 }
 
 /**

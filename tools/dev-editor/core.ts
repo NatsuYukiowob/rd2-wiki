@@ -134,14 +134,56 @@ export function labelPath(root: unknown, path: JsonPath): string {
 
 /**
  * 把註解換成等長空白（換行保留，位置不變），避免在註解裡搜到同一句話。
- * 規則刻意粗略（沒有追蹤字串字面值）：`<!-- -->`，以及**行首、空白或 `{` 之後**的 `/* *\/` 與 `//`。
- * 要求前面是空白是為了不誤傷字串裡的路徑與網址——`'src/*.json'`、`https://` 前面都不是空白。
+ * 會追蹤字串字面值（`'…'`／`"…"` 到行尾為止、`` `…` `` 可跨行），字串裡的 `/*`、`//` 不當註解。
+ * `/*` 與 `//` 另外要求前面是行首、空白或 `{`：`.astro` 模板文字裡的 `https://`、`src/*.json` 不在字串裡。
+ * 模板文字裡的撇號（英文 don't）會被當成字串開頭——那只會讓那一行的註解沒遮到（多搜到幾筆），
+ * 不會把真的字藏起來，方向是安全的；而且單雙引號字串在換行處就結束，不會外溢。
  */
 export function maskComments(src: string): string {
-  const blank = (s: string) => s.replace(/[^\n]/g, ' ');
-  return src.replace(/<!--[\s\S]*?-->|(^|[\s{])(\/\*[\s\S]*?\*\/|\/\/[^\n]*)/gm, (m, lead: string | undefined) =>
-    lead !== undefined ? lead + blank(m.slice(lead.length)) : blank(m));
+  const out = src.split('');
+  const blank = (from: number, to: number) => { for (let k = from; k < to; k++) if (out[k] !== '\n') out[k] = ' '; };
+  const n = src.length;
+  let i = 0;
+  while (i < n) {
+    const c = src[i]!;
+    if (c === '\'' || c === '"' || c === '`') {
+      let j = i + 1;
+      while (j < n && src[j] !== c && (c === '`' || src[j] !== '\n')) j += src[j] === '\\' ? 2 : 1;
+      i = j + 1;
+      continue;
+    }
+    if (src.startsWith('<!--', i)) {
+      const e = src.indexOf('-->', i + 4);
+      const to = e === -1 ? n : e + 3;
+      blank(i, to);
+      i = to;
+      continue;
+    }
+    const lead = i === 0 || /[\s{]/.test(src[i - 1]!);
+    if (lead && src.startsWith('/*', i)) {
+      const e = src.indexOf('*/', i + 2);
+      const to = e === -1 ? n : e + 2;
+      blank(i, to);
+      i = to;
+      continue;
+    }
+    if (lead && src.startsWith('//', i)) {
+      const e = src.indexOf('\n', i);
+      const to = e === -1 ? n : e;
+      blank(i, to);
+      i = to;
+      continue;
+    }
+    i++;
+  }
+  return out.join('');
 }
+
+/** 空白正規化：畫面文字、查詢框與「完全相同」的比對都用這一份。 */
+export const normSpace = (s: string) => s.replace(/\s+/g, ' ').trim();
+
+/** 存這個檔之後 server 會不會重跑 build:data（client 顯示「約數秒」用同一份判準）。 */
+export const rebuildsAfterSave = (file: string) => /^(data\/.*\.json|src\/lib\/)/.test(file);
 
 /**
  * 查詢字串 → regex：空白一律當成「任意空白」，原始碼的縮排換行與畫面上的一個空格就對得上；
@@ -151,8 +193,10 @@ export function queryRegex(q: string): RegExp {
   const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   // 查詢只有數字時不開 `{…}` 這條路：否則「7」會對上每一個檔裡的 `{ core, gold }` 之類的程式碼。
   const onlyNumbers = !/[^\d.,\s]/.test(q);
+  // 數字前後加邊界：否則「攻擊力 15」會停在「攻擊力 150」的 0 前面，改成 20 就寫出 200。
+  const num = (s: string) => `(?<![\\d.,])${esc(s)}(?!\\d|[.,]\\d)`;
   const part = (p: string) =>
-    p.split(/(\d+(?:[.,]\d+)*)/).map((s, k) => (k % 2 && !onlyNumbers ? `(?:${esc(s)}|\\{[^{}\\n]*\\})` : esc(s))).join('');
+    p.split(/(\d+(?:[.,]\d+)*)/).map((s, k) => (k % 2 ? (onlyNumbers ? num(s) : `(?:${num(s)}|\\{[^{}\\n]*\\})`) : esc(s))).join('');
   return new RegExp(q.trim().split(/\s+/).map(part).join('\\s+'), 'g');
 }
 
@@ -161,7 +205,7 @@ export function queryRegex(q: string): RegExp {
  * 或被換行切開。整段搜不到時，依序改用各行、以及被數字切開的片段（長的先）。
  */
 export function candidateQueries(text: string): string[] {
-  const norm = (s: string) => s.replace(/\s+/g, ' ').trim();
+  const norm = normSpace;
   const full = norm(text);
   const segs = text
     .split(/\n|\d+(?:[.,]\d+)*/)
@@ -197,6 +241,8 @@ export function searchSource(files: { file: string; text: string; masked?: strin
     for (let m; (m = re.exec(masked)); ) {
       const start = m.index;
       const end = start + m[0].length;
+      // `\s+` 會吃過被遮成空白的註解（`攻擊力 {/* 基礎 */} 150`）；片段裡含註解就不列，免得存檔把註解一起改掉。
+      if (masked.slice(start, end) !== text.slice(start, end)) continue;
       hits.push({ file, start, end, line: lineOf(start), value: text.slice(start, end) });
     }
   }
@@ -220,8 +266,22 @@ export function rankSourceHits(hits: SourceHit[], file?: string, line?: number):
 
 /** 資料候選：值與查詢完全相同的排最前面，其餘短的先（越短越可能就是畫面上那一段本身）。 */
 export function rankJsonHits<T extends { value: string }>(hits: T[], q: string): T[] {
-  const norm = (s: string) => s.replace(/\s+/g, ' ').trim();
-  const nq = norm(q);
-  const score = (h: T) => (norm(h.value) === nq ? 0 : 1e6) + h.value.length;
+  const nq = normSpace(q);
+  const score = (h: T) => (normSpace(h.value) === nq ? 0 : 1e6) + h.value.length;
   return [...hits].sort((a, b) => score(a) - score(b));
 }
+
+export type SaveResult =
+  | { ok: true; rebuilt: { code: number; out: string } | null; written: string }
+  | { ok: false; conflict: boolean; error: string };
+
+export type JsonSearchHit = { file: string; path: JsonPath; label: string; value: string };
+
+export type SearchResult = {
+  query: string;
+  sourceFirst: boolean;
+  warnings: string[];
+  json: JsonSearchHit[];
+  source: SourceHit[];
+  more: boolean;
+};

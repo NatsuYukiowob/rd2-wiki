@@ -232,3 +232,25 @@ describe('第四輪 review 回歸', () => {
     expect(searchSource([{ file: 'f.ts', text }], '骰子').map(h => h.line)).toEqual([4, 5]);
   });
 });
+
+describe('第五輪 review 回歸', () => {
+  it('數字要整個對上：15 不會停在 150 裡、5 不會從 15 中間開始', () => {
+    const src = [{ file: 'src/p.astro', text: '<p>攻擊力 150</p><p>共 15 顆骰子</p><p>攻擊力 15</p>' }];
+    expect(searchSource(src, '攻擊力 15').map(h => h.value)).toEqual(['攻擊力 15']);
+    expect(searchSource(src, '5 顆骰子')).toEqual([]);
+    const t7 = 'x = 1700; y = 0.7; z = 7;';
+    expect(searchSource([{ file: 'a.ts', text: t7 }], '7').map(h => h.start)).toEqual([t7.lastIndexOf('7')]);
+  });
+
+  it('字串裡的 /* 與 // 不當註解，後面的字仍找得到', () => {
+    const src = "const s = 'a /* b'; const t = '重要文字'; /* c */\nconst u = \"x // y 也重要\";";
+    const out = maskComments(src);
+    expect(out).toContain('重要文字');
+    expect(out).toContain('x // y 也重要');
+    expect(out).not.toContain(' c ');
+  });
+
+  it('片段不會跨過被遮掉的註解', () => {
+    expect(searchSource([{ file: 'p.astro', text: '<p>攻擊力 {/* 基礎 */} 150</p>' }], '攻擊力 150')).toEqual([]);
+  });
+});

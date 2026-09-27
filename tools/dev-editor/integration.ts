@@ -9,7 +9,7 @@
  * - `POST /validate` → `tools/validate.ts` 的輸出
  */
 import { execFile } from 'node:child_process';
-import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -27,6 +27,8 @@ import {
   searchJson,
   searchSource,
   type JsonPath,
+  rebuildsAfterSave,
+  type SaveResult,
 } from './core';
 
 const MOUNT = '/__dev-editor';
@@ -49,6 +51,20 @@ export function listFiles(root: string) {
  * 跑 package.json 的 script（不另抄一份 `tsx tools/…` 指令，免得兩邊漂移）。
  * Windows 的 npm 是 `npm.cmd`，沒有 shell 的 execFile 啟動不了它。
  */
+/**
+ * 每次點字都要讀全部 data/*.json 與 src/ 並解析、遮註解；檔案沒變就沿用上次的結果（以 mtime 判斷）。
+ * 存檔後 mtime 會變，下次自然重算，不必手動清。
+ */
+const cache = new Map<string, { mtimeMs: number; value: unknown }>();
+function cached<T>(abs: string, compute: (text: string) => T): T {
+  const mtimeMs = statSync(abs).mtimeMs;
+  const hit = cache.get(abs);
+  if (hit && hit.mtimeMs === mtimeMs) return hit.value as T;
+  const value = compute(readFileSync(abs, 'utf8'));
+  cache.set(abs, { mtimeMs, value });
+  return value;
+}
+
 function run(root: string, script: string): Promise<{ code: number; out: string }> {
   return new Promise(done => {
     execFile('npm', ['run', '-s', script], { cwd: root, maxBuffer: 8 << 20, shell: process.platform === 'win32' }, (err, stdout, stderr) => {
@@ -134,18 +150,20 @@ function handler(root: string) {
         // 壞掉的 JSON（正在別的編輯器裡改到一半）只跳過那一份並回報，不讓整次搜尋變 500。
         const warnings: string[] = [];
         const jsonFiles = files.data.flatMap(file => {
-          const t = readFileSync(resolve(root, file), 'utf8');
-          try {
-            return [{ file, root: JSON.parse(t) as unknown, hits: scanJsonStrings(t) }];
-          } catch (e) {
-            warnings.push(`${file} 解析失敗，已略過：${e instanceof Error ? e.message : String(e)}`);
+          const parsed = cached(resolve(root, file), t => {
+            try {
+              return { root: JSON.parse(t) as unknown, hits: scanJsonStrings(t) };
+            } catch (e) {
+              return { error: e instanceof Error ? e.message : String(e) };
+            }
+          });
+          if ('error' in parsed) {
+            warnings.push(`${file} 解析失敗，已略過：${parsed.error}`);
             return [];
           }
+          return [{ file, ...parsed }];
         });
-        const srcFiles = files.src.map(file => {
-          const text = readFileSync(resolve(root, file), 'utf8');
-          return { file, text, masked: maskComments(text) };
-        });
+        const srcFiles = files.src.map(file => ({ file, ...cached(resolve(root, file), text => ({ text, masked: maskComments(text) })) }));
         for (const query of queries) {
           const json = rankJsonHits(jsonFiles.flatMap(f =>
             searchJson(f.hits, query).map(h => ({ file: f.file, root: f.root, path: h.path, value: h.value }))), query);
@@ -187,9 +205,6 @@ function handler(root: string) {
   };
 }
 
-type SaveResult =
-  | { ok: true; rebuilt: { code: number; out: string } | null; written: string }
-  | { ok: false; conflict: boolean; error: string };
 const results = new Map<string, Promise<SaveResult>>();
 
 export async function save(root: string, files: ReturnType<typeof listFiles>, body: Record<string, unknown>): Promise<SaveResult> {
@@ -221,7 +236,7 @@ export async function save(root: string, files: ReturnType<typeof listFiles>, bo
   // /tree、/sim 讀的是 build:data 產的 src/generated/tree.json：data/ 與 src/lib/（build-data 會 import
   // 那裡的標籤與格式化函式）改了要重產才看得到。刻意不維護「build-data 讀哪幾份」的清單——漏一份
   // 就是無聲的舊資料，多跑幾秒比較便宜。
-  const rebuilt = isJson || file.startsWith('src/lib/') ? await rebuild(root) : null;
+  const rebuilt = rebuildsAfterSave(file) ? await rebuild(root) : null;
   return { ok: true, rebuilt, written };
 }
 
