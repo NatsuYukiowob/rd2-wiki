@@ -1,0 +1,181 @@
+/**
+ * 本機 dev-only 文字編輯器：只在 `astro dev` 掛上，`astro build` 時這個 integration 什麼都不做，
+ * `dist/` 裡不會有 overlay 也不會有寫檔 API。用法見 CLAUDE.md 的「本機文字編輯器」。
+ *
+ * API（掛在 dev server 的 `/__dev-editor/*`，只收 127.0.0.1／::1 來的請求）：
+ * - `POST /search`   { text, query?, file?, line? } → JSON 與原始碼的候選
+ * - `POST /save`     { kind: 'json', file, path, expected, next } | { kind: 'source', file, start, end, expected, next }
+ * - `POST /result`   { id } → 某次 /save 的結果（存檔後頁面被 Vite 重整，回應會收不到）
+ * - `POST /validate` → `tools/validate.ts` 的輸出
+ */
+import { execFile } from 'node:child_process';
+import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import type { IncomingMessage, ServerResponse } from 'node:http';
+import { relative, resolve, sep } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import type { AstroIntegration } from 'astro';
+import {
+  candidateQueries,
+  EditConflict,
+  labelPath,
+  rankJsonHits,
+  rankSourceHits,
+  replaceJsonString,
+  replaceSpan,
+  scanJsonStrings,
+  searchJson,
+  searchSource,
+  type JsonPath,
+} from './core';
+
+const MOUNT = '/__dev-editor';
+const SOURCE_EXT = /\.(astro|ts|js|mjs)$/;
+const LIMIT = 40;
+
+const posix = (p: string) => p.split(sep).join('/');
+
+function listFiles(root: string) {
+  const data = readdirSync(resolve(root, 'data'))
+    .filter(f => f.endsWith('.json'))
+    .map(f => `data/${f}`);
+  const src = (readdirSync(resolve(root, 'src'), { recursive: true }) as string[])
+    .map(f => `src/${posix(f)}`)
+    .filter(f => SOURCE_EXT.test(f) && !f.startsWith('src/generated/'));
+  return { data, src };
+}
+
+function run(root: string, args: string[]): Promise<{ code: number; out: string }> {
+  return new Promise(done => {
+    execFile('npx', ['tsx', ...args], { cwd: root, maxBuffer: 8 << 20 }, (err, stdout, stderr) => {
+      done({ code: err ? (typeof err.code === 'number' ? err.code : 1) : 0, out: `${stdout}${stderr}`.trim() });
+    });
+  });
+}
+
+async function readBody(req: IncomingMessage): Promise<Record<string, unknown>> {
+  let size = 0;
+  const chunks: Buffer[] = [];
+  for await (const c of req as AsyncIterable<Buffer>) {
+    size += c.length;
+    if (size > 1 << 20) throw new Error('請求太大');
+    chunks.push(c);
+  }
+  return JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}') as Record<string, unknown>;
+}
+
+function send(res: ServerResponse, status: number, body: unknown) {
+  res.statusCode = status;
+  res.setHeader('content-type', 'application/json; charset=utf-8');
+  res.end(JSON.stringify(body));
+}
+
+const LOOPBACK = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1']);
+
+/**
+ * 寫檔 API 的三道門：只收本機來源；必須帶自訂標頭（跨站網頁要帶就得先過 CORS preflight，
+ * 而這裡從不回 CORS 標頭，所以別的網站打不進來）；有 Origin 時必須跟 Host 同一個。
+ */
+function allowed(req: IncomingMessage): string | null {
+  if (!LOOPBACK.has(req.socket.remoteAddress ?? '')) return '只接受本機（127.0.0.1）的編輯請求';
+  if (req.method !== 'POST' || req.headers['x-dev-editor'] !== '1') return '缺少編輯器標頭';
+  const origin = req.headers.origin;
+  if (origin && new URL(origin).host !== req.headers.host) return 'Origin 與 Host 不符';
+  return null;
+}
+
+function handler(root: string) {
+  return async (req: IncomingMessage, res: ServerResponse) => {
+    const denied = allowed(req);
+    if (denied) return send(res, 403, { error: denied });
+    try {
+      const body = await readBody(req);
+      const files = listFiles(root);
+
+      if (req.url === '/search') {
+        const text = String(body.text ?? '');
+        const queries = typeof body.query === 'string' && body.query.trim() ? [body.query] : candidateQueries(text);
+        const clicked = typeof body.file === 'string' ? posix(relative(root, body.file)) : undefined;
+        const line = typeof body.line === 'number' ? body.line : undefined;
+        const jsonFiles = files.data.map(file => {
+          const t = readFileSync(resolve(root, file), 'utf8');
+          return { file, root: JSON.parse(t) as unknown, hits: scanJsonStrings(t) };
+        });
+        const srcFiles = files.src.map(file => ({ file, text: readFileSync(resolve(root, file), 'utf8') }));
+        for (const query of queries) {
+          const json = rankJsonHits(jsonFiles.flatMap(f =>
+            searchJson(f.hits, query).map(h => ({ file: f.file, path: h.path, label: labelPath(f.root, h.path), value: h.value }))), query);
+          const source = rankSourceHits(searchSource(srcFiles, query), clicked, line);
+          if (json.length || source.length) {
+            // 點到的元素所在的 .astro 裡就有這段字 → 幾乎一定是寫死在那裡，原始碼那組排前面。
+            const sourceFirst = source[0]?.file === clicked;
+            return send(res, 200, { query, sourceFirst, json: json.slice(0, LIMIT), source: source.slice(0, LIMIT), more: json.length > LIMIT || source.length > LIMIT });
+          }
+        }
+        return send(res, 200, { query: queries[0] ?? '', sourceFirst: false, json: [], source: [], more: false });
+      }
+
+      if (req.url === '/result') {
+        const pending = results.get(String(body.id));
+        return send(res, 200, pending ? await pending : { error: '這次存檔的結果已經不在（dev server 重啟過？）' });
+      }
+
+      if (req.url === '/save') {
+        // 寫檔後 Vite 會搶在回應之前整頁重整，瀏覽器等不到這個回應——結果另外存一份，
+        // 重整後的頁面拿 id 來 /result 取回（見 client.ts 的 PENDING_KEY）。
+        const id = String(body.id ?? '');
+        const job = save(root, files, body);
+        if (id) results.set(id, job);
+        return send(res, 200, await job);
+      }
+
+      if (req.url === '/validate') return send(res, 200, await run(root, ['tools/validate.ts']));
+
+      return send(res, 404, { error: 'unknown endpoint' });
+    } catch (e) {
+      return send(res, 500, { error: e instanceof Error ? e.message : String(e) });
+    }
+  };
+}
+
+type SaveResult = { ok: true; rebuilt: { code: number; out: string } | null } | { ok: false; conflict: boolean; error: string };
+const results = new Map<string, Promise<SaveResult>>();
+
+async function save(root: string, files: ReturnType<typeof listFiles>, body: Record<string, unknown>): Promise<SaveResult> {
+  const file = String(body.file);
+  // 只能寫到「搜尋列得出來的檔案」：路徑一律比對白名單，不做任何拼接後的前綴判斷。
+  if (![...files.data, ...files.src].includes(file)) return { ok: false, conflict: false, error: `不允許寫入 ${file}` };
+  try {
+    const abs = resolve(root, file);
+    const text = readFileSync(abs, 'utf8');
+    const next = String(body.next);
+    const expected = String(body.expected);
+    const out = body.kind === 'json'
+      ? replaceJsonString(text, body.path as JsonPath, expected, next)
+      : replaceSpan(text, Number(body.start), Number(body.end), expected, next);
+    if (body.kind === 'json') JSON.parse(out); // 保險：寫出去的一定是合法 JSON
+    writeFileSync(abs, out);
+  } catch (e) {
+    return { ok: false, conflict: e instanceof EditConflict, error: e instanceof Error ? e.message : String(e) };
+  }
+  // /tree、/sim 讀的是 build:data 產的 src/generated/tree.json，data/ 改了要重產才看得到。
+  const rebuilt = file.startsWith('data/') ? await run(root, ['tools/build-data.ts']) : null;
+  return { ok: true, rebuilt };
+}
+
+export default function devEditor(): AstroIntegration {
+  let root = '';
+  return {
+    name: 'rd2-dev-editor',
+    hooks: {
+      'astro:config:setup': ({ command, config, injectScript }) => {
+        if (command !== 'dev') return;
+        root = fileURLToPath(config.root);
+        const client = fileURLToPath(new URL('./client.ts', import.meta.url));
+        injectScript('page', `import ${JSON.stringify(client)};`);
+      },
+      'astro:server:setup': ({ server }) => {
+        server.middlewares.use(MOUNT, handler(root));
+      },
+    },
+  };
+}
