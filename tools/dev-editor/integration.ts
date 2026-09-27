@@ -44,12 +44,33 @@ function listFiles(root: string) {
   return { data, src };
 }
 
-function run(root: string, args: string[]): Promise<{ code: number; out: string }> {
+/**
+ * 跑 package.json 的 script（不另抄一份 `tsx tools/…` 指令，免得兩邊漂移）。
+ * Windows 的 npm 是 `npm.cmd`，沒有 shell 的 execFile 啟動不了它。
+ */
+function run(root: string, script: string): Promise<{ code: number; out: string }> {
   return new Promise(done => {
-    execFile('npx', ['tsx', ...args], { cwd: root, maxBuffer: 8 << 20 }, (err, stdout, stderr) => {
-      done({ code: err ? (typeof err.code === 'number' ? err.code : 1) : 0, out: `${stdout}${stderr}`.trim() });
+    execFile('npm', ['run', '-s', script], { cwd: root, maxBuffer: 8 << 20, shell: process.platform === 'win32' }, (err, stdout, stderr) => {
+      const out = `${stdout}${stderr}`.trim() || (err ? String(err.message) : '');
+      done({ code: err ? (typeof err.code === 'number' ? err.code : 1) : 0, out });
     });
   });
+}
+
+/**
+ * build:data 同一時間只跑一個：連存兩次的話兩個行程會同時改寫 tree.json 與 public/assets，
+ * 晚開始的可能先結束、再被舊的蓋回去。跑的途中又有人要，就在這次結束後補跑一次（多次合併成一次），
+ * 回傳的是補跑那次的結果——它才包含最後一次存檔。
+ */
+let building: Promise<{ code: number; out: string }> | null = null;
+let rerun: Promise<{ code: number; out: string }> | null = null;
+function rebuild(root: string): Promise<{ code: number; out: string }> {
+  if (!building) {
+    building = run(root, 'build:data').finally(() => { building = null; });
+    return building;
+  }
+  rerun ??= building.catch(() => undefined).then(() => { rerun = null; return rebuild(root); });
+  return rerun;
 }
 
 async function readBody(req: IncomingMessage): Promise<Record<string, unknown>> {
@@ -102,9 +123,9 @@ function handler(root: string) {
     if (denied) return send(res, 403, { error: denied });
     try {
       const body = await readBody(req);
-      const files = listFiles(root);
 
       if (req.url === '/search') {
+        const files = listFiles(root);
         const text = String(body.text ?? '');
         const queries = typeof body.query === 'string' && body.query.trim() ? [body.query] : candidateQueries(text);
         const clicked = typeof body.file === 'string' ? posix(relative(root, body.file)) : undefined;
@@ -137,12 +158,12 @@ function handler(root: string) {
         // 寫檔後 Vite 會搶在回應之前整頁重整，瀏覽器等不到這個回應——結果另外存一份，
         // 重整後的頁面拿 id 來 /result 取回（見 client.ts 的 PENDING_KEY）。
         const id = String(body.id ?? '');
-        const job = save(root, files, body);
+        const job = save(root, listFiles(root), body);
         if (id) results.set(id, job);
         return send(res, 200, await job);
       }
 
-      if (req.url === '/validate') return send(res, 200, await run(root, ['tools/validate.ts']));
+      if (req.url === '/validate') return send(res, 200, await run(root, 'validate'));
 
       return send(res, 404, { error: 'unknown endpoint' });
     } catch (e) {
@@ -172,7 +193,7 @@ async function save(root: string, files: ReturnType<typeof listFiles>, body: Rec
     return { ok: false, conflict: e instanceof EditConflict, error: e instanceof Error ? e.message : String(e) };
   }
   // /tree、/sim 讀的是 build:data 產的 src/generated/tree.json，data/ 改了要重產才看得到。
-  const rebuilt = file.startsWith('data/') ? await run(root, ['tools/build-data.ts']) : null;
+  const rebuilt = file.startsWith('data/') ? await rebuild(root) : null;
   return { ok: true, rebuilt };
 }
 

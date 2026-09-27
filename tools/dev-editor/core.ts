@@ -134,11 +134,12 @@ export function labelPath(root: unknown, path: JsonPath): string {
 
 /**
  * 把註解換成等長空白（換行保留，位置不變），避免在註解裡搜到同一句話。
- * 規則刻意粗略：`<!-- -->`、`/* *\/`、行首或空白後的 `//`（`https://` 前面是冒號，不會誤判）。
+ * 規則刻意粗略（沒有追蹤字串字面值）：`<!-- -->`，以及**行首、空白或 `{` 之後**的 `/* *\/` 與 `//`。
+ * 要求前面是空白是為了不誤傷字串裡的路徑與網址——`'src/*.json'`、`https://` 前面都不是空白。
  */
 export function maskComments(src: string): string {
   const blank = (s: string) => s.replace(/[^\n]/g, ' ');
-  return src.replace(/<!--[\s\S]*?-->|\/\*[\s\S]*?\*\/|(^|[ \t])\/\/[^\n]*/gm, (m, lead: string | undefined) =>
+  return src.replace(/<!--[\s\S]*?-->|(^|[\s{])(\/\*[\s\S]*?\*\/|\/\/[^\n]*)/gm, (m, lead: string | undefined) =>
     lead !== undefined ? lead + blank(m.slice(lead.length)) : blank(m));
 }
 

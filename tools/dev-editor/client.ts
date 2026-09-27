@@ -78,6 +78,15 @@ const panel = el('div', { className: 'panel' },
 shadow.append(el('style', { textContent: STYLE }), hl, panel, toggle);
 document.body.append(host);
 
+// 面板裡的鍵盤與指標事件不外流：shadow DOM 裡的 textarea 對站台來說 activeElement 是 host <div>，
+// 站台的全域快捷鍵（/tree 方向鍵平移、Esc 退視圖、點外面關選單）會把在編輯器裡的操作當成自己的。
+for (const type of ['keydown', 'keyup', 'keypress', 'pointerdown', 'pointerup', 'mousedown', 'mouseup', 'click', 'touchstart', 'touchend']) {
+  host.addEventListener(type, e => e.stopPropagation());
+}
+shadow.addEventListener('keydown', e => {
+  if ((e as KeyboardEvent).key === 'Escape' && panel.classList.contains('open')) closePanel();
+});
+
 let on = false;
 try { on = sessionStorage.getItem(ON_KEY) === '1'; } catch { /* 無痕或封鎖儲存：預設關 */ }
 
@@ -112,15 +121,24 @@ document.addEventListener('mousemove', e => {
 function textAt(x: number, y: number, target: Element): { text: string; anchor: Element } {
   const doc = document as Document & { caretPositionFromPoint?: (x: number, y: number) => { offsetNode: Node } | null };
   const node = doc.caretPositionFromPoint?.(x, y)?.offsetNode ?? document.caretRangeFromPoint?.(x, y)?.startContainer;
-  if (node?.nodeType === Node.TEXT_NODE && node.textContent?.trim() && node.parentElement) {
+  // caret 會吸附到最近的文字節點，可能落在旁邊的元素裡；只收高亮的那個元素底下的。
+  if (node?.nodeType === Node.TEXT_NODE && node.textContent?.trim() && node.parentElement && target.contains(node)) {
     return { text: node.textContent, anchor: node.parentElement };
   }
   const own = [...target.childNodes].filter(n => n.nodeType === Node.TEXT_NODE).map(n => n.textContent ?? '').join(' ');
   return { text: own.trim() ? own : (target as HTMLElement).innerText ?? target.textContent ?? '', anchor: target };
 }
 
-// 捕獲階段攔下點擊：編輯模式下點連結不跳頁、點按鈕不觸發站台行為。
-document.addEventListener('click', e => {
+// 編輯模式下站台的指標行為全部攔下（window 捕獲階段＝最早）：點連結不跳頁、/board 不開卡片不拖曳、
+// /tree、/sim 的畫布不選取不平移。只放行 click 給下面那支做搜尋。
+for (const type of ['pointerdown', 'pointerup', 'mousedown', 'mouseup', 'touchstart', 'touchend', 'dblclick', 'auxclick']) {
+  window.addEventListener(type, e => {
+    if (!on || inOverlay(e)) return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+  }, { capture: true, passive: false });
+}
+window.addEventListener('click', e => {
   if (!on || inOverlay(e) || !(e.target instanceof Element)) return;
   e.preventDefault();
   e.stopImmediatePropagation();
@@ -132,16 +150,17 @@ document.addEventListener('click', e => {
   void search({ text, file: src?.getAttribute('data-astro-source-file') ?? undefined, line: Number.parseInt(loc, 10) || undefined });
 }, true);
 
-document.addEventListener('keydown', e => {
-  if (e.key === 'Escape' && panel.classList.contains('open')) closePanel();
-});
+let searchSeq = 0;
 
 async function search(req: { text?: string; query?: string; file?: string; line?: number }) {
+  // 較早送出的搜尋可能比較晚回來（候選查詢退得比較多），只收最後一次的結果。
+  const seq = ++searchSeq;
   panel.classList.add('open');
   list.replaceChildren();
   setStatus('搜尋中…');
   try {
     const r = await call<SearchResult>('/search', req);
+    if (seq !== searchSeq) return;
     query.value = r.query;
     const n = r.json.length + r.source.length;
     setStatus(n
@@ -155,6 +174,7 @@ async function search(req: { text?: string; query?: string; file?: string; line?
         call<SaveResult>('/save', { kind: 'source', file: h.file, start: h.start, end: h.end, expected: h.value, ...b })))] : [];
     list.append(...(r.sourceFirst ? [...sourceGroup, ...jsonGroup] : [...jsonGroup, ...sourceGroup]));
   } catch (err) {
+    if (seq !== searchSeq) return;
     setStatus(String(err instanceof Error ? err.message : err), true);
   }
 }

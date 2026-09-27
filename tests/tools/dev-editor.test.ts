@@ -81,6 +81,12 @@ describe('maskComments', () => {
     expect(out.match(/骰子/g)).toEqual(['骰子']);
     expect(out).toContain('https://x');
   });
+
+  it('字串裡的 /* 不會把到下一個 */ 之間整段吃掉', () => {
+    const src = "const g = 'src/*.json';\n<p>骰子圖鑑</p>\n/* 真的註解 */";
+    expect(maskComments(src)).toContain('骰子圖鑑');
+    expect(maskComments(src)).not.toContain('真的註解');
+  });
 });
 
 describe('candidateQueries', () => {
