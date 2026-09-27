@@ -40,7 +40,7 @@
 - **`data/nodes.json`**——全部**文案**：`name` `label` `type` `category?` `gameId` `cost`
   `maxLevel` `description` `awakening?`。
 - 外加 `data/icons/`（242 張 PNG，檔名＝內容 sha256 前 12 碼）、`data/tree-center.png`、
-  `data/board-icons/`（43 張純骰子圖，見 `/board`）、`data/dice3-icons/`（43 張 3D 立體骰子圖，見 `/dice`）、`data/tactic-icons/`（60 張，見 `/tactic`）、
+  `data/board-icons/`（43 張純骰子圖，見 `/board`）、`data/dice3-icons/`（43 張 3D 立體骰子圖，見 `/dice`）、`data/tactic-icons/`（60 張，含 69 的 3 個子選項；9 與 40 共用一張，見 `/tactic`）、
   `data/boss-icons/`（21 張，見 `/boss`）、`data/rift-shop-icons/`（35 張，見 `/rift-shop`）。
   由社群發 PR 維護，**CI 是唯一防線**（維護者不可能逐行 review SVG 的 diff）。
   ⚠️ **六條資產路徑彼此獨立**：`data/icons/` 由正本 SVG 引用（規則 7）、`board-icons` 與
@@ -51,7 +51,7 @@
   純骰子圖（`board-icons`，2 號素材＝扁平卡片視角，骰盤格裡用）、3D 立體圖（`dice3-icons`，
   3 號素材，圖鑑卡片用）。接錯了畫面上只是「圖鑑的骰子變回扁平」，兩份檔案各自都完全合法——
   規則 30 的測試有一條專門守這件事（兩份對應表不得有任何一顆指向同一個雜湊）。
-  ⚠️ **`public/events/`（活動的遊戲內截圖）不在這一族**：它沒有內容雜湊、沒有轉檔管線，
+  ⚠️ **`public/events/`（活動的遊戲內截圖）與 `public/rewards/`（獎勵的收藏品圖）不在這一族**：它沒有內容雜湊、沒有轉檔管線，
   就是一批 `<img src>` 直接指過去的檔，由規則 29(j) 驗「引用得到」而已。
   ⚠️ **只有 `rift-shop-icons` 是多對一**（35 張圖對 55 筆）：客戶端只給 `*Low` 畫圖，同一個效果
   的三個檔位在遊戲裡本來就是同一張圖，所以規則 27 用 `sharedIconKey: 'name'` 放行同名之間的共用。
@@ -126,7 +126,8 @@ npm run compare -- <beforeURL> <afterURL>  # computed-style 逐元素比對，�
 | 可升級節點 | 86 ＝ 50 級符文 43 ＋ `4303` ＋ `1601`／`2603`（20 級、超越核心特例表）＋ 玩家被動／支援 40 | 其餘 157 個 `maxLevel` 是 1 |
 | 升級 tier ↔ 節點 | 6 個 tier 對 40 個節點，**雙向零殘餘** | `data/passive-upgrade-cost.json`，規則 22 |
 | 骰子數值 ↔ 節點 | 43 顆骰子雙向零殘餘；帶四個檔位的項目 **133 個**＝官方強化分頁 97 列＋太陽骰子 2 項－審判骰子攻擊速度（1.1.2 改「—」）＋齒輪二階骰子 5 項＋1.1.2 補齊的 30 項 | `data/dice-stats.json`，規則 23 ＋ `tests/data/dice-stats.test.ts` |
-| 戰術 | **60 條**（官方 74 條 − 未啟用 16 條 ＋ 1.1.2 新增 2 條）；階段 前期 23／中期 24／後期 6／終盤 4／選項 3；`mode === '對戰'` 的 **9 條** ⟺ 沒有 `coop`（1.1.0 把 6／21／22／24 開放合作；1.1.2 新增的 127／128 是對戰專用） | `data/tactics.json`，規則 24 |
+| 戰術 | **58 條父戰術**＋`69` 底下 3 個子選項（巢狀在 `options`，不算獨立一條）；階段 前期 24／中期 24／後期 6／終盤 4；可用模式 對戰 57／合作一般 43／合作困難 43（`availability`，`1` 豐盛開局只開合作困難） | `data/tactics.json`，規則 24 |
+| 獎勵 | 6 個分類（討伐一般 31／討伐困難 50／競技場通行證 19／7日旅程 5／狩獵活動 14 階、成就 39 組）＋重複性獎勵 | `data/rewards.json`，`tests/data/rewards.test.ts`（**沒有 validate 規則**） |
 | Boss | **21 條**（一般 10 ＋ 困難 11，`difficulty` 欄），圖示雙向零殘餘 | `data/boss.json`，規則 25 |
 | 裂縫效果 | **55 條**（一般 13 ／稀有 23 ／傳說 19）；階級 ⟺ 權重（30／20／10）；圖示 **35 張對 55 筆**（同名三檔共用） | `data/rift-shop.json`，規則 27 |
 | 活動 | 目前 **1 場**（中秋賞月活動，1.1.2 客戶端）；內容是通用表格，列數從資料算 | `data/events.json`，規則 29 |
@@ -321,14 +322,17 @@ npm run compare -- <beforeURL> <afterURL>  # computed-style 逐元素比對，�
      線性項要求 `lv15dice7 = dice7 + lv15 − base`、攻擊間隔（`diceGrowth` 寫「基礎值 ÷ 骰點」）要求
      `dice7 ≈ base÷7`、Δ 在 3 位小數內。validate 與 `board.astro` 共用同一支，不要複製第二份。
      `待實測` 不觸發這條（卡片上 (1,1) 以外印「待實測」）。
-- **`data/tactics.json`（60 條）與 `data/boss.json`（21 條）**＝`/tactic` 與 `/boss` 兩頁的全部
-  內容，由**規則 24／25** 守。來源是官方資料表 v1.0.3-v2 的 `戰術`（sheet8）與 `Boss`（sheet9）
-  兩個分頁，圖來自素材包的 `戰術/`／`Boss/`（檔名與分頁的「圖示檔名」欄一對一，Boss 10/10、
-  啟用戰術 58/58 全中）。三件匯入時做過的裁決，重新產生這兩份檔案時要照做：
-  1. **只收「已啟用」的 58 條**（Yuki 2026-08-26）。官方 74 條裡有 16 條標「未啟用」——資料表有、
-     遊戲沒開。因此「`mode === '對戰'` ⟺ 沒有 `coop`」在這份檔案裡才是真的不變量（規則 24(j)），
-     把未啟用那批加回來會同時打破它（那 16 條的合作效果全是空的）。順帶：`59 情侶` 與
-     `70 死神格子` 這兩條**沒有圖示檔名也沒有圖**，剛好都在未啟用名單裡。
+- **`data/tactics.json`（58 條父戰術）與 `data/boss.json`（21 條）**＝`/tactic` 與 `/boss` 兩頁的全部
+  內容，由**規則 24／25** 守。戰術 2026-09-27（PR #83）起以 **1.1.2 客戶端的三個候選池**為準，
+  Boss 的來源見下面第 4 條。重新產生這兩份檔案時要照做的裁決：
+  1. **形狀（PR #83）**：每條戰術帶 `availability: { versus, coopNormal, coopHard }` 三個布林，
+     **是否可用只看它，不從「有沒有 `coop` 文本」推導**——合作一般與合作困難共用同一段 `coop` 文本、
+     候選池卻不同（`1` 豐盛開局只在合作困難）。`versus`／`coop` 是已格式化的全文，某模式可用就必須有
+     對應文本（規則 24(j)）；兩段相同也照樣各存一份。三模式都沒開的 15 個編號（2／3／4／5／8／13／15／
+     58／59／60／61／63／65／66／70）**整筆不落地**，規則 24(j) 指名擋。
+     `69` 選擇由我決定的三個子選項（`GainSP1000`／`StartWithBomb2`／`RandomDiceGain`）**巢狀在父戰術的
+     `options` 裡**，只有 `id`／`name`／`text`／`gameId`／`icon`，階段與模式都繼承父戰術；舊的「選項」階段
+     已拿掉。`add-icon --tactic` 與 `build:data` 都會掃 `options` 的圖。
   2. **`62 炸彈狂` 照上游用 `UpgradeSPMinusPer.png`**——那是 `2 研究加速` 的圖，上游把「圖示檔名」
      欄寫錯了（它自己的內部ID 是 `BombDiceSpawnOnMerge`），而素材裡沒有炸彈狂專屬圖。
      資料檔標 `dataIssue: 'upstream-icon'` 讓它可被查詢，畫面上不標。⚠️ 這個檔名在官方表裡是
@@ -345,14 +349,14 @@ npm run compare -- <beforeURL> <afterURL>  # computed-style 逐元素比對，�
      雷昂三張不同——畫面上看起來「重複」是照實反映客戶端。目前沒撞規則 25(g)，只因為一般那 10 張
      是更早一版素材包的重新編碼（同尺寸、不同位元組）；哪天把一般版的圖也換成解包版，那 8 對就會
      撞號，屆時要決定的是「兩筆共用同一張圖是否允許」，不是隨便換掉其中一張。
-  5. 戰術 1.1.0 起 `6`／`21`／`22`／`24` 開放合作模式（`mode` 改「對戰／合作」並補 `coop`），
-     `mode === '對戰'` 剩 7 條。
+  5. **`9` 與 `40` 共用同一張圖**（官方同一個 SpawnAltar sprite）：規則 24(g) 只放行這一組
+     （`sharedIconIds`），並反向要求兩筆的 `icon` 必須相同；其他跨編號共圖照樣擋。
   6. **1.1.2（2026-09-18）新增階段「終盤」**（客戶端 `TacticPhase` 的 `Final`；中文名是 Yuki 裁決的本站命名，
      客戶端 localization 裡沒有任何階段名稱）。⚠️ 上游有兩列寫成 `'Final  '`（**帶兩個尾隨空白**），
      對帳時一定要先 trim，否則會被當成第六種階段。`23` 蛇怪與 `27` 迅速從「後期」改到「終盤」；新增
      `127` 腎上腺素、`128` 痛苦哀嚎（`Use=True`、`Coop=False`＝對戰專用，編號＝上游 `Index`，圖是同名 sprite）。
-     階段清單有四份要一起改：`src/lib/types.ts` 的 `TacticStage`、`tactic.astro` 的 `STAGES`（＝篩選鈕順序）、
-     規則 24(e) 的 `STAGES`、`tests/e2e/battle.spec.ts` 的 T6／T6b。
+     階段清單有三份要一起改：`src/lib/types.ts` 的 `TacticStage`、`src/lib/tactics.ts` 的 `TACTIC_STAGES`
+     （＝篩選鈕順序）、規則 24(e) 的 `stages`；E2E 是 `tests/e2e/battle.spec.ts` 的 T6。
   ⚠️ 兩份都**不進 tree.json**（同 `dice-stats.json` 的理由），所以規則 24／25 是它們唯一的防線。
 
 - **`data/rift-shop.json`（55 條）＝裂縫商店**（`/rift-shop`），由**規則 27** 守。來源是 1.1.0 客戶端
@@ -395,6 +399,20 @@ npm run compare -- <beforeURL> <afterURL>  # computed-style 逐元素比對，�
   價格圖是 `item_event1_ticket_2`（綠色玉佩）——**sprite 名稱與貨幣譯名對得起來不等於它就是那個
   貨幣的圖**，拿不到 UI 綁定時要標成推測並找實機對。
   ⚠️ 同樣**不進 tree.json**（靜態頁建置期直接讀 `data/`），規則 29 是它唯一的防線。
+
+- **`data/rewards.json`＝獎勵系統**（`/rewards`，PR #83，2026-09-27）。形狀是 `modes`（六個有里程碑的
+  分類）＋ `repeatable`（重複性獎勵，唯讀查閱、刻意不是 `RewardMode`）。`modes` 有兩種：`threshold`
+  （討伐一般／困難、競技場通行證、7日旅程、狩獵活動；`tiers[]` 的 `requirement` 是累計擊殺或積分，
+  旅程與狩獵另帶只讀的 `taskDays` 每日任務點數）與 `achievement`（`groups[].stages[]`）。
+  每一筆獎勵是 `type` 判別聯集：`currency`（只存 `kind`，名稱與圖一律走 `currencyIconDetails()`）／
+  `dice`（帶 `nodeId`，圖走 `dice3-icons`）／`emote`／`cosmetic`（`subtype` 決定總計裡的排序）／`collectible`。
+  收藏品的圖只在 `assetStatus: 'ready'` 且有 `icon` 時才用，否則畫面印文字 fallback——**沒有確認過的圖
+  不要拿截圖或單層 sprite 充數**。
+  由維護者本機的主表經 `tools/import-rewards.py`（openpyxl，唯讀開啟、不寫回）匯入，主表不進版控。
+  ⚠️ **沒有 validate 規則**，唯一的防線是 `tests/data/rewards.test.ts`（逐格釘住重複性獎勵、檢查每個
+  grant 解析得到名稱與圖）。
+  ⚠️ `public/rewards/` 的圖是固定檔名直接引用、**沒有轉檔也沒有內容雜湊**（跟 `public/events/` 同一類），
+  25 張 PNG 共 1.6 MB，畫面上只是小圖示——接進 webp 管線是待辦，加圖時別再放更大的原圖。
 
 - **`data/changelog.json`＝站台更新日誌**（首頁顯示最新 3 筆），由**規則 20** 守。它是全站唯一
   沒有自動來源的內容，而「忘了寫」在畫面上跟「這次沒更新」長得一模一樣。規則 20 檢查的是
@@ -480,7 +498,7 @@ npm run compare -- <beforeURL> <afterURL>  # computed-style 逐元素比對，�
 | 21 | `/board` 純骰子圖（`data/board-icons.json` ＋ `data/board-icons/`）：(a) 骰子漏一筆對應 (b)(c)(d) 目錄本身 (e) 值必須是 12 碼小寫 hex（擋路徑穿越與 `[object Object].png`） (f) 指向的檔不存在 (g) **兩筆指到同一張圖** (h) 對應表自己留著一筆不是（或已不是）骰子的 id。⚠️ **實作在 `checkDiceIconMap()`，跟規則 30 共用**，要加檢查就加在那裡 |
 | 30 | `/dice` 圖鑑的 3D 立體骰子圖（`data/dice3-icons.json` ＋ `data/dice3-icons/`）：**跟規則 21 同一支 `checkDiceIconMap()`，子規則字母一一對應**，差別只有對應表、目錄與訊息裡的稱呼。所以 `tests/tools/validate.test.ts` 的規則 30 那組**刻意不重抄規則 21 那十幾條**，只驗兩件規則 21 證明不了的事：(1) 第二條路徑真的接上了（少接就每一條子規則都是 no-op，而畫面上看不出來）／(2) 它讀的是自己那份對應表與目錄、而且跟 `board-icons` 沒有任何一顆指向同一張圖 |
 | 22 | 玩家被動升級費用表：6 個 tier 的形狀與區間連續性、`(maxLevel, unlockGold)` 不得撞號、**每個可升級的共通節點都對得到 tier、每個 tier 也都對得到節點**、`special` 的鍵是節點 id 且不與 tier 重疊、`special` 的 levels 可帶選填 `mythic`（`{kind: 正整數}`，kind 必須登記在 `MYTHIC_CORES`）、**未知欄位一律擋**（1.1.0 的舊寫法 `"solar": N` 會被指名：留著它不會有任何錯誤，那一列的超越核心只是安靜消失） |
-| 24 | `data/tactics.json`：(a) 最外層是非空陣列／(b)(c)(d) 圖示目錄本身／(e) 每筆欄位型別、未知欄位、`stage`／`mode` 的合法值、`dataIssue`／(f) 指向的圖不存在／(g) 兩筆指到同一張圖／(h) 編號格式與撞號，**以及 `gameId` 撞號**（2026-09-06 補；`id` 撞號畫面上看得出來，`gameId` 撞號完全正常——它是對上游資料表的 join key，而 `requiredText` 只驗它是非空字串。節點那邊由規則 16 守著同一件事，這三份檔案在那之前一個都沒有）／(i) **子選項語意**（id 含 `-` ⟺ `stage === '選項'`，且母條目要在）／(j) **`mode === '對戰'` ⟺ 沒有 `coop`**（兩個方向都要問：漏抓一邊會讓合作模式冒出官方沒有的文字，漏抓另一邊會讓那條戰術在合作模式下整條消失）／(k) `#標記` 要在白名單。⚠️ `mode` 是 `未啟用` 時**指名道姓地擋**——那是官方資料表真有的第三個值，泛用訊息會讓人以為是打錯字 |
+| 24 | `data/tactics.json`：(a) 最外層是非空陣列／(b)(c)(d) 圖示目錄本身（**子選項的圖一起掃**）／(e) 每筆欄位型別、未知欄位、`stage` 是四個階段之一、`dataIssue`／(f) 指向的圖不存在／(g) 兩筆指到同一張圖——**只放行 `9`＋`40`**（`sharedIconIds`），而且那兩筆反過來必須同圖／(h) 編號格式與撞號，**以及 `gameId` 撞號**（`id` 撞號畫面上看得出來，`gameId` 撞號完全正常——它是對上游資料表的 join key）／(i) **子選項**：`options` 是非空陣列、子選項的 id 是「母編號-序號」、只准 `id`／`name`／`text`／`gameId`／`icon`、`text` 非空；id 含 `-` 卻放在頂層也擋／(j) **`availability` 三個布林齊全、至少一個 true**，某模式可用就要有對應文本（對戰→`versus`、任一合作→`coop`），15 個未啟用編號指名擋／(k) `#標記` 要在白名單 |
 | 26 | `data/prereq-ranks.json`（前置節點的等級條件，客戶端 `NeedNode`／`NeedNodeRank`）：最外層只有 note／source／ranks；外層鍵與內層鍵都是節點 id，內層必須是外層那顆的**祖先**、不得是自己；rank 是整數且 2 ≤ rank ≤ 該前置的 `maxLevel`（rank 1 就是解鎖，邊已表達）。⚠️ `TreeNode.prereqRanks` **只在有值的節點上放欄位**——tree.json 餘裕不到 1 KB，241 顆各多一個空物件會爆 |
 | 25 | `data/boss.json`：通用檢查與規則 24／27 同一支 `checkIconedRecordList()`（含 (h) 的 `gameId` 撞號）。⚠️ **自己只寫一條**：`difficulty` 必須是「一般」或「困難」（同規則 24(e) 那一類的資料自身語意）。除此之外仍然一條都不要加——複製通用檢查的第二份出去就一定漂移 |
 | 27 | `data/rift-shop.json`（裂縫商店）：通用檢查與規則 24／25 同一支 `checkIconedRecordList()`，但**傳 `sharedIconKey: 'name'`**——同名的三個檔位共用一張圖是設計（客戶端只給 `*Low` 畫圖）。⚠️ **(g) 因此是雙向的**：跨不同名字共用是錯，**同名卻指向不同的圖也是錯**（2026-09-06 code review 抓到後補的反方向；少了它 `sharedIconKey` 就是個單向放行條款，`add-icon --rift-shop 73` 只換一筆、同名兄弟留在舊雜湊，實測零錯誤零警告而畫面上一個效果出現兩種圖）。自己只寫三條語意檢查：(e) `grade` 必須是三個合法值之一、`cost`／`weight` 必須是正整數（`requiredText` 只認非空字串，驗不到數字欄位）／(i) **同一階級的 `weight` 必須一致**（刻意不寫死 30／20／10：上游調價不該整片紅，真正會壞畫面的是階級與權重的對應崩掉）／(j) **同名的多筆階級必須互異**（那是 (g) 抓不到的：同名共用圖合法，複製一筆只改編號會全程沉默，畫面上是同一組出現兩張同名同圖的卡片） |
@@ -658,11 +676,11 @@ npm run compare -- <beforeURL> <afterURL>  # computed-style 逐元素比對，�
 | `.step` | 「‹ 值 ›」步進 | 圖示是 `ICONS.prev`／`next`，名字在 `aria-label`；內距刻意小（`/board` 320px 的欄寬，B52） |
 | `.panel` | 側欄與浮在內容旁的面（`/board` 明細、`/tree` `#detail`、`/sim` `#sim-panel`） | `--surface-2`＋`--face-float`（不帶硬邊）；浮層（`#dice-picker`、`#dice-card`）不用它；`#sim-panel` 貼邊，只取面不取四邊框與圓角 |
 
-### 十一個 CSS 檔
+### 十二個 CSS 檔
 
 `src/styles/global.css`（2029 行）2026-08-26 拆成九個按作用域劃分的檔案（同日 `/tactic`
 與 `/boss` 上線時加上 `battle.css`，共十個；`/rift-shop` 2026-09-06 沿用同一個檔，
-`/events` 2026-09-21 加上 `events.css`，共十一個），畫面零變化
+`/events` 2026-09-21 加上 `events.css`，`/rewards` 2026-09-27 加上 `rewards.css`，共十二個），畫面零變化
 （`tools/compare-computed.ts` 驗過，見「指令」一節）。新樣式要放哪個檔，先查這張表：
 
 | 檔 | 放什麼 | 誰載 |
@@ -678,6 +696,7 @@ npm run compare -- <beforeURL> <afterURL>  # computed-style 逐元素比對，�
 | `board.css` | `/board` 骰盤編輯器：`.board-*`／`#board-*`、組合列 `#deck-row`／`.deck-*`、選骰面板 `#dice-picker`／`.picker-*` | `/board` |
 | `battle.css` | `/tactic`、`/boss` 與 `/rift-shop` 共用的橫列清單：`.battle-*` | `/tactic`、`/boss`、`/rift-shop` |
 | `events.css` | `/events` 活動：卡片 `.event-*`、**全站第一份 `<table>` 樣式**（其他頁要用表格時從這裡拿） | `/events` |
+| `rewards.css` | `/rewards` 獎勵系統：桌機分類側欄、手機 `<select>`、分類總計、兩欄階段列、成就群組、每日任務 | `/rewards` |
 
 ⚠️ **`#toolbar`／`#filters`／`#branch-nav`／`#branch-chips`（`/tree` 工具列與篩選面板）不在
 `canvas.css` 裡**，它們留在 `src/pages/tree.astro` 自己的 `<style is:global>` 區塊——那個區塊
@@ -711,9 +730,12 @@ npm run compare -- <beforeURL> <afterURL>  # computed-style 逐元素比對，�
   （它比其他四項加起來還寬）。D9 守——實測只有隱藏那段拿掉才會紅，`nowrap` 是防更窄的裝置，
   **不要因為「拿掉也是綠的」就刪**。
 - ⚠️ **窄螢幕塞不下時是「導覽列自己橫向捲動」**（≤720px，Yuki 2026-08-23 指定），不是換行、
-  不是縮字級、也不是拿掉入口。捲的必須是 `#site-nav` 自己——讓整份文件橫捲會踩到 `/board` 的
-  B13。`overflow-x` 一設 `overflow-y` 就會被算成 `auto`，而「遊戲介紹」的下拉是絕對定位掛在 nav
-  底下的，**一定要明確寫 `overflow-y: visible`**，否則它會被整個裁掉。D13 守。
+  不是縮字級、也不是拿掉入口。**捲的是內層 `.nav-links`（PR #83 起），「遊戲介紹」的 `<details>` 是它的
+  兄弟、留在捲動盒外面**——讓整份文件橫捲會踩到 `/board` 的 B13。⚠️ `overflow-x: auto` 會把同一個盒子的
+  `overflow-y: visible` 算成 `auto`，下拉放在捲動盒裡面一定會被裁掉，所以不能靠那一行解決；外層 sticky
+  `#site-nav` 保持 `overflow: visible`，下拉面板相對它絕對定位（`.nav-menu` 在手機是 `static`）。
+  ⚠️ **點外面關閉聽 `pointerdown` 也聽 `click`**：WebKit 觸控非互動區域不一定合成冒泡的 click。
+  D13、D19 與 `tests/e2e/navigation.spec.ts`（`webkit-nav` project 跑 iPhone 13，只有 CI 裝了 WebKit）守。
 - ⚠️ **≤720px 的品牌只留骰點圖示**（`.brand-text` 用 clip-path 視覺隱藏，不能 `display: none`——它是
   連結唯一的無障礙名稱）。導覽列捲軸是藏起來的，**露出半截的最後一項是唯一的「還能往右滑」線索**；
   圖示多出的 20px 曾把「遊戲介紹」整個推出 Pixel 7 的畫面。D21 守（最後一項要露出一截），
@@ -1007,7 +1029,7 @@ PNG，檔名＝內容 sha256 前 12 碼，`addIcon()` 直接重用）＋ `data/b
 
 ### `/tactic` 戰術與 `/boss`
 
-官方資料表 `戰術`（58 條已啟用，1.1.2 客戶端再加 2 條）與 Boss（一般 10 ＋ 困難 11）的內容。`/boss` 分成「一般」「困難」兩組，各一個 h2 ＋
+戰術（58 條，1.1.2 客戶端三個候選池）與 Boss（一般 10 ＋ 困難 11）的內容。`/boss` 分成「一般」「困難」兩組，各一個 h2 ＋
 各自的 `.battle-list`，Boss 名稱因此是 **h3**（`/tactic` 仍是 h2；兩邊共用 `.battle-name` 這個 class，
 所以字級不隨標籤變）。**lede 的兩個數量從資料算**，不寫死。B1／B1b 守。**兩者都不是骰子樹的節點**
 （不花錢解鎖、沒有前置、不進成本計算），資料與圖示各走一條平行路徑，見上面「幾份沒有自動來源
@@ -1022,35 +1044,52 @@ PNG，檔名＝內容 sha256 前 12 碼，`addIcon()` 直接重用）＋ `data/b
   排進等寬網格會讓同一列的卡片高度參差；橫列讓長文字自己往下長，不影響鄰居。
 - ⚠️ **編號與內部ID 一律不顯示在畫面上**（Yuki 2026-08-26）：那兩個是拿本站對官方資料表用的，
   玩家在遊戲裡看不到。**但資料檔要留著**——`id` 是錨點（`#t69-1`）與規則 24 的鍵，`gameId` 是
-  日後對新版資料表唯一可靠的 join key，兩個都不能因為畫面不印就刪掉。子選項的從屬關係改由
-  縮排 ＋ 一個 `aria-hidden` 的 `↳` ＋「選項」階段標籤承擔。E2E 的 **T1b** 量的是
+  日後對新版資料表唯一可靠的 join key，兩個都不能因為畫面不印就刪掉。子選項的從屬關係由
+  「巢狀在父卡裡」承擔（見下）。E2E 的 **T1b** 量的是
   `main` 的 `innerText`（不是原始 HTML——`id="t6"` 這種屬性留著是對的），反例驗過會紅。
-- ⚠️ **模式切換鈕的文字是「目前正在看的模式」，不是「按下去會變成什麼」**（Yuki 2026-08-26
-  指定）。這是 CLAUDE.md 那條「切換鈕文字固定不變」的**例外**——那條的理由是文字互換會讓沾頂
-  的工具列寬度跳動，而這裡兩個字串都是四個中文字（對戰模式／合作模式），寬度不變。
-  ⚠️ **換文字時 `aria-label` 要一起換**：它是無障礙名稱，只換可見文字的話螢幕閱讀器會一直念
-  同一句。可見文字／`aria-label`／`data-mode` 三件事要同時換，少一件就是畫面與讀屏各說各話，
-  而兩邊都不會報錯。T5 三件都驗。
-- **對戰／合作兩段文字都輸出進 HTML，切換只換顯示哪一段**（CSS 的 `[data-mode]`）。用 JS 換
-  `textContent` 的話合作那一段永遠進不了 HTML——而「文字進得了 HTML」正是這兩頁存在的理由，
-  跟 `/dice` 的數值面板做成純 CSS 是同一個判準。
+- **模式是三個原生 radio：合作一般／合作困難／對戰，預設合作一般，永遠單選**（PR #83 取代舊的
+  「對戰模式／合作模式」切換鈕）。可用與否只看 `availability`（`src/lib/tactics.ts` 的 `tacticMatches()`，
+  頁面與腳本共用），選中的模式寫進 `#tactic-page` 的 `data-mode`；卡片上只印階段、不印模式。
+  沒有 JS 時照伺服器輸出的預設（合作一般的池與文本）顯示。T4、T5 守。
+- **兩段文字都輸出進 HTML，切換只換顯示哪一段**（CSS 看 `data-mode`：對戰顯示 `[data-mode="versus"]`，
+  兩種合作都顯示 `[data-mode="coop"]`）。用 JS 換 `textContent` 的話另一段永遠進不了 HTML——而
+  「文字進得了 HTML」正是這兩頁存在的理由，跟 `/dice` 的數值面板做成純 CSS 是同一個判準。
   ⚠️ **驗這一塊不要用 `toHaveText`**：`textContent` 會把 `display: none` 的另一段一起讀進來
   （`dice.css` 的數值面板為此吃過虧）。E2E 的 T5 量的是**可見性**與**可見條數**。
+- **四個階段是獨立 checkbox，預設全選**；「全部」按鈕只在四個都勾時亮，按下去是「全選時清空、否則全開」
+  （`toggleAllTacticStages()`），**不是逐項反轉**。手動勾滿也會亮。T6 守。
 - ⚠️ **`.battle-item[hidden]` 那條 `display: none` 是必要的不是保險**：`.battle-item` 本身是
   `display: grid`，會壓過 `[hidden]` 的預設值——少了它，篩選時「隱藏」的那幾條照樣在畫面上，
   而計數已經扣掉它們（`.dice-card[hidden]` 為同一個理由存在）。
-- ⚠️ **子選項的顯示要跟著母條目**：69「選擇由我決定」是前期，它底下三個子選項的階段是
-  「選項」——只勾「選項」的話，畫面上會出現三條縮排、掛著 `↳` 卻找不到母條目的孤兒
-  （編號拿掉之後更看不出它們屬於誰）。`apply()` 因此是**兩輪**：先各自判斷，再把
-  「母條目不在畫面上」的子選項收掉。T6b 守，反例驗過會紅。
-- `#tactic-empty`（篩到零筆的提示）**只有一條路徑走得到**：把三個非「選項」階段全部取消勾選
-  ——那時三個子選項也會被上面那條規則收掉，整頁真的是 0 筆。T6b 順帶驗這一段。
+- **`69` 的三個子選項收在父卡裡的原生 `<details>`（「查看 3 個選項」）**，可見性自然跟著父卡，
+  不另算筆數、也沒有自己的階段——舊版把它們攤在頂層、掛「選項」階段時，只勾「選項」會出現找不到
+  母條目的孤兒，巢狀之後這一族問題不存在了。計數與篩選只看 `#tactic-list` 的直屬子項。T7 守。
+- `#tactic-empty`（篩到零筆的提示）：「全部」在全選狀態下按一次就是 0 筆。
 - **兩頁的圖示來源長寬比不統一**（戰術 176×206 與 164×166 都有、Boss 約 128×128），所以
   `.battle-icon` 一律 `object-fit: contain`——跟 `/board` 那四個顯示點是同一條不變量，
   改成 `cover` 會 CI 全綠而畫面上圖被裁角。B5 守。
 - ⚠️ **驗「圖載得到」不要用 `naturalWidth`**：這些 `<img>` 是 `loading="lazy"`，畫面外的幾十張
   本來就還沒開始載，量到的是捲軸位置不是圖存不存在（第一版就這樣紅在「29 張載不到」）。
   B5 改成逐個網址發請求。
+
+### `/rewards` 獎勵系統
+
+**純瀏覽**（Yuki 2026-09-27 裁決）：不追蹤個人進度、沒有勾選或輸入框、不寫 localStorage。PR #83 原本的
+進度追蹤（`rd2-rewards-v2` 存檔、勾選連動、清除全部）在合併前整個拿掉，**不要補回來**。
+
+- **每個分類頂端印「全部領完可獲得」**：`src/lib/rewards.ts` 的 `modeRewardTotals()` 在建置時把該分類
+  每一階（成就是每一組每一階）加總，拆成固定貨幣與收藏型兩組。貨幣照 `gold／core／skinCoin／treeSeed／
+  coopTicket／arenaTicket` 排，收藏品照 type／subtype 排、類內保留首次出現的次序——**看類別不看數量**。
+  收藏品多件才印 `×N`。重複性獎勵沒有「領完」，不印總計。
+- **門檻由小到大**（`sortedRewardTiers()`，遊戲裡的領取順序；Yuki 裁決，原版是由大到小）。
+- **分類切換**：桌機左側按鈕、≤720px 原生 `<select>`，兩者切同一個面板（不是錨點捲動）。
+  ⚠️ **HTML 裡的面板全部不帶 `hidden`**：沒有 JS 時七個分類一路攤開、切換選單不出現（CSS 看
+  `.rewards-page[data-js]`，腳本接手才掛），跟 `/guide/keywords` 同一個做法。RW9 守。
+- ⚠️ **`RewardGrant.astro` 整段 `aria-hidden`**，唸給讀屏的數量靠外層：階段列由 `<li aria-label>` 給，
+  總計由 `<dd>` 裡另一段 `.sr-only` 給（/code-review 2026-09-27 抓到總計讀不到數字）。改版面時兩條路都要留。
+- 單件收藏品不印「1」（`rewardAmountVisible()`），貨幣一律印數量。
+- 7日旅程、狩獵活動與重複性獎勵的每日任務是原生 `<details>`，預設收起。
+- ⚠️ 成就群組的清單比表頭多一圈 `--space-2` 內距，表頭要用同寬的 `margin-inline` 對齊欄位（RW8 守）。
 
 ### `/rift-shop` 裂縫商店
 
@@ -1381,6 +1420,10 @@ colors 重新著色，那張樹本來就看得見，等於用自己的無障礙�
   而且刻意只擴圖示這一層：`Cost` 是骰子樹的花費（核心／金幣／超越核心），全站的成本加總、`/sim` 側欄、
   規則 4 與差異摘要都建立在它之上，而討伐硬幣是**局內**貨幣（客戶端 `GoodsTable` 裡根本沒有它，跟 SP 一樣
   一局結束就沒了）——加進 `Cost` 等於讓每一處運算都多背一個永遠是 0 的欄位。
+  `/events` 與 `/rewards` 的資源（`treeSeed`／`coopTicket`／`arenaTicket`／`skinCoin`／`luckyDiceTicket`）同理只擴
+  `CurrencyIconKind`；任何 kind 的名稱與圖一律走 `currencyIconDetails(kind)`（超越核心也在裡面），頁面不另抄對照表。
+  固定檔名的貨幣圖用 `npm run add-currency-icon -- <kind> <來源 PNG>` 產生（64×64 透明、等比置中），
+  **不要送進 `add-icon` 的雜湊管線**——`/currency/<kind>.png` 是寫死檔名引用的。
 - 成本字串的分隔符是**全形斜線 `／`**（U+FF0F），全檔 0 個半形 `/`。
 - **超越核心（2026-09-18 起泛化，Yuki 裁決）**：每顆神話骰子各帶一種專屬貨幣（1.1.0 太陽核心、1.1.2
   齒輪二階核心……），全部登記在 **`src/lib/currency.ts` 的 `MYTHIC_CORES`**（`kind`／`label`／`goodsType`）。
