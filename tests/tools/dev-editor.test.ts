@@ -13,6 +13,8 @@ import {
   searchJson,
   searchSource,
 } from '../../tools/dev-editor/core';
+import { allowed } from '../../tools/dev-editor/integration';
+import type { IncomingMessage } from 'node:http';
 
 const SAMPLE = `{
   "1001": { "name": "火骰子", "cost": 5, "tags": ["a", "b\\"c"], "ok": true, "x": null },
@@ -128,5 +130,38 @@ describe('rankJsonHits', () => {
   it('完全相同的排最前，其餘短的先', () => {
     const hits = [{ value: '中秋賞月活動上線了，快來玩' }, { value: '賞月' }, { value: '中秋賞月活動' }];
     expect(rankJsonHits(hits, '中秋賞月活動').map(h => h.value)).toEqual(['中秋賞月活動', '賞月', '中秋賞月活動上線了，快來玩']);
+  });
+});
+
+describe('rankSourceHits 在截斷之前排序', () => {
+  it('前面的檔先有 60 筆命中，點到的檔那一筆仍排第一', () => {
+    const files = [
+      { file: 'src/a.ts', text: '骰子\n'.repeat(60) },
+      { file: 'src/pages/z.astro', text: '<p>骰子</p>' },
+    ];
+    const ranked = rankSourceHits(searchSource(files, '骰子'), 'src/pages/z.astro', 1);
+    expect(ranked.length).toBe(61);
+    expect(ranked[0]!.file).toBe('src/pages/z.astro');
+  });
+});
+
+describe('allowed（寫檔 API 的門）', () => {
+  const req = (headers: Record<string, string>, remoteAddress = '127.0.0.1') =>
+    ({ method: 'POST', socket: { remoteAddress }, headers: { 'x-dev-editor': '1', ...headers } }) as unknown as IncomingMessage;
+
+  it('本機名稱的 Host 放行', () => {
+    expect(allowed(req({ host: '127.0.0.1:4321', origin: 'http://127.0.0.1:4321' }))).toBeNull();
+    expect(allowed(req({ host: 'localhost:4321' }))).toBeNull();
+    expect(allowed(req({ host: '[::1]:4321' }, '::1'))).toBeNull();
+  });
+
+  it('DNS rebinding：連線來自 loopback、Origin＝Host，但主機名不是本機 → 擋', () => {
+    expect(allowed(req({ host: 'evil.example:4321', origin: 'http://evil.example:4321' }))).toMatch(/Host/);
+  });
+
+  it('非本機來源、缺標頭、Origin 不符都擋', () => {
+    expect(allowed(req({ host: '127.0.0.1:4321' }, '192.168.1.5'))).not.toBeNull();
+    expect(allowed({ ...req({ host: '127.0.0.1:4321' }), headers: { host: '127.0.0.1:4321' } } as unknown as IncomingMessage)).toMatch(/標頭/);
+    expect(allowed(req({ host: '127.0.0.1:4321', origin: 'http://127.0.0.1:9999' }))).toMatch(/Origin/);
   });
 });

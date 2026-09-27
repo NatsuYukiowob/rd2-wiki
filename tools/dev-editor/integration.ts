@@ -71,15 +71,28 @@ function send(res: ServerResponse, status: number, body: unknown) {
 
 const LOOPBACK = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1']);
 
+const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
+const hostnameOf = (hostPort: string) => {
+  try { return new URL(`http://${hostPort}`).hostname; } catch { return ''; }
+};
+
 /**
- * 寫檔 API 的三道門：只收本機來源；必須帶自訂標頭（跨站網頁要帶就得先過 CORS preflight，
- * 而這裡從不回 CORS 標頭，所以別的網站打不進來）；有 Origin 時必須跟 Host 同一個。
+ * 寫檔 API 的四道門：只收本機來源；`Host` 必須是 loopback 名稱（擋 DNS rebinding——被 rebind 的
+ * 攻擊頁跟這裡同源、Origin 也等於 Host，只有主機名露餡；而這個 middleware 掛在 Vite 自己的
+ * host check 之前，救不到）；必須帶自訂標頭（跨站要帶就得先過 CORS preflight，這裡從不回
+ * CORS 標頭）；有 Origin 時必須跟 Host 同一個。
  */
-function allowed(req: IncomingMessage): string | null {
+export function allowed(req: IncomingMessage): string | null {
   if (!LOOPBACK.has(req.socket.remoteAddress ?? '')) return '只接受本機（127.0.0.1）的編輯請求';
+  const host = req.headers.host ?? '';
+  if (!LOOPBACK_HOSTS.has(hostnameOf(host))) return `Host 必須是 localhost／127.0.0.1（收到 ${host}）`;
   if (req.method !== 'POST' || req.headers['x-dev-editor'] !== '1') return '缺少編輯器標頭';
   const origin = req.headers.origin;
-  if (origin && new URL(origin).host !== req.headers.host) return 'Origin 與 Host 不符';
+  if (origin) {
+    let originHost = '';
+    try { originHost = new URL(origin).host; } catch { /* 格式不對就當不符 */ }
+    if (originHost !== host) return 'Origin 與 Host 不符';
+  }
   return null;
 }
 
@@ -104,6 +117,7 @@ function handler(root: string) {
         for (const query of queries) {
           const json = rankJsonHits(jsonFiles.flatMap(f =>
             searchJson(f.hits, query).map(h => ({ file: f.file, path: h.path, label: labelPath(f.root, h.path), value: h.value }))), query);
+          // 先全部收集、排序再截斷：截在前面的話，點到的那個檔可能被目錄順序較前的檔擠出名單。
           const source = rankSourceHits(searchSource(srcFiles, query), clicked, line);
           if (json.length || source.length) {
             // 點到的元素所在的 .astro 裡就有這段字 → 幾乎一定是寫死在那裡，原始碼那組排前面。

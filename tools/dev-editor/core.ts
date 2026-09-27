@@ -176,7 +176,7 @@ export interface SourceHit {
   value: string;
 }
 
-export function searchSource(files: { file: string; text: string }[], q: string, limit = 50): SourceHit[] {
+export function searchSource(files: { file: string; text: string }[], q: string): SourceHit[] {
   const re = queryRegex(q);
   const hits: SourceHit[] = [];
   for (const { file, text } of files) {
@@ -186,7 +186,6 @@ export function searchSource(files: { file: string; text: string }[], q: string,
       const start = m.index;
       const end = start + m[0].length;
       hits.push({ file, start, end, line: text.slice(0, start).split('\n').length, value: text.slice(start, end) });
-      if (hits.length >= limit) return hits;
     }
   }
   return hits;
