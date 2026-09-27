@@ -7,8 +7,8 @@
 // ⚠️ **合法的 `icon` 值只有這裡列舉的這一份**，規則 29 與版面共用它。分成兩份清單的話，
 // 資料檔寫一個沒登記的 kind 會是「驗證全綠、畫面上一張破圖」。
 
-import { CURRENCY_ICON_KINDS, currencyIcon, mythicIcon, type CurrencyIconKind } from './cost-html.js';
-import { mythicCoreByKind, MYTHIC_CORES } from './currency.js';
+import { CURRENCY_ICON_KINDS, currencyIconDetails } from './cost-html.js';
+import { MYTHIC_CORES } from './currency.js';
 import { escapeHtml } from './markup.js';
 import type { EventCell } from './types.js';
 
@@ -23,12 +23,10 @@ export const EVENT_ICON_KINDS: readonly string[] = [
  * 丟出來就是建置紅，比在頁面上放一張 404 的圖好。
  */
 export function eventIcon(kind: string): string {
-  const mythic = mythicCoreByKind(kind);
-  if (mythic) return mythicIcon(mythic);
-  if ((CURRENCY_ICON_KINDS as readonly string[]).includes(kind)) {
-    return currencyIcon(kind as CurrencyIconKind);
+  if (!EVENT_ICON_KINDS.includes(kind)) {
+    throw new Error(`未登記的貨幣圖種類 ${JSON.stringify(kind)}（合法值：${EVENT_ICON_KINDS.join('／')}）`);
   }
-  throw new Error(`未登記的貨幣圖種類 ${JSON.stringify(kind)}（合法值：${EVENT_ICON_KINDS.join('／')}）`);
+  return currencyIconDetails(kind).html;
 }
 
 /**

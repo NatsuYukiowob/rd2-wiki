@@ -114,14 +114,13 @@ export function addRecordIcon(
   opts: { iconsDir: string; dataPath: string },
 ): AddRecordIconResult {
   if (!existsSync(opts.dataPath)) throw new Error(`找不到資料檔: ${opts.dataPath}`);
-  const records: { id?: unknown; icon?: unknown }[] = JSON.parse(readFileSync(opts.dataPath, 'utf8'));
+  const records: { id?: unknown; icon?: unknown; options?: { id?: unknown; icon?: unknown }[] }[] = JSON.parse(readFileSync(opts.dataPath, 'utf8'));
   if (!Array.isArray(records)) throw new Error(`${opts.dataPath} 的最外層不是陣列`);
-  const index = records.findIndex(r => r.id === id);
+  const record = records.flatMap(r => [r, ...(r.options ?? [])]).find(r => r.id === id);
   // 先找到那一筆再動檔案系統：找不到就失敗時，目錄裡不該留下一張沒人引用的孤兒圖。
-  if (index < 0) throw new Error(`${opts.dataPath} 裡沒有 id 為 ${JSON.stringify(id)} 的紀錄；請先把那一筆的其餘欄位補進資料檔`);
+  if (!record) throw new Error(`${opts.dataPath} 裡沒有 id 為 ${JSON.stringify(id)} 的紀錄；請先把那一筆的其餘欄位補進資料檔`);
 
   const result = addIcon(srcPath, opts.iconsDir);
-  const record = records[index]!;
   const previousHash = typeof record.icon === 'string' ? record.icon : null;
   record.icon = result.hash;
   // 縮排與結尾換行照正本原樣（2 空格 + 換行）。⚠️ **不重新排序**：這兩份檔案的陣列順序

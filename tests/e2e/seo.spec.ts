@@ -26,11 +26,12 @@ const PAGES = [
   { request: '/boss', canonical: `${SITE}/boss/`, name: 'Boss' },
   { request: '/rift-shop', canonical: `${SITE}/rift-shop/`, name: '裂縫商店' },
   { request: '/events', canonical: `${SITE}/events/`, name: '活動' },
+  { request: '/rewards', canonical: `${SITE}/rewards/`, name: '獎勵系統' },
   // ⚠️ 每一場活動各是一頁（`/events/[id]`），所以新增或移除活動時這份清單要跟著改
   // ——`<loc>` 是完全相等比對。
   { request: '/events/chuseok-2026', canonical: `${SITE}/events/chuseok-2026/`, name: '中秋賞月活動' },
   { request: '/sim', canonical: `${SITE}/sim/`, name: '骰子樹-模擬器(beta)' },
-  { request: '/guide', canonical: `${SITE}/guide/`, name: '遊戲介紹' },
+  { request: '/guide', canonical: `${SITE}/guide/`, name: '總覽' },
   { request: '/guide/mechanics', canonical: `${SITE}/guide/mechanics/`, name: '骰子機制與觸發' },
   { request: '/guide/summons', canonical: `${SITE}/guide/summons/`, name: '召喚物與投射物' },
   { request: '/guide/status', canonical: `${SITE}/guide/status/`, name: '狀態效果與增減益' },

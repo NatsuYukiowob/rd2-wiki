@@ -1,0 +1,13 @@
+---
+import type { RewardTask } from '../lib/types';
+interface Props { tasks: RewardTask[] }
+const { tasks } = Astro.props;
+---
+<ul class="reward-task-list">
+  {tasks.map(task => (
+    <li data-reward-task>
+      <span>{task.name} <small>×{task.requirement.toLocaleString('en-US')}</small></span>
+      <strong>{task.points.toLocaleString('en-US')} 點</strong>
+    </li>
+  ))}
+</ul>

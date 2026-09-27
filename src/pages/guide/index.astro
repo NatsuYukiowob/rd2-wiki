@@ -7,6 +7,9 @@ import keywordsRaw from '../../../data/keywords.json';
 import { buildGlossary, GROUPS, GUIDE_PAGES } from '../../lib/glossary-groups';
 import tacticsRaw from '../../../data/tactics.json';
 import bossRaw from '../../../data/boss.json';
+import riftShopRaw from '../../../data/rift-shop.json';
+import eventsRaw from '../../../data/events.json';
+import rewardsRaw from '../../../data/rewards.json';
 import type { Boss, GlossaryRecord, Tactic, TreeData } from '../../lib/types';
 import { ICONS } from '../../lib/icons';
 
@@ -22,6 +25,13 @@ const termCount = new Set(index.byTerm.values()).size;
 // 而首頁 banner 就是為此說過謊一次。
 const tacticCount = (tacticsRaw as Tactic[]).length;
 const bossCount = (bossRaw as Boss[]).length;
+const contentPages = [
+  { href: '/tactic', title: '戰術', intro: '對戰與合作模式中的戰術效果，可依階段篩選，也能切換看合作模式的版本。', count: tacticCount, unit: '條' },
+  { href: '/boss', title: 'Boss', intro: '對戰與合作模式中會出現的 Boss，以及各自的技能效果。', count: bossCount, unit: '種' },
+  { href: '/rift-shop', title: '裂縫商店', intro: '合作困難模式的局內商店。擊殺首領與 SP 魔像取得討伐硬幣，兌換裂縫效果。', count: riftShopRaw.length, unit: '種' },
+  { href: '/events', title: '活動', intro: '遊戲裡辦過的期間限定活動，內容取自對應版本的客戶端資料表。', count: eventsRaw.length, unit: '場' },
+  { href: '/rewards', title: '獎勵系統', intro: '門檻獎勵以最高紀錄追蹤，成就依各組完成階段獨立追蹤；可重複取得的獎勵則提供資料查閱。', count: rewardsRaw.modes.length + (rewardsRaw.repeatable ? 1 : 0), unit: '類' },
+];
 
 const pages = GUIDE_PAGES.map(page => ({
   ...page,
@@ -30,9 +40,11 @@ const pages = GUIDE_PAGES.map(page => ({
 }));
 ---
 
-<Base title="遊戲介紹">
+<Base title="總覽">
   <section class="page">
-    <h1 class="page-head">遊戲介紹</h1>
+    <h1 class="page-head">總覽</h1>
+    <section aria-labelledby="guide-intro-heading">
+    <h2 class="guide-h2 sec-title" id="guide-intro-heading">遊戲介紹</h2>
     <p class="lede">
       骰子描述裡那些帶 <code>#</code> 的詞是遊戲的正式標記，共 {termCount} 條。
       這裡按官方給每個標記的底色分組——同色＝同一類機制，分組不是本站的判斷，只有組名是。
@@ -45,34 +57,33 @@ const pages = GUIDE_PAGES.map(page => ({
           <span class="guide-swatch" aria-hidden="true">
             {page.colors.map(c => <span style={`background:${c}`}></span>)}
           </span>
-          <h2>{page.title}</h2>
+          <h3>{page.title}</h3>
           <p>{page.intro}</p>
           <p class="note">{page.count} 條<Fragment set:html={ICONS.arrow} /></p>
         </a>
       ))}
     </div>
+    </section>
 
-    <!-- 第二區塊：戰術與 Boss。刻意跟上面那四張分開，而不是塞進同一個網格——上面那段 lede
-         講的是「帶 # 的關鍵字標記」，這兩頁不是標記，`.guide-swatch` 那條官方色票對它們
+    <!-- 第二區塊是遊戲內容，與關鍵字網格分開；`.guide-swatch` 那條官方色票對它們
          也沒有意義（它在說「同色＝同一類機制」）。 -->
-    <h2 class="guide-h2 sec-title">遊戲內容</h2>
+    <section aria-labelledby="guide-content-heading">
+    <h2 class="guide-h2 sec-title" id="guide-content-heading">遊戲內容</h2>
     <p class="note">不是關鍵字詞彙，是對戰與合作模式裡會遇到的東西。</p>
 
     <!-- ⚠️ `--i` 要**接續**上面那個網格的序號，不要從 0 重來：那是進場動畫的 stagger 索引，
-         重來會讓這兩張跟畫面上方好幾百 px 外的前兩張同時飛進來（2026-08-26 code review 抓到）。
+         重來會讓卡片跟上方前幾張同時飛進來（2026-08-26 code review 抓到）。
          ⚠️ `is-content` 把軌道換成 `auto-fill`：`auto-fit` 會把空軌道收掉、讓兩張卡片撐滿整列，
          結果它們比正上方那排明顯寬一截。`auto-fill` 保留空軌道，兩張就跟上面同寬。 -->
     <div class="guide-cards is-content">
-      <a class="guide-card card" href="/tactic" style={`--i:${pages.length}`}>
-        <h2>戰術</h2>
-        <p>對戰與合作模式中的戰術效果，可依階段篩選，也能切換看合作模式的版本。</p>
-        <p class="note">{tacticCount} 條<Fragment set:html={ICONS.arrow} /></p>
-      </a>
-      <a class="guide-card card" href="/boss" style={`--i:${pages.length + 1}`}>
-        <h2>Boss</h2>
-        <p>對戰與合作模式中會出現的 Boss，以及各自的技能效果。</p>
-        <p class="note">{bossCount} 種<Fragment set:html={ICONS.arrow} /></p>
-      </a>
+      {contentPages.map((page, i) => (
+        <a class="guide-card card" href={page.href} style={`--i:${pages.length + i}`}>
+          <h3>{page.title}</h3>
+          <p>{page.intro}</p>
+          <p class="note">{page.count} {page.unit}<Fragment set:html={ICONS.arrow} /></p>
+        </a>
+      ))}
     </div>
+    </section>
   </section>
 </Base>

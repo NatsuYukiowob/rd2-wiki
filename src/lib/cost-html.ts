@@ -1,5 +1,5 @@
 import { mythicEntries } from './cost.js';
-import type { MythicCoreDef } from './currency.js';
+import { mythicCoreByKind, type MythicCoreDef } from './currency.js';
 import type { Cost } from './types.js';
 
 /**
@@ -36,7 +36,15 @@ export type CurrencyKind = 'core' | 'gold';
  */
 export type EventCoinKind = 'chuseoktoken' | 'chuseokcoin';
 
-export type CurrencyIconKind = CurrencyKind | 'tacticcoin' | EventCoinKind;
+/** Rewards 與其他資料頁共用、但不屬於骰子樹 Cost 的固定資源圖。 */
+export type RewardIconKind =
+  | 'treeSeed'
+  | 'coopTicket'
+  | 'arenaTicket'
+  | 'skinCoin'
+  | 'luckyDiceTicket';
+
+export type CurrencyIconKind = CurrencyKind | 'tacticcoin' | EventCoinKind | RewardIconKind;
 
 const CURRENCY: Record<CurrencyIconKind, { label: string; file: string }> = {
   core: { label: '核心', file: 'core.png' },
@@ -44,6 +52,11 @@ const CURRENCY: Record<CurrencyIconKind, { label: string; file: string }> = {
   tacticcoin: { label: '討伐硬幣', file: 'tacticcoin.png' },
   chuseoktoken: { label: '賞月代幣', file: 'chuseoktoken.png' },
   chuseokcoin: { label: '滿月硬幣', file: 'chuseokcoin.png' },
+  treeSeed: { label: '骰子樹種子', file: 'treeSeed.png' },
+  coopTicket: { label: '合作戰入場券', file: 'coopTicket.png' },
+  arenaTicket: { label: '競技場入場券', file: 'arenaTicket.png' },
+  skinCoin: { label: '造型硬幣', file: 'skinCoin.png' },
+  luckyDiceTicket: { label: '幸運骰子票券', file: 'luckyDiceTicket.png' },
 };
 
 /**
@@ -63,6 +76,20 @@ export function currencyIcon(kind: CurrencyIconKind): string {
 /** 超越核心的圖：`public/currency/<kind>.png`（`tests/lib/cost.test.ts` 驗每一種登記過的超越核心都有圖）。 */
 export function mythicIcon(def: MythicCoreDef): string {
   return img(`${def.kind}.png`);
+}
+
+/**
+ * 任意已登記貨幣的圖與名稱。`/events` 與 `/rewards` 共用這一個 resolver，
+ * 固定貨幣與超越核心不在各頁再複製一份 registry。
+ */
+export function currencyIconDetails(kind: string): { label: string; html: string } {
+  const mythic = mythicCoreByKind(kind);
+  if (mythic) return { label: mythic.label, html: mythicIcon(mythic) };
+  if (Object.hasOwn(CURRENCY, kind)) {
+    const fixed = CURRENCY[kind as CurrencyIconKind];
+    return { label: fixed.label, html: currencyIcon(kind as CurrencyIconKind) };
+  }
+  throw new Error(`未登記的貨幣圖種類 ${JSON.stringify(kind)}`);
 }
 
 function part(kind: CurrencyKind, n: number): string {

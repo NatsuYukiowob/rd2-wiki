@@ -1,0 +1,6640 @@
+{
+  "status": "official",
+  "note": "資料取自主表已確認的獎勵里程碑；缺圖收藏品以文字顯示。",
+  "modes": [
+    {
+      "kind": "threshold",
+      "id": "raid-normal",
+      "name": "討伐一般",
+      "requirementLabel": "累計擊殺",
+      "tiers": [
+        {
+          "id": "raid-normal-5",
+          "requirement": 200,
+          "rewards": [
+            {
+              "type": "currency",
+              "kind": "gold",
+              "amount": 2000
+            },
+            {
+              "type": "currency",
+              "kind": "core",
+              "amount": 5
+            }
+          ]
+        },
+        {
+          "id": "raid-normal-6",
+          "requirement": 300,
+          "rewards": [
+            {
+              "type": "currency",
+              "kind": "core",
+              "amount": 5
+            }
+          ]
+        },
+        {
+          "id": "raid-normal-7",
+          "requirement": 400,
+          "rewards": [
+            {
+              "type": "currency",
+              "kind": "gold",
+              "amount": 2000
+            },
+            {
+              "type": "currency",
+              "kind": "treeSeed",
+              "amount": 1
+            }
+          ]
+        },
+        {
+          "id": "raid-normal-8",
+          "requirement": 600,
+          "rewards": [
+            {
+              "type": "currency",
+              "kind": "core",
+              "amount": 5
+            },
+            {
+              "type": "currency",
+              "kind": "coopTicket",
+              "amount": 3
+            }
+          ]
+        },
+        {
+          "id": "raid-normal-9",
+          "requirement": 750,
+          "rewards": [
+            {
+              "type": "currency",
+              "kind": "gold",
+              "amount": 3000
+            },
+            {
+              "type": "currency",
+              "kind": "core",
+              "amount": 5
+            }
+          ]
+        },
+        {
+          "id": "raid-normal-10",
+          "requirement": 900,
+          "rewards": [
+            {
+              "type": "currency",
+              "kind": "gold",
+              "amount": 4000
+            }
+          ]
+        },
+        {
+          "id": "raid-normal-11",
+          "requirement": 1000,
+          "rewards": [
+            {
+              "type": "currency",
+              "kind": "gold",
+              "amount": 4000
+            },
+            {
+              "type": "currency",
+              "kind": "core",
+              "amount": 5
+            }
+          ]
+        },
+        {
+          "id": "raid-normal-12",
+          "requirement": 1200,
+          "rewards": [
+            {
+              "type": "currency",
+              "kind": "core",
+              "amount": 5
+            },
+            {
+              "type": "currency",
+              "kind": "coopTicket",
+              "amount": 5
+            }
+          ]
+        },
+        {
+          "id": "raid-normal-13",
+          "requirement": 1500,
+          "rewards": [
+            {
+              "type": "currency",
+              "kind": "gold",
+              "amount": 4000
+            },
+            {
+              "type": "cosmetic",
+              "subtype": "banner",
+              "itemId": "RAW:Profile_Banner_simple",
+              "label": "simple 橫幅",
+              "icon": "/rewards/cosmetic/Profile_Banner_simple.png",
+              "assetStatus": "ready",
+              "amount": 1
+            }
+          ]
+        },
+        {
+          "id": "raid-normal-14",
+          "requirement": 1700,
+          "rewards": [
+            {
+              "type": "currency",
+              "kind": "gold",
+              "amount": 5000
+            },
+            {
+              "type": "currency",
+              "kind": "core",
+              "amount": 5
+            },
+            {
+              "type": "currency",
+              "kind": "coopTicket",
+              "amount": 5
+            }
+          ]
+        },
+        {
+          "id": "raid-normal-15",
+          "requirement": 1800,
+          "rewards": [
+            {
+              "type": "currency",
+              "kind": "gold",
+              "amount": 6000
+            }
+          ]
+        },
+        {
+          "id": "raid-normal-16",
+          "requirement": 1900,
+          "rewards": [
+            {
+              "type": "currency",
+              "kind": "treeSeed",
+              "amount": 1
+            }
+          ]
+        },
+        {
+          "id": "raid-normal-17",
+          "requirement": 2100,
+          "rewards": [
+            {
+              "type": "dice",
+              "itemId": "RAW:Dice_Slow3",
+              "label": "貪婪骰子",
+              "nodeId": "5006",
+              "assetStatus": "ready",
+              "amount": 1
+            },
+            {
+              "type": "currency",
+              "kind": "core",
+              "amount": 5
+            }
+          ]
+        },
+        {
+          "id": "raid-normal-18",
+          "requirement": 2450,
+          "rewards": [
+            {
+              "type": "currency",
+              "kind": "gold",
+              "amount": 7000
+            }
+          ]
+        },
+        {
+          "id": "raid-normal-19",
+          "requirement": 2800,
+          "rewards": [
+            {
+              "type": "currency",
+              "kind": "gold",
+              "amount": 8000
+            },
+            {
+              "type": "currency",
+              "kind": "core",
+              "amount": 5
+            },
+            {
+              "type": "currency",
+              "kind": "coopTicket",
+              "amount": 7
+            }
+          ]
+        },
+        {
+          "id": "raid-normal-20",
+          "requirement": 3150,
+          "rewards": [
+            {
+              "type": "currency",
+              "kind": "gold",
+              "amount": 8000
+            }
+          ]
+        },
+        {
+          "id": "raid-normal-21",
+          "requirement": 3500,
+          "rewards": [
+            {
+              "type": "currency",
+              "kind": "gold",
+              "amount": 8000
+            },
+            {
+              "type": "currency",
+              "kind": "core",
+              "amount": 5
+            },
+            {
+              "type": "currency",
+              "kind": "coopTicket",
+              "amount": 7
+            }
+          ]
+        },
+        {
+          "id": "raid-normal-22",
+          "requirement": 3750,
+          "rewards": [
+            {
+              "type": "currency",
+              "kind": "gold",
+              "amount": 10000
+            }
+          ]
+        },
+        {
+          "id": "raid-normal-23",
+          "requirement": 3850,
+          "rewards": [
+            {
+              "type": "currency",
+              "kind": "core",
+              "amount": 5
+            },
+            {
+              "type": "currency",
+              "kind": "coopTicket",
+              "amount": 7
+            }
+          ]
+        },
+        {
+          "id": "raid-normal-24",
+          "requirement": 4000,
+          "rewards": [
+            {
+              "type": "currency",
+              "kind": "gold",
+              "amount": 12000
+            },
+            {
+              "type": "currency",
+              "kind": "treeSeed",
+              "amount": 1
+            }
+          ]
+        },
+        {
+          "id": "raid-normal-25",
+          "requirement": 4200,
+          "rewards": [
+            {
+              "type": "currency",
+              "kind": "gold",
+              "amount": 12000
+            },
+            {
+              "type": "cosmetic",
+              "subtype": "banner",
+              "itemId": "RAW:Profile_Banner_spark",
+              "label": "spark 橫幅",
+              "icon": "/rewards/cosmetic/Profile_Banner_spark.png",
+              "assetStatus": "ready",
+              "amount": 1
+            }
+          ]
+        },
+        {
+          "id": "raid-normal-26",
+          "requirement": 4250,
+          "rewards": [
+            {
+              "type": "currency",
+              "kind": "core",
+              "amount": 5
+            },
+            {
+              "type": "currency",
+              "kind": "coopTicket",
+              "amount": 7
+            }
+          ]
+        },
+        {
+          "id": "raid-normal-27",
+          "requirement": 4350,
+          "rewards": [
+            {
+              "type": "currency",
+              "kind": "gold",
+              "amount": 12000
+            }
+          ]
+        },
+        {
+          "id": "raid-normal-28",
+          "requirement": 4500,
+          "rewards": [
+            {
+              "type": "currency",
+              "kind": "core",
+              "amount": 5
+            },
+            {
+              "type": "currency",
+              "kind": "coopTicket",
+              "amount": 10
+            }
+          ]
+        },
+        {
+          "id": "raid-normal-29",
+          "requirement": 4580,
+          "rewards": [
+            {
+              "type": "currency",
+              "kind": "gold",
+              "amount": 15000
+            }
+          ]
+        },
+        {
+          "id": "raid-normal-30",
+          "requirement": 4620,
+          "rewards": [
+            {
+              "type": "currency",
+              "kind": "core",
+              "amount": 5
+            },
+            {
+              "type": "currency",
+              "kind": "coopTicket",
+              "amount": 10
+            }
+          ]
+        },
+        {
+          "id": "raid-normal-31",
+          "requirement": 4660,
+          "rewards": [
+            {
+              "type": "currency",
+              "kind": "gold",
+              "amount": 20000
+            }
+          ]
+        },
+        {
+          "id": "raid-normal-32",
+          "requirement": 4770,
+          "rewards": [
+            {
+              "type": "currency",
+              "kind": "core",
+              "amount": 5
+            },
+            {
+              "type": "currency",
+              "kind": "coopTicket",
+              "amount": 10
+            }
+          ]
+        },
+        {
+          "id": "raid-normal-33",
+          "requirement": 4880,
+          "rewards": [
+            {
+              "type": "currency",
+              "kind": "gold",
+              "amount": 30000
+            }
+          ]
+        },
+        {
+          "id": "raid-normal-34",
+          "requirement": 4995,
+          "rewards": [
+            {
+              "type": "currency",
+              "kind": "core",
+              "amount": 5
+            },
+            {
+              "type": "currency",
+              "kind": "coopTicket",
+              "amount": 10
+            }
+          ]
+        },
+        {
+          "id": "raid-normal-35",
+          "requirement": 5000,
+          "rewards": [
+            {
+              "type": "cosmetic",
+              "subtype": "avatar",
+              "itemId": "RAW:Profile_nature",
+              "label": "青兒頭像",
+              "icon": "/rewards/cosmetic/Profile_nature.png",
+              "assetStatus": "ready",
+              "amount": 1
+            },
+            {
+              "type": "cosmetic",
+              "subtype": "banner",
+              "itemId": "RAW:Profile_Banner_green",
+              "label": "green 橫幅",
+              "icon": "/rewards/cosmetic/Profile_Banner_green.png",
+              "assetStatus": "ready",
+              "amount": 1
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "kind": "threshold",
+      "id": "raid-hard",
+      "name": "討伐困難",
+      "requirementLabel": "累計擊殺",
+      "tiers": [
+        {
+          "id": "raid-hard-39",
+          "requirement": 5100,
+          "rewards": [
+            {
+              "type": "currency",
+              "kind": "core",
+              "amount": 10
+            },
+            {
+              "type": "currency",
+              "kind": "gold",
+              "amount": 10000
+            },
+            {
+              "type": "currency",
+              "kind": "treeSeed",
+              "amount": 1
+            }
+          ]
+        },
+        {
+          "id": "raid-hard-40",
+          "requirement": 5200,
+          "rewards": [
+            {
+              "type": "currency",
+              "kind": "core",
+              "amount": 10
+            },
+            {
+              "type": "currency",
+              "kind": "skinCoin",
+              "amount": 20
+            }
+          ]
+        },
+        {
+          "id": "raid-hard-41",
+          "requirement": 5300,
+          "rewards": [
+            {
+              "type": "currency",
+              "kind": "core",
+              "amount": 10
+            },
+            {
+              "type": "currency",
+              "kind": "gold",
+              "amount": 10000
+            },
+            {
+              "type": "currency",
+              "kind": "skinCoin",
+              "amount": 20
+            }
+          ]
+        },
+        {
+          "id": "raid-hard-42",
+          "requirement": 5400,
+          "rewards": [
+            {
+              "type": "currency",
+              "kind": "core",
+              "amount": 10
+            },
+            {
+              "type": "currency",
+              "kind": "gold",
+              "amount": 10000
+            },
+            {
+              "type": "currency",
+              "kind": "coopTicket",
+              "amount": 5
+            }
+          ]
+        },
+        {
+          "id": "raid-hard-43",
+          "requirement": 5500,
+          "rewards": [
+            {
+              "type": "currency",
+              "kind": "core",
+              "amount": 10
+            },
+            {
+              "type": "currency",
+              "kind": "skinCoin",
+              "amount": 20
+            },
+            {
+              "type": "currency",
+              "kind": "gold",
+              "amount": 10000
+            }
+          ]
+        },
+        {
+          "id": "raid-hard-44",
+          "requirement": 5600,
+          "rewards": [
+            {
+              "type": "currency",
+              "kind": "core",
+              "amount": 15
+            },
+            {
+              "type": "emote",
+              "itemId": "source:模式獎勵系統:44:13",
+              "label": "STOP 表情",
+              "assetStatus": "ready",
+              "icon": "/rewards/emote/STOP.png",
+              "amount": 1
+            }
+          ]
+        },
+        {
+          "id": "raid-hard-45",
+          "requirement": 5700,
+          "rewards": [
+            {
+              "type": "currency",
+              "kind": "core",
+              "amount": 10
+            },
+            {
+              "type": "currency",
+              "kind": "skinCoin",
+              "amount": 20
+            },
+            {
+              "type": "currency",
+              "kind": "gold",
+              "amount": 10000
+            }
+          ]
+        },
+        {
+          "id": "raid-hard-46",
+          "requirement": 5800,
+          "rewards": [
+            {
+              "type": "currency",
+              "kind": "core",
+              "amount": 10
+            },
+            {
+              "type": "currency",
+              "kind": "skinCoin",
+              "amount": 25
+            },
+            {
+              "type": "currency",
+              "kind": "gold",
+              "amount": 10000
+            }
+          ]
+        },
+        {
+          "id": "raid-hard-47",
+          "requirement": 5900,
+          "rewards": [
+            {
+              "type": "currency",
+              "kind": "core",
+              "amount": 10
+            },
+            {
+              "type": "currency",
+              "kind": "coopTicket",
+              "amount": 5
+            },
+            {
+              "type": "currency",
+              "kind": "skinCoin",
+              "amount": 25
+            }
+          ]
+        },
+        {
+          "id": "raid-hard-48",
+          "requirement": 6000,
+          "rewards": [
+            {
+              "type": "currency",
+              "kind": "core",
+              "amount": 15
+            },
+            {
+              "type": "currency",
+              "kind": "gold",
+              "amount": 20000
+            }
+          ]
+        },
+        {
+          "id": "raid-hard-49",
+          "requirement": 6100,
+          "rewards": [
+            {
+              "type": "currency",
+              "kind": "core",
+              "amount": 10
+            },
+            {
+              "type": "currency",
+              "kind": "treeSeed",
+              "amount": 1
+            },
+            {
+              "type": "currency",
+              "kind": "skinCoin",
+              "amount": 25
+            }
+          ]
+        },
+        {
+          "id": "raid-hard-50",
+          "requirement": 6200,
+          "rewards": [
+            {
+              "type": "currency",
+              "kind": "core",
+              "amount": 10
+            },
+            {
+              "type": "currency",
+              "kind": "gold",
+              "amount": 10000
+            }
+          ]
+        },
+        {
+          "id": "raid-hard-51",
+          "requirement": 6300,
+          "rewards": [
+            {
+              "type": "currency",
+              "kind": "core",
+              "amount": 10
+            },
+            {
+              "type": "currency",
+              "kind": "skinCoin",
+              "amount": 25
+            },
+            {
+              "type": "currency",
+              "kind": "gold",
+              "amount": 10000
+            }
+          ]
+        },
+        {
+          "id": "raid-hard-52",
+          "requirement": 6400,
+          "rewards": [
+            {
+              "type": "currency",
+              "kind": "core",
+              "amount": 10
+            },
+            {
+              "type": "currency",
+              "kind": "coopTicket",
+              "amount": 5
+            },
+            {
+              "type": "currency",
+              "kind": "skinCoin",
+              "amount": 30
+            }
+          ]
+        },
+        {
+          "id": "raid-hard-53",
+          "requirement": 6500,
+          "rewards": [
+            {
+              "type": "currency",
+              "kind": "core",
+              "amount": 15
+            },
+            {
+              "type": "currency",
+              "kind": "gold",
+              "amount": 10000
+            },
+            {
+              "type": "cosmetic",
+              "subtype": "avatar",
+              "itemId": "RAW:Profile_engineering",
+              "label": "里克頭像",
+              "icon": "/rewards/cosmetic/Profile_engineering.png",
+              "assetStatus": "ready",
+              "amount": 1
+            }
+          ]
+        },
+        {
+          "id": "raid-hard-54",
+          "requirement": 6600,
+          "rewards": [
+            {
+              "type": "currency",
+              "kind": "core",
+              "amount": 10
+            },
+            {
+              "type": "currency",
+              "kind": "skinCoin",
+              "amount": 30
+            },
+            {
+              "type": "currency",
+              "kind": "gold",
+              "amount": 10000
+            }
+          ]
+        },
+        {
+          "id": "raid-hard-55",
+          "requirement": 6700,
+          "rewards": [
+            {
+              "type": "currency",
+              "kind": "core",
+              "amount": 10
+            },
+            {
+              "type": "currency",
+              "kind": "skinCoin",
+              "amount": 30
+            }
+          ]
+        },
+        {
+          "id": "raid-hard-56",
+          "requirement": 6800,
+          "rewards": [
+            {
+              "type": "currency",
+              "kind": "core",
+              "amount": 10
+            },
+            {
+              "type": "currency",
+              "kind": "gold",
+              "amount": 10000
+            },
+            {
+              "type": "currency",
+              "kind": "coopTicket",
+              "amount": 5
+            }
+          ]
+        },
+        {
+          "id": "raid-hard-57",
+          "requirement": 6900,
+          "rewards": [
+            {
+              "type": "currency",
+              "kind": "core",
+              "amount": 10
+            },
+            {
+              "type": "currency",
+              "kind": "skinCoin",
+              "amount": 30
+            },
+            {
+              "type": "currency",
+              "kind": "gold",
+              "amount": 10000
+            }
+          ]
+        },
+        {
+          "id": "raid-hard-58",
+          "requirement": 7000,
+          "rewards": [
+            {
+              "type": "currency",
+              "kind": "core",
+              "amount": 10
+            },
+            {
+              "type": "currency",
+              "kind": "treeSeed",
+              "amount": 1
+            },
+            {
+              "type": "currency",
+              "kind": "gold",
+              "amount": 15000
+            }
+          ]
+        },
+        {
+          "id": "raid-hard-59",
+          "requirement": 7100,
+          "rewards": [
+            {
+              "type": "currency",
+              "kind": "core",
+              "amount": 15
+            },
+            {
+              "type": "currency",
+              "kind": "skinCoin",
+              "amount": 35
+            }
+          ]
+        },
+        {
+          "id": "raid-hard-60",
+          "requirement": 7200,
+          "rewards": [
+            {
+              "type": "currency",
+              "kind": "core",
+              "amount": 5
+            },
+            {
+              "type": "currency",
+              "kind": "gold",
+              "amount": 15000
+            },
+            {
+              "type": "currency",
+              "kind": "skinCoin",
+              "amount": 35
+            }
+          ]
+        },
+        {
+          "id": "raid-hard-61",
+          "requirement": 7300,
+          "rewards": [
+            {
+              "type": "currency",
+              "kind": "core",
+              "amount": 5
+            },
+            {
+              "type": "currency",
+              "kind": "coopTicket",
+              "amount": 5
+            },
+            {
+              "type": "currency",
+              "kind": "gold",
+              "amount": 15000
+            }
+          ]
+        },
+        {
+          "id": "raid-hard-62",
+          "requirement": 7400,
+          "rewards": [
+            {
+              "type": "currency",
+              "kind": "core",
+              "amount": 5
+            },
+            {
+              "type": "currency",
+              "kind": "skinCoin",
+              "amount": 35
+            }
+          ]
+        },
+        {
+          "id": "raid-hard-63",
+          "requirement": 7500,
+          "rewards": [
+            {
+              "type": "currency",
+              "kind": "core",
+              "amount": 10
+            },
+            {
+              "type": "currency",
+              "kind": "gold",
+              "amount": 15000
+            },
+            {
+              "type": "currency",
+              "kind": "skinCoin",
+              "amount": 35
+            }
+          ]
+        },
+        {
+          "id": "raid-hard-64",
+          "requirement": 7600,
+          "rewards": [
+            {
+              "type": "currency",
+              "kind": "core",
+              "amount": 5
+            },
+            {
+              "type": "currency",
+              "kind": "gold",
+              "amount": 15000
+            }
+          ]
+        },
+        {
+          "id": "raid-hard-65",
+          "requirement": 7700,
+          "rewards": [
+            {
+              "type": "currency",
+              "kind": "core",
+              "amount": 5
+            },
+            {
+              "type": "currency",
+              "kind": "skinCoin",
+              "amount": 40
+            },
+            {
+              "type": "currency",
+              "kind": "coopTicket",
+              "amount": 5
+            }
+          ]
+        },
+        {
+          "id": "raid-hard-66",
+          "requirement": 7800,
+          "rewards": [
+            {
+              "type": "currency",
+              "kind": "core",
+              "amount": 5
+            },
+            {
+              "type": "currency",
+              "kind": "gold",
+              "amount": 15000
+            },
+            {
+              "type": "currency",
+              "kind": "skinCoin",
+              "amount": 40
+            }
+          ]
+        },
+        {
+          "id": "raid-hard-67",
+          "requirement": 7900,
+          "rewards": [
+            {
+              "type": "currency",
+              "kind": "core",
+              "amount": 5
+            },
+            {
+              "type": "currency",
+              "kind": "treeSeed",
+              "amount": 1
+            },
+            {
+              "type": "currency",
+              "kind": "gold",
+              "amount": 15000
+            }
+          ]
+        },
+        {
+          "id": "raid-hard-68",
+          "requirement": 8000,
+          "rewards": [
+            {
+              "type": "currency",
+              "kind": "core",
+              "amount": 5
+            },
+            {
+              "type": "currency",
+              "kind": "skinCoin",
+              "amount": 40
+            },
+            {
+              "type": "currency",
+              "kind": "gold",
+              "amount": 15000
+            }
+          ]
+        },
+        {
+          "id": "raid-hard-69",
+          "requirement": 8100,
+          "rewards": [
+            {
+              "type": "currency",
+              "kind": "core",
+              "amount": 5
+            },
+            {
+              "type": "currency",
+              "kind": "skinCoin",
+              "amount": 40
+            }
+          ]
+        },
+        {
+          "id": "raid-hard-70",
+          "requirement": 8200,
+          "rewards": [
+            {
+              "type": "currency",
+              "kind": "core",
+              "amount": 5
+            },
+            {
+              "type": "currency",
+              "kind": "gold",
+              "amount": 20000
+            },
+            {
+              "type": "cosmetic",
+              "subtype": "avatar",
+              "itemId": "RAW:Profile_Invader",
+              "label": "迪奇頭像",
+              "icon": "/rewards/cosmetic/Profile_Invader.png",
+              "assetStatus": "ready",
+              "amount": 1
+            }
+          ]
+        },
+        {
+          "id": "raid-hard-71",
+          "requirement": 8300,
+          "rewards": [
+            {
+              "type": "currency",
+              "kind": "core",
+              "amount": 5
+            },
+            {
+              "type": "currency",
+              "kind": "coopTicket",
+              "amount": 10
+            },
+            {
+              "type": "currency",
+              "kind": "skinCoin",
+              "amount": 45
+            }
+          ]
+        },
+        {
+          "id": "raid-hard-72",
+          "requirement": 8400,
+          "rewards": [
+            {
+              "type": "currency",
+              "kind": "core",
+              "amount": 5
+            },
+            {
+              "type": "currency",
+              "kind": "gold",
+              "amount": 20000
+            },
+            {
+              "type": "currency",
+              "kind": "skinCoin",
+              "amount": 45
+            }
+          ]
+        },
+        {
+          "id": "raid-hard-73",
+          "requirement": 8500,
+          "rewards": [
+            {
+              "type": "currency",
+              "kind": "core",
+              "amount": 5
+            },
+            {
+              "type": "currency",
+              "kind": "gold",
+              "amount": 20000
+            }
+          ]
+        },
+        {
+          "id": "raid-hard-74",
+          "requirement": 8600,
+          "rewards": [
+            {
+              "type": "currency",
+              "kind": "core",
+              "amount": 5
+            },
+            {
+              "type": "currency",
+              "kind": "skinCoin",
+              "amount": 45
+            },
+            {
+              "type": "currency",
+              "kind": "gold",
+              "amount": 20000
+            }
+          ]
+        },
+        {
+          "id": "raid-hard-75",
+          "requirement": 8700,
+          "rewards": [
+            {
+              "type": "currency",
+              "kind": "core",
+              "amount": 5
+            },
+            {
+              "type": "currency",
+              "kind": "coopTicket",
+              "amount": 10
+            },
+            {
+              "type": "currency",
+              "kind": "skinCoin",
+              "amount": 45
+            }
+          ]
+        },
+        {
+          "id": "raid-hard-76",
+          "requirement": 8800,
+          "rewards": [
+            {
+              "type": "currency",
+              "kind": "core",
+              "amount": 5
+            },
+            {
+              "type": "currency",
+              "kind": "gold",
+              "amount": 20000
+            }
+          ]
+        },
+        {
+          "id": "raid-hard-77",
+          "requirement": 8900,
+          "rewards": [
+            {
+              "type": "currency",
+              "kind": "core",
+              "amount": 5
+            },
+            {
+              "type": "currency",
+              "kind": "gold",
+              "amount": 20000
+            },
+            {
+              "type": "currency",
+              "kind": "skinCoin",
+              "amount": 50
+            }
+          ]
+        },
+        {
+          "id": "raid-hard-78",
+          "requirement": 9000,
+          "rewards": [
+            {
+              "type": "currency",
+              "kind": "core",
+              "amount": 5
+            },
+            {
+              "type": "currency",
+              "kind": "gold",
+              "amount": 20000
+            },
+            {
+              "type": "emote",
+              "itemId": "source:模式獎勵系統:78:15",
+              "label": "NO_SIGN 表情",
+              "assetStatus": "ready",
+              "icon": "/rewards/emote/NO_SIGN.png",
+              "amount": 1
+            }
+          ]
+        },
+        {
+          "id": "raid-hard-79",
+          "requirement": 9100,
+          "rewards": [
+            {
+              "type": "currency",
+              "kind": "core",
+              "amount": 5
+            },
+            {
+              "type": "currency",
+              "kind": "skinCoin",
+              "amount": 50
+            },
+            {
+              "type": "currency",
+              "kind": "coopTicket",
+              "amount": 10
+            }
+          ]
+        },
+        {
+          "id": "raid-hard-80",
+          "requirement": 9200,
+          "rewards": [
+            {
+              "type": "currency",
+              "kind": "core",
+              "amount": 5
+            },
+            {
+              "type": "currency",
+              "kind": "gold",
+              "amount": 25000
+            }
+          ]
+        },
+        {
+          "id": "raid-hard-81",
+          "requirement": 9300,
+          "rewards": [
+            {
+              "type": "currency",
+              "kind": "core",
+              "amount": 5
+            },
+            {
+              "type": "currency",
+              "kind": "skinCoin",
+              "amount": 50
+            },
+            {
+              "type": "currency",
+              "kind": "gold",
+              "amount": 25000
+            }
+          ]
+        },
+        {
+          "id": "raid-hard-82",
+          "requirement": 9400,
+          "rewards": [
+            {
+              "type": "currency",
+              "kind": "core",
+              "amount": 5
+            },
+            {
+              "type": "currency",
+              "kind": "skinCoin",
+              "amount": 50
+            }
+          ]
+        },
+        {
+          "id": "raid-hard-83",
+          "requirement": 9500,
+          "rewards": [
+            {
+              "type": "currency",
+              "kind": "core",
+              "amount": 5
+            },
+            {
+              "type": "currency",
+              "kind": "gold",
+              "amount": 25000
+            },
+            {
+              "type": "currency",
+              "kind": "skinCoin",
+              "amount": 60
+            }
+          ]
+        },
+        {
+          "id": "raid-hard-84",
+          "requirement": 9600,
+          "rewards": [
+            {
+              "type": "currency",
+              "kind": "core",
+              "amount": 5
+            },
+            {
+              "type": "currency",
+              "kind": "coopTicket",
+              "amount": 10
+            },
+            {
+              "type": "currency",
+              "kind": "gold",
+              "amount": 25000
+            }
+          ]
+        },
+        {
+          "id": "raid-hard-85",
+          "requirement": 9700,
+          "rewards": [
+            {
+              "type": "currency",
+              "kind": "core",
+              "amount": 5
+            },
+            {
+              "type": "currency",
+              "kind": "skinCoin",
+              "amount": 60
+            }
+          ]
+        },
+        {
+          "id": "raid-hard-86",
+          "requirement": 9800,
+          "rewards": [
+            {
+              "type": "currency",
+              "kind": "core",
+              "amount": 5
+            },
+            {
+              "type": "currency",
+              "kind": "gold",
+              "amount": 25000
+            }
+          ]
+        },
+        {
+          "id": "raid-hard-87",
+          "requirement": 9900,
+          "rewards": [
+            {
+              "type": "currency",
+              "kind": "core",
+              "amount": 5
+            },
+            {
+              "type": "currency",
+              "kind": "skinCoin",
+              "amount": 55
+            },
+            {
+              "type": "currency",
+              "kind": "gold",
+              "amount": 25000
+            }
+          ]
+        },
+        {
+          "id": "raid-hard-88",
+          "requirement": 10000,
+          "rewards": [
+            {
+              "type": "currency",
+              "kind": "core",
+              "amount": 5
+            },
+            {
+              "type": "cosmetic",
+              "subtype": "avatar",
+              "itemId": "RAW:Profile_Magic",
+              "label": "艾科頭像",
+              "icon": "/rewards/cosmetic/Profile_Magic.png",
+              "assetStatus": "ready",
+              "amount": 1
+            },
+            {
+              "type": "cosmetic",
+              "subtype": "banner",
+              "itemId": "RAW:Profile_Banner_Hard_Clear",
+              "label": "Hard Clear 橫幅",
+              "icon": "/rewards/cosmetic/Profile_Banner_Hard_Clear.png",
+              "assetStatus": "ready",
+              "amount": 1
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "kind": "threshold",
+      "id": "arena-pass",
+      "name": "競技場通行證",
+      "requirementLabel": "累計積分",
+      "tiers": [
+        {
+          "id": "arena-pass-92",
+          "requirement": 100,
+          "rewards": [
+            {
+              "type": "currency",
+              "kind": "core",
+              "amount": 5
+            }
+          ]
+        },
+        {
+          "id": "arena-pass-93",
+          "requirement": 300,
+          "rewards": [
+            {
+              "type": "dice",
+              "itemId": "RAW:Dice_SPEEDGUN3",
+              "label": "空虛骰子",
+              "nodeId": "5008",
+              "assetStatus": "ready",
+              "amount": 1
+            }
+          ]
+        },
+        {
+          "id": "arena-pass-94",
+          "requirement": 500,
+          "rewards": [
+            {
+              "type": "currency",
+              "kind": "gold",
+              "amount": 2500
+            },
+            {
+              "type": "currency",
+              "kind": "core",
+              "amount": 10
+            }
+          ]
+        },
+        {
+          "id": "arena-pass-95",
+          "requirement": 1000,
+          "rewards": [
+            {
+              "type": "currency",
+              "kind": "coopTicket",
+              "amount": 2
+            }
+          ]
+        },
+        {
+          "id": "arena-pass-96",
+          "requirement": 1500,
+          "rewards": [
+            {
+              "type": "cosmetic",
+              "subtype": "avatar",
+              "itemId": "RAW:rd2_ui_profile_rank_base_bronze",
+              "label": "銅牌頭像",
+              "icon": "/rewards/cosmetic/rd2_ui_profile_rank_base_bronze.png",
+              "assetStatus": "ready",
+              "amount": 1
+            },
+            {
+              "type": "currency",
+              "kind": "gold",
+              "amount": 2500
+            }
+          ]
+        },
+        {
+          "id": "arena-pass-97",
+          "requirement": 2000,
+          "rewards": [
+            {
+              "type": "cosmetic",
+              "subtype": "frame",
+              "itemId": "RAW:rd2_ui_profile_rank_border_bronze",
+              "label": "銅牌框飾",
+              "icon": "/rewards/cosmetic/rd2_ui_profile_rank_border_bronze.png",
+              "assetStatus": "ready",
+              "amount": 1
+            },
+            {
+              "type": "currency",
+              "kind": "core",
+              "amount": 10
+            }
+          ]
+        },
+        {
+          "id": "arena-pass-98",
+          "requirement": 2500,
+          "rewards": [
+            {
+              "type": "currency",
+              "kind": "gold",
+              "amount": 5000
+            }
+          ]
+        },
+        {
+          "id": "arena-pass-99",
+          "requirement": 3000,
+          "rewards": [
+            {
+              "type": "currency",
+              "kind": "skinCoin",
+              "amount": 5
+            },
+            {
+              "type": "currency",
+              "kind": "coopTicket",
+              "amount": 2
+            }
+          ]
+        },
+        {
+          "id": "arena-pass-100",
+          "requirement": 3500,
+          "rewards": [
+            {
+              "type": "currency",
+              "kind": "core",
+              "amount": 10
+            }
+          ]
+        },
+        {
+          "id": "arena-pass-101",
+          "requirement": 4000,
+          "rewards": [
+            {
+              "type": "cosmetic",
+              "subtype": "avatar",
+              "itemId": "RAW:rd2_ui_profile_rank_base_silver",
+              "label": "銀牌頭像",
+              "icon": "/rewards/cosmetic/rd2_ui_profile_rank_base_silver.png",
+              "assetStatus": "ready",
+              "amount": 1
+            },
+            {
+              "type": "currency",
+              "kind": "gold",
+              "amount": 5000
+            }
+          ]
+        },
+        {
+          "id": "arena-pass-102",
+          "requirement": 4500,
+          "rewards": [
+            {
+              "type": "cosmetic",
+              "subtype": "frame",
+              "itemId": "RAW:rd2_ui_profile_rank_border_silver",
+              "label": "銀牌框飾",
+              "icon": "/rewards/cosmetic/rd2_ui_profile_rank_border_silver.png",
+              "assetStatus": "ready",
+              "amount": 1
+            },
+            {
+              "type": "currency",
+              "kind": "core",
+              "amount": 10
+            }
+          ]
+        },
+        {
+          "id": "arena-pass-103",
+          "requirement": 5000,
+          "rewards": [
+            {
+              "type": "currency",
+              "kind": "gold",
+              "amount": 7500
+            }
+          ]
+        },
+        {
+          "id": "arena-pass-104",
+          "requirement": 5500,
+          "rewards": [
+            {
+              "type": "currency",
+              "kind": "skinCoin",
+              "amount": 10
+            },
+            {
+              "type": "currency",
+              "kind": "coopTicket",
+              "amount": 3
+            }
+          ]
+        },
+        {
+          "id": "arena-pass-105",
+          "requirement": 6000,
+          "rewards": [
+            {
+              "type": "currency",
+              "kind": "core",
+              "amount": 10
+            }
+          ]
+        },
+        {
+          "id": "arena-pass-106",
+          "requirement": 6500,
+          "rewards": [
+            {
+              "type": "cosmetic",
+              "subtype": "avatar",
+              "itemId": "RAW:rd2_ui_profile_rank_base_gold",
+              "label": "金牌頭像",
+              "icon": "/rewards/cosmetic/rd2_ui_profile_rank_base_gold.png",
+              "assetStatus": "ready",
+              "amount": 1
+            },
+            {
+              "type": "currency",
+              "kind": "gold",
+              "amount": 7500
+            }
+          ]
+        },
+        {
+          "id": "arena-pass-107",
+          "requirement": 7000,
+          "rewards": [
+            {
+              "type": "cosmetic",
+              "subtype": "frame",
+              "itemId": "RAW:rd2_ui_profile_rank_border_gold",
+              "label": "金牌框飾",
+              "icon": "/rewards/cosmetic/rd2_ui_profile_rank_border_gold.png",
+              "assetStatus": "ready",
+              "amount": 1
+            },
+            {
+              "type": "currency",
+              "kind": "core",
+              "amount": 10
+            }
+          ]
+        },
+        {
+          "id": "arena-pass-108",
+          "requirement": 7500,
+          "rewards": [
+            {
+              "type": "currency",
+              "kind": "gold",
+              "amount": 10000
+            }
+          ]
+        },
+        {
+          "id": "arena-pass-109",
+          "requirement": 8000,
+          "rewards": [
+            {
+              "type": "currency",
+              "kind": "skinCoin",
+              "amount": 20
+            },
+            {
+              "type": "currency",
+              "kind": "coopTicket",
+              "amount": 3
+            }
+          ]
+        },
+        {
+          "id": "arena-pass-110",
+          "requirement": 8500,
+          "rewards": [
+            {
+              "type": "cosmetic",
+              "subtype": "avatar",
+              "itemId": "RAW:profile_arena",
+              "label": "競技場頭像",
+              "icon": "/rewards/cosmetic/profile_arena.png",
+              "assetStatus": "ready",
+              "amount": 1
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "kind": "threshold",
+      "id": "journey-7day",
+      "name": "7日旅程",
+      "requirementLabel": "累計積分",
+      "tiers": [
+        {
+          "id": "journey-7day-42",
+          "requirement": 700,
+          "rewards": [
+            {
+              "type": "dice",
+              "itemId": "UNIQUE:Dice_BINGO3",
+              "label": "陰陽骰子",
+              "nodeId": "4008",
+              "assetStatus": "ready",
+              "amount": 1
+            },
+            {
+              "type": "currency",
+              "kind": "coopTicket",
+              "amount": 3
+            }
+          ]
+        },
+        {
+          "id": "journey-7day-43",
+          "requirement": 1400,
+          "rewards": [
+            {
+              "type": "currency",
+              "kind": "gold",
+              "amount": 10000
+            },
+            {
+              "type": "currency",
+              "kind": "core",
+              "amount": 10
+            },
+            {
+              "type": "currency",
+              "kind": "coopTicket",
+              "amount": 3
+            }
+          ]
+        },
+        {
+          "id": "journey-7day-44",
+          "requirement": 2100,
+          "rewards": [
+            {
+              "type": "currency",
+              "kind": "arenaTicket",
+              "amount": 1
+            },
+            {
+              "type": "currency",
+              "kind": "coopTicket",
+              "amount": 5
+            },
+            {
+              "type": "currency",
+              "kind": "treeSeed",
+              "amount": 1
+            }
+          ]
+        },
+        {
+          "id": "journey-7day-45",
+          "requirement": 2800,
+          "rewards": [
+            {
+              "type": "currency",
+              "kind": "gold",
+              "amount": 20000
+            },
+            {
+              "type": "currency",
+              "kind": "core",
+              "amount": 20
+            },
+            {
+              "type": "currency",
+              "kind": "coopTicket",
+              "amount": 5
+            }
+          ]
+        },
+        {
+          "id": "journey-7day-46",
+          "requirement": 3500,
+          "rewards": [
+            {
+              "type": "currency",
+              "kind": "arenaTicket",
+              "amount": 2
+            },
+            {
+              "type": "currency",
+              "kind": "coopTicket",
+              "amount": 10
+            }
+          ]
+        }
+      ],
+      "taskDays": [
+        {
+          "day": 1,
+          "totalPoints": 600,
+          "tasks": [
+            {
+              "id": "journey-7day-task-5",
+              "name": "登入",
+              "requirement": 1,
+              "points": 100
+            },
+            {
+              "id": "journey-7day-task-6",
+              "name": "召喚骰子",
+              "requirement": 80,
+              "points": 100
+            },
+            {
+              "id": "journey-7day-task-7",
+              "name": "合成骰子",
+              "requirement": 50,
+              "points": 100
+            },
+            {
+              "id": "journey-7day-task-8",
+              "name": "強化骰子",
+              "requirement": 25,
+              "points": 100
+            },
+            {
+              "id": "journey-7day-task-9",
+              "name": "解鎖骰子節點",
+              "requirement": 5,
+              "points": 200
+            }
+          ]
+        },
+        {
+          "day": 2,
+          "totalPoints": 600,
+          "tasks": [
+            {
+              "id": "journey-7day-task-10",
+              "name": "登入",
+              "requirement": 1,
+              "points": 100
+            },
+            {
+              "id": "journey-7day-task-11",
+              "name": "參加競技場",
+              "requirement": 3,
+              "points": 100
+            },
+            {
+              "id": "journey-7day-task-12",
+              "name": "達成節點20等級",
+              "requirement": 1,
+              "points": 100
+            },
+            {
+              "id": "journey-7day-task-13",
+              "name": "解鎖骰子特性節點",
+              "requirement": 1,
+              "points": 100
+            },
+            {
+              "id": "journey-7day-task-14",
+              "name": "使用骰子核心",
+              "requirement": 30,
+              "points": 200
+            }
+          ]
+        },
+        {
+          "day": 3,
+          "totalPoints": 600,
+          "tasks": [
+            {
+              "id": "journey-7day-task-15",
+              "name": "擊殺一般怪物",
+              "requirement": 5000,
+              "points": 100
+            },
+            {
+              "id": "journey-7day-task-16",
+              "name": "競技場勝利",
+              "requirement": 10,
+              "points": 100
+            },
+            {
+              "id": "journey-7day-task-17",
+              "name": "擊殺首領",
+              "requirement": 10,
+              "points": 100
+            },
+            {
+              "id": "journey-7day-task-18",
+              "name": "合成骰子",
+              "requirement": 100,
+              "points": 100
+            },
+            {
+              "id": "journey-7day-task-19",
+              "name": "解鎖骰子節點",
+              "requirement": 10,
+              "points": 200
+            }
+          ]
+        },
+        {
+          "day": 4,
+          "totalPoints": 600,
+          "tasks": [
+            {
+              "id": "journey-7day-task-20",
+              "name": "登入",
+              "requirement": 1,
+              "points": 100
+            },
+            {
+              "id": "journey-7day-task-21",
+              "name": "進行合作",
+              "requirement": 5,
+              "points": 100
+            },
+            {
+              "id": "journey-7day-task-22",
+              "name": "於合作中擊殺怪物",
+              "requirement": 2000,
+              "points": 100
+            },
+            {
+              "id": "journey-7day-task-23",
+              "name": "骰子強化達成8等級",
+              "requirement": 5,
+              "points": 100
+            },
+            {
+              "id": "journey-7day-task-24",
+              "name": "解鎖特性／被動節點",
+              "requirement": 10,
+              "points": 200
+            }
+          ]
+        },
+        {
+          "day": 5,
+          "totalPoints": 600,
+          "tasks": [
+            {
+              "id": "journey-7day-task-25",
+              "name": "體驗戰術效果",
+              "requirement": 50,
+              "points": 100
+            },
+            {
+              "id": "journey-7day-task-26",
+              "name": "於競技場擊殺首領",
+              "requirement": 10,
+              "points": 100
+            },
+            {
+              "id": "journey-7day-task-27",
+              "name": "骰盤上填滿10個3骰點骰子",
+              "requirement": 1,
+              "points": 100
+            },
+            {
+              "id": "journey-7day-task-28",
+              "name": "擊殺SP魔像",
+              "requirement": 30,
+              "points": 100
+            },
+            {
+              "id": "journey-7day-task-29",
+              "name": "解鎖骰子節點",
+              "requirement": 15,
+              "points": 200
+            }
+          ]
+        },
+        {
+          "day": 6,
+          "totalPoints": 600,
+          "tasks": [
+            {
+              "id": "journey-7day-task-30",
+              "name": "製作4骰點骰子",
+              "requirement": 3,
+              "points": 100
+            },
+            {
+              "id": "journey-7day-task-31",
+              "name": "達成合作最高擊殺數",
+              "requirement": 3000,
+              "points": 100
+            },
+            {
+              "id": "journey-7day-task-32",
+              "name": "參加競技場",
+              "requirement": 15,
+              "points": 100
+            },
+            {
+              "id": "journey-7day-task-33",
+              "name": "對戰／合作遊玩",
+              "requirement": 10,
+              "points": 100
+            },
+            {
+              "id": "journey-7day-task-34",
+              "name": "擊殺首領",
+              "requirement": 50,
+              "points": 200
+            }
+          ]
+        },
+        {
+          "day": 7,
+          "totalPoints": 600,
+          "tasks": [
+            {
+              "id": "journey-7day-task-35",
+              "name": "登入",
+              "requirement": 1,
+              "points": 100
+            },
+            {
+              "id": "journey-7day-task-36",
+              "name": "競技場連勝",
+              "requirement": 5,
+              "points": 100
+            },
+            {
+              "id": "journey-7day-task-37",
+              "name": "製作7骰點骰子",
+              "requirement": 3,
+              "points": 100
+            },
+            {
+              "id": "journey-7day-task-38",
+              "name": "骰子強化達成12等級",
+              "requirement": 3,
+              "points": 100
+            },
+            {
+              "id": "journey-7day-task-39",
+              "name": "解鎖骰子節點",
+              "requirement": 20,
+              "points": 200
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "kind": "threshold",
+      "id": "hunt-event",
+      "name": "狩獵活動",
+      "requirementLabel": "累計積分",
+      "tiers": [
+        {
+          "id": "hunt-event-122",
+          "requirement": 500,
+          "rewards": [
+            {
+              "type": "currency",
+              "kind": "gold",
+              "amount": 5000
+            },
+            {
+              "type": "currency",
+              "kind": "core",
+              "amount": 5
+            }
+          ]
+        },
+        {
+          "id": "hunt-event-123",
+          "requirement": 1000,
+          "rewards": [
+            {
+              "type": "currency",
+              "kind": "gold",
+              "amount": 5000
+            },
+            {
+              "type": "currency",
+              "kind": "coopTicket",
+              "amount": 5
+            }
+          ]
+        },
+        {
+          "id": "hunt-event-124",
+          "requirement": 1500,
+          "rewards": [
+            {
+              "type": "currency",
+              "kind": "gold",
+              "amount": 5000
+            },
+            {
+              "type": "currency",
+              "kind": "core",
+              "amount": 5
+            }
+          ]
+        },
+        {
+          "id": "hunt-event-125",
+          "requirement": 2000,
+          "rewards": [
+            {
+              "type": "currency",
+              "kind": "gold",
+              "amount": 5000
+            },
+            {
+              "type": "currency",
+              "kind": "coopTicket",
+              "amount": 5
+            }
+          ]
+        },
+        {
+          "id": "hunt-event-126",
+          "requirement": 2500,
+          "rewards": [
+            {
+              "type": "currency",
+              "kind": "gold",
+              "amount": 5000
+            },
+            {
+              "type": "currency",
+              "kind": "coopTicket",
+              "amount": 5
+            }
+          ]
+        },
+        {
+          "id": "hunt-event-127",
+          "requirement": 3000,
+          "rewards": [
+            {
+              "type": "currency",
+              "kind": "gold",
+              "amount": 5000
+            },
+            {
+              "type": "currency",
+              "kind": "core",
+              "amount": 5
+            }
+          ]
+        },
+        {
+          "id": "hunt-event-128",
+          "requirement": 3500,
+          "rewards": [
+            {
+              "type": "emote",
+              "itemId": "UNIQUE:target",
+              "label": "target 表情",
+              "assetStatus": "ready",
+              "icon": "/rewards/emote/target.png",
+              "amount": 1
+            },
+            {
+              "type": "currency",
+              "kind": "treeSeed",
+              "amount": 1
+            }
+          ]
+        },
+        {
+          "id": "hunt-event-129",
+          "requirement": 4000,
+          "rewards": [
+            {
+              "type": "currency",
+              "kind": "gold",
+              "amount": 10000
+            },
+            {
+              "type": "currency",
+              "kind": "core",
+              "amount": 5
+            }
+          ]
+        },
+        {
+          "id": "hunt-event-130",
+          "requirement": 4500,
+          "rewards": [
+            {
+              "type": "currency",
+              "kind": "gold",
+              "amount": 10000
+            },
+            {
+              "type": "currency",
+              "kind": "core",
+              "amount": 10
+            }
+          ]
+        },
+        {
+          "id": "hunt-event-131",
+          "requirement": 5000,
+          "rewards": [
+            {
+              "type": "currency",
+              "kind": "gold",
+              "amount": 10000
+            },
+            {
+              "type": "currency",
+              "kind": "arenaTicket",
+              "amount": 1
+            },
+            {
+              "type": "currency",
+              "kind": "coopTicket",
+              "amount": 5
+            }
+          ]
+        },
+        {
+          "id": "hunt-event-132",
+          "requirement": 5500,
+          "rewards": [
+            {
+              "type": "currency",
+              "kind": "gold",
+              "amount": 10000
+            },
+            {
+              "type": "currency",
+              "kind": "coopTicket",
+              "amount": 10
+            }
+          ]
+        },
+        {
+          "id": "hunt-event-133",
+          "requirement": 6000,
+          "rewards": [
+            {
+              "type": "currency",
+              "kind": "gold",
+              "amount": 10000
+            },
+            {
+              "type": "currency",
+              "kind": "coopTicket",
+              "amount": 5
+            }
+          ]
+        },
+        {
+          "id": "hunt-event-134",
+          "requirement": 6500,
+          "rewards": [
+            {
+              "type": "currency",
+              "kind": "gold",
+              "amount": 10000
+            },
+            {
+              "type": "currency",
+              "kind": "core",
+              "amount": 20
+            },
+            {
+              "type": "currency",
+              "kind": "arenaTicket",
+              "amount": 3
+            }
+          ]
+        },
+        {
+          "id": "hunt-event-135",
+          "requirement": 7000,
+          "rewards": [
+            {
+              "type": "cosmetic",
+              "subtype": "dice-skin",
+              "itemId": "UNIQUE:Dice_Predator3_skin1",
+              "label": "吞噬骰子－鯊魚造型",
+              "assetStatus": "ready",
+              "icon": "/rewards/cosmetic/Dice_Predator3_skin1.png",
+              "amount": 1
+            },
+            {
+              "type": "currency",
+              "kind": "coopTicket",
+              "amount": 10
+            }
+          ]
+        }
+      ],
+      "taskDays": [
+        {
+          "day": 1,
+          "totalPoints": 500,
+          "tasks": [
+            {
+              "id": "hunt-event-task-50",
+              "name": "登入",
+              "requirement": 1,
+              "points": 100
+            },
+            {
+              "id": "hunt-event-task-51",
+              "name": "召喚骰子",
+              "requirement": 200,
+              "points": 100
+            },
+            {
+              "id": "hunt-event-task-52",
+              "name": "擊殺一般怪物",
+              "requirement": 1000,
+              "points": 100
+            },
+            {
+              "id": "hunt-event-task-53",
+              "name": "解鎖骰子節點",
+              "requirement": 20,
+              "points": 100
+            },
+            {
+              "id": "hunt-event-task-54",
+              "name": "合成骰子",
+              "requirement": 200,
+              "points": 100
+            }
+          ]
+        },
+        {
+          "day": 2,
+          "totalPoints": 500,
+          "tasks": [
+            {
+              "id": "hunt-event-task-55",
+              "name": "登入",
+              "requirement": 1,
+              "points": 100
+            },
+            {
+              "id": "hunt-event-task-56",
+              "name": "進行競技場",
+              "requirement": 5,
+              "points": 100
+            },
+            {
+              "id": "hunt-event-task-57",
+              "name": "強化骰子",
+              "requirement": 50,
+              "points": 100
+            },
+            {
+              "id": "hunt-event-task-58",
+              "name": "使用骰子核心",
+              "requirement": 10,
+              "points": 100
+            },
+            {
+              "id": "hunt-event-task-59",
+              "name": "擊殺首領怪物",
+              "requirement": 100,
+              "points": 100
+            }
+          ]
+        },
+        {
+          "day": 3,
+          "totalPoints": 500,
+          "tasks": [
+            {
+              "id": "hunt-event-task-60",
+              "name": "進行合作",
+              "requirement": 10,
+              "points": 100
+            },
+            {
+              "id": "hunt-event-task-61",
+              "name": "合成骰子",
+              "requirement": 400,
+              "points": 100
+            },
+            {
+              "id": "hunt-event-task-62",
+              "name": "達成節點20等級",
+              "requirement": 1,
+              "points": 100
+            },
+            {
+              "id": "hunt-event-task-63",
+              "name": "解鎖骰子特性節點",
+              "requirement": 1,
+              "points": 100
+            },
+            {
+              "id": "hunt-event-task-64",
+              "name": "於合作中擊殺怪物",
+              "requirement": 2000,
+              "points": 100
+            }
+          ]
+        },
+        {
+          "day": 4,
+          "totalPoints": 500,
+          "tasks": [
+            {
+              "id": "hunt-event-task-65",
+              "name": "登入",
+              "requirement": 1,
+              "points": 100
+            },
+            {
+              "id": "hunt-event-task-66",
+              "name": "競技場勝利",
+              "requirement": 5,
+              "points": 100
+            },
+            {
+              "id": "hunt-event-task-67",
+              "name": "製作7骰點骰子",
+              "requirement": 10,
+              "points": 100
+            },
+            {
+              "id": "hunt-event-task-68",
+              "name": "骰子強化達成12等級",
+              "requirement": 1,
+              "points": 100
+            },
+            {
+              "id": "hunt-event-task-69",
+              "name": "解鎖骰子節點",
+              "requirement": 30,
+              "points": 100
+            }
+          ]
+        },
+        {
+          "day": 5,
+          "totalPoints": 500,
+          "tasks": [
+            {
+              "id": "hunt-event-task-70",
+              "name": "體驗戰術效果",
+              "requirement": 30,
+              "points": 100
+            },
+            {
+              "id": "hunt-event-task-71",
+              "name": "擊殺SP魔像",
+              "requirement": 50,
+              "points": 100
+            },
+            {
+              "id": "hunt-event-task-72",
+              "name": "召喚骰子",
+              "requirement": 400,
+              "points": 100
+            },
+            {
+              "id": "hunt-event-task-73",
+              "name": "於競技場擊殺首領",
+              "requirement": 20,
+              "points": 100
+            },
+            {
+              "id": "hunt-event-task-74",
+              "name": "合成骰子",
+              "requirement": 600,
+              "points": 100
+            }
+          ]
+        },
+        {
+          "day": 6,
+          "totalPoints": 500,
+          "tasks": [
+            {
+              "id": "hunt-event-task-75",
+              "name": "登入",
+              "requirement": 1,
+              "points": 100
+            },
+            {
+              "id": "hunt-event-task-76",
+              "name": "達成合作最高擊殺數",
+              "requirement": 3000,
+              "points": 100
+            },
+            {
+              "id": "hunt-event-task-77",
+              "name": "進行競技場",
+              "requirement": 10,
+              "points": 100
+            },
+            {
+              "id": "hunt-event-task-78",
+              "name": "對戰／合作遊玩",
+              "requirement": 20,
+              "points": 100
+            },
+            {
+              "id": "hunt-event-task-79",
+              "name": "擊殺首領怪物",
+              "requirement": 200,
+              "points": 100
+            }
+          ]
+        },
+        {
+          "day": 7,
+          "totalPoints": 500,
+          "tasks": [
+            {
+              "id": "hunt-event-task-80",
+              "name": "登入",
+              "requirement": 1,
+              "points": 100
+            },
+            {
+              "id": "hunt-event-task-81",
+              "name": "競技場連勝",
+              "requirement": 5,
+              "points": 100
+            },
+            {
+              "id": "hunt-event-task-82",
+              "name": "製作7骰點骰子",
+              "requirement": 20,
+              "points": 100
+            },
+            {
+              "id": "hunt-event-task-83",
+              "name": "骰子強化達成14等級",
+              "requirement": 1,
+              "points": 100
+            },
+            {
+              "id": "hunt-event-task-84",
+              "name": "競技場勝利",
+              "requirement": 10,
+              "points": 100
+            }
+          ]
+        },
+        {
+          "day": 8,
+          "totalPoints": 500,
+          "tasks": [
+            {
+              "id": "hunt-event-task-85",
+              "name": "登入",
+              "requirement": 1,
+              "points": 100
+            },
+            {
+              "id": "hunt-event-task-86",
+              "name": "【困難】擊殺一般怪物",
+              "requirement": 500,
+              "points": 100
+            },
+            {
+              "id": "hunt-event-task-87",
+              "name": "累積獲得討伐硬幣",
+              "requirement": 1000,
+              "points": 100
+            },
+            {
+              "id": "hunt-event-task-88",
+              "name": "購買一般階級裂縫效果",
+              "requirement": 5,
+              "points": 100
+            },
+            {
+              "id": "hunt-event-task-89",
+              "name": "合成骰子",
+              "requirement": 200,
+              "points": 100
+            }
+          ]
+        },
+        {
+          "day": 9,
+          "totalPoints": 500,
+          "tasks": [
+            {
+              "id": "hunt-event-task-90",
+              "name": "進行競技場",
+              "requirement": 20,
+              "points": 100
+            },
+            {
+              "id": "hunt-event-task-91",
+              "name": "擊殺SP魔像",
+              "requirement": 100,
+              "points": 100
+            },
+            {
+              "id": "hunt-event-task-92",
+              "name": "購買稀有階級裂縫效果",
+              "requirement": 3,
+              "points": 100
+            },
+            {
+              "id": "hunt-event-task-93",
+              "name": "使用骰子核心",
+              "requirement": 100,
+              "points": 100
+            },
+            {
+              "id": "hunt-event-task-94",
+              "name": "召喚骰子",
+              "requirement": 800,
+              "points": 100
+            }
+          ]
+        },
+        {
+          "day": 10,
+          "totalPoints": 500,
+          "tasks": [
+            {
+              "id": "hunt-event-task-95",
+              "name": "登入",
+              "requirement": 1,
+              "points": 100
+            },
+            {
+              "id": "hunt-event-task-96",
+              "name": "解鎖神話骰子",
+              "requirement": 1,
+              "points": 100
+            },
+            {
+              "id": "hunt-event-task-97",
+              "name": "【困難】擊殺首領",
+              "requirement": 10,
+              "points": 100
+            },
+            {
+              "id": "hunt-event-task-98",
+              "name": "累積獲得討伐硬幣",
+              "requirement": 2000,
+              "points": 100
+            },
+            {
+              "id": "hunt-event-task-99",
+              "name": "【困難】達成最高擊殺數",
+              "requirement": 5500,
+              "points": 100
+            }
+          ]
+        },
+        {
+          "day": 11,
+          "totalPoints": 500,
+          "tasks": [
+            {
+              "id": "hunt-event-task-100",
+              "name": "【困難】擊殺一般怪物",
+              "requirement": 3000,
+              "points": 100
+            },
+            {
+              "id": "hunt-event-task-101",
+              "name": "購買一般階級裂縫效果",
+              "requirement": 10,
+              "points": 100
+            },
+            {
+              "id": "hunt-event-task-102",
+              "name": "購買裂縫效果",
+              "requirement": 100,
+              "points": 100
+            },
+            {
+              "id": "hunt-event-task-103",
+              "name": "召喚骰子",
+              "requirement": 1200,
+              "points": 100
+            },
+            {
+              "id": "hunt-event-task-104",
+              "name": "競技場勝利",
+              "requirement": 20,
+              "points": 100
+            }
+          ]
+        },
+        {
+          "day": 12,
+          "totalPoints": 500,
+          "tasks": [
+            {
+              "id": "hunt-event-task-105",
+              "name": "登入",
+              "requirement": 1,
+              "points": 100
+            },
+            {
+              "id": "hunt-event-task-106",
+              "name": "合成骰子",
+              "requirement": 500,
+              "points": 100
+            },
+            {
+              "id": "hunt-event-task-107",
+              "name": "製作7骰點骰子",
+              "requirement": 50,
+              "points": 100
+            },
+            {
+              "id": "hunt-event-task-108",
+              "name": "購買傳說階級裂縫效果",
+              "requirement": 5,
+              "points": 100
+            },
+            {
+              "id": "hunt-event-task-109",
+              "name": "擊殺SP魔像",
+              "requirement": 200,
+              "points": 100
+            }
+          ]
+        },
+        {
+          "day": 13,
+          "totalPoints": 500,
+          "tasks": [
+            {
+              "id": "hunt-event-task-110",
+              "name": "合成骰子",
+              "requirement": 1000,
+              "points": 100
+            },
+            {
+              "id": "hunt-event-task-111",
+              "name": "【困難】擊殺首領",
+              "requirement": 25,
+              "points": 100
+            },
+            {
+              "id": "hunt-event-task-112",
+              "name": "累積獲得討伐硬幣",
+              "requirement": 5000,
+              "points": 100
+            },
+            {
+              "id": "hunt-event-task-113",
+              "name": "購買稀有階級裂縫效果",
+              "requirement": 20,
+              "points": 100
+            },
+            {
+              "id": "hunt-event-task-114",
+              "name": "【困難】合作遊玩",
+              "requirement": 20,
+              "points": 100
+            }
+          ]
+        },
+        {
+          "day": 14,
+          "totalPoints": 500,
+          "tasks": [
+            {
+              "id": "hunt-event-task-115",
+              "name": "登入",
+              "requirement": 1,
+              "points": 100
+            },
+            {
+              "id": "hunt-event-task-116",
+              "name": "體驗戰術效果",
+              "requirement": 100,
+              "points": 100
+            },
+            {
+              "id": "hunt-event-task-117",
+              "name": "【困難】擊殺一般怪物",
+              "requirement": 6000,
+              "points": 100
+            },
+            {
+              "id": "hunt-event-task-118",
+              "name": "購買傳說階級裂縫效果",
+              "requirement": 10,
+              "points": 100
+            },
+            {
+              "id": "hunt-event-task-119",
+              "name": "【困難】達成最高擊殺數",
+              "requirement": 6200,
+              "points": 100
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "kind": "achievement",
+      "id": "achievements",
+      "name": "成就",
+      "groups": [
+        {
+          "id": "召喚骰子",
+          "name": "召喚骰子",
+          "stages": [
+            {
+              "id": "achievement-4",
+              "stage": 1,
+              "requirement": 30,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 1
+                }
+              ]
+            },
+            {
+              "id": "achievement-5",
+              "stage": 2,
+              "requirement": 50,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 1
+                }
+              ]
+            },
+            {
+              "id": "achievement-6",
+              "stage": 3,
+              "requirement": 80,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 1
+                }
+              ]
+            },
+            {
+              "id": "achievement-7",
+              "stage": 4,
+              "requirement": 150,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 1
+                }
+              ]
+            },
+            {
+              "id": "achievement-8",
+              "stage": 5,
+              "requirement": 300,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 1
+                }
+              ]
+            },
+            {
+              "id": "achievement-9",
+              "stage": 6,
+              "requirement": 500,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 1
+                }
+              ]
+            },
+            {
+              "id": "achievement-10",
+              "stage": 7,
+              "requirement": 800,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 1
+                }
+              ]
+            },
+            {
+              "id": "achievement-11",
+              "stage": 8,
+              "requirement": 1200,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 1
+                }
+              ]
+            },
+            {
+              "id": "achievement-12",
+              "stage": 9,
+              "requirement": 1800,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 1
+                }
+              ]
+            },
+            {
+              "id": "achievement-13",
+              "stage": 10,
+              "requirement": 2600,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 1
+                }
+              ]
+            },
+            {
+              "id": "achievement-14",
+              "stage": 11,
+              "requirement": 3800,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 1
+                }
+              ]
+            },
+            {
+              "id": "achievement-15",
+              "stage": 12,
+              "requirement": 5500,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 1
+                }
+              ]
+            },
+            {
+              "id": "achievement-16",
+              "stage": 13,
+              "requirement": 8000,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 1
+                }
+              ]
+            },
+            {
+              "id": "achievement-17",
+              "stage": 14,
+              "requirement": 12000,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 1
+                }
+              ]
+            },
+            {
+              "id": "achievement-18",
+              "stage": 15,
+              "requirement": 18000,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 1
+                }
+              ]
+            },
+            {
+              "id": "achievement-19",
+              "stage": 16,
+              "requirement": 30000,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 1
+                }
+              ]
+            },
+            {
+              "id": "achievement-20",
+              "stage": 17,
+              "requirement": 45000,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 1
+                }
+              ]
+            },
+            {
+              "id": "achievement-21",
+              "stage": 18,
+              "requirement": 66000,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 1
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "合成骰子",
+          "name": "合成骰子",
+          "stages": [
+            {
+              "id": "achievement-23",
+              "stage": 1,
+              "requirement": 50,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "coopTicket",
+                  "amount": 2
+                }
+              ]
+            },
+            {
+              "id": "achievement-24",
+              "stage": 2,
+              "requirement": 150,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "coopTicket",
+                  "amount": 2
+                }
+              ]
+            },
+            {
+              "id": "achievement-25",
+              "stage": 3,
+              "requirement": 300,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "coopTicket",
+                  "amount": 2
+                }
+              ]
+            },
+            {
+              "id": "achievement-26",
+              "stage": 4,
+              "requirement": 600,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "coopTicket",
+                  "amount": 3
+                }
+              ]
+            },
+            {
+              "id": "achievement-27",
+              "stage": 5,
+              "requirement": 1000,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "coopTicket",
+                  "amount": 3
+                }
+              ]
+            },
+            {
+              "id": "achievement-28",
+              "stage": 6,
+              "requirement": 2000,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "coopTicket",
+                  "amount": 3
+                }
+              ]
+            },
+            {
+              "id": "achievement-29",
+              "stage": 7,
+              "requirement": 3500,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "coopTicket",
+                  "amount": 3
+                }
+              ]
+            },
+            {
+              "id": "achievement-30",
+              "stage": 8,
+              "requirement": 5000,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "coopTicket",
+                  "amount": 4
+                }
+              ]
+            },
+            {
+              "id": "achievement-31",
+              "stage": 9,
+              "requirement": 7500,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "coopTicket",
+                  "amount": 4
+                }
+              ]
+            },
+            {
+              "id": "achievement-32",
+              "stage": 10,
+              "requirement": 10000,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "coopTicket",
+                  "amount": 4
+                }
+              ]
+            },
+            {
+              "id": "achievement-33",
+              "stage": 11,
+              "requirement": 14000,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "coopTicket",
+                  "amount": 4
+                }
+              ]
+            },
+            {
+              "id": "achievement-34",
+              "stage": 12,
+              "requirement": 18000,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "coopTicket",
+                  "amount": 4
+                }
+              ]
+            },
+            {
+              "id": "achievement-35",
+              "stage": 13,
+              "requirement": 23000,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "coopTicket",
+                  "amount": 5
+                }
+              ]
+            },
+            {
+              "id": "achievement-36",
+              "stage": 14,
+              "requirement": 29000,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "coopTicket",
+                  "amount": 5
+                }
+              ]
+            },
+            {
+              "id": "achievement-37",
+              "stage": 15,
+              "requirement": 36000,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "coopTicket",
+                  "amount": 5
+                }
+              ]
+            },
+            {
+              "id": "achievement-38",
+              "stage": 16,
+              "requirement": 44000,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "coopTicket",
+                  "amount": 5
+                }
+              ]
+            },
+            {
+              "id": "achievement-39",
+              "stage": 17,
+              "requirement": 52000,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "coopTicket",
+                  "amount": 6
+                }
+              ]
+            },
+            {
+              "id": "achievement-40",
+              "stage": 18,
+              "requirement": 59000,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "coopTicket",
+                  "amount": 6
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "強化骰子",
+          "name": "強化骰子",
+          "stages": [
+            {
+              "id": "achievement-42",
+              "stage": 1,
+              "requirement": 25,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 2
+                }
+              ]
+            },
+            {
+              "id": "achievement-43",
+              "stage": 2,
+              "requirement": 50,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 2
+                }
+              ]
+            },
+            {
+              "id": "achievement-44",
+              "stage": 3,
+              "requirement": 100,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 2
+                }
+              ]
+            },
+            {
+              "id": "achievement-45",
+              "stage": 4,
+              "requirement": 200,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 2
+                }
+              ]
+            },
+            {
+              "id": "achievement-46",
+              "stage": 5,
+              "requirement": 300,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 2
+                }
+              ]
+            },
+            {
+              "id": "achievement-47",
+              "stage": 6,
+              "requirement": 400,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 2
+                }
+              ]
+            },
+            {
+              "id": "achievement-48",
+              "stage": 7,
+              "requirement": 500,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 2
+                }
+              ]
+            },
+            {
+              "id": "achievement-49",
+              "stage": 8,
+              "requirement": 700,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 2
+                }
+              ]
+            },
+            {
+              "id": "achievement-50",
+              "stage": 9,
+              "requirement": 900,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 2
+                }
+              ]
+            },
+            {
+              "id": "achievement-51",
+              "stage": 10,
+              "requirement": 1100,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 2
+                }
+              ]
+            },
+            {
+              "id": "achievement-52",
+              "stage": 11,
+              "requirement": 1300,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 2
+                }
+              ]
+            },
+            {
+              "id": "achievement-53",
+              "stage": 12,
+              "requirement": 1500,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 2
+                }
+              ]
+            },
+            {
+              "id": "achievement-54",
+              "stage": 13,
+              "requirement": 1700,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 2
+                }
+              ]
+            },
+            {
+              "id": "achievement-55",
+              "stage": 14,
+              "requirement": 1900,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 2
+                }
+              ]
+            },
+            {
+              "id": "achievement-56",
+              "stage": 15,
+              "requirement": 2100,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 2
+                }
+              ]
+            },
+            {
+              "id": "achievement-57",
+              "stage": 16,
+              "requirement": 2400,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 2
+                }
+              ]
+            },
+            {
+              "id": "achievement-58",
+              "stage": 17,
+              "requirement": 2700,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 2
+                }
+              ]
+            },
+            {
+              "id": "achievement-59",
+              "stage": 18,
+              "requirement": 3000,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 2
+                }
+              ]
+            },
+            {
+              "id": "achievement-60",
+              "stage": 19,
+              "requirement": 3300,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 2
+                }
+              ]
+            },
+            {
+              "id": "achievement-61",
+              "stage": 20,
+              "requirement": 3600,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 2
+                }
+              ]
+            },
+            {
+              "id": "achievement-62",
+              "stage": 21,
+              "requirement": 3900,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 2
+                }
+              ]
+            },
+            {
+              "id": "achievement-63",
+              "stage": 22,
+              "requirement": 4200,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 2
+                }
+              ]
+            },
+            {
+              "id": "achievement-64",
+              "stage": 23,
+              "requirement": 4600,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 2
+                }
+              ]
+            },
+            {
+              "id": "achievement-65",
+              "stage": 24,
+              "requirement": 5000,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 2
+                }
+              ]
+            },
+            {
+              "id": "achievement-66",
+              "stage": 25,
+              "requirement": 5400,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 2
+                }
+              ]
+            },
+            {
+              "id": "achievement-67",
+              "stage": 26,
+              "requirement": 5800,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 2
+                }
+              ]
+            },
+            {
+              "id": "achievement-68",
+              "stage": 27,
+              "requirement": 6200,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 2
+                }
+              ]
+            },
+            {
+              "id": "achievement-69",
+              "stage": 28,
+              "requirement": 6600,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 2
+                }
+              ]
+            },
+            {
+              "id": "achievement-70",
+              "stage": 29,
+              "requirement": 7000,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 2
+                }
+              ]
+            },
+            {
+              "id": "achievement-71",
+              "stage": 30,
+              "requirement": 7400,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 2
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "狩獵SP魔像",
+          "name": "狩獵SP魔像",
+          "stages": [
+            {
+              "id": "achievement-73",
+              "stage": 1,
+              "requirement": 30,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 2
+                }
+              ]
+            },
+            {
+              "id": "achievement-74",
+              "stage": 2,
+              "requirement": 60,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 2
+                }
+              ]
+            },
+            {
+              "id": "achievement-75",
+              "stage": 3,
+              "requirement": 120,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 2
+                }
+              ]
+            },
+            {
+              "id": "achievement-76",
+              "stage": 4,
+              "requirement": 200,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 2
+                }
+              ]
+            },
+            {
+              "id": "achievement-77",
+              "stage": 5,
+              "requirement": 280,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 2
+                }
+              ]
+            },
+            {
+              "id": "achievement-78",
+              "stage": 6,
+              "requirement": 360,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 2
+                }
+              ]
+            },
+            {
+              "id": "achievement-79",
+              "stage": 7,
+              "requirement": 440,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 2
+                }
+              ]
+            },
+            {
+              "id": "achievement-80",
+              "stage": 8,
+              "requirement": 520,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 2
+                }
+              ]
+            },
+            {
+              "id": "achievement-81",
+              "stage": 9,
+              "requirement": 600,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 2
+                }
+              ]
+            },
+            {
+              "id": "achievement-82",
+              "stage": 10,
+              "requirement": 700,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 2
+                }
+              ]
+            },
+            {
+              "id": "achievement-83",
+              "stage": 11,
+              "requirement": 800,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 2
+                }
+              ]
+            },
+            {
+              "id": "achievement-84",
+              "stage": 12,
+              "requirement": 900,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 2
+                }
+              ]
+            },
+            {
+              "id": "achievement-85",
+              "stage": 13,
+              "requirement": 1000,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 2
+                }
+              ]
+            },
+            {
+              "id": "achievement-86",
+              "stage": 14,
+              "requirement": 1100,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 2
+                }
+              ]
+            },
+            {
+              "id": "achievement-87",
+              "stage": 15,
+              "requirement": 1200,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 2
+                }
+              ]
+            },
+            {
+              "id": "achievement-88",
+              "stage": 16,
+              "requirement": 1300,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 2
+                }
+              ]
+            },
+            {
+              "id": "achievement-89",
+              "stage": 17,
+              "requirement": 1400,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 2
+                }
+              ]
+            },
+            {
+              "id": "achievement-90",
+              "stage": 18,
+              "requirement": 1500,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 2
+                }
+              ]
+            },
+            {
+              "id": "achievement-91",
+              "stage": 19,
+              "requirement": 1600,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 2
+                }
+              ]
+            },
+            {
+              "id": "achievement-92",
+              "stage": 20,
+              "requirement": 1700,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 2
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "參加競技場",
+          "name": "參加競技場",
+          "stages": [
+            {
+              "id": "achievement-94",
+              "stage": 1,
+              "requirement": 1,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 2
+                }
+              ]
+            },
+            {
+              "id": "achievement-95",
+              "stage": 2,
+              "requirement": 5,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 3
+                }
+              ]
+            },
+            {
+              "id": "achievement-96",
+              "stage": 3,
+              "requirement": 50,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 5
+                }
+              ]
+            },
+            {
+              "id": "achievement-97",
+              "stage": 4,
+              "requirement": 100,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 5
+                }
+              ]
+            },
+            {
+              "id": "achievement-98",
+              "stage": 5,
+              "requirement": 200,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 5
+                }
+              ]
+            },
+            {
+              "id": "achievement-99",
+              "stage": 6,
+              "requirement": 400,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 10
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "體驗戰術效果",
+          "name": "體驗戰術效果",
+          "stages": [
+            {
+              "id": "achievement-101",
+              "stage": 1,
+              "requirement": 3,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 1
+                }
+              ]
+            },
+            {
+              "id": "achievement-102",
+              "stage": 2,
+              "requirement": 4,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 1
+                }
+              ]
+            },
+            {
+              "id": "achievement-103",
+              "stage": 3,
+              "requirement": 8,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 1
+                }
+              ]
+            },
+            {
+              "id": "achievement-104",
+              "stage": 4,
+              "requirement": 16,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 1
+                }
+              ]
+            },
+            {
+              "id": "achievement-105",
+              "stage": 5,
+              "requirement": 32,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 1
+                }
+              ]
+            },
+            {
+              "id": "achievement-106",
+              "stage": 6,
+              "requirement": 64,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 1
+                }
+              ]
+            },
+            {
+              "id": "achievement-107",
+              "stage": 7,
+              "requirement": 100,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 1
+                }
+              ]
+            },
+            {
+              "id": "achievement-108",
+              "stage": 8,
+              "requirement": 160,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 1
+                }
+              ]
+            },
+            {
+              "id": "achievement-109",
+              "stage": 9,
+              "requirement": 250,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 1
+                }
+              ]
+            },
+            {
+              "id": "achievement-110",
+              "stage": 10,
+              "requirement": 400,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 1
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "達成【一般】難度合作擊殺怪物數",
+          "name": "達成【一般】難度合作擊殺怪物數",
+          "stages": [
+            {
+              "id": "achievement-112",
+              "stage": 1,
+              "requirement": 600,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "gold",
+                  "amount": 2000
+                }
+              ]
+            },
+            {
+              "id": "achievement-113",
+              "stage": 2,
+              "requirement": 900,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "gold",
+                  "amount": 4000
+                }
+              ]
+            },
+            {
+              "id": "achievement-114",
+              "stage": 3,
+              "requirement": 1500,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "gold",
+                  "amount": 8000
+                }
+              ]
+            },
+            {
+              "id": "achievement-115",
+              "stage": 4,
+              "requirement": 2100,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "coopTicket",
+                  "amount": 3
+                }
+              ]
+            },
+            {
+              "id": "achievement-116",
+              "stage": 5,
+              "requirement": 2800,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "coopTicket",
+                  "amount": 4
+                }
+              ]
+            },
+            {
+              "id": "achievement-117",
+              "stage": 6,
+              "requirement": 3500,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "coopTicket",
+                  "amount": 5
+                }
+              ]
+            },
+            {
+              "id": "achievement-118",
+              "stage": 7,
+              "requirement": 4200,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "coopTicket",
+                  "amount": 6
+                }
+              ]
+            },
+            {
+              "id": "achievement-119",
+              "stage": 8,
+              "requirement": 5000,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "coopTicket",
+                  "amount": 8
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "達成競技場3連勝",
+          "name": "達成競技場3連勝",
+          "stages": [
+            {
+              "id": "achievement-121",
+              "stage": 1,
+              "requirement": 1,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 3
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "達成競技場4連勝",
+          "name": "達成競技場4連勝",
+          "stages": [
+            {
+              "id": "achievement-122",
+              "stage": 1,
+              "requirement": 1,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 5
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "達成競技場5連勝",
+          "name": "達成競技場5連勝",
+          "stages": [
+            {
+              "id": "achievement-123",
+              "stage": 1,
+              "requirement": 1,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 7
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "擊殺首領",
+          "name": "擊殺首領",
+          "stages": [
+            {
+              "id": "achievement-125",
+              "stage": 1,
+              "requirement": 2,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "coopTicket",
+                  "amount": 2
+                }
+              ]
+            },
+            {
+              "id": "achievement-126",
+              "stage": 2,
+              "requirement": 5,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "coopTicket",
+                  "amount": 2
+                }
+              ]
+            },
+            {
+              "id": "achievement-127",
+              "stage": 3,
+              "requirement": 10,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "coopTicket",
+                  "amount": 3
+                }
+              ]
+            },
+            {
+              "id": "achievement-128",
+              "stage": 4,
+              "requirement": 25,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "coopTicket",
+                  "amount": 4
+                }
+              ]
+            },
+            {
+              "id": "achievement-129",
+              "stage": 5,
+              "requirement": 50,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "coopTicket",
+                  "amount": 5
+                }
+              ]
+            },
+            {
+              "id": "achievement-130",
+              "stage": 6,
+              "requirement": 100,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "coopTicket",
+                  "amount": 5
+                }
+              ]
+            },
+            {
+              "id": "achievement-131",
+              "stage": 7,
+              "requirement": 200,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "coopTicket",
+                  "amount": 6
+                }
+              ]
+            },
+            {
+              "id": "achievement-132",
+              "stage": 8,
+              "requirement": 400,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "coopTicket",
+                  "amount": 7
+                }
+              ]
+            },
+            {
+              "id": "achievement-133",
+              "stage": 9,
+              "requirement": 800,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "coopTicket",
+                  "amount": 8
+                }
+              ]
+            },
+            {
+              "id": "achievement-134",
+              "stage": 10,
+              "requirement": 1600,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "coopTicket",
+                  "amount": 8
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "擊殺蛇王首領",
+          "name": "擊殺蛇王首領",
+          "stages": [
+            {
+              "id": "achievement-136",
+              "stage": 1,
+              "requirement": 20,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 1
+                }
+              ]
+            },
+            {
+              "id": "achievement-137",
+              "stage": 2,
+              "requirement": 100,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 1
+                }
+              ]
+            },
+            {
+              "id": "achievement-138",
+              "stage": 3,
+              "requirement": 300,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 2
+                }
+              ]
+            },
+            {
+              "id": "achievement-139",
+              "stage": 4,
+              "requirement": 800,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 3
+                }
+              ]
+            },
+            {
+              "id": "achievement-140",
+              "stage": 5,
+              "requirement": 1600,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 5
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "擊殺騎士首領",
+          "name": "擊殺騎士首領",
+          "stages": [
+            {
+              "id": "achievement-142",
+              "stage": 1,
+              "requirement": 20,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 1
+                }
+              ]
+            },
+            {
+              "id": "achievement-143",
+              "stage": 2,
+              "requirement": 100,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 1
+                }
+              ]
+            },
+            {
+              "id": "achievement-144",
+              "stage": 3,
+              "requirement": 300,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 2
+                }
+              ]
+            },
+            {
+              "id": "achievement-145",
+              "stage": 4,
+              "requirement": 800,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 3
+                }
+              ]
+            },
+            {
+              "id": "achievement-146",
+              "stage": 5,
+              "requirement": 1600,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 5
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "擊殺軟泥怪首領",
+          "name": "擊殺軟泥怪首領",
+          "stages": [
+            {
+              "id": "achievement-148",
+              "stage": 1,
+              "requirement": 20,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 1
+                }
+              ]
+            },
+            {
+              "id": "achievement-149",
+              "stage": 2,
+              "requirement": 100,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 1
+                }
+              ]
+            },
+            {
+              "id": "achievement-150",
+              "stage": 3,
+              "requirement": 300,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 2
+                }
+              ]
+            },
+            {
+              "id": "achievement-151",
+              "stage": 4,
+              "requirement": 800,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 3
+                }
+              ]
+            },
+            {
+              "id": "achievement-152",
+              "stage": 5,
+              "requirement": 1600,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 5
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "擊殺極速狂影首領",
+          "name": "擊殺極速狂影首領",
+          "stages": [
+            {
+              "id": "achievement-154",
+              "stage": 1,
+              "requirement": 20,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 1
+                }
+              ]
+            },
+            {
+              "id": "achievement-155",
+              "stage": 2,
+              "requirement": 100,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 1
+                }
+              ]
+            },
+            {
+              "id": "achievement-156",
+              "stage": 3,
+              "requirement": 300,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 2
+                }
+              ]
+            },
+            {
+              "id": "achievement-157",
+              "stage": 4,
+              "requirement": 800,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 3
+                }
+              ]
+            },
+            {
+              "id": "achievement-158",
+              "stage": 5,
+              "requirement": 1600,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 5
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "擊殺熵魔首領",
+          "name": "擊殺熵魔首領",
+          "stages": [
+            {
+              "id": "achievement-160",
+              "stage": 1,
+              "requirement": 20,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 1
+                }
+              ]
+            },
+            {
+              "id": "achievement-161",
+              "stage": 2,
+              "requirement": 100,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 1
+                }
+              ]
+            },
+            {
+              "id": "achievement-162",
+              "stage": 3,
+              "requirement": 300,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 2
+                }
+              ]
+            },
+            {
+              "id": "achievement-163",
+              "stage": 4,
+              "requirement": 800,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 3
+                }
+              ]
+            },
+            {
+              "id": "achievement-164",
+              "stage": 5,
+              "requirement": 1600,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 5
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "擊殺掠奪者首領",
+          "name": "擊殺掠奪者首領",
+          "stages": [
+            {
+              "id": "achievement-166",
+              "stage": 1,
+              "requirement": 20,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 1
+                }
+              ]
+            },
+            {
+              "id": "achievement-167",
+              "stage": 2,
+              "requirement": 100,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 1
+                }
+              ]
+            },
+            {
+              "id": "achievement-168",
+              "stage": 3,
+              "requirement": 300,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 2
+                }
+              ]
+            },
+            {
+              "id": "achievement-169",
+              "stage": 4,
+              "requirement": 800,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 3
+                }
+              ]
+            },
+            {
+              "id": "achievement-170",
+              "stage": 5,
+              "requirement": 1600,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 5
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "擊殺熔岩巨獸首領",
+          "name": "擊殺熔岩巨獸首領",
+          "stages": [
+            {
+              "id": "achievement-172",
+              "stage": 1,
+              "requirement": 20,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 1
+                }
+              ]
+            },
+            {
+              "id": "achievement-173",
+              "stage": 2,
+              "requirement": 100,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 1
+                }
+              ]
+            },
+            {
+              "id": "achievement-174",
+              "stage": 3,
+              "requirement": 300,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 2
+                }
+              ]
+            },
+            {
+              "id": "achievement-175",
+              "stage": 4,
+              "requirement": 800,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 3
+                }
+              ]
+            },
+            {
+              "id": "achievement-176",
+              "stage": 5,
+              "requirement": 1600,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 5
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "擊殺時空魔靈首領",
+          "name": "擊殺時空魔靈首領",
+          "stages": [
+            {
+              "id": "achievement-178",
+              "stage": 1,
+              "requirement": 20,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 1
+                }
+              ]
+            },
+            {
+              "id": "achievement-179",
+              "stage": 2,
+              "requirement": 100,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 1
+                }
+              ]
+            },
+            {
+              "id": "achievement-180",
+              "stage": 3,
+              "requirement": 300,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 2
+                }
+              ]
+            },
+            {
+              "id": "achievement-181",
+              "stage": 4,
+              "requirement": 800,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 3
+                }
+              ]
+            },
+            {
+              "id": "achievement-182",
+              "stage": 5,
+              "requirement": 1600,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 5
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "擊殺史萊姆首領",
+          "name": "擊殺史萊姆首領",
+          "stages": [
+            {
+              "id": "achievement-184",
+              "stage": 1,
+              "requirement": 20,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 1
+                }
+              ]
+            },
+            {
+              "id": "achievement-185",
+              "stage": 2,
+              "requirement": 100,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 1
+                }
+              ]
+            },
+            {
+              "id": "achievement-186",
+              "stage": 3,
+              "requirement": 300,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 2
+                }
+              ]
+            },
+            {
+              "id": "achievement-187",
+              "stage": 4,
+              "requirement": 800,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 3
+                }
+              ]
+            },
+            {
+              "id": "achievement-188",
+              "stage": 5,
+              "requirement": 1600,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 5
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "擊殺小丑首領",
+          "name": "擊殺小丑首領",
+          "stages": [
+            {
+              "id": "achievement-190",
+              "stage": 1,
+              "requirement": 20,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 1
+                }
+              ]
+            },
+            {
+              "id": "achievement-191",
+              "stage": 2,
+              "requirement": 100,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 1
+                }
+              ]
+            },
+            {
+              "id": "achievement-192",
+              "stage": 3,
+              "requirement": 300,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 2
+                }
+              ]
+            },
+            {
+              "id": "achievement-193",
+              "stage": 4,
+              "requirement": 800,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 3
+                }
+              ]
+            },
+            {
+              "id": "achievement-194",
+              "stage": 5,
+              "requirement": 1600,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 5
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "於任意模式擊殺怪物",
+          "name": "於任意模式擊殺怪物",
+          "stages": [
+            {
+              "id": "achievement-196",
+              "stage": 1,
+              "requirement": 300,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 1
+                }
+              ]
+            },
+            {
+              "id": "achievement-197",
+              "stage": 2,
+              "requirement": 750,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 1
+                }
+              ]
+            },
+            {
+              "id": "achievement-198",
+              "stage": 3,
+              "requirement": 1500,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 2
+                }
+              ]
+            },
+            {
+              "id": "achievement-199",
+              "stage": 4,
+              "requirement": 3000,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 2
+                }
+              ]
+            },
+            {
+              "id": "achievement-200",
+              "stage": 5,
+              "requirement": 6000,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 2
+                }
+              ]
+            },
+            {
+              "id": "achievement-201",
+              "stage": 6,
+              "requirement": 10000,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 3
+                }
+              ]
+            },
+            {
+              "id": "achievement-202",
+              "stage": 7,
+              "requirement": 20000,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 3
+                }
+              ]
+            },
+            {
+              "id": "achievement-203",
+              "stage": 8,
+              "requirement": 40000,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 4
+                }
+              ]
+            },
+            {
+              "id": "achievement-204",
+              "stage": 9,
+              "requirement": 80000,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 4
+                }
+              ]
+            },
+            {
+              "id": "achievement-205",
+              "stage": 10,
+              "requirement": 150000,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 5
+                }
+              ]
+            },
+            {
+              "id": "achievement-206",
+              "stage": 11,
+              "requirement": 250000,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 6
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "達成【困難】難度合作擊殺怪物數",
+          "name": "達成【困難】難度合作擊殺怪物數",
+          "stages": [
+            {
+              "id": "achievement-208",
+              "stage": 1,
+              "requirement": 5200,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 3
+                }
+              ]
+            },
+            {
+              "id": "achievement-209",
+              "stage": 2,
+              "requirement": 5400,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 3
+                }
+              ]
+            },
+            {
+              "id": "achievement-210",
+              "stage": 3,
+              "requirement": 5650,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 3
+                }
+              ]
+            },
+            {
+              "id": "achievement-211",
+              "stage": 4,
+              "requirement": 5900,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "coopTicket",
+                  "amount": 3
+                }
+              ]
+            },
+            {
+              "id": "achievement-212",
+              "stage": 5,
+              "requirement": 6200,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 3
+                }
+              ]
+            },
+            {
+              "id": "achievement-213",
+              "stage": 6,
+              "requirement": 6500,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "coopTicket",
+                  "amount": 5
+                }
+              ]
+            },
+            {
+              "id": "achievement-214",
+              "stage": 7,
+              "requirement": 6800,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 3
+                }
+              ]
+            },
+            {
+              "id": "achievement-215",
+              "stage": 8,
+              "requirement": 7100,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "arenaTicket",
+                  "amount": 1
+                }
+              ]
+            },
+            {
+              "id": "achievement-216",
+              "stage": 9,
+              "requirement": 7450,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "coopTicket",
+                  "amount": 5
+                }
+              ]
+            },
+            {
+              "id": "achievement-217",
+              "stage": 10,
+              "requirement": 7800,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 3
+                }
+              ]
+            },
+            {
+              "id": "achievement-218",
+              "stage": 11,
+              "requirement": 8150,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "coopTicket",
+                  "amount": 10
+                }
+              ]
+            },
+            {
+              "id": "achievement-219",
+              "stage": 12,
+              "requirement": 8500,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "arenaTicket",
+                  "amount": 1
+                }
+              ]
+            },
+            {
+              "id": "achievement-220",
+              "stage": 13,
+              "requirement": 8850,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 3
+                }
+              ]
+            },
+            {
+              "id": "achievement-221",
+              "stage": 14,
+              "requirement": 9200,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "coopTicket",
+                  "amount": 10
+                }
+              ]
+            },
+            {
+              "id": "achievement-222",
+              "stage": 15,
+              "requirement": 9600,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "arenaTicket",
+                  "amount": 3
+                }
+              ]
+            },
+            {
+              "id": "achievement-223",
+              "stage": 16,
+              "requirement": 10000,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 3
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "累積獲得討伐硬幣",
+          "name": "累積獲得討伐硬幣",
+          "stages": [
+            {
+              "id": "achievement-225",
+              "stage": 1,
+              "requirement": 100,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 1
+                }
+              ]
+            },
+            {
+              "id": "achievement-226",
+              "stage": 2,
+              "requirement": 100,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 1
+                }
+              ]
+            },
+            {
+              "id": "achievement-227",
+              "stage": 3,
+              "requirement": 1000,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 1
+                }
+              ]
+            },
+            {
+              "id": "achievement-228",
+              "stage": 4,
+              "requirement": 5000,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 2
+                }
+              ]
+            },
+            {
+              "id": "achievement-229",
+              "stage": 5,
+              "requirement": 20000,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 3
+                }
+              ]
+            },
+            {
+              "id": "achievement-230",
+              "stage": 6,
+              "requirement": 50000,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 5
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "累積購買裂縫效果",
+          "name": "累積購買裂縫效果",
+          "stages": [
+            {
+              "id": "achievement-232",
+              "stage": 1,
+              "requirement": 10,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 1
+                }
+              ]
+            },
+            {
+              "id": "achievement-233",
+              "stage": 2,
+              "requirement": 30,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 1
+                }
+              ]
+            },
+            {
+              "id": "achievement-234",
+              "stage": 3,
+              "requirement": 75,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 2
+                }
+              ]
+            },
+            {
+              "id": "achievement-235",
+              "stage": 4,
+              "requirement": 150,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 3
+                }
+              ]
+            },
+            {
+              "id": "achievement-236",
+              "stage": 5,
+              "requirement": 300,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 5
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "累積購買一般階級裂縫效果",
+          "name": "累積購買一般階級裂縫效果",
+          "stages": [
+            {
+              "id": "achievement-238",
+              "stage": 1,
+              "requirement": 5,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 1
+                }
+              ]
+            },
+            {
+              "id": "achievement-239",
+              "stage": 2,
+              "requirement": 20,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 1
+                }
+              ]
+            },
+            {
+              "id": "achievement-240",
+              "stage": 3,
+              "requirement": 50,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 2
+                }
+              ]
+            },
+            {
+              "id": "achievement-241",
+              "stage": 4,
+              "requirement": 100,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 3
+                }
+              ]
+            },
+            {
+              "id": "achievement-242",
+              "stage": 5,
+              "requirement": 200,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 5
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "累積購買稀有階級裂縫效果",
+          "name": "累積購買稀有階級裂縫效果",
+          "stages": [
+            {
+              "id": "achievement-244",
+              "stage": 1,
+              "requirement": 5,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 1
+                }
+              ]
+            },
+            {
+              "id": "achievement-245",
+              "stage": 2,
+              "requirement": 15,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 1
+                }
+              ]
+            },
+            {
+              "id": "achievement-246",
+              "stage": 3,
+              "requirement": 35,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 2
+                }
+              ]
+            },
+            {
+              "id": "achievement-247",
+              "stage": 4,
+              "requirement": 70,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 3
+                }
+              ]
+            },
+            {
+              "id": "achievement-248",
+              "stage": 5,
+              "requirement": 140,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 5
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "累積購買傳說階級裂縫效果",
+          "name": "累積購買傳說階級裂縫效果",
+          "stages": [
+            {
+              "id": "achievement-250",
+              "stage": 1,
+              "requirement": 5,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 1
+                }
+              ]
+            },
+            {
+              "id": "achievement-251",
+              "stage": 2,
+              "requirement": 12,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 1
+                }
+              ]
+            },
+            {
+              "id": "achievement-252",
+              "stage": 3,
+              "requirement": 25,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 2
+                }
+              ]
+            },
+            {
+              "id": "achievement-253",
+              "stage": 4,
+              "requirement": 50,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 3
+                }
+              ]
+            },
+            {
+              "id": "achievement-254",
+              "stage": 5,
+              "requirement": 100,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 5
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "累積持有神話骰子",
+          "name": "累積持有神話骰子",
+          "stages": [
+            {
+              "id": "achievement-256",
+              "stage": 1,
+              "requirement": 1,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 3
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "神話骰子特性節點排位總和",
+          "name": "神話骰子特性節點排位總和",
+          "stages": [
+            {
+              "id": "achievement-258",
+              "stage": 1,
+              "requirement": 10,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 1
+                }
+              ]
+            },
+            {
+              "id": "achievement-259",
+              "stage": 2,
+              "requirement": 20,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 1
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "擊殺皇家騎士",
+          "name": "擊殺皇家騎士",
+          "stages": [
+            {
+              "id": "achievement-261",
+              "stage": 1,
+              "requirement": 20,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 1
+                }
+              ]
+            },
+            {
+              "id": "achievement-262",
+              "stage": 2,
+              "requirement": 40,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 1
+                }
+              ]
+            },
+            {
+              "id": "achievement-263",
+              "stage": 3,
+              "requirement": 80,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 2
+                }
+              ]
+            },
+            {
+              "id": "achievement-264",
+              "stage": 4,
+              "requirement": 150,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 3
+                }
+              ]
+            },
+            {
+              "id": "achievement-265",
+              "stage": 5,
+              "requirement": 300,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 5
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "擊殺國王史萊姆",
+          "name": "擊殺國王史萊姆",
+          "stages": [
+            {
+              "id": "achievement-267",
+              "stage": 1,
+              "requirement": 20,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 1
+                }
+              ]
+            },
+            {
+              "id": "achievement-268",
+              "stage": 2,
+              "requirement": 40,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 1
+                }
+              ]
+            },
+            {
+              "id": "achievement-269",
+              "stage": 3,
+              "requirement": 80,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 2
+                }
+              ]
+            },
+            {
+              "id": "achievement-270",
+              "stage": 4,
+              "requirement": 150,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 3
+                }
+              ]
+            },
+            {
+              "id": "achievement-271",
+              "stage": 5,
+              "requirement": 300,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 5
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "擊殺深層軟泥怪",
+          "name": "擊殺深層軟泥怪",
+          "stages": [
+            {
+              "id": "achievement-273",
+              "stage": 1,
+              "requirement": 20,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 1
+                }
+              ]
+            },
+            {
+              "id": "achievement-274",
+              "stage": 2,
+              "requirement": 40,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 1
+                }
+              ]
+            },
+            {
+              "id": "achievement-275",
+              "stage": 3,
+              "requirement": 80,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 2
+                }
+              ]
+            },
+            {
+              "id": "achievement-276",
+              "stage": 4,
+              "requirement": 150,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 3
+                }
+              ]
+            },
+            {
+              "id": "achievement-277",
+              "stage": 5,
+              "requirement": 300,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 5
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "擊殺女王蛇",
+          "name": "擊殺女王蛇",
+          "stages": [
+            {
+              "id": "achievement-279",
+              "stage": 1,
+              "requirement": 20,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 1
+                }
+              ]
+            },
+            {
+              "id": "achievement-280",
+              "stage": 2,
+              "requirement": 40,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 1
+                }
+              ]
+            },
+            {
+              "id": "achievement-281",
+              "stage": 3,
+              "requirement": 80,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 2
+                }
+              ]
+            },
+            {
+              "id": "achievement-282",
+              "stage": 4,
+              "requirement": 150,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 3
+                }
+              ]
+            },
+            {
+              "id": "achievement-283",
+              "stage": 5,
+              "requirement": 300,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 5
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "擊殺幻影掠奪者",
+          "name": "擊殺幻影掠奪者",
+          "stages": [
+            {
+              "id": "achievement-285",
+              "stage": 1,
+              "requirement": 20,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 1
+                }
+              ]
+            },
+            {
+              "id": "achievement-286",
+              "stage": 2,
+              "requirement": 40,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 1
+                }
+              ]
+            },
+            {
+              "id": "achievement-287",
+              "stage": 3,
+              "requirement": 80,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 2
+                }
+              ]
+            },
+            {
+              "id": "achievement-288",
+              "stage": 4,
+              "requirement": 150,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 3
+                }
+              ]
+            },
+            {
+              "id": "achievement-289",
+              "stage": 5,
+              "requirement": 300,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 5
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "擊殺瘋狂小丑",
+          "name": "擊殺瘋狂小丑",
+          "stages": [
+            {
+              "id": "achievement-291",
+              "stage": 1,
+              "requirement": 20,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 1
+                }
+              ]
+            },
+            {
+              "id": "achievement-292",
+              "stage": 2,
+              "requirement": 40,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 1
+                }
+              ]
+            },
+            {
+              "id": "achievement-293",
+              "stage": 3,
+              "requirement": 80,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 2
+                }
+              ]
+            },
+            {
+              "id": "achievement-294",
+              "stage": 4,
+              "requirement": 150,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 3
+                }
+              ]
+            },
+            {
+              "id": "achievement-295",
+              "stage": 5,
+              "requirement": 300,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 5
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "擊殺炙熱熔岩巨獸",
+          "name": "擊殺炙熱熔岩巨獸",
+          "stages": [
+            {
+              "id": "achievement-297",
+              "stage": 1,
+              "requirement": 20,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 1
+                }
+              ]
+            },
+            {
+              "id": "achievement-298",
+              "stage": 2,
+              "requirement": 40,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 1
+                }
+              ]
+            },
+            {
+              "id": "achievement-299",
+              "stage": 3,
+              "requirement": 80,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 2
+                }
+              ]
+            },
+            {
+              "id": "achievement-300",
+              "stage": 4,
+              "requirement": 150,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 3
+                }
+              ]
+            },
+            {
+              "id": "achievement-301",
+              "stage": 5,
+              "requirement": 300,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 5
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "擊殺疾風仙子",
+          "name": "擊殺疾風仙子",
+          "stages": [
+            {
+              "id": "achievement-303",
+              "stage": 1,
+              "requirement": 20,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 1
+                }
+              ]
+            },
+            {
+              "id": "achievement-304",
+              "stage": 2,
+              "requirement": 40,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 1
+                }
+              ]
+            },
+            {
+              "id": "achievement-305",
+              "stage": 3,
+              "requirement": 80,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 2
+                }
+              ]
+            },
+            {
+              "id": "achievement-306",
+              "stage": 4,
+              "requirement": 150,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 3
+                }
+              ]
+            },
+            {
+              "id": "achievement-307",
+              "stage": 5,
+              "requirement": 300,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 5
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "擊殺雷昂",
+          "name": "擊殺雷昂",
+          "stages": [
+            {
+              "id": "achievement-309",
+              "stage": 1,
+              "requirement": 20,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 1
+                }
+              ]
+            },
+            {
+              "id": "achievement-310",
+              "stage": 2,
+              "requirement": 40,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 1
+                }
+              ]
+            },
+            {
+              "id": "achievement-311",
+              "stage": 3,
+              "requirement": 80,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 2
+                }
+              ]
+            },
+            {
+              "id": "achievement-312",
+              "stage": 4,
+              "requirement": 150,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 3
+                }
+              ]
+            },
+            {
+              "id": "achievement-313",
+              "stage": 5,
+              "requirement": 300,
+              "rewards": [
+                {
+                  "type": "currency",
+                  "kind": "core",
+                  "amount": 5
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "repeatable": {
+    "id": "repeatable",
+    "name": "重複性獎勵",
+    "sections": [
+      {
+        "id": "arena-streak",
+        "tierImages": {
+          "0": { "src": "/rewards/reference/0_pig.png", "alt": "0 連勝撲滿", "width": 270, "height": 267 },
+          "1": { "src": "/rewards/reference/1_pig.png", "alt": "1 連勝撲滿", "width": 312, "height": 340 },
+          "2": { "src": "/rewards/reference/2_pig.png", "alt": "2 連勝撲滿", "width": 345, "height": 376 },
+          "3": { "src": "/rewards/reference/3_pig.png", "alt": "3 連勝撲滿", "width": 383, "height": 417 },
+          "4": { "src": "/rewards/reference/4_pig.png", "alt": "4 連勝撲滿", "width": 441, "height": 478 },
+          "5": { "src": "/rewards/reference/5_pig.png", "alt": "5 連勝撲滿", "width": 520, "height": 543 }
+        },
+        "title": "競技場連勝",
+        "metricLabel": "連勝場數",
+        "tiers": [
+          {
+            "id": "arena-streak-114",
+            "requirement": 0,
+            "rewards": [
+              {
+                "type": "currency",
+                "kind": "gold",
+                "amount": 300
+              }
+            ]
+          },
+          {
+            "id": "arena-streak-115",
+            "requirement": 1,
+            "rewards": [
+              {
+                "type": "currency",
+                "kind": "gold",
+                "amount": 1000
+              }
+            ]
+          },
+          {
+            "id": "arena-streak-116",
+            "requirement": 2,
+            "rewards": [
+              {
+                "type": "currency",
+                "kind": "gold",
+                "amount": 2000
+              }
+            ]
+          },
+          {
+            "id": "arena-streak-117",
+            "requirement": 3,
+            "rewards": [
+              {
+                "type": "currency",
+                "kind": "gold",
+                "amount": 4000
+              }
+            ]
+          },
+          {
+            "id": "arena-streak-118",
+            "requirement": 4,
+            "rewards": [
+              {
+                "type": "currency",
+                "kind": "gold",
+                "amount": 8000
+              }
+            ]
+          },
+          {
+            "id": "arena-streak-119",
+            "requirement": 5,
+            "rewards": [
+              {
+                "type": "currency",
+                "kind": "gold",
+                "amount": 15000
+              }
+            ]
+          }
+        ],
+        "note": "連勝中斷時依最終連勝數發放；各檔不是累加獎勵。"
+      }
+    ],
+    "dailyTasks": {
+      "tasks": [
+        {
+          "id": "daily-task-139",
+          "name": "登入",
+          "requirement": 1,
+          "points": 100
+        },
+        {
+          "id": "daily-task-140",
+          "name": "進行合作",
+          "requirement": 5,
+          "points": 150
+        },
+        {
+          "id": "daily-task-141",
+          "name": "合成骰子",
+          "requirement": 30,
+          "points": 100
+        },
+        {
+          "id": "daily-task-142",
+          "name": "擊殺一般怪物",
+          "requirement": 500,
+          "points": 100
+        },
+        {
+          "id": "daily-task-143",
+          "name": "擊殺首領怪物",
+          "requirement": 5,
+          "points": 100
+        },
+        {
+          "id": "daily-task-144",
+          "name": "狩獵SP魔像",
+          "requirement": 1,
+          "points": 100
+        },
+        {
+          "id": "daily-task-145",
+          "name": "使用表情符號",
+          "requirement": 1,
+          "points": 100
+        },
+        {
+          "id": "daily-task-146",
+          "name": "進行競技場",
+          "requirement": 1,
+          "points": 200
+        }
+      ],
+      "totalPoints": 950,
+      "rewards": {
+        "id": "daily-points",
+        "title": "獎勵",
+        "metricLabel": "累積點數",
+        "tiers": [
+          {
+            "id": "daily-points-149",
+            "requirement": 150,
+            "rewards": [
+              {
+                "type": "currency",
+                "kind": "gold",
+                "amount": 1000
+              }
+            ]
+          },
+          {
+            "id": "daily-points-150",
+            "requirement": 300,
+            "rewards": [
+              {
+                "type": "currency",
+                "kind": "coopTicket",
+                "amount": 2
+              }
+            ]
+          },
+          {
+            "id": "daily-points-151",
+            "requirement": 450,
+            "rewards": [
+              {
+                "type": "currency",
+                "kind": "luckyDiceTicket",
+                "amount": 3
+              }
+            ]
+          },
+          {
+            "id": "daily-points-152",
+            "requirement": 600,
+            "rewards": [
+              {
+                "type": "currency",
+                "kind": "coopTicket",
+                "amount": 3
+              }
+            ]
+          },
+          {
+            "id": "daily-points-153",
+            "requirement": 750,
+            "rewards": [
+              {
+                "type": "currency",
+                "kind": "arenaTicket",
+                "amount": 1
+              }
+            ]
+          }
+        ],
+        "note": "主表此區仍註記「獎勵圖示待辨識」；內容依已填寫的資源 ID 與數量呈現。"
+      }
+    }
+  }
+}

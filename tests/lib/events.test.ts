@@ -1,8 +1,21 @@
 import { describe, expect, it } from 'vitest';
 import { EVENT_ICON_KINDS, eventCellHtml, eventIcon } from '../../src/lib/events.js';
 import { MYTHIC_CORES } from '../../src/lib/currency.js';
+import events from '../../data/events.json';
 
 describe('活動資料的貨幣圖', () => {
+  it('中秋商店的種子與造型硬幣重用共用 registry，文字與交易條件不變', () => {
+    const event = events.find(e => e.id === 'chuseok-2026')!;
+    for (const [kind, text, price, limit] of [
+      ['treeSeed', '骰子樹種子 1', '100', '2 次'],
+      ['skinCoin', '造型硬幣 5', '10', '無限制'],
+    ]) {
+      const row = event.sections.flatMap(s => s.rows).find(r =>
+        typeof r[0] === 'object' && r[0].text === text)!;
+      expect(row).toEqual([{ icon: kind, text }, { icon: 'chuseokcoin', text: price }, limit]);
+      expect(eventCellHtml(row[0]!)).toBe(`${eventIcon(kind!)}${text}`);
+    }
+  });
   it('固定登記的貨幣與每一種超越核心都在合法清單裡', () => {
     // 清單只有一份（`CURRENCY_ICON_KINDS` ＋ `MYTHIC_CORES`）——這條守的是「有人又複製了
     // 第二份」：新登記一種超越核心卻沒進這裡的話，資料檔用它就會驗證失敗而畫面沒問題。

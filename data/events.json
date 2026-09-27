@@ -277,7 +277,10 @@
             "1 次"
           ],
           [
-            "骰子樹種子 1",
+            {
+              "icon": "treeSeed",
+              "text": "骰子樹種子 1"
+            },
             {
               "icon": "chuseokcoin",
               "text": "100"
@@ -285,7 +288,10 @@
             "2 次"
           ],
           [
-            "造型硬幣 5",
+            {
+              "icon": "skinCoin",
+              "text": "造型硬幣 5"
+            },
             {
               "icon": "chuseokcoin",
               "text": "10"

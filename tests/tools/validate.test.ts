@@ -1452,9 +1452,9 @@ describe('規則 24：戰術', () => {
 
   it('必填欄位缺一個會被擋，而且訊息指得出是第幾筆', () => {
     const data = rows();
-    delete data[0]!.versus;
+    delete data[0]!.name;
     const result = validate(svg, withTactics(data));
-    expect(result.errors.some(e => /規則 24\(e\).*第 1 筆.*versus 必須是非空字串/.test(e))).toBe(true);
+    expect(result.errors.some(e => /規則 24\(e\).*第 1 筆.*name 必須是非空字串/.test(e))).toBe(true);
   });
 
   it('欄位名打錯（coop → co-op）會被未知欄位擋下', () => {
@@ -1511,7 +1511,7 @@ describe('規則 24：戰術', () => {
     const first = (tactics as { icon: string }[])[0]!;
     writeFileSync(join(tmpDir, `${first.icon}.png`), makeMinimalPng(120, 140));
     const result = validate(svg, { ...opts, tacticIconsDir: tmpDir });
-    expect(result.errors.some(e => new RegExp(`規則 24\\(b\\).*${join(tmpDir, `${first.icon}.png`)}.*sha256`).test(e))).toBe(true);
+    expect(result.errors.some(e => e.includes('規則 24(b)') && e.includes(join(tmpDir, `${first.icon}.png`)) && e.includes('sha256'))).toBe(true);
   });
 
   it('放進來的不是有效 PNG 會被擋（否則要等 npm run build 由 sharp 噴出不含編號的錯）', () => {
@@ -1547,11 +1547,11 @@ describe('規則 24：戰術', () => {
     expect(result.warnings.some(w => /規則 24\(d\).*未被任何節點引用/.test(w))).toBe(true);
   });
 
-  it('stage 不是五個階段之一會被擋', () => {
+  it('stage 不是四個階段之一會被擋', () => {
     const data = rows();
     data[0]!.stage = '初期';
     const result = validate(svg, withTactics(data));
-    expect(result.errors.some(e => /規則 24\(e\).*stage "初期" 不是五個階段之一/.test(e))).toBe(true);
+    expect(result.errors.some(e => /規則 24\(e\).*stage "初期" 不是四個階段之一/.test(e))).toBe(true);
   });
 
   // 上游 1.1.2 有兩列的 TacticPhase 是 'Final  '（帶尾隨空白）。照抄進來（沒 trim、或沒翻成「終盤」）
@@ -1560,48 +1560,75 @@ describe('規則 24：戰術', () => {
     for (const bad of ['終盤  ', 'Final', 'Final  ']) {
       const data = rows();
       data[0]!.stage = bad;
-      expect(validate(svg, withTactics(data)).errors.some(e => /規則 24\(e\).*不是五個階段之一/.test(e)), bad).toBe(true);
+      expect(validate(svg, withTactics(data)).errors.some(e => /規則 24\(e\).*不是四個階段之一/.test(e)), bad).toBe(true);
     }
   });
 
-  it('把「未啟用」那一批貼回來時，訊息要說出「刻意不落地」而不是「不是合法模式」', () => {
-    // ⚠️ 泛用訊息會讓下一個人以為是打錯字，而真正的答案是「這 16 條刻意不收」——
-    // 那件事只寫在註解與 CLAUDE.md 裡，錯誤訊息得自己說出來。
+  it('三模式皆未啟用時指明整筆移除', () => {
     const data = rows();
-    data[0]!.mode = '未啟用';
+    data[0]!.availability = { versus: false, coopNormal: false, coopHard: false };
+    expect(validate(svg, withTactics(data)).errors.some(e => /規則 24\(j\).*刻意不落地.*整筆移除/.test(e))).toBe(true);
+  });
+
+  it.each([null, {}, { versus: true, coopNormal: true, coopHard: 'false' }, { versus: true, coopNormal: true, coopHard: true, coop: true }])('availability 必須完整且只有三模式布林值：%j', availability => {
+    const data = rows();
+    data[0]!.availability = availability;
+    expect(validate(svg, withTactics(data)).errors.some(e => e.includes('規則 24(j)') && e.includes('availability'))).toBe(true);
+  });
+
+  it('子項不允許獨立 stage，且 ID 必須屬於父戰術', () => {
+    const data = rows();
+    const option = (data.find(t => t.id === '69')!.options as Record<string, unknown>[])[0]!;
+    option.stage = '前期';
+    option.id = '68-1';
+    const errors = validate(svg, withTactics(data)).errors;
+    expect(errors.some(e => /規則 24\(i\).*未知欄位 "stage"/.test(e))).toBe(true);
+    expect(errors.some(e => /規則 24\(i\).*不屬於母條目 69/.test(e))).toBe(true);
+  });
+
+  it('扁平子項與缺少 text 被擋', () => {
+    const data = rows();
+    const option = (data.find(t => t.id === '69')!.options as Record<string, unknown>[])[0]!;
+    delete option.text;
+    data.push({ ...option });
+    const errors = validate(svg, withTactics(data)).errors;
+    expect(errors.some(e => /規則 24\(i\).*text 必須是非空字串/.test(e))).toBe(true);
+    expect(errors.some(e => /規則 24\(i\).*必須放在母條目的 options/.test(e))).toBe(true);
+  });
+
+  it('子項圖示也經過檔名／引用與關鍵字驗證', () => {
+    const data = rows();
+    const option = (data.find(t => t.id === '69')!.options as Record<string, unknown>[])[0]!;
+    option.icon = 'abcdefabcdef';
+    option.text = '#不存在的關鍵字';
+    const errors = validate(svg, withTactics(data)).errors;
+    expect(errors.some(e => /規則 24\(f\).*69-1.*不存在/.test(e))).toBe(true);
+    expect(errors.some(e => /規則 24\(k\).*69-1.*# 標記比不到白名單/.test(e))).toBe(true);
+  });
+
+  it('合作文本可存在於合作不可用戰術，不推導 availability', () => {
+    const data = rows();
+    data.find(t => t.id === '17')!.coop = '合作文本';
+    expect(validate(svg, withTactics(data)).errors.filter(e => e.includes('規則 24'))).toEqual([]);
+  });
+
+  it('合作可用卻沒有 coop，或對戰可用卻沒有 versus 均被擋', () => {
+    const data = rows();
     delete data[0]!.coop;
-    const result = validate(svg, withTactics(data));
-    expect(result.errors.some(e => /規則 24\(e\).*刻意不落地.*整筆移除/.test(e))).toBe(true);
+    delete data.find(t => t.id === '6')!.versus;
+    const errors = validate(svg, withTactics(data)).errors;
+    expect(errors.some(e => /規則 24\(j\).*合作可用卻沒有 coop/.test(e))).toBe(true);
+    expect(errors.some(e => /規則 24\(j\).*對戰可用卻沒有 versus/.test(e))).toBe(true);
   });
 
-  it('子選項的 stage 被改成別的階段會被擋（它會跟母條目分家，而畫面上只是多一條前期戰術）', () => {
+  it('9 / 40 必須共用 SpawnAltar，第三筆不得誤用該圖', () => {
+    expect(validate(svg, withTactics(rows())).errors.filter(e => e.includes('規則 24(g)'))).toEqual([]);
     const data = rows();
-    const i = data.findIndex(t => String(t.id).includes('-'));
-    data[i]!.stage = '前期';
-    const result = validate(svg, withTactics(data));
-    expect(result.errors.some(e => /規則 24\(i\).*是子選項.*stage 必須是「選項」/.test(e))).toBe(true);
-  });
-
-  it('子選項找不到母條目會被擋', () => {
-    const data = rows().filter(t => t.id !== '69');
-    const result = validate(svg, withTactics(data));
-    expect(result.errors.some(e => /規則 24\(i\).*子選項 69-1 找不到母條目 69/.test(e))).toBe(true);
-  });
-
-  it('mode 是「對戰」卻有 coop 會被擋（合作模式下會冒出一段官方沒有的文字）', () => {
-    const data = rows();
-    const i = data.findIndex(t => t.mode === '對戰');
-    data[i]!.coop = '這段官方沒有';
-    const result = validate(svg, withTactics(data));
-    expect(result.errors.some(e => /規則 24\(j\).*「對戰」卻有 coop/.test(e))).toBe(true);
-  });
-
-  it('mode 是「對戰／合作」卻沒有 coop 會被擋（它在合作模式下會整條消失）', () => {
-    const data = rows();
-    const i = data.findIndex(t => t.mode === '對戰／合作');
-    delete data[i]!.coop;
-    const result = validate(svg, withTactics(data));
-    expect(result.errors.some(e => /規則 24\(j\).*「對戰／合作」卻沒有 coop/.test(e))).toBe(true);
+    data.find(t => t.id === '9')!.icon = data[0]!.icon;
+    expect(validate(svg, withTactics(data)).errors.some(e => e.includes('必須共用官方 SpawnAltar'))).toBe(true);
+    const third = rows();
+    third[0]!.icon = third.find(t => t.id === '40')!.icon;
+    expect(validate(svg, withTactics(third)).errors.some(e => /規則 24\(g\).*指向同一張圖/.test(e))).toBe(true);
   });
 
   // ⚠️ 這一組守的是 2026-08-26 code review 抓到的真漏洞：`coop` 原本只擋空字串，
@@ -1611,7 +1638,7 @@ describe('規則 24：戰術', () => {
     'coop 寫成 %s 會被擋（選填欄位只要出現就必須是非空字串）',
     (_label, bad) => {
       const data = rows();
-      const i = data.findIndex(t => t.mode === '對戰／合作');
+      const i = data.findIndex(t => t.coop !== undefined);
       data[i]!.coop = bad;
       const result = validate(svg, withTactics(data));
       expect(result.errors.some(e => /規則 24\(e\).*coop 若存在就必須是非空字串/.test(e))).toBe(true);

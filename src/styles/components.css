@@ -560,13 +560,13 @@ a.row-card:active {
   gap: var(--space-3);
   margin-top: var(--space-5);
 }
-/* 卡片數少於一列裝得下的軌道數時用這個（目前是索引頁的「遊戲內容」兩張）。
+/* 索引頁的「遊戲內容」保留空軌道，避免卡片不足一列時被撐寬。
    ⚠️ 差別只在 auto-fit ↔ auto-fill：前者會把空軌道**收掉**，兩張卡片於是撐滿整列，
    比正上方那排寬一截；後者保留空軌道，兩邊同寬。四張以上的網格兩者結果相同。 */
 .guide-cards.is-content {
   grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr));
 }
-.guide-card h2 {
+.guide-card :is(h2, h3) {
   margin: var(--space-2) 0 var(--space-2);
   font-size: var(--fs-base);
   color: var(--gold);

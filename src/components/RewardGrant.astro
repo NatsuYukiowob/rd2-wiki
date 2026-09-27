@@ -1,0 +1,21 @@
+---
+import { rewardDisplay, rewardAmountVisible } from '../lib/reward-display';
+import type { RewardGrant } from '../lib/types';
+
+interface Props {
+  reward: RewardGrant;
+  amount?: number;
+}
+
+const { reward, amount } = Astro.props;
+const display = rewardDisplay(reward);
+const formatted = amount === undefined ? '' : amount.toLocaleString('en-US');
+---
+
+<span class="reward-grant-content" aria-hidden="true">
+  {display.iconHtml && <Fragment set:html={display.iconHtml} />}
+  {display.iconSrc && <img class="reward-collectible-icon" src={display.iconSrc} alt="" width="28" height="28" loading="lazy" />}
+  {display.fallback && <span class="reward-collectible-fallback">{display.fallback}</span>}
+  {(reward.type !== 'currency' || display.fallback) && <span class="reward-collectible-label">{display.label}</span>}
+  {rewardAmountVisible(reward, amount) && <strong>{formatted}</strong>}
+</span>

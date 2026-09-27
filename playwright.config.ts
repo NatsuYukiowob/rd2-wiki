@@ -77,6 +77,7 @@ export default defineConfig({
     trace: 'retain-on-failure',
   },
   projects: [
+    { name: 'webkit-nav', testMatch: '**/navigation.spec.ts', use: { ...devices['iPhone 13'] } },
     { name: 'desktop', use: { ...devices['Desktop Chrome'] } },
     // mobile 只跑標了 `@mobile` 的測試（2026-09-23 起）。
     // 為什麼：全套兩個 project 各跑一遍，mobile 佔 56% 時間（實測 desktop 3m14s／mobile 4m05s），

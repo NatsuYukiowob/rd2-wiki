@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { costHtml, simCostHtml, currencyIcon } from '../../src/lib/cost-html';
+import { costHtml, simCostHtml, currencyIcon, currencyIconDetails } from '../../src/lib/cost-html';
 import { formatCost } from '../../src/lib/format';
 
 const strip = (html: string) => html.replace(/<img[^>]*>/g, '');
@@ -22,6 +22,26 @@ describe('costHtml：帶貨幣圖的成本', () => {
   it('圖是裝飾：alt 為空且 aria-hidden，螢幕閱讀器只念旁邊的貨幣名', () => {
     expect(currencyIcon('gold')).toMatch(/alt=""/);
     expect(currencyIcon('gold')).toMatch(/aria-hidden="true"/);
+  });
+  it('共用 resolver 同時解析固定貨幣與超越核心，未登記 kind 直接拒絕', () => {
+    expect(currencyIconDetails('core')).toMatchObject({ label: '核心' });
+    expect(currencyIconDetails('solar')).toMatchObject({ label: '太陽核心' });
+    expect(currencyIconDetails('gearSecond').html).toContain('/currency/gearSecond.png');
+    expect(() => currencyIconDetails('not-registered')).toThrow('未登記的貨幣圖種類');
+  });
+  it('五種 rewards 資源沿用同一個 registry 與固定檔名', () => {
+    const expected = {
+      treeSeed: ['骰子樹種子', 'treeSeed.png'],
+      coopTicket: ['合作戰入場券', 'coopTicket.png'],
+      arenaTicket: ['競技場入場券', 'arenaTicket.png'],
+      skinCoin: ['造型硬幣', 'skinCoin.png'],
+      luckyDiceTicket: ['幸運骰子票券', 'luckyDiceTicket.png'],
+    } as const;
+    for (const [kind, [label, file]] of Object.entries(expected)) {
+      const details = currencyIconDetails(kind);
+      expect(details.label).toBe(label);
+      expect(details.html).toContain('/currency/' + file);
+    }
   });
 });
 
