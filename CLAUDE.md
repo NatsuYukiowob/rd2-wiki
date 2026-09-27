@@ -122,7 +122,7 @@ npm run compare -- <beforeURL> <afterURL>  # computed-style 逐元素比對，�
 - **存檔只換那一個字串／那一段原始碼**，不重新序列化整份 JSON（diff 永遠是一行）。存檔帶著點開時的舊值，
   檔案在這之間被改過就回「衝突」不寫入。`data/` 存檔後自動重跑 `build:data`（`/tree`、`/sim` 讀的是產物）。
 - **原始碼候選是原文切片**：`{nodes.length}` 這種插值、縮排換行都會出現在文字框裡，**別把 `{…}` 刪掉**。
-  畫面上的數字能對上原始碼的 `{…}`（`queryRegex()`），所以「41 顆骰子…」找得到 `{nodes.length} 顆骰子…`。
+  畫面上的數字能對上原始碼的 `{…}`（`queryRegex()`），所以畫面上的「N 顆骰子…」找得到 `{nodes.length} 顆骰子…`。
 - **排序靠 `data-astro-source-file`／`-loc`**：Astro 只在 dev toolbar 開著時標這兩個屬性（`annotateSourceFile`），
   關掉 toolbar 仍然搜得到，只是點到的那個檔不會排最前面。
 - 畫在 canvas 上的字（`/tree`、`/sim` 的節點標籤）點不到——用面板的搜尋框直接搜。

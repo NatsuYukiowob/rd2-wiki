@@ -18,6 +18,7 @@ import {
   candidateQueries,
   EditConflict,
   labelPath,
+  maskComments,
   rankJsonHits,
   rankSourceHits,
   replaceJsonString,
@@ -34,7 +35,7 @@ const LIMIT = 40;
 
 const posix = (p: string) => p.split(sep).join('/');
 
-function listFiles(root: string) {
+export function listFiles(root: string) {
   const data = readdirSync(resolve(root, 'data'))
     .filter(f => f.endsWith('.json'))
     .map(f => `data/${f}`);
@@ -130,11 +131,21 @@ function handler(root: string) {
         const queries = typeof body.query === 'string' && body.query.trim() ? [body.query] : candidateQueries(text);
         const clicked = typeof body.file === 'string' ? posix(relative(root, body.file)) : undefined;
         const line = typeof body.line === 'number' ? body.line : undefined;
-        const jsonFiles = files.data.map(file => {
+        // 壞掉的 JSON（正在別的編輯器裡改到一半）只跳過那一份並回報，不讓整次搜尋變 500。
+        const warnings: string[] = [];
+        const jsonFiles = files.data.flatMap(file => {
           const t = readFileSync(resolve(root, file), 'utf8');
-          return { file, root: JSON.parse(t) as unknown, hits: scanJsonStrings(t) };
+          try {
+            return [{ file, root: JSON.parse(t) as unknown, hits: scanJsonStrings(t) }];
+          } catch (e) {
+            warnings.push(`${file} 解析失敗，已略過：${e instanceof Error ? e.message : String(e)}`);
+            return [];
+          }
         });
-        const srcFiles = files.src.map(file => ({ file, text: readFileSync(resolve(root, file), 'utf8') }));
+        const srcFiles = files.src.map(file => {
+          const text = readFileSync(resolve(root, file), 'utf8');
+          return { file, text, masked: maskComments(text) };
+        });
         for (const query of queries) {
           const json = rankJsonHits(jsonFiles.flatMap(f =>
             searchJson(f.hits, query).map(h => ({ file: f.file, path: h.path, label: labelPath(f.root, h.path), value: h.value }))), query);
@@ -143,10 +154,10 @@ function handler(root: string) {
           if (json.length || source.length) {
             // 點到的元素所在的 .astro 裡就有這段字 → 幾乎一定是寫死在那裡，原始碼那組排前面。
             const sourceFirst = source[0]?.file === clicked;
-            return send(res, 200, { query, sourceFirst, json: json.slice(0, LIMIT), source: source.slice(0, LIMIT), more: json.length > LIMIT || source.length > LIMIT });
+            return send(res, 200, { query, sourceFirst, warnings, json: json.slice(0, LIMIT), source: source.slice(0, LIMIT), more: json.length > LIMIT || source.length > LIMIT });
           }
         }
-        return send(res, 200, { query: queries[0] ?? '', sourceFirst: false, json: [], source: [], more: false });
+        return send(res, 200, { query: queries[0] ?? '', sourceFirst: false, warnings, json: [], source: [], more: false });
       }
 
       if (req.url === '/result') {
@@ -159,7 +170,11 @@ function handler(root: string) {
         // 重整後的頁面拿 id 來 /result 取回（見 client.ts 的 PENDING_KEY）。
         const id = String(body.id ?? '');
         const job = save(root, listFiles(root), body);
-        if (id) results.set(id, job);
+        if (id) {
+          results.set(id, job);
+          // client 只在存檔後一分鐘內來取（recoverPending），之後就不留著 build:data 的整段輸出。
+          void job.finally(() => setTimeout(() => results.delete(id), 120_000).unref());
+        }
         return send(res, 200, await job);
       }
 
@@ -172,29 +187,39 @@ function handler(root: string) {
   };
 }
 
-type SaveResult = { ok: true; rebuilt: { code: number; out: string } | null } | { ok: false; conflict: boolean; error: string };
+type SaveResult =
+  | { ok: true; rebuilt: { code: number; out: string } | null; written: string }
+  | { ok: false; conflict: boolean; error: string };
 const results = new Map<string, Promise<SaveResult>>();
 
-async function save(root: string, files: ReturnType<typeof listFiles>, body: Record<string, unknown>): Promise<SaveResult> {
+export async function save(root: string, files: ReturnType<typeof listFiles>, body: Record<string, unknown>): Promise<SaveResult> {
   const file = String(body.file);
   // 只能寫到「搜尋列得出來的檔案」：路徑一律比對白名單，不做任何拼接後的前綴判斷。
-  if (![...files.data, ...files.src].includes(file)) return { ok: false, conflict: false, error: `不允許寫入 ${file}` };
+  // 取代方式由檔案決定、不信 client 的 kind：data/*.json 只准換字串值（寫完一定是合法 JSON），
+  // src/ 才准換原文片段。
+  const isJson = files.data.includes(file);
+  if (!isJson && !files.src.includes(file)) return { ok: false, conflict: false, error: `不允許寫入 ${file}` };
+  if ((body.kind === 'json') !== isJson) return { ok: false, conflict: false, error: `${file} 不能用 ${String(body.kind)} 的方式寫入` };
+  let written: string;
   try {
     const abs = resolve(root, file);
     const text = readFileSync(abs, 'utf8');
-    const next = String(body.next);
     const expected = String(body.expected);
-    const out = body.kind === 'json'
+    let next = String(body.next);
+    // textarea 一律把換行正規化成 LF；原文片段是 CRLF（Windows 上 autocrlf）時換回去，免得寫出混用換行。
+    if (!isJson && expected.includes('\r\n')) next = next.replace(/\r?\n/g, '\r\n');
+    const out = isJson
       ? replaceJsonString(text, body.path as JsonPath, expected, next)
       : replaceSpan(text, Number(body.start), Number(body.end), expected, next);
-    if (body.kind === 'json') JSON.parse(out); // 保險：寫出去的一定是合法 JSON
+    if (isJson) JSON.parse(out); // 保險：寫出去的一定是合法 JSON
     writeFileSync(abs, out);
+    written = next;
   } catch (e) {
     return { ok: false, conflict: e instanceof EditConflict, error: e instanceof Error ? e.message : String(e) };
   }
   // /tree、/sim 讀的是 build:data 產的 src/generated/tree.json，data/ 改了要重產才看得到。
-  const rebuilt = file.startsWith('data/') ? await rebuild(root) : null;
-  return { ok: true, rebuilt };
+  const rebuilt = isJson ? await rebuild(root) : null;
+  return { ok: true, rebuilt, written };
 }
 
 export default function devEditor(): AstroIntegration {

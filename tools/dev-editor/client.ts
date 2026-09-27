@@ -5,8 +5,10 @@
  */
 type JsonHit = { file: string; path: (string | number)[]; label: string; value: string };
 type SourceHit = { file: string; start: number; end: number; line: number; value: string };
-type SearchResult = { query: string; sourceFirst: boolean; json: JsonHit[]; source: SourceHit[]; more: boolean };
-type SaveResult = { ok: true; rebuilt: { code: number; out: string } | null } | { ok: false; conflict?: boolean; error: string };
+type SearchResult = { query: string; sourceFirst: boolean; warnings: string[]; json: JsonHit[]; source: SourceHit[]; more: boolean };
+type SaveResult =
+  | { ok: true; rebuilt: { code: number; out: string } | null; written: string }
+  | { ok: false; conflict?: boolean; error: string };
 
 const API = '/__dev-editor';
 const ON_KEY = 'rd2-dev-editor-on';
@@ -83,6 +85,7 @@ document.body.append(host);
 for (const type of ['keydown', 'keyup', 'keypress', 'pointerdown', 'pointerup', 'mousedown', 'mouseup', 'click', 'touchstart', 'touchend']) {
   host.addEventListener(type, e => e.stopPropagation());
 }
+query.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.isComposing) void search({ query: query.value }); });
 shadow.addEventListener('keydown', e => {
   if ((e as KeyboardEvent).key === 'Escape' && panel.classList.contains('open')) closePanel();
 });
@@ -131,7 +134,9 @@ function textAt(x: number, y: number, target: Element): { text: string; anchor: 
 
 // 編輯模式下站台的指標行為全部攔下（window 捕獲階段＝最早）：點連結不跳頁、/board 不開卡片不拖曳、
 // /tree、/sim 的畫布不選取不平移。只放行 click 給下面那支做搜尋。
-for (const type of ['pointerdown', 'pointerup', 'mousedown', 'mouseup', 'touchstart', 'touchend', 'dblclick', 'auxclick']) {
+// ⚠️ 不擋 touchstart／touchend：對它們 preventDefault 會讓瀏覽器不再合成 click，觸控（含 DevTools 手機模擬）
+// 點字就完全沒反應。pointerdown 的 preventDefault 只擋相容滑鼠事件、不擋 click。
+for (const type of ['pointerdown', 'pointerup', 'mousedown', 'mouseup', 'dblclick', 'auxclick']) {
   window.addEventListener(type, e => {
     if (!on || inOverlay(e)) return;
     e.preventDefault();
@@ -163,15 +168,17 @@ async function search(req: { text?: string; query?: string; file?: string; line?
     if (seq !== searchSeq) return;
     query.value = r.query;
     const n = r.json.length + r.source.length;
-    setStatus(n
+    const warn = r.warnings.length ? `\n⚠️ ${r.warnings.join('\n⚠️ ')}` : '';
+    setStatus((n
       ? `「${r.query}」找到 ${n} 處${r.more ? '（只列前幾筆，請把關鍵字打長一點）' : ''}。Ctrl+Enter 存檔。`
-      : `找不到「${r.query}」。畫面上的字可能是組出來的，改成搜其中一小段試試。`);
+      : `找不到「${r.query}」。畫面上的字可能是組出來的，改成搜其中一小段試試。`) + warn, r.warnings.length > 0);
     const jsonGroup = r.json.length ? [el('div', { className: 'group', textContent: '資料（data/*.json）' }), ...r.json.map(h =>
       card(`${h.file} › ${h.label}`, h.value, b =>
-        call<SaveResult>('/save', { kind: 'json', file: h.file, path: h.path, expected: h.value, ...b })))] : [];
+        call<SaveResult>('/save', { kind: 'json', file: h.file, path: h.path, ...b })))] : [];
     const sourceGroup = r.source.length ? [el('div', { className: 'group', textContent: '原始碼（src/，寫死的字）' }), ...r.source.map(h =>
+      // 存檔成功而頁面沒重整時（改到的檔不在這頁的模組圖裡），下一次存檔的片段終點要跟著新內容走。
       card(`${h.file}:${h.line}`, h.value, b =>
-        call<SaveResult>('/save', { kind: 'source', file: h.file, start: h.start, end: h.end, expected: h.value, ...b })))] : [];
+        call<SaveResult>('/save', { kind: 'source', file: h.file, start: h.start, end: h.start + b.expected.length, ...b })))] : [];
     list.append(...(r.sourceFirst ? [...sourceGroup, ...jsonGroup] : [...jsonGroup, ...sourceGroup]));
   } catch (err) {
     if (seq !== searchSeq) return;
@@ -199,17 +206,28 @@ function showResult(p: Pending, r: SaveResult) {
   else setStatus(`已存檔：${p.label}${r.rebuilt ? '（已重跑 build:data）' : ''}`);
 }
 
-function card(label: string, value: string, save: (body: { next: string; id: string }) => Promise<SaveResult>) {
+/**
+ * fetch 自己被中斷（通常就是這次存檔觸發的 Vite 重整；Firefox 會在卸載時讓 fetch reject）不代表
+ * 存檔失敗——這時要留著 PENDING_KEY 讓重整後的頁面去 /result 取。只有 HTTP／應用層錯誤才清掉。
+ */
+const isAbort = (err: unknown) => err instanceof TypeError || (err instanceof DOMException && err.name === 'AbortError');
+
+function card(label: string, value: string, save: (body: { next: string; id: string; expected: string }) => Promise<SaveResult>) {
+  // textarea 的 value 一律是 LF；比對「有沒有改」前把基準值也正規化（CRLF 檔案的片段）。
+  let base = value;
   const ta = el('textarea', { value });
   ta.rows = Math.min(12, value.split('\n').length + 1);
   const doSave = async () => {
-    if (ta.value === value) { setStatus('內容沒有變動'); return; }
+    if (ta.value === base.replace(/\r\n/g, '\n')) { setStatus('內容沒有變動'); return; }
     const p: Pending = { id: crypto.randomUUID(), label, at: Date.now() };
     writePending(p);
     setStatus(`存檔中：${label}${label.startsWith('data/') ? '（接著重跑 build:data，約數秒）' : ''}`);
     try {
-      showResult(p, await save({ next: ta.value, id: p.id }));
+      const r = await save({ next: ta.value, id: p.id, expected: base });
+      if (r.ok) base = r.written; // 同一張卡片再存一次時，舊值要是剛寫進去的內容
+      showResult(p, r);
     } catch (err) {
+      if (isAbort(err)) { setStatus(`連線中斷（頁面可能正在重整），重整後會取回存檔結果：${label}`); return; }
       writePending(null);
       setStatus(String(err instanceof Error ? err.message : err), true);
     }
@@ -235,6 +253,7 @@ async function recoverPending() {
   try {
     showResult(p, await call<SaveResult>('/result', { id: p.id }));
   } catch (err) {
+    if (isAbort(err)) return; // 又一次重整（build:data 產物）：交給下一頁接手
     writePending(null);
     setStatus(String(err instanceof Error ? err.message : err), true);
   }

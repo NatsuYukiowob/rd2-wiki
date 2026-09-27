@@ -13,7 +13,10 @@ import {
   searchJson,
   searchSource,
 } from '../../tools/dev-editor/core';
-import { allowed } from '../../tools/dev-editor/integration';
+import { allowed, listFiles, save } from '../../tools/dev-editor/integration';
+import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import type { IncomingMessage } from 'node:http';
 
 const SAMPLE = `{
@@ -169,5 +172,35 @@ describe('allowed（寫檔 API 的門）', () => {
     expect(allowed(req({ host: '127.0.0.1:4321' }, '192.168.1.5'))).not.toBeNull();
     expect(allowed({ ...req({ host: '127.0.0.1:4321' }), headers: { host: '127.0.0.1:4321' } } as unknown as IncomingMessage)).toMatch(/標頭/);
     expect(allowed(req({ host: '127.0.0.1:4321', origin: 'http://127.0.0.1:9999' }))).toMatch(/Origin/);
+  });
+});
+
+describe('save（寫入策略由檔案決定）', () => {
+  const mkRoot = () => {
+    const root = mkdtempSync(join(tmpdir(), 'dev-editor-'));
+    mkdirSync(join(root, 'data'));
+    mkdirSync(join(root, 'src/pages'), { recursive: true });
+    writeFileSync(join(root, 'data/x.json'), '{ "a": "舊" }\n');
+    writeFileSync(join(root, 'src/pages/p.astro'), '<p>\r\n  第一行\r\n  第二行\r\n</p>\r\n');
+    return root;
+  };
+
+  it('對 data/*.json 用 source 方式寫入 → 拒絕，檔案不變', async () => {
+    const root = mkRoot();
+    const r = await save(root, listFiles(root), { kind: 'source', file: 'data/x.json', start: 7, end: 10, expected: '"舊"', next: '"broken' });
+    expect(r.ok).toBe(false);
+    expect(readFileSync(join(root, 'data/x.json'), 'utf8')).toBe('{ "a": "舊" }\n');
+  });
+
+  it('CRLF 檔案的多行片段：textarea 送回的 LF 會換回 CRLF，不寫出混用換行', async () => {
+    const root = mkRoot();
+    const text = readFileSync(join(root, 'src/pages/p.astro'), 'utf8');
+    const expected = '第一行\r\n  第二行';
+    const start = text.indexOf(expected);
+    const r = await save(root, listFiles(root), { kind: 'source', file: 'src/pages/p.astro', start, end: start + expected.length, expected, next: '第一行\n  改過' });
+    expect(r).toMatchObject({ ok: true, written: '第一行\r\n  改過' });
+    const out = readFileSync(join(root, 'src/pages/p.astro'), 'utf8');
+    expect(out).toBe('<p>\r\n  第一行\r\n  改過\r\n</p>\r\n');
+    expect(out.replace(/\r\n/g, '')).not.toContain('\n');
   });
 });

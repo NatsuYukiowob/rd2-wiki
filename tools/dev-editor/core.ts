@@ -145,7 +145,7 @@ export function maskComments(src: string): string {
 
 /**
  * 查詢字串 → regex：空白一律當成「任意空白」，原始碼的縮排換行與畫面上的一個空格就對得上；
- * 數字另外也對得上一段 `{…}` 插值（畫面上的 `41` 在 `.astro` 裡是 `{nodes.length}`）。
+ * 數字另外也對得上一段 `{…}` 插值（畫面上的 `N` 在 `.astro` 裡是 `{nodes.length}`）。
  */
 export function queryRegex(q: string): RegExp {
   const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -177,11 +177,12 @@ export interface SourceHit {
   value: string;
 }
 
-export function searchSource(files: { file: string; text: string }[], q: string): SourceHit[] {
+/** `masked` 可由呼叫端先算好：同一次請求會對每個候選查詢各搜一輪，註解遮罩只需要算一次。 */
+export function searchSource(files: { file: string; text: string; masked?: string }[], q: string): SourceHit[] {
   const re = queryRegex(q);
   const hits: SourceHit[] = [];
-  for (const { file, text } of files) {
-    const masked = maskComments(text);
+  for (const { file, text, masked: pre } of files) {
+    const masked = pre ?? maskComments(text);
     re.lastIndex = 0;
     for (let m; (m = re.exec(masked)); ) {
       const start = m.index;
