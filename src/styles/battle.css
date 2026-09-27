@@ -78,12 +78,6 @@
   display: none;
 }
 
-/* 子選項（69-1／69-2／69-3）縮排掛在母條目底下。用 margin-inline-start 而不是把它們塞進
-   母條目的 <li>：篩選是逐條顯示／隱藏的，巢狀之後「母條目被篩掉、子選項還在」就沒有位置可去。 */
-.battle-item[data-sub] {
-  margin-inline-start: var(--space-5);
-}
-
 .battle-icon {
   /* ⚠️ 一定要 contain。來源圖長寬比不統一（實測戰術 176×206 與 164×166 兩種都有），
      cover 會把圖裁角——跟 /board 那四個顯示點同一條不變量，理由寫在 board.css。 */
@@ -99,13 +93,6 @@
   align-items: baseline;
   gap: var(--space-1) var(--space-2);
   margin: 0 0 var(--space-1);
-}
-
-/* 子選項的從屬記號。⚠️ **編號與內部ID 刻意不顯示**（Yuki 2026-08-26）：那兩個是拿本站對
-   官方資料表用的，玩家在遊戲裡看不到。資料檔仍然留著 `id` 與 `gameId`——`id` 是錨點與規則 24
-   的鍵，`gameId` 是日後對新版資料表的唯一可靠 join key，兩個都不能因為畫面不印就刪掉。 */
-.battle-sub-mark {
-  color: var(--muted);
 }
 
 .battle-name {
@@ -136,18 +123,37 @@
   margin: 0;
 }
 
-/* 合作模式的效果。⚠️ 兩段都在 HTML 裡（沒有 JS 時看得到對戰那一段），切換只換顯示哪一段
+/* 合作模式的效果。⚠️ 兩段都在 HTML 裡（沒有 JS 時看得到合作一般那一段），切換只換顯示哪一段
    ——這一頁存在的理由就是「文字進得了 HTML」，用 JS 換 textContent 等於把另一半藏起來。 */
 .battle-text[data-mode='coop'] {
   display: none;
 }
 
-.battle-page[data-mode='coop'] .battle-text[data-mode='versus'] {
+.battle-page:is([data-mode='coopNormal'], [data-mode='coopHard']) .battle-text[data-mode='versus'] {
   display: none;
 }
 
-.battle-page[data-mode='coop'] .battle-text[data-mode='coop'] {
+.battle-page:is([data-mode='coopNormal'], [data-mode='coopHard']) .battle-text[data-mode='coop'] {
   display: block;
+}
+
+.tactic-content {
+  min-width: 0;
+}
+
+/* 與成就同樣使用原生 details：整列 summary 可操作，鍵盤與無 JS 收合由瀏覽器處理。 */
+.tactic-options {
+  margin-block-start: var(--space-3);
+}
+
+.tactic-options > summary {
+  padding: var(--space-3);
+  cursor: pointer;
+  color: var(--gold);
+}
+
+.tactic-options > .battle-list {
+  margin-block-start: var(--space-2);
 }
 
 /* 關鍵字的就地展開。⚠️ 刻意**不是** /dice 那套滑入式視圖堆疊：全站的戰術與 Boss 文字裡
@@ -166,11 +172,4 @@
 .battle-empty {
   margin: var(--space-5) 0;
   color: var(--muted);
-}
-
-@media (max-width: 720px) {
-  .battle-item[data-sub] {
-    /* 手機上縮排會把本來就很窄的文字欄再吃掉一截；子選項靠 `↳` 前綴仍看得出從屬關係。 */
-    margin-inline-start: var(--space-2);
-  }
 }

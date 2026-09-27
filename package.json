@@ -15,6 +15,7 @@
     "validate": "tsx tools/validate.ts",
     "typecheck": "tsc --noEmit",
     "add-icon": "tsx tools/add-icon.ts",
+    "add-currency-icon": "tsx tools/add-currency-icon.ts",
     "render-nodes": "tsx tools/render-nodes.ts",
     "build:data": "tsx tools/build-data.ts",
     "compare": "tsx tools/compare-computed.ts",

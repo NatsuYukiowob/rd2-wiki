@@ -188,6 +188,19 @@ describe('addRecordIcon', () => {
     expect(result.previousHash).toBeNull();
   });
 
+  it('巢狀 Augment 子項沿用同一匯入流程，父項與順序不變', () => {
+    const { srcDir, iconsDir, dataPath } = setup();
+    writeFileSync(dataPath, JSON.stringify([{ id: '69', icon: 'aaaaaaaaaaaa', options: [{ id: '69-1', name: '豐饒開始' }] }]));
+    const src = join(srcDir, 'option.png');
+    writeFileSync(src, makeMinimalPng(176, 206));
+    const result = addRecordIcon(src, '69-1', { iconsDir, dataPath });
+    const data = JSON.parse(readFileSync(dataPath, 'utf8'));
+    expect(data[0].icon).toBe('aaaaaaaaaaaa');
+    expect(data[0].options[0].icon).toBe(result.hash);
+    expect(data[0].options[0].name).toBe('豐饒開始');
+    expect(existsSync(join(iconsDir, `${result.hash}.png`))).toBe(true);
+  });
+
   it('換圖時回報原本那筆的雜湊（舊檔可能就此變孤兒）', () => {
     const { srcDir, iconsDir, dataPath } = setup();
     const src = join(srcDir, 'x.png');

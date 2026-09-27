@@ -27,6 +27,27 @@ const events = JSON.parse(
 const cellText = (c: Cell) => (typeof c === 'string' ? c : c.text);
 const rowCount = (ev: GameEvent) => ev.sections.reduce((n, s) => n + s.rows.length, 0);
 
+test('EV9. 中秋商店種子與造型硬幣有共用圖，列高與欄位對齊不變', { tag: '@mobile' }, async ({ page }, testInfo) => {
+  await page.goto('/events/chuseok-2026');
+  for (const [text, kind] of [['骰子樹種子 1', 'treeSeed'], ['造型硬幣 5', 'skinCoin']]) {
+    const row = page.locator('.event-table tbody tr').filter({ hasText: text! });
+    const image = row.locator(`img[src="/currency/${kind}.png"]`);
+    await row.scrollIntoViewIfNeeded();
+    await expect(image).toBeVisible();
+    expect(await image.evaluate(n => (n as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
+    await expect(row.locator('th, td').first()).toHaveText(text!);
+    const before = await row.boundingBox();
+    const cellPositions = await row.locator('th, td').evaluateAll(nodes => nodes.map(n => n.getBoundingClientRect().x));
+    await image.evaluate(n => { (n as HTMLElement).style.display = 'none'; });
+    const after = await row.boundingBox();
+    expect(Math.abs(before!.height - after!.height)).toBeLessThan(1);
+    expect(await row.locator('th, td').evaluateAll(nodes => nodes.map(n => n.getBoundingClientRect().x))).toEqual(cellPositions);
+    await image.evaluate(n => { (n as HTMLElement).style.display = ''; });
+    await row.screenshot({ path: testInfo.outputPath(`${kind}.png`) });
+  }
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1);
+});
+
 test('EV1. 每一場活動在索引上各有一張卡片，連到自己那一頁', async ({ page }) => {
   await page.goto('/events');
   await expect(page.locator('.event-card-link')).toHaveCount(events.length);

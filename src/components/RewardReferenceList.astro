@@ -1,0 +1,36 @@
+---
+import RewardGrantView from './RewardGrant.astro';
+import { rewardDisplay } from '../lib/reward-display';
+import type { RewardReferenceSection } from '../lib/types';
+interface Props { section: RewardReferenceSection; showNote?: boolean; card?: boolean; sectionTitle?: boolean }
+const { section, showNote = true, card = false, sectionTitle = false } = Astro.props;
+---
+<section class="reward-reference-section" data-repeatable-section={section.id} aria-labelledby={`reward-reference-${section.id}`}>
+  <div class="reward-reference-heading">
+    <h3 class:list={{ 'sec-title': sectionTitle }} id={`reward-reference-${section.id}`}>{section.title}</h3>
+  </div>
+  <div class:list={{ 'reward-reference-card': card, panel: card }}>
+  {showNote && section.note && <p class="reward-achievement-note">{section.note}</p>}
+  <div class:list={['reward-list-head', 'reward-reference-row', { 'reward-reference-with-icon': section.tierImages }]} aria-hidden="true">
+    {section.tierImages && <span>連勝圖示</span>}
+    <span>{section.metricLabel}</span><span>獎勵內容</span>
+  </div>
+  <ol class="reward-list reward-milestone-list" aria-label={`${section.title}獎勵`}>
+    {section.tiers.map(tier => (
+      <li class:list={['reward-tier', 'row-card', 'reward-reference-row', { 'reward-reference-with-icon': section.tierImages }]} data-repeatable-tier>
+        {section.tierImages && <img class="reward-reference-image" src={section.tierImages[tier.requirement]!.src}
+          alt={section.tierImages[tier.requirement]!.alt} width={section.tierImages[tier.requirement]!.width}
+          height={section.tierImages[tier.requirement]!.height} />}
+        <strong class="reward-requirement">{tier.requirement.toLocaleString('en-US')}</strong>
+        <ul class="reward-grants" aria-label="獎勵內容">
+          {tier.rewards.map(reward => (
+            <li aria-label={`${rewardDisplay(reward).label} ${reward.amount.toLocaleString('en-US')}`}>
+              <RewardGrantView reward={reward} amount={reward.amount} />
+            </li>
+          ))}
+        </ul>
+      </li>
+    ))}
+  </ol>
+  </div>
+</section>

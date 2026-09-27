@@ -31,6 +31,11 @@
   border-bottom: 1px solid color-mix(in srgb, var(--gold) 35%, transparent);
 }
 
+/* 桌機維持原來的 flex 項目；手機才建立獨立的水平捲動層。 */
+#site-nav .nav-links {
+  display: contents;
+}
+
 /* 導覽列的連結預設不是金色。全部都金色的時候「你在哪一頁」就沒有地方講了——金色留給
    站名與目前所在的那一頁，其餘用一般文字色，hover 才轉金。 */
 #site-nav a {
@@ -109,45 +114,35 @@
   }
 }
 
-/* 窄螢幕：導覽列自己橫向捲動（Yuki 2026-08-23 指定「讓他可以左右拖動即可」）。
-   六個入口在 320px 塞不下，而 `#site-nav` 是 sticky 又不准換行（換行等於永久佔掉一條畫面）。
-   ⚠️ 捲的是**導覽列自己**，不是整份文件——`/board` 的 B13 驗的是 document 不得出現橫向
-   捲動，那條仍然成立。
-
-   ⚠️ 這裡原本寫著 `overflow-y: visible` 並註明「這樣下拉才不會被裁掉」——**那是錯的**，
-   2026-09-22 實測推翻：規格規定 `overflow-x: auto` 會把同一個盒子的 `overflow-y: visible`
-   算成 `auto`（computed 值確實是 auto），所以那一行等於沒寫。症狀是「遊戲介紹」的下拉
-   （384px 高）被關進導覽列自己的 50px 捲動盒裡，只露出 5px，要把導覽列**上下**拖才看得到。
-   絕對定位逃不掉：它的 containing block 鏈經過 `#site-nav`，就一定吃它的 overflow。
-   ⚠️ 只有 `position: fixed` 逃得出去（containing block 是視窗）——但 `backdrop-filter`
-   會讓 `#site-nav` 變成 fixed 的 containing block，留著它的話 fixed 照樣被裁（實測過）。
-   所以手機版的模糊搬到 `::before` 那一層。**不能直接拿掉模糊**：底色只有 88% 不透明，
-   沒有模糊時後面的內文看得出字（實測讀得出「在骰子樹查看前置鏈 →」整行）。 */
+/* 手機維持水平導覽，但只有主要連結捲動；原生 details 在捲動盒之外。
+   overflow-x:auto 會讓同盒子的 overflow-y:visible 算成 auto，不能拿它避免裁切。
+   外層 sticky nav 保留模糊與 visible overflow，面板不再依賴 fixed 逃離捲動盒，
+   也不依賴 WebKit 對 backdrop-filter / fixed descendant 的處理差異。 */
 @media (max-width: 720px) {
   #site-nav {
+    overflow: visible;
+  }
+  #site-nav .nav-links {
+    display: flex;
+    flex: 1;
+    min-width: 0;
+    align-self: stretch;
+    align-items: center;
+    /* 把目前分頁的底線納入捲動盒，不增加外層導覽列高度。 */
+    margin-block: calc(var(--space-3) * -1);
+    padding-block: var(--space-3);
+    gap: inherit;
     overflow-x: auto;
+    overflow-y: hidden;
     scrollbar-width: none;
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
   }
-  /* 模糊層。fixed＋`--nav-h` 而不是 absolute＋`inset: 0`：導覽列是捲動盒，絕對定位的子元素
-     會跟著橫向捲動跑掉，拖到右邊時右半條就沒有模糊了。z-index: -1 ＝壓在導覽列自己的底色
-     之上、連結之下。`--nav-h` 由 src/lib/nav-height.ts 實測寫入，每一頁都有。 */
-  #site-nav::before {
-    content: '';
-    position: fixed;
-    top: 0;
-    right: 0;
-    left: 0;
-    z-index: -1;
-    height: var(--nav-h, 3rem);
-    backdrop-filter: blur(10px);
-    -webkit-backdrop-filter: blur(10px);
-  }
-  #site-nav::-webkit-scrollbar {
+  #site-nav .nav-links::-webkit-scrollbar {
     display: none;
   }
   #site-nav > * {
+    flex: none;
+  }
+  #site-nav .nav-links > * {
     flex: none;
   }
 }
@@ -237,19 +232,23 @@
 }
 
 /* 窄螢幕的下拉：釘在導覽列正下方、橫向撐滿（左右留導覽列自己的內距）。
-   為什麼是 fixed、為什麼模糊要搬家，全寫在上面 `overflow-x: auto` 那一段。
-   fixed 之後面板不再跟著導覽列的橫向捲動移動——這正是要的：使用者是把導覽列拖到最右才
-   按到「遊戲介紹」的，跟著跑的話面板會有一半在畫面外。
+   details 為 static，面板相對外層 sticky nav 定位；與水平捲動的 .nav-links 是兄弟，
+   因此不受它裁切，也不跟著橫向位移。不需要 fixed 或補償 scrollLeft 的 offset。
    ⚠️ 這一段**必須排在上面 `#site-nav .nav-menu-items` 基底規則之後**：兩者具體度相同
    （(1,1,0)，media query 不加具體度），勝負只看順序。寫進上面那個 `@media` 區塊裡的話，
    `position`／`top`／`left` 會被後面的基底規則蓋回去，而基底沒寫的 `right` 卻會生效
    ——半套生效、畫面看起來只是「位置怪怪的」（2026-09-22 實際踩到）。 */
 @media (max-width: 720px) {
+  #site-nav .nav-menu {
+    position: static;
+  }
   #site-nav .nav-menu-items {
-    position: fixed;
-    top: calc(var(--nav-h, 3rem) + var(--space-2));
+    position: absolute;
+    top: calc(100% + var(--space-2));
     right: var(--space-4);
     left: var(--space-4);
+    max-height: calc(100dvh - var(--nav-h, 3rem) - var(--space-5));
+    overflow-y: auto;
   }
 }
 

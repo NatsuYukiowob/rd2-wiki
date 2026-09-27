@@ -129,11 +129,11 @@ test('D5. 鍵盤 Tab 過去的元素一定有焦點框（全站共用的那一�
  * 讓 /guide 多長一行的改動都會讓它跟著靜靜跳過，而不是紅。
  *
  * 換句話說，一條「內容不滿一屏」的測試，它的前提條件是自己不能控制的頁面高度——那不是
- * 條件式跳過，那是假綠。現在把視窗高度寫死成 1600，前提就由測試自己保證；哪天 /guide 真的
- * 長到 1600 以上，會**紅在下面那句 expect**（附說明），而不是消失。
+ * 條件式跳過，那是假綠。總覽補齊內容入口後，手機需要 2400 的視窗高度以保證這個前提；
+ * 哪天 /guide 真的長到 2400 以上，會**紅在下面那句 expect**（附說明），而不是消失。
  */
 test('D6. 內容不滿一屏時 footer 沉到視窗底部，不會停在畫面中間', { tag: '@mobile' }, async ({ page }) => {
-  const VH = 1600;
+  const VH = 2400;
   await page.setViewportSize({ width: page.viewportSize()!.width, height: VH });
   await page.goto('/guide');
   const sh = await page.evaluate(() => document.documentElement.scrollHeight);
@@ -191,7 +191,7 @@ test('D9. 導覽列永遠是一行：每一項都在同一列，高度不吃掉�
   expect(box.height, '導覽列不只一行').toBeLessThan(64);
 
   const rows = await nav.evaluate(el =>
-    [...el.querySelectorAll(':scope > a, :scope > .nav-menu > summary')]
+    [...el.querySelectorAll('.nav-links > a, :scope > a, :scope > .nav-menu > summary')]
       .map(n => Math.round(n.getBoundingClientRect().top)));
   expect(new Set(rows).size, `導覽列的項目落在 ${new Set(rows).size} 列上`).toBe(1);
 });
@@ -269,8 +269,8 @@ test('D13. 窄螢幕：導覽列自己橫向捲動，不換行也不把整份文
       const nav = document.getElementById('site-nav')!;
       return {
         docOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
-        navScrollable: nav.scrollWidth > nav.clientWidth,
-        rows: new Set([...nav.querySelectorAll(':scope > a, :scope > .nav-menu > summary')]
+        navScrollable: nav.querySelector('.nav-links')!.scrollWidth > nav.querySelector('.nav-links')!.clientWidth,
+        rows: new Set([...nav.querySelectorAll('.nav-links > a, :scope > a, :scope > .nav-menu > summary')]
           .map(n => Math.round(n.getBoundingClientRect().top))).size,
       };
     });
@@ -786,14 +786,14 @@ test('D18. 按住時縮一下，放開回原狀；reduce 之下整組關掉', { 
   }
 });
 
-test('D19. 窄螢幕：「遊戲介紹」的下拉浮在導覽列外面，每一項都點得到，導覽列不會被撐成上下可捲', async ({ page }) => {
+test('D19. 窄螢幕：「遊戲介紹」的下拉浮在導覽列外面，每一項都點得到，導覽列不會被撐成上下可捲', { tag: '@mobile' }, async ({ page }) => {
   // 2026-09-22 的實際 bug：導覽列在窄螢幕是橫向捲動盒（overflow-x: auto），而 `overflow-y: visible`
   // 依規格會被算成 auto，於是絕對定位的下拉整個被關進那個捲動盒——選單「開了」卻只露出 5px，
   // 要把導覽列上下拖才看得到。
   await page.setViewportSize({ width: 320, height: 720 });
   await page.goto('/dice');
-  const nav = page.locator('#site-nav');
-  // 前提：這個寬度下導覽列真的是橫向捲動的，不然這條測試守的東西不存在。
+  const nav = page.locator('#site-nav .nav-links');
+  // 只捲主要連結；details 與 panel 在捲動盒外。
   expect(await nav.evaluate(n => n.scrollWidth > n.clientWidth), '前提：320px 下導覽列要橫向捲動').toBe(true);
   // 照使用者的路徑：先把導覽列拖到最右，才按得到「遊戲介紹」。
   await nav.evaluate(n => { n.scrollLeft = n.scrollWidth; });
@@ -813,8 +813,9 @@ test('D19. 窄螢幕：「遊戲介紹」的下拉浮在導覽列外面，每一
       hittable: hittable.length,
       menuTop: menu.getBoundingClientRect().top,
       navBottom: navEl.getBoundingClientRect().bottom,
-      navScrollTopMax: navEl.scrollHeight - navEl.clientHeight,
-      blur: getComputedStyle(navEl, '::before').backdropFilter,
+      navScrollTopMax: document.querySelector('.nav-links')!.scrollHeight - document.querySelector('.nav-links')!.clientHeight,
+      overflow: getComputedStyle(navEl).overflow,
+      blur: getComputedStyle(navEl).backdropFilter,
     };
   });
   // ⚠️ 不可以只看 getBoundingClientRect：被祖先 overflow 裁掉的元素照樣回報完整尺寸
@@ -823,7 +824,8 @@ test('D19. 窄螢幕：「遊戲介紹」的下拉浮在導覽列外面，每一
   expect(r.hittable, '下拉有項目點不到（被導覽列的捲動盒裁掉了）').toBe(r.items);
   expect(r.menuTop, '下拉沒有落在導覽列下方').toBeGreaterThanOrEqual(r.navBottom - 1);
   expect(r.navScrollTopMax, '導覽列被下拉撐出垂直捲動（又被關進捲動盒了）').toBeLessThanOrEqual(2);
-  // 模糊是**搬到 ::before**，不是拿掉：底色只有 88% 不透明，沒有模糊時後面的內文看得出字。
+  expect(r.overflow).toBe('visible');
+  // 外層不再是捲動盒，模糊保留在 nav 自己。
   expect(r.blur, '手機版導覽列的模糊不見了').toContain('blur');
 });
 

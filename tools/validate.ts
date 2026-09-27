@@ -193,6 +193,8 @@ function checkIconedRecordList(
      * 兩條長得一模一樣的卡片。綁在欄位上才留得住這個保護：同名共用是設計，跨名共用是抄錯。
      */
     sharedIconKey?: string;
+    /** 已確認官方共用 Sprite 的 ID 群；其他跨 ID 重複仍擋下。 */
+    sharedIconIds?: readonly (readonly string[])[];
   },
 ): { records: Record<string, unknown>[]; errors: string[]; warnings: string[] } {
   const errors: string[] = [];
@@ -291,6 +293,7 @@ function checkIconedRecordList(
   }
   for (const [hash, ids] of idsByHash) {
     if (ids.length <= 1) continue;
+    if (opts.sharedIconIds?.some(group => ids.every(id => group.includes(id)))) continue;
     if (opts.sharedIconKey === undefined) {
       push(`${opts.rule}(g): ${opts.file} 的 ${ids.join('、')} 指向同一張圖 ${hash}.png`);
       continue;
@@ -1493,74 +1496,77 @@ export function validate(svgText: string, opts: ValidateOpts): ValidateResult {
     }
   }
 
-  // 規則 24：戰術（`data/tactics.json` ＋ `data/tactic-icons/`）。
-  //
-  // 58 條「已啟用」的戰術。⚠️ 官方資料表有 74 條，另外 16 條標「未啟用」（資料表有、遊戲
-  // 沒開）刻意不落地——Yuki 2026-08-26 裁決。因此「`mode === '對戰'` ⟺ 沒有 `coop`」在
-  // 這份檔案裡是一條真的不變量（(j) 守它）；把未啟用那批加回來會同時打破它。
-  //
-  // 子規則：(a)(e)(f)(g)(h)(k) 與 (b)(c)(d) 見 checkIconedRecordList()；
-  // 這裡自己加的是 (i) 子選項語意與 (j) 模式與合作效果的等價。
+  // 規則 24：v1.1.2 候選池與已格式化文本各自保存；Augment 子項巢狀於父戰術。
   if (opts.tactics === null) {
     warn('規則 24: 沒有提供 data/tactics.json，戰術未檢查');
   } else {
-    const scan = checkIconedRecordList(opts.tactics, {
+    const parents = Array.isArray(opts.tactics) ? opts.tactics : [];
+    const optionParents = new Map<unknown, string>();
+    const flattened = parents.flatMap((parent: unknown) => {
+      if (!parent || typeof parent !== 'object' || Array.isArray(parent)) return [parent];
+      const rec = parent as Record<string, unknown>;
+      if (rec.options === undefined) return [parent];
+      if (!Array.isArray(rec.options) || rec.options.length === 0) {
+        push(`規則 24(i): data/tactics.json 的 ${rec.id} 的 options 必須是非空陣列`);
+        return [parent];
+      }
+      for (const option of rec.options) optionParents.set(option, String(rec.id));
+      return [parent, ...rec.options];
+    });
+    const scan = checkIconedRecordList(Array.isArray(opts.tactics) ? flattened : opts.tactics, {
       rule: '規則 24',
       file: 'data/tactics.json',
       iconsDir: opts.tacticIconsDir,
-      // 子選項是 `69-1`；母編號本身不帶前導零，`06` 這種寫法在畫面上會排在錯的位置。
       idPattern: /^[1-9]\d*(-[1-9]\d*)?$/,
-      knownKeys: ['id', 'name', 'stage', 'mode', 'versus', 'coop', 'gameId', 'icon', 'dataIssue'],
-      requiredText: ['id', 'name', 'stage', 'mode', 'versus', 'gameId'],
-      optionalText: ['coop'],
-      markupKeys: ['versus', 'coop'],
+      knownKeys: ['id', 'name', 'stage', 'availability', 'versus', 'coop', 'gameId', 'icon', 'dataIssue', 'options', 'text'],
+      requiredText: ['id', 'name', 'gameId'],
+      optionalText: ['versus', 'coop', 'text'],
+      markupKeys: ['versus', 'coop', 'text'],
       whitelist,
+      // Index 9 / 40 官方共用 SpawnAltar；不得放寬其他重複圖。
+      sharedIconIds: [['9', '40']],
     });
     scan.errors.forEach(push);
     scan.warnings.forEach(warn);
 
-    const STAGES = new Set(['前期', '中期', '後期', '終盤', '選項']);
-    const MODES = new Set(['對戰', '對戰／合作']);
-    const ids = new Set(scan.records.map(r => r.id as string));
+    const stages = new Set(['前期', '中期', '後期', '終盤']);
+    const modeKeys = ['versus', 'coopNormal', 'coopHard'];
+    const inactive = new Set(['2', '3', '4', '5', '8', '13', '15', '58', '59', '60', '61', '63', '65', '66', '70']);
     for (const rec of scan.records) {
       const id = rec.id as string;
-      const stage = rec.stage as string;
-      const mode = rec.mode as string;
-      if (!STAGES.has(stage)) push(`規則 24(e): data/tactics.json 的 ${id} 的 stage ${JSON.stringify(stage)} 不是五個階段之一`);
-      // ⚠️ `未啟用` 要指名道姓地擋。它是官方資料表真有的第三個值，複製一筆未啟用的資料
-      // 進來時「不是合法模式」這種泛用訊息會讓人以為是打錯字，而真正的答案是「這一批
-      // 刻意不收」——那件事只寫在註解與 CLAUDE.md 裡，錯誤訊息得自己說出來。
-      else if (mode === '未啟用') push(`規則 24(e): data/tactics.json 的 ${id} 的 mode 是「未啟用」——未啟用的戰術刻意不落地（Yuki 2026-08-26 裁決），整筆移除，不要改成別的模式`);
-      else if (!MODES.has(mode)) push(`規則 24(e): data/tactics.json 的 ${id} 的 mode ${JSON.stringify(mode)} 不是合法的適用模式`);
-
-      // (i) 子選項語意：id 含 `-` ⟺ stage 是「選項」，而且母條目要在。
-      // 兩邊各自看都很正常——一條 stage 寫成「前期」的 `69-2` 會被排到前期那一群裡，
-      // 跟它的母條目「選擇由我決定」分家，而畫面上那只是「多一條前期戰術」。
-      const dash = id.includes('-');
-      if (dash !== (stage === '選項')) {
-        push(dash
-          ? `規則 24(i): data/tactics.json 的 ${id} 是子選項（id 含 -），stage 必須是「選項」，目前是 ${JSON.stringify(stage)}`
-          : `規則 24(i): data/tactics.json 的 ${id} 的 stage 是「選項」，但 id 不是「母編號-序號」的子選項形式`);
+      const parent = optionParents.get(rec);
+      if (parent !== undefined) {
+        const keys = new Set(['id', 'name', 'text', 'gameId', 'icon']);
+        for (const key of Object.keys(rec)) {
+          if (!keys.has(key)) push(`規則 24(i): data/tactics.json 的子選項 ${id} 有未知欄位 "${key}"，階段與模式繼承父戰術`);
+        }
+        if (!id.startsWith(`${parent}-`)) push(`規則 24(i): data/tactics.json 的子選項 ${id} 不屬於母條目 ${parent}`);
+        if (typeof rec.text !== 'string' || !rec.text.trim()) push(`規則 24(i): data/tactics.json 的子選項 ${id} 的 text 必須是非空字串`);
+        continue;
       }
-      if (dash) {
-        const parent = id.slice(0, id.indexOf('-'));
-        if (!ids.has(parent)) push(`規則 24(i): data/tactics.json 的子選項 ${id} 找不到母條目 ${parent}`);
+      if (id.includes('-')) push(`規則 24(i): data/tactics.json 的子選項 ${id} 必須放在母條目的 options 內`);
+      if (rec.text !== undefined) push(`規則 24(e): data/tactics.json 的 ${id} 有未知欄位 "text"`);
+      if (!stages.has(rec.stage as string)) push(`規則 24(e): data/tactics.json 的 ${id} 的 stage ${JSON.stringify(rec.stage)} 不是四個階段之一`);
+      const availability = rec.availability;
+      if (!availability || typeof availability !== 'object' || Array.isArray(availability)) {
+        push(`規則 24(j): data/tactics.json 的 ${id} 的 availability 必須是三模式布林物件`);
+      } else {
+        const modes = availability as Record<string, unknown>;
+        if (Object.keys(modes).some(key => !modeKeys.includes(key)) || modeKeys.some(key => typeof modes[key] !== 'boolean')) {
+          push(`規則 24(j): data/tactics.json 的 ${id} 的 availability 必須完整指定 versus / coopNormal / coopHard 布林值`);
+        }
+        if (!modeKeys.some(key => modes[key] === true)) push(`規則 24(j): data/tactics.json 的 ${id} 三模式皆未啟用，刻意不落地，整筆移除`);
+        if (modes.versus === true && rec.versus === undefined) push(`規則 24(j): data/tactics.json 的 ${id} 對戰可用卻沒有 versus`);
+        if ((modes.coopNormal === true || modes.coopHard === true) && rec.coop === undefined) push(`規則 24(j): data/tactics.json 的 ${id} 合作可用卻沒有 coop`);
       }
-
-      // (j) 「純對戰」與「有合作效果」必須互為表裡。⚠️ 兩個方向都要問：漏抓「對戰卻有
-      // coop」的話，那條戰術在合作模式下會冒出一段官方沒有的文字；漏抓「對戰／合作卻沒
-      // coop」的話，它在合作模式下整條消失，而畫面上跟「這條本來就只有對戰」一模一樣。
-      // ⚠️ 用 `!== undefined` 而不是 truthiness：`coop: null`／`coop: 0` 這種值在
-      // (e) 已經被 optionalText 擋掉了，但這裡若寫成 `if (rec.coop)`，(e) 哪天放寬時
-      // 這條會跟著默默失效——兩條規則不要互相依賴對方的嚴格度。
-      const hasCoop = rec.coop !== undefined;
-      if (mode === '對戰' && hasCoop) push(`規則 24(j): data/tactics.json 的 ${id} 的 mode 是「對戰」卻有 coop`);
-      if (mode === '對戰／合作' && !hasCoop) push(`規則 24(j): data/tactics.json 的 ${id} 的 mode 是「對戰／合作」卻沒有 coop`);
-
+      if (inactive.has(id)) push(`規則 24(j): data/tactics.json 的 ${id} 在 v1.1.2 未啟用，刻意不落地，整筆移除`);
       if (rec.dataIssue !== undefined && rec.dataIssue !== 'upstream-icon') {
         push(`規則 24(e): data/tactics.json 的 ${id} 的 dataIssue ${JSON.stringify(rec.dataIssue)} 不是已知的標記`);
       }
     }
+    const nine = scan.records.find(rec => rec.id === '9');
+    const forty = scan.records.find(rec => rec.id === '40');
+    if (nine && forty && nine.icon !== forty.icon) push('規則 24(g): data/tactics.json 的 9 與 40 必須共用官方 SpawnAltar 圖示');
   }
 
   // 規則 25：Boss（`data/boss.json` ＋ `data/boss-icons/`）。

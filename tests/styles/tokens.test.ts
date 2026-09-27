@@ -109,13 +109,13 @@ describe('版面級距', () => {
    */
   const EXPECTED_CSS = [
     'base.css', 'battle.css', 'board.css', 'canvas.css', 'chrome.css', 'components.css',
-    'content.css', 'detail.css', 'dice.css', 'events.css', 'tokens.css',
+    'content.css', 'detail.css', 'dice.css', 'events.css', 'rewards.css', 'tokens.css',
   ].map(f => `${STYLE_DIR}/${f}`).sort();
 
-  it('掃描名單剛好是十一個 .css，一個不多一個不少', () => {
+  it('掃描名單剛好是十二個 .css，一個不多一個不少', () => {
     const onDisk = readdirSync(STYLE_DIR)
       .filter(f => f.endsWith('.css')).sort().map(f => `${STYLE_DIR}/${f}`);
-    expect(onDisk, 'src/styles 底下的 .css 集合跟預期的十一個檔對不上').toEqual(EXPECTED_CSS);
+    expect(onDisk, 'src/styles 底下的 .css 集合跟預期的十二個檔對不上').toEqual(EXPECTED_CSS);
     expect(FILES).toContain(TOKENS_FILE);
   });
 
@@ -225,9 +225,12 @@ describe('import 順序＝層疊順序', () => {
       { file: 'src/pages/sim.astro', css: ['canvas.css'] },
       { file: 'src/pages/dice.astro', css: ['dice.css'] },
       { file: 'src/pages/board.astro', css: ['board.css'] },
+      { file: 'src/pages/rewards.astro', css: ['rewards.css'] },
     ];
     for (const { file, css } of pages) {
-      const lines = readFileSync(file, 'utf8').split('\n');
+      // Windows checkout 可能是 CRLF；只用 split('\n') 會讓每行尾端留著 `\r`，下面的整行
+      // 字面值比對全部找不到，跟 import 順序本身無關。
+      const lines = readFileSync(file, 'utf8').split(/\r?\n/);
       const baseLine = lines.findIndex(l => /^import Base from /.test(l));
       expect(baseLine, `${file} 找不到 import Base`).toBeGreaterThanOrEqual(0);
       for (const name of css) {

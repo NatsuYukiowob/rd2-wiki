@@ -330,18 +330,24 @@ export interface DiceStatEntry {
 export type DiceStatsTable = Record<string, DiceStatEntry>;
 
 /**
- * 戰術的階段（客戶端 `TacticsEffectTable.TacticPhase`：Early／Mid／Late／Final）。`選項` 是 69 號
- * 「選擇由我決定」底下的三個子選項。`終盤`（Final）是 1.1.2 新增的第四個階段，中文名是本站的命名
+ * 戰術的階段（客戶端 `TacticsEffectTable.TacticPhase`：Early／Mid／Late／Final）。
+ * `終盤`（Final）是 1.1.2 新增的第四個階段，中文名是本站的命名
  * （Yuki 2026-09-18 裁決；客戶端 localization 裡沒有階段名稱）。
  */
-export type TacticStage = '前期' | '中期' | '後期' | '終盤' | '選項';
+export type TacticStage = '前期' | '中期' | '後期' | '終盤';
 /**
- * 戰術的適用模式（官方資料表「適用模式」欄）。
- *
- * ⚠️ **只有兩個值**：資料表第三個值 `未啟用`（遊戲沒開放）的 16 條刻意不落地，
- * 見 `data/tactics.json` 的說明。所以「`對戰` ⟺ 沒有 `coop`」是一條不變量，規則 24 守它。
+ * 三模式候選池鍵。可用性與文本分開，不從 Coop=true 或合作文本推導。
  */
-export type TacticMode = '對戰' | '對戰／合作';
+export type TacticMode = 'coopNormal' | 'coopHard' | 'versus';
+
+/** AugmentData 子選項繼承父戰術的階段與可用模式，不是獨立戰術。 */
+export interface TacticOption {
+  id: string;
+  name: string;
+  text: string;
+  gameId: string;
+  icon: string;
+}
 
 /**
  * 一條戰術（`data/tactics.json` 的一筆）。
@@ -350,16 +356,18 @@ export type TacticMode = '對戰' | '對戰／合作';
  * 也不進 tree.json**（塞進去會同時弄壞 239／248 的節點邊數與全樹解鎖成本）。
  */
 export interface Tactic {
-  /** 官方編號。子選項是 `69-1`／`69-2`／`69-3`——**含 `-` ⟺ `stage === '選項'`**，規則 24 守。 */
+  /** 官方戰術編號。Augment 子項存於 options，不在頂層獨立計數。 */
   id: string;
   /** 官方名稱。子選項在資料表裡帶 `↳ ` 前綴，落地時已去掉——那是版面，不是名字。 */
   name: string;
   stage: TacticStage;
-  mode: TacticMode;
+  /** 依已驗證候選池記錄；不得從 coop 文本是否存在推導。 */
+  availability: Record<TacticMode, boolean>;
   /** 對戰模式的效果全文。 */
-  versus: string;
-  /** 合作模式的效果全文；`mode === '對戰'` 的 11 條沒有這一欄。⚠️ 47 條裡有 32 條與 `versus` 逐字相同（官方就是這樣寫的），不要因為「重複」把它省掉——省掉就得在渲染端猜。 */
+  versus?: string;
+  /** 合作一般／困難共用的已格式化全文；即使與 versus 相同也不省略。 */
   coop?: string;
+  options?: TacticOption[];
   /** 官方資料表的「內部ID」欄，玩家拿本站對照官方表的鍵。同 `TreeNode.gameId` 的角色。 */
   gameId: string;
   /** `data/tactic-icons/` 底下來源 PNG 的內容 sha256 前 12 碼。 */
@@ -535,3 +543,120 @@ export interface EventSection {
 
 /** 一格：純文字，或「貨幣圖＋文字」。 */
 export type EventCell = string | { icon: string; text: string };
+
+/**
+ * 獎勵頁的資料正本（`data/rewards.json`）。
+ *
+ * 正式獎勵資料：門檻類與分組成就共用 grant，進度模型各自獨立。
+ */
+export interface RewardCatalog {
+  /** 目前資料是否已經由可靠來源核對。sample 一定要在畫面上明示，不能看起來像正式數值。 */
+  status: 'sample' | 'official';
+  note: string;
+  modes: RewardMode[];
+  /** 可重複取得的唯讀參考，刻意不屬於有進度的 modes。 */
+  repeatable?: RewardRepeatable;
+}
+
+export interface RewardReferenceSection {
+  id: string;
+  title: string;
+  metricLabel: string;
+  note?: string;
+  /** 依門檻對應的查閱圖，不是可領取獎勵。 */
+  tierImages?: Record<string, { src: string; alt: string; width: number; height: number }>;
+  tiers: RewardTier[];
+}
+
+export interface RewardRepeatable {
+  id: string;
+  name: string;
+  sections: RewardReferenceSection[];
+  dailyTasks: {
+    tasks: RewardTask[];
+    totalPoints: number;
+    rewards: RewardReferenceSection;
+  };
+}
+
+export interface RewardThresholdMode {
+  kind: 'threshold';
+  id: string;
+  name: string;
+  requirementLabel: string;
+  tiers: RewardTier[];
+  /** 只讀的任務點數參考資料；不參與 reward progress 或 localStorage。 */
+  taskDays?: RewardTaskDay[];
+}
+
+export interface RewardTaskDay {
+  day: number;
+  totalPoints: number;
+  tasks: RewardTask[];
+}
+
+export interface RewardTask {
+  id: string;
+  name: string;
+  requirement: number;
+  points: number;
+}
+
+export interface RewardAchievementMode {
+  kind: 'achievement';
+  id: string;
+  name: string;
+  groups: RewardAchievementGroup[];
+}
+
+export interface RewardAchievementGroup {
+  /** 主表沒有官方 group ID；以工作表內唯一的成就名稱作為進度 key。 */
+  id: string;
+  name: string;
+  stages: RewardAchievementStage[];
+}
+
+export interface RewardAchievementStage {
+  id: string;
+  stage: number;
+  requirement: number;
+  rewards: RewardGrant[];
+}
+
+export type RewardMode = RewardThresholdMode | RewardAchievementMode;
+
+export interface RewardTier {
+  id: string;
+  requirement: number;
+  rewards: RewardGrant[];
+}
+
+/**
+ * 貨幣獎勵只存 registry kind；名稱與圖檔由 `cost-html.ts` 的單一 registry 解析。
+ */
+export interface RewardCurrencyGrant {
+  type: 'currency';
+  kind: string;
+  amount: number;
+}
+
+/**
+ * 收藏類獎勵。icon 僅用於來源已確認的完整單品圖；缺圖保留文字 fallback。
+ * collectible 是分類仍待裁決的特殊物品，不強迫歸為骰子或造型。
+ */
+export interface RewardCollectibleGrant {
+  type: 'emote' | 'cosmetic' | 'dice' | 'collectible';
+  /** 外觀的語意分類，用於摘要排序；不依顯示名稱猜類型。 */
+  subtype?: 'dice-skin' | 'banner' | 'avatar' | 'frame';
+  itemId: string;
+  label: string;
+  amount: number;
+  assetStatus?: 'pending' | 'ready';
+  icon?: string;
+  /** 已核對的骰子節點，圖片由既有 dice3 registry 解析。 */
+  nodeId?: string;
+  /** 對來源分類尚待人工裁決的紀錄。 */
+  classificationNote?: string;
+}
+
+export type RewardGrant = RewardCurrencyGrant | RewardCollectibleGrant;

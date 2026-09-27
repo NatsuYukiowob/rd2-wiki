@@ -53,7 +53,8 @@ const isCurrent = (href: string) => path === href || (href !== '/' && path.start
  * 收進這個下拉之後，只看 `/guide` 的話，站在戰術頁時導覽列上零提示——下拉是收起來的，
  * 裡面那條 `aria-current` 使用者根本看不到。2026-09-06 的 `/rift-shop` 同理。
  */
-const guideCurrent = ['/guide', '/tactic', '/boss', '/rift-shop', '/events'].some(href => isCurrent(href));
+const guideCurrent = ['/guide', '/tactic', '/boss', '/rift-shop', '/events', '/rewards']
+  .some(href => isCurrent(href));
 
 /**
  * 分頁標題的站名前綴。格式是「站名 | 分頁名」，站名在前（2026-08-22 定案）。
@@ -137,11 +138,13 @@ const imageUrl = new URL('/favicon.png', Astro.site).href;
          不會跟同頁另一個 <nav id="branch-nav">（桌機側欄分支跳轉）搞混，用來量測
          這個 nav 的實際渲染高度（見 tree-canvas.ts 的 updateNavHeight() 說明）。 -->
     <nav id="site-nav">
-      <a class="brand" href="/" aria-current={path === '/' ? 'page' : undefined}><Fragment set:html={ICONS.brand} /><span class="brand-text">rd2-wiki</span></a>
-      <a href="/tree" aria-current={isCurrent('/tree') ? 'page' : undefined}>骰子樹</a>
-      <a href="/dice" aria-current={isCurrent('/dice') ? 'page' : undefined}>圖鑑</a>
-      <a href="/board" aria-current={isCurrent('/board') ? 'page' : undefined}>骰盤</a>
-      <a href="/sim" aria-current={isCurrent('/sim') ? 'page' : undefined}>骰子樹-模擬器(beta)</a>
+      <div class="nav-links">
+        <a class="brand" href="/" aria-current={path === '/' ? 'page' : undefined}><Fragment set:html={ICONS.brand} /><span class="brand-text">rd2-wiki</span></a>
+        <a href="/tree" aria-current={isCurrent('/tree') ? 'page' : undefined}>骰子樹</a>
+        <a href="/dice" aria-current={isCurrent('/dice') ? 'page' : undefined}>圖鑑</a>
+        <a href="/board" aria-current={isCurrent('/board') ? 'page' : undefined}>骰盤</a>
+        <a href="/sim" aria-current={isCurrent('/sim') ? 'page' : undefined}>骰子樹-模擬器(beta)</a>
+      </div>
       <!--
         「遊戲介紹」用 <details> 而不是自己刻一個下拉：<summary> 本來就能 Tab 聚焦、能按
         Enter／Space 開合，螢幕閱讀器也會念出展開狀態。自訂元素要補齊這些至少三十行，
@@ -168,6 +171,7 @@ const imageUrl = new URL('/favicon.png', Astro.site).href;
           <a href="/boss" aria-current={isCurrent('/boss') ? 'page' : undefined}>Boss</a>
           <a href="/rift-shop" aria-current={isCurrent('/rift-shop') ? 'page' : undefined}>裂縫商店</a>
           <a href="/events" aria-current={isCurrent('/events') ? 'page' : undefined}>活動</a>
+          <a href="/rewards" aria-current={isCurrent('/rewards') ? 'page' : undefined}>獎勵系統</a>
         </div>
       </details>
       {FEATURES.contributeLink && (
@@ -215,10 +219,14 @@ const imageUrl = new URL('/favicon.png', Astro.site).href;
       const closeAll = (except?: Element) => {
         for (const m of menus) if (m !== except) m.open = false;
       };
-      document.addEventListener('click', event => {
+      // WebKit 觸控非互動區域不一定合成冒泡 click；pointerdown 同時涵蓋滑鼠與觸控。
+      const closeOutside = (event: Event) => {
         const inside = menus.find(m => m.contains(event.target as Node));
         closeAll(inside ?? undefined);
-      });
+      };
+      document.addEventListener('pointerdown', closeOutside);
+      // 保留鍵盤／輔助技術合成 click 的原有行為。
+      document.addEventListener('click', closeOutside);
       document.addEventListener('keydown', event => {
         if (event.key !== 'Escape') return;
         const open = menus.find(m => m.open);

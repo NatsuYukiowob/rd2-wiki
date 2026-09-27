@@ -281,9 +281,9 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
     ['data/boss.json', 'data/boss-icons', 'public/assets/boss-icons'],
     ['data/rift-shop.json', 'data/rift-shop-icons', 'public/assets/rift-shop-icons'],
   ] as const) {
-    const records: { icon: string }[] = JSON.parse(readFileSync(file, 'utf8'));
+    const records: { icon: string; options?: { icon: string }[] }[] = JSON.parse(readFileSync(file, 'utf8'));
     mkdirSync(out, { recursive: true });
-    for (const hash of new Set(records.map(r => r.icon))) {
+    for (const hash of new Set(records.flatMap(r => [r.icon, ...(r.options ?? []).map(option => option.icon)]))) {
       writeFileSync(`${out}/${hash}.webp`, await buildBoardIcon(readFileSync(`${dir}/${hash}.png`)));
     }
   }

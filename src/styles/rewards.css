@@ -1,0 +1,655 @@
+/* --- 獎勵進度（/rewards）--- */
+/* 共用外觀只取 `.panel`、`.row-card`、`.btn` 與 `.currency-icon`；此檔只排 rewards 版面。 */
+
+.reward-data-note {
+  margin: 0 0 var(--space-5);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--gold);
+  border-radius: var(--r-md);
+  background: var(--surface-1);
+  color: var(--muted);
+}
+
+.reward-mode-select {
+  display: none;
+}
+
+.reward-layout {
+  display: grid;
+  grid-template-columns: 11rem minmax(0, 1fr);
+  gap: var(--space-5);
+  align-items: start;
+}
+
+.reward-mode-nav {
+  position: sticky;
+  top: calc(var(--space-7) + var(--space-3));
+  display: grid;
+  gap: var(--space-1);
+  padding: var(--space-2);
+}
+
+.reward-mode-nav > p {
+  margin: 0;
+  padding: var(--space-2);
+  color: var(--muted);
+  font-size: var(--fs-xs);
+}
+
+.reward-mode-button {
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid transparent;
+  border-radius: var(--r-md);
+  background: transparent;
+  color: var(--fg);
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.reward-mode-button:hover {
+  background: var(--surface-3);
+}
+
+.reward-mode-button[aria-pressed='true'] {
+  border-color: var(--gold);
+  background: var(--surface-3);
+  background: color-mix(in srgb, var(--gold) 12%, var(--surface-2));
+  color: var(--gold);
+  font-weight: 700;
+}
+
+.reward-mode-content {
+  min-width: 0;
+}
+
+.reward-mode-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin: var(--space-5) 0 var(--space-3);
+}
+
+.reward-mode-heading > h2,
+.reward-mode-heading > p {
+  margin: 0;
+}
+
+.reward-mode-heading[hidden] {
+  display: none;
+}
+
+.reward-mode-heading > p {
+  color: var(--muted);
+  font-size: var(--fs-sm);
+}
+
+.reward-controls {
+  padding: var(--space-4);
+}
+
+.reward-controls h3 {
+  margin: 0 0 var(--space-3);
+  font-size: var(--fs-lg);
+}
+
+.reward-achievement-note {
+  margin: 0 0 var(--space-3);
+  color: var(--muted);
+}
+
+.reward-progress-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: var(--space-3);
+}
+
+.reward-progress-form > label {
+  align-self: center;
+  color: var(--muted);
+  font-size: var(--fs-sm);
+}
+
+.reward-progress-form > input {
+  width: 12rem;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-sm);
+  background: var(--surface-1);
+  color: var(--fg);
+  font-family: var(--font-num);
+  font-size: var(--fs-md);
+}
+
+.reward-summary {
+  display: grid;
+  gap: var(--space-3) var(--space-5);
+  margin-top: var(--space-4);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border);
+}
+
+.reward-total-group {
+  display: grid;
+  grid-template-columns: 10rem minmax(0, 1fr);
+  gap: var(--space-3);
+  align-items: start;
+}
+
+.reward-total-empty {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--fs-sm);
+}
+
+.reward-global-summary {
+  padding: var(--space-4);
+}
+
+.reward-global-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+
+.reward-global-heading h2 {
+  margin: 0;
+  font-size: var(--fs-lg);
+}
+
+.reward-summary-content,
+.reward-summary-kind {
+  display: grid;
+  min-width: 0;
+  gap: var(--space-2);
+}
+
+.reward-summary-kind[hidden] {
+  display: none;
+}
+
+.reward-summary-kind > h3,
+.reward-summary-kind > h5 {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--fs-sm);
+}
+
+.reward-summary-kind:not([hidden]) + .reward-summary-kind:not([hidden]) {
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--border);
+}
+
+.reward-clear-all {
+  color: var(--muted);
+  font-size: var(--fs-sm);
+}
+
+.reward-clear-dialog {
+  max-width: calc(100vw - var(--space-4) * 2);
+  padding: var(--space-4);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-lg);
+  background: var(--surface-2);
+  color: var(--fg);
+  box-shadow: var(--shadow-3);
+}
+
+.reward-clear-dialog::backdrop {
+  background: rgb(0 0 0 / 60%);
+}
+
+.reward-clear-dialog h2 {
+  margin: 0;
+  font-size: var(--fs-lg);
+}
+
+.reward-clear-dialog p {
+  margin: var(--space-3) 0;
+  color: var(--muted);
+}
+
+.reward-dialog-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+.reward-dialog-confirm {
+  border-color: var(--border-strong);
+}
+
+.reward-total-group > h4 {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--fs-sm);
+}
+
+.reward-completion {
+  margin: 0;
+  color: var(--muted);
+}
+
+.reward-completion strong {
+  color: var(--gold);
+  font-family: var(--font-num);
+  font-size: var(--fs-xl);
+}
+
+.reward-totals {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: 0;
+}
+
+.reward-totals[hidden] {
+  display: none;
+}
+
+.reward-totals > div {
+  max-width: 100%;
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--r-pill);
+  background: var(--surface-0);
+}
+
+.reward-totals dd {
+  margin: 0;
+}
+
+.reward-totals dd > span,
+.reward-grants li > span {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  white-space: nowrap;
+}
+
+.reward-collectible-icon {
+  inline-size: var(--space-5);
+  block-size: var(--space-5);
+  object-fit: contain;
+}
+
+.reward-grants .reward-collectible-icon {
+  inline-size: var(--space-6);
+  block-size: var(--space-6);
+}
+
+.reward-collectible-fallback {
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-pill);
+  color: var(--muted);
+  font-size: var(--fs-xs);
+}
+
+.reward-grant-content:has(.reward-collectible-label) {
+  white-space: normal;
+}
+
+.reward-collectible-label {
+  overflow-wrap: anywhere;
+}
+
+.reward-collected-items dd {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.reward-collected-count {
+  color: var(--muted);
+  font-family: var(--font-num);
+  font-size: var(--fs-sm);
+}
+
+.reward-task-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: var(--space-3);
+}
+
+.reward-task-toggle {
+  max-width: 100%;
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  white-space: normal;
+}
+
+.reward-task-toggle[hidden],
+.reward-task-panel[hidden] {
+  display: none;
+}
+
+.reward-task-panel {
+  min-width: 0;
+  margin-top: var(--space-3);
+  padding: var(--space-4);
+}
+
+.reward-task-panel > h3 {
+  margin: 0 0 var(--space-3);
+  font-size: var(--fs-lg);
+}
+
+.reward-task-day + .reward-task-day {
+  margin-top: var(--space-3);
+}
+
+.reward-task-day-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-1) var(--space-3);
+  padding-bottom: var(--space-1);
+  border-bottom: 1px solid var(--border);
+}
+
+.reward-task-day-heading h4,
+.reward-task-day-heading span {
+  margin: 0;
+  font-size: var(--fs-sm);
+}
+
+.reward-task-day-heading span,
+.reward-task-list small {
+  color: var(--muted);
+}
+
+.reward-task-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.reward-task-list li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--space-2);
+  align-items: baseline;
+  padding: var(--space-1) var(--space-2);
+}
+
+.reward-task-list li:nth-child(even) {
+  background: var(--surface-0);
+}
+
+.reward-task-list li > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.reward-task-list li > strong {
+  color: var(--gold);
+  font-family: var(--font-num);
+  white-space: nowrap;
+}
+
+.reward-totals strong,
+.reward-grants strong {
+  color: var(--fg);
+  font-family: var(--font-num);
+}
+
+.reward-list-head,
+.reward-tier {
+  display: grid;
+  grid-template-columns: minmax(5rem, 0.65fr) minmax(0, 2fr) auto;
+  gap: var(--space-3);
+  align-items: center;
+}
+
+.reward-list-head {
+  padding: var(--space-4) var(--space-4) var(--space-2);
+  color: var(--muted);
+  font-size: var(--fs-xs);
+}
+
+.reward-list-head > :last-child {
+  text-align: center;
+}
+
+.reward-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.reward-tier {
+  min-width: 0;
+  padding: var(--space-2) var(--space-4);
+}
+
+.reward-tier.is-complete {
+  border-color: var(--gold);
+  background: var(--surface-2);
+  background: color-mix(in srgb, var(--gold) 8%, var(--surface-1));
+}
+
+.reward-requirement {
+  color: var(--fg);
+  font-family: var(--font-num);
+  font-size: var(--fs-lg);
+}
+
+.reward-grants {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.reward-grants li {
+  min-width: 0;
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--r-pill);
+  background: var(--surface-0);
+}
+
+/* inline-flex grant 的基線空間會撐高 li；只修門檻／唯讀列，不縮摘要或成就卡。 */
+.reward-milestone-list .reward-grants li {
+  display: flex;
+  align-items: center;
+}
+
+.reward-milestone-list .reward-grants .reward-collectible-icon {
+  inline-size: var(--space-5);
+  block-size: var(--space-5);
+  flex: none;
+}
+
+.reward-reference-row {
+  grid-template-columns: minmax(0, 0.65fr) minmax(0, 2fr);
+}
+
+/* 兩欄查閱表沒有 checkbox 欄；表頭與資料皆從相同 grid 起點靠左。 */
+.reward-list-head.reward-reference-row {
+  border-inline: 1px solid transparent;
+}
+
+.reward-list-head.reward-reference-row > :last-child {
+  text-align: start;
+}
+
+[data-active-mode='repeatable'] .reward-mode-heading > h2 {
+  font-size: var(--fs-xl);
+}
+
+[data-active-mode='repeatable'] .reward-mode-heading {
+  justify-content: flex-end;
+}
+
+.reward-reference-heading {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+
+.reward-reference-heading h3 {
+  margin: 0;
+}
+
+.reward-reference-image {
+  inline-size: var(--space-7);
+  block-size: var(--space-7);
+  object-fit: contain;
+  flex: none;
+}
+
+.reward-reference-card {
+  padding: var(--space-4);
+}
+
+/* header 與 row 使用相同三欄，圖示不佔用數字欄或受原 PNG 尺寸影響。 */
+.reward-list-head.reward-reference-with-icon,
+.reward-tier.reward-reference-with-icon {
+  grid-template-columns: var(--space-7) minmax(0, 0.7fr) minmax(0, 1.3fr);
+}
+
+.reward-reference-section + section,
+.reward-mode-content [data-reward-mode-panel='repeatable'] > section + section,
+.reward-task-panel .reward-reference-section {
+  margin-top: var(--space-5);
+}
+
+.reward-check {
+  display: grid;
+  place-items: center;
+  padding: var(--space-2);
+  cursor: pointer;
+}
+
+.reward-check input {
+  inline-size: var(--space-4);
+  block-size: var(--space-4);
+  margin: 0;
+  accent-color: var(--gold);
+  cursor: pointer;
+}
+
+.reward-achievement-groups {
+  display: grid;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+
+.reward-achievement-group {
+  min-width: 0;
+  padding: 0;
+}
+
+.reward-achievement-group > summary {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  cursor: pointer;
+}
+
+.reward-group-count {
+  flex: none;
+  color: var(--muted);
+  font-family: var(--font-num);
+}
+
+.reward-achievement-group .reward-list {
+  padding: 0 var(--space-2) var(--space-2);
+}
+
+.reward-stage-requirement {
+  display: grid;
+  gap: var(--space-1);
+  font-size: var(--fs-sm);
+}
+
+.reward-stage-requirement small {
+  color: var(--muted);
+  font-size: var(--fs-xs);
+}
+
+@media (max-width: 720px) {
+  .reward-mode-nav {
+    display: none;
+  }
+
+  .reward-mode-select {
+    display: grid;
+    gap: var(--space-1);
+    margin-bottom: var(--space-4);
+    color: var(--muted);
+    font-size: var(--fs-sm);
+  }
+
+  .reward-mode-select select {
+    width: 100%;
+    padding: var(--space-2) var(--space-3);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--r-btn);
+    background: var(--surface-2);
+    color: var(--fg);
+    font: inherit;
+  }
+
+  .reward-layout {
+    display: block;
+  }
+
+  .reward-total-group {
+    grid-template-columns: 1fr;
+    gap: var(--space-1);
+  }
+
+  .reward-list-head,
+  .reward-tier {
+    grid-template-columns: minmax(4.5rem, 0.7fr) minmax(0, 1fr) auto;
+    gap: var(--space-2);
+  }
+
+  .reward-list-head {
+    padding-inline: var(--space-2);
+  }
+
+  .reward-tier {
+    padding-inline: var(--space-2);
+  }
+
+  .reward-reference-row {
+    grid-template-columns: minmax(0, 0.7fr) minmax(0, 1fr);
+  }
+
+  .reward-grants {
+    gap: var(--space-1);
+  }
+}
+
+@media (max-width: 480px) {
+  .reward-progress-form > label,
+  .reward-progress-form > input,
+  .reward-progress-form > .btn {
+    width: 100%;
+  }
+
+  .reward-progress-form > label {
+    margin-bottom: calc(-1 * var(--space-2));
+  }
+}
