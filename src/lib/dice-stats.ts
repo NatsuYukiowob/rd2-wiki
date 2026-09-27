@@ -6,6 +6,7 @@
 //
 // ⚠️ 它刻意不進 tree.json：/dice 是靜態頁、建置期直接讀 data/，不吃 tree.json 的 gzip 預算
 // （那個預算只剩不到 1.5KB，而這份資料 30KB）。
+import { INTERVAL_GROWTH, formatNumber, parseNumber } from './dice-calc.js';
 import type { DiceStat, DiceStatEntry, DiceStatsTable } from './types.js';
 
 /** 四個檔位＝官方「骰子強化數據」分頁的四個數值欄。 */
@@ -47,10 +48,15 @@ export function isFixed(stat: DiceStat): boolean {
   return STAT_MODES.every(m => statValue(stat, m.key) === stat.base);
 }
 
-/** 官方寫的兩條成長規則，併成一句；固定項目沒有規則可寫，回 null。 */
+/**
+ * pill 的 hover 提示：骰點軸的成長規則。固定項目沒有規則可寫，回 null。
+ *
+ * ⚠️ 強化軸刻意不寫在這裡：它由卡片上「局內升級」按鈕按住時顯示（levelStep()），
+ * 同一份 spGrowth 印兩處，改格式時就得記得改兩處。
+ */
 export function growthNote(stat: DiceStat): string | null {
-  if (stat.diceGrowth === undefined && stat.spGrowth === undefined) return null;
-  return `骰點：${stat.diceGrowth ?? '—'}／強化：${stat.spGrowth ?? '—'}`;
+  if (isFixed(stat) || stat.diceGrowth === undefined) return null;
+  return `骰點：${stat.diceGrowth}`;
 }
 
 /**
@@ -63,4 +69,33 @@ export function growthNote(stat: DiceStat): string | null {
 export function statsOf(table: DiceStatsTable | null, gameId: string | undefined): DiceStatEntry | null {
   if (table === null || gameId === undefined) return null;
   return table[gameId] ?? null;
+}
+
+/** spGrowth 的「會變」寫法；validate 規則 23(j) 也用這支拆出數值。 */
+export const SP_STEP = /^每強化1級：(.+)$/;
+
+/** 攻擊間隔 ÷ 骰點後的增減精度：-0.025s ÷ 7 ＝ -0.0036s，3 位會把它捨成 -0.004。 */
+const INTERVAL_STEP_DECIMALS = 4;
+
+/**
+ * 局內 SP 強化再升 1 級，這一項在指定檔位加減多少（「+150」「-0.025s」）；固定項目與「無變化」回 null。
+ * 卡片上「局內升級」按鈕按住時接在 pill 的數值後面。
+ *
+ * 值直接取 spGrowth——它就是客戶端 `DefenderTable`／`DefenderSkillTable`／`ProjectileAbilityTable`
+ * 的 `*_UpAdd` 欄（2026-09-28 拿 1.1.2 解包表逐項對過）。⚠️ **不要改成從四檔反推**：上游給了原值
+ * 就用原值。反過來「文字與四檔一致」由規則 23(j) 守，/board 用的反推值因此不會跟這裡分家。
+ *
+ * 唯一的換算是攻擊間隔：_UpAdd 加在 1 骰點的間隔上、再 ÷ 骰點，所以 7 骰點的檔位要 ÷ 7，
+ * 否則 pill 寫 0.064 秒/次、旁邊卻寫 (-0.025s)，看起來大了 7 倍。
+ */
+export function levelStep(stat: DiceStat, mode: StatMode): string | null {
+  if (isFixed(stat)) return null;
+  const m = stat.spGrowth === undefined ? null : SP_STEP.exec(stat.spGrowth);
+  if (!m) return null;
+  const delta = m[1]!;
+  if (stat.diceGrowth !== INTERVAL_GROWTH || (mode !== 'dice7' && mode !== 'lv15dice7')) return delta;
+  const p = parseNumber(delta);
+  if (!p) return delta;
+  const v = p.value / 7;
+  return `${v < 0 ? '-' : '+'}${formatNumber(Math.abs(v), INTERVAL_STEP_DECIMALS)}${p.unit}`;
 }

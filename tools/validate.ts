@@ -15,7 +15,8 @@ import { buildAdjacency, detectCycle, findRoots, prerequisiteChain, unreachableF
 import { readPngSize } from './lib/png.js';
 import { isGlossaryAlias } from '../src/lib/types.js';
 import { expandTier } from '../src/lib/upgrade-tiers.js';
-import { deriveParams } from '../src/lib/dice-calc.js';
+import { deriveParams, parseNumber, type StatParams } from '../src/lib/dice-calc.js';
+import { SP_STEP } from '../src/lib/dice-stats.js';
 import { BRANCH_ZH } from '../src/lib/labels.js';
 import { OFFGAME_TARGETS, ROW_TARGETS } from '../src/lib/offgame.js';
 import { EVENT_ICON_KINDS } from '../src/lib/events.js';
@@ -1490,6 +1491,26 @@ export function validate(svgText: string, opts: ValidateOpts): ValidateResult {
             deriveParams(st as unknown as DiceStat);
           } catch (err) {
             push(`規則 23(i): ${gameId} 的 ${JSON.stringify(label)} 四個檔位反推不出成長參數：${(err as Error).message}`);
+          }
+        }
+
+        // (j) spGrowth 的文字要跟四檔一致。/dice 的「局內強化每升 1 級」直接印 spGrowth（客戶端
+        // _UpAdd 原值），/board 用的是從四檔反推的 perLevel——改了四檔沒改文字的話，兩頁會安靜地
+        // 各說各話，而 (e)(i) 都不會出聲。固定項目（沒有四檔）不准寫「每強化1級」：pill 不會變，
+        // 那一行卻說它會長。
+        if (typeof label === 'string' && typeof st['spGrowth'] === 'string') {
+          const sg = st['spGrowth'];
+          const m = SP_STEP.exec(sg);
+          let p: StatParams | null = null;
+          try { p = deriveParams(st as unknown as DiceStat); } catch { /* (i) 已經說話 */ }
+          if (p !== null && p.kind !== 'pending') {
+            const perLevel = p.kind === 'const' ? 0 : p.perLevel;
+            const said = m ? parseNumber(m[1]!.replace(/^\+/, ''))?.value : sg === '無變化' ? 0 : undefined;
+            if (said === undefined) {
+              push(`規則 23(j): ${gameId} 的 ${JSON.stringify(label)} 的 spGrowth ${JSON.stringify(sg)} 不是「每強化1級：<數值>」或「無變化」`);
+            } else if (Math.abs(said - perLevel) > 1e-6 || (m !== null && perLevel === 0)) {
+              push(`規則 23(j): ${gameId} 的 ${JSON.stringify(label)} 的 spGrowth 寫 ${JSON.stringify(sg)}，四個檔位算出的每級強化是 ${perLevel}`);
+            }
           }
         }
       }
