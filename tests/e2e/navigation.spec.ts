@@ -50,8 +50,15 @@ for (const [width, height] of [[390, 844], [430, 932]]) {
     await page.keyboard.press('Escape');
     await expect(details).not.toHaveAttribute('open');
     await expect(summary).toBeFocused();
+    // 使用首頁固定的非互動版本段落，而非猜測 viewport 底部座標（可能命中 GitHub 連結）。
+    const outside = page.locator('#version-info');
+    await expect(outside.locator('a, button, input, select, textarea, [role="button"]')).toHaveCount(0);
+    await outside.evaluate(n => n.scrollIntoView({ block: 'end' }));
+    const homeUrl = page.url();
     await summary.tap();
-    await page.touchscreen.tap(5, height! - 10);
+    await expect(details).toHaveAttribute('open', '');
+    await outside.tap();
+    await expect(page).toHaveURL(homeUrl);
     await expect(details).not.toHaveAttribute('open');
     for (const href of ['/guide', '/rewards']) {
       await summary.tap();
