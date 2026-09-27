@@ -149,8 +149,10 @@ export function maskComments(src: string): string {
  */
 export function queryRegex(q: string): RegExp {
   const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  // 查詢只有數字時不開 `{…}` 這條路：否則「7」會對上每一個檔裡的 `{ core, gold }` 之類的程式碼。
+  const onlyNumbers = !/[^\d.,\s]/.test(q);
   const part = (p: string) =>
-    p.split(/(\d+(?:[.,]\d+)*)/).map((s, k) => (k % 2 ? `(?:${esc(s)}|\\{[^{}\\n]*\\})` : esc(s))).join('');
+    p.split(/(\d+(?:[.,]\d+)*)/).map((s, k) => (k % 2 && !onlyNumbers ? `(?:${esc(s)}|\\{[^{}\\n]*\\})` : esc(s))).join('');
   return new RegExp(q.trim().split(/\s+/).map(part).join('\\s+'), 'g');
 }
 
@@ -166,7 +168,8 @@ export function candidateQueries(text: string): string[] {
     .map(norm)
     .filter(s => s.length >= 2)
     .sort((a, b) => b.length - a.length);
-  return [...new Set([full, ...segs])].filter(Boolean);
+  // 上限 8 個：點到大容器時整頁文字會切出幾百段，每段都要掃全部檔案，會卡住 dev server。
+  return [...new Set([full, ...segs])].filter(Boolean).slice(0, 8);
 }
 
 export interface SourceHit {
@@ -183,11 +186,18 @@ export function searchSource(files: { file: string; text: string; masked?: strin
   const hits: SourceHit[] = [];
   for (const { file, text, masked: pre } of files) {
     const masked = pre ?? maskComments(text);
+    const nl: number[] = [];
+    for (let k = text.indexOf('\n'); k !== -1; k = text.indexOf('\n', k + 1)) nl.push(k);
+    const lineOf = (pos: number) => {
+      let lo = 0, hi = nl.length;
+      while (lo < hi) { const mid = (lo + hi) >> 1; if (nl[mid]! < pos) lo = mid + 1; else hi = mid; }
+      return lo + 1;
+    };
     re.lastIndex = 0;
     for (let m; (m = re.exec(masked)); ) {
       const start = m.index;
       const end = start + m[0].length;
-      hits.push({ file, start, end, line: text.slice(0, start).split('\n').length, value: text.slice(start, end) });
+      hits.push({ file, start, end, line: lineOf(start), value: text.slice(start, end) });
     }
   }
   return hits;

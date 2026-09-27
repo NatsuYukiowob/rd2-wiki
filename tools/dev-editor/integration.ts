@@ -148,13 +148,13 @@ function handler(root: string) {
         });
         for (const query of queries) {
           const json = rankJsonHits(jsonFiles.flatMap(f =>
-            searchJson(f.hits, query).map(h => ({ file: f.file, path: h.path, label: labelPath(f.root, h.path), value: h.value }))), query);
+            searchJson(f.hits, query).map(h => ({ file: f.file, root: f.root, path: h.path, value: h.value }))), query);
           // 先全部收集、排序再截斷：截在前面的話，點到的那個檔可能被目錄順序較前的檔擠出名單。
           const source = rankSourceHits(searchSource(srcFiles, query), clicked, line);
           if (json.length || source.length) {
             // 點到的元素所在的 .astro 裡就有這段字 → 幾乎一定是寫死在那裡，原始碼那組排前面。
             const sourceFirst = source[0]?.file === clicked;
-            return send(res, 200, { query, sourceFirst, warnings, json: json.slice(0, LIMIT), source: source.slice(0, LIMIT), more: json.length > LIMIT || source.length > LIMIT });
+            return send(res, 200, { query, sourceFirst, warnings, json: json.slice(0, LIMIT).map(({ root: r, ...h }) => ({ ...h, label: labelPath(r, h.path) })), source: source.slice(0, LIMIT), more: json.length > LIMIT || source.length > LIMIT });
           }
         }
         return send(res, 200, { query: queries[0] ?? '', sourceFirst: false, warnings, json: [], source: [], more: false });
@@ -206,8 +206,9 @@ export async function save(root: string, files: ReturnType<typeof listFiles>, bo
     const text = readFileSync(abs, 'utf8');
     const expected = String(body.expected);
     let next = String(body.next);
-    // textarea 一律把換行正規化成 LF；原文片段是 CRLF（Windows 上 autocrlf）時換回去，免得寫出混用換行。
-    if (!isJson && expected.includes('\r\n')) next = next.replace(/\r?\n/g, '\r\n');
+    // textarea 一律把換行正規化成 LF；檔案是 CRLF（Windows 上 autocrlf）時換回去，免得寫出混用換行。
+    // 看整個檔不看片段：單行片段改成多行時，片段本身沒有換行可以參考。
+    if (!isJson && text.includes('\r\n')) next = next.replace(/\r?\n/g, '\r\n');
     const out = isJson
       ? replaceJsonString(text, body.path as JsonPath, expected, next)
       : replaceSpan(text, Number(body.start), Number(body.end), expected, next);
@@ -217,8 +218,10 @@ export async function save(root: string, files: ReturnType<typeof listFiles>, bo
   } catch (e) {
     return { ok: false, conflict: e instanceof EditConflict, error: e instanceof Error ? e.message : String(e) };
   }
-  // /tree、/sim 讀的是 build:data 產的 src/generated/tree.json，data/ 改了要重產才看得到。
-  const rebuilt = isJson ? await rebuild(root) : null;
+  // /tree、/sim 讀的是 build:data 產的 src/generated/tree.json：data/ 與 src/lib/（build-data 會 import
+  // 那裡的標籤與格式化函式）改了要重產才看得到。刻意不維護「build-data 讀哪幾份」的清單——漏一份
+  // 就是無聲的舊資料，多跑幾秒比較便宜。
+  const rebuilt = isJson || file.startsWith('src/lib/') ? await rebuild(root) : null;
   return { ok: true, rebuilt, written };
 }
 

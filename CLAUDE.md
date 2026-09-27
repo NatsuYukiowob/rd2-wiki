@@ -125,6 +125,8 @@ npm run compare -- <beforeURL> <afterURL>  # computed-style 逐元素比對，�
   畫面上的數字能對上原始碼的 `{…}`（`queryRegex()`），所以畫面上的「N 顆骰子…」找得到 `{nodes.length} 顆骰子…`。
 - **排序靠 `data-astro-source-file`／`-loc`**：Astro 只在 dev toolbar 開著時標這兩個屬性（`annotateSourceFile`），
   關掉 toolbar 仍然搜得到，只是點到的那個檔不會排最前面。
+- overlay 的樣式刻意寫死 px 與色碼、**不用站台 token**（token 規則不適用 `tools/`）：它是工具不是站台，跟 token
+  綁在一起的話站台改版會連帶改掉編輯器的長相。`tokens.test.ts` 也不掃 `tools/`。
 - 畫在 canvas 上的字（`/tree`、`/sim` 的節點標籤）點不到——用面板的搜尋框直接搜。
 - ⚠️ **改 `integration.ts`／`core.ts` 要重啟 dev server**（integration 在啟動時載入一次）；`client.ts` 會熱更新。
 - ⚠️ 存檔會觸發一到兩次整頁重整（寫檔一次、`build:data` 重產 `tree.json` 再一次），結果靠 sessionStorage

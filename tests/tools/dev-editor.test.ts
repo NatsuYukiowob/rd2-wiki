@@ -204,3 +204,31 @@ describe('save（寫入策略由檔案決定）', () => {
     expect(out.replace(/\r\n/g, '')).not.toContain('\n');
   });
 });
+
+describe('第四輪 review 回歸', () => {
+  it('只有數字的查詢不會對上 {…} 程式碼', () => {
+    const src = [{ file: 'src/lib/a.ts', text: 'import { core, gold } from "x";\nconst n = 7;' }];
+    expect(searchSource(src, '7').map(h => h.value)).toEqual(['7']);
+    expect(searchSource([{ file: 'src/p.astro', text: '<p>{n} 顆</p>' }], '41 顆').map(h => h.value)).toEqual(['{n} 顆']);
+  });
+
+  it('候選查詢最多 8 個', () => {
+    expect(candidateQueries(Array.from({ length: 50 }, (_, k) => 'ab'.repeat(k + 1)).join('\n')).length).toBe(8);
+  });
+
+  it('CRLF 檔案裡單行片段改成多行，也換回 CRLF', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'dev-editor-'));
+    mkdirSync(join(root, 'data'));
+    mkdirSync(join(root, 'src/pages'), { recursive: true });
+    writeFileSync(join(root, 'src/pages/p.astro'), '<p>\r\n  第一行\r\n</p>\r\n');
+    const start = '<p>\r\n  '.length;
+    const r = await save(root, listFiles(root), { kind: 'source', file: 'src/pages/p.astro', start, end: start + 3, expected: '第一行', next: '第一行\n第二行' });
+    expect(r.ok).toBe(true);
+    expect(readFileSync(join(root, 'src/pages/p.astro'), 'utf8')).toBe('<p>\r\n  第一行\r\n第二行\r\n</p>\r\n');
+  });
+
+  it('行號用換行位移表算，跟逐段切字串一致', () => {
+    const text = 'a\nb\n\n骰子\nc 骰子';
+    expect(searchSource([{ file: 'f.ts', text }], '骰子').map(h => h.line)).toEqual([4, 5]);
+  });
+});

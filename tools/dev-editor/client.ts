@@ -129,7 +129,10 @@ function textAt(x: number, y: number, target: Element): { text: string; anchor: 
     return { text: node.textContent, anchor: node.parentElement };
   }
   const own = [...target.childNodes].filter(n => n.nodeType === Node.TEXT_NODE).map(n => n.textContent ?? '').join(' ');
-  return { text: own.trim() ? own : (target as HTMLElement).innerText ?? target.textContent ?? '', anchor: target };
+  if (own.trim()) return { text: own, anchor: target };
+  // 沒有自己的字時才退回整個元素的字，但點到大容器（卡片之間的空隙、<main>）會拿到整頁——那不是在點某段字。
+  const all = (target as HTMLElement).innerText ?? target.textContent ?? '';
+  return { text: all.length <= 300 ? all : '', anchor: target };
 }
 
 // 編輯模式下站台的指標行為全部攔下（window 捕獲階段＝最早）：點連結不跳頁、/board 不開卡片不拖曳、
@@ -148,7 +151,7 @@ window.addEventListener('click', e => {
   e.preventDefault();
   e.stopImmediatePropagation();
   const { text, anchor } = textAt(e.clientX, e.clientY, e.target);
-  if (!text.trim()) return;
+  if (!text.trim()) { panel.classList.add('open'); setStatus('這裡沒有可以直接點的字（點到的是容器）。點字本身，或在上面的框裡搜尋。'); return; }
   const src = anchor.closest('[data-astro-source-file]');
   const loc = src?.getAttribute('data-astro-source-loc') ?? '';
   query.value = text.replace(/\s+/g, ' ').trim();
@@ -217,22 +220,36 @@ function card(label: string, value: string, save: (body: { next: string; id: str
   let base = value;
   const ta = el('textarea', { value });
   ta.rows = Math.min(12, value.split('\n').length + 1);
+  let saving = false;
   const doSave = async () => {
+    if (saving) return; // 連點或按住 Ctrl+Enter：第二次會拿舊值去撞衝突，還會蓋掉 PENDING_KEY
     if (ta.value === base.replace(/\r\n/g, '\n')) { setStatus('內容沒有變動'); return; }
+    saving = true;
     const p: Pending = { id: crypto.randomUUID(), label, at: Date.now() };
     writePending(p);
-    setStatus(`存檔中：${label}${label.startsWith('data/') ? '（接著重跑 build:data，約數秒）' : ''}`);
+    setStatus(`存檔中：${label}${/^(data\/|src\/lib\/)/.test(label) ? '（接著重跑 build:data，約數秒）' : ''}`);
     try {
       const r = await save({ next: ta.value, id: p.id, expected: base });
       if (r.ok) base = r.written; // 同一張卡片再存一次時，舊值要是剛寫進去的內容
       showResult(p, r);
     } catch (err) {
-      if (isAbort(err)) { setStatus(`連線中斷（頁面可能正在重整），重整後會取回存檔結果：${label}`); return; }
+      if (isAbort(err)) {
+        // 多半是存檔觸發的重整；3 秒後頁面還活著，就不是重整——直接問 server，問不到才是真的連不上。
+        setStatus(`連線中斷（頁面可能正在重整），重整後會取回存檔結果：${label}`);
+        setTimeout(() => {
+          call<SaveResult>('/result', { id: p.id })
+            .then(r => { if (r.ok) base = r.written; showResult(p, r); })
+            .catch(e => { writePending(null); setStatus(`連不到 dev server，不確定有沒有寫入：${e instanceof Error ? e.message : String(e)}`, true); });
+        }, 3000);
+        return;
+      }
       writePending(null);
       setStatus(String(err instanceof Error ? err.message : err), true);
+    } finally {
+      saving = false;
     }
   };
-  ta.addEventListener('keydown', e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) void doSave(); });
+  ta.addEventListener('keydown', e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && !e.repeat) void doSave(); });
   return el('div', { className: 'hit' },
     el('div', { className: 'label', textContent: label }), ta,
     el('div', { className: 'row' }, el('button', { className: 'primary', textContent: '存檔', onclick: () => void doSave() })));
