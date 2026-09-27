@@ -1359,6 +1359,26 @@ describe('規則 23：骰子基本能力值', () => {
     expect(validate(svg, withStats(t2)).errors.some(e => /規則 23\(e\).*spGrowth/.test(e))).toBe(true);
   });
 
+  // (j) /dice 直接印 spGrowth、/board 用四檔反推的每級強化——文字沒跟著四檔改，兩頁就各說各話。
+  it('spGrowth 的每級數值跟四檔對不上會被擋', () => {
+    const t = stats();
+    (t['D000']!.stats[0] as Record<string, unknown>)['spGrowth'] = '每強化1級：+999';
+    expect(validate(svg, withStats(t)).errors.some(e => /規則 23\(j\)/.test(e) && e.includes('D000'))).toBe(true);
+    // 四檔明明會隨強化變，卻寫「無變化」
+    const t2 = stats();
+    (t2['D000']!.stats[0] as Record<string, unknown>)['spGrowth'] = '無變化';
+    expect(validate(svg, withStats(t2)).errors.some(e => /規則 23\(j\)/.test(e) && e.includes('D000'))).toBe(true);
+    // 固定項目（沒有四檔）寫「每強化1級」：pill 不會變，那一行卻說會長
+    const t3 = stats();
+    const fixed = t3['D000']!.stats.find(s => s.dice7 === undefined)!;
+    (fixed as Record<string, unknown>)['spGrowth'] = '每強化1級：+1';
+    expect(validate(svg, withStats(t3)).errors.some(e => /規則 23\(j\)/.test(e) && e.includes('D000'))).toBe(true);
+    // 攻擊間隔的單位是 s，數值 -0.025 要對得上 (0.1 − 0.45) ÷ 14
+    const t4 = stats();
+    (t4['D001']!.stats.find(s => s.label === '攻擊速度') as Record<string, unknown>)['spGrowth'] = '每強化1級：-0.03s';
+    expect(validate(svg, withStats(t4)).errors.some(e => /規則 23\(j\)/.test(e) && e.includes('D001'))).toBe(true);
+  });
+
   // (h) 未知欄位。這條看起來只是潔癖，其實是 (g) 的補完：(g) 抓的是「三個檔位鍵只對了一部分」，
   // 而**三個全部打錯**時 have.length 是 0，(g) 完全沉默，那一項會被 isFixed() 判成固定值
   // ——正是 (g) 的註解說閘門不可以寬容的那種「畫面上看不出來」。

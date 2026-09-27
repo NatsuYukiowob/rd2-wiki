@@ -141,6 +141,36 @@ const BRANCHES = Object.entries(BRANCH_ZH);
   import { cssMs } from '../lib/css-ms.js';
   import { ICONS } from '../lib/icons.js';
 
+  // --- 局內升級（按住顯示） ---
+  // 卡片上的 `.stat-up-btn` 按住時，pill 數值後面接上再升 1 級的增減（樣式在 dice.css 的 .stat-up）。
+  // CSS 的 `:active` 只是沒有 JS 時的後備：手機瀏覽器的觸控不一定套 `:active`（iOS 要有觸控監聽、
+  // Chromium 要等手勢判定），所以這裡用 pointer 事件自己掛 data-holding。鍵盤：空白鍵／Enter 按住同理。
+  // 事件委派掛在 document 上一份，不是 41 張卡片各一份。
+  const holdOf = (t: EventTarget | null) =>
+    t instanceof Element ? t.closest<HTMLElement>('.stat-up-btn')?.closest<HTMLElement>('.dice-stats') ?? null : null;
+  let holding: HTMLElement | null = null;
+  const release = () => {
+    holding?.removeAttribute('data-holding');
+    holding = null;
+  };
+  document.addEventListener('pointerdown', e => {
+    const box = holdOf(e.target);
+    if (!box) return;
+    release();
+    holding = box;
+    box.setAttribute('data-holding', '');
+  });
+  for (const type of ['pointerup', 'pointercancel', 'blur'] as const) window.addEventListener(type, release);
+  document.addEventListener('keydown', e => {
+    if ((e.key === ' ' || e.key === 'Enter') && !e.repeat) {
+      const box = holdOf(e.target);
+      if (box) { holding = box; box.setAttribute('data-holding', ''); }
+    }
+  });
+  document.addEventListener('keyup', e => { if (e.key === ' ' || e.key === 'Enter') release(); });
+  // 長按在手機上會跳出系統選單，把按住中斷掉。
+  document.addEventListener('contextmenu', e => { if (holdOf(e.target)) e.preventDefault(); });
+
   // --- 篩選 ---
   // 勾選框 → 隱藏不符合的卡片。刻意不用 URL 狀態同步（那是 /tree 的契約，它有選取節點與
   // 前置鏈要還原）；這一頁重新整理回到全選是可以接受的。

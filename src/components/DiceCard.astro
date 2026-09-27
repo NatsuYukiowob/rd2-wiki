@@ -7,7 +7,7 @@
 // 換來的是三件面板給不了的事：全部 239 筆一次看完、覺醒不用點就看得到、以及文字進 HTML
 // （面板的內容是瀏覽器讀 tree.json 之後才渲染的，搜尋引擎一個字都拿不到）。
 import { renderStaticText } from '../lib/static-markup';
-import { STAT_MODES, isFixed, growthNote, statValue } from '../lib/dice-stats';
+import { STAT_MODES, isFixed, growthNote, levelStep, statValue } from '../lib/dice-stats';
 import { formatCost, formatGrowth, formatUnlockVia } from '../lib/format';
 import { cumulativeUpgradeCost, upgradeTableApplies } from '../lib/cost';
 import { AWAKENING_CONDITION, BRANCH_ZH } from '../lib/labels';
@@ -97,7 +97,10 @@ const modeName = `stat-mode-${node.id}`;
                 <span class="stat-v">
                   {isFixed(s)
                     ? <span class="stat-fixed">{s.base}</span>
-                    : STAT_MODES.map(m => <span data-m={m.key}>{statValue(s, m.key)}</span>)}
+                    : STAT_MODES.map(m => {
+                        const up = levelStep(s, m.key);
+                        return <span data-m={m.key}>{statValue(s, m.key)}{up && <span class="stat-up">{up}</span>}</span>;
+                      })}
                 </span>
               </li>
             ))}
@@ -112,6 +115,9 @@ const modeName = `stat-mode-${node.id}`;
                 {m.label}
               </label>
             ))}
+            <!-- 按住才顯示：pill 的數值後面接上局內強化再升 1 級的增減（客戶端 *_UpAdd）。放開就收，
+                 不留狀態。按住的判定在 dice.astro 的腳本（data-holding），CSS `:active` 是沒有 JS 時的後備。 -->
+            <button type="button" class="chip chip-xs stat-up-btn">局內升級</button>
           </div>
         </div>
       )
