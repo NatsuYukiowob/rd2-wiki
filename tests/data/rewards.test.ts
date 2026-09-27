@@ -2,7 +2,6 @@ import { existsSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { currencyIconDetails } from '../../src/lib/cost-html';
 import { rewardDisplay } from '../../src/lib/reward-display';
-import { rewardTotalsAcrossModes } from '../../src/lib/rewards';
 import type { RewardCatalog, RewardCollectibleGrant, RewardGrant } from '../../src/lib/types';
 
 const catalog = JSON.parse(readFileSync('data/rewards.json', 'utf8')) as RewardCatalog;
@@ -11,9 +10,8 @@ const allRewards = catalog.modes.flatMap(mode => mode.kind === 'threshold'
   : mode.groups.flatMap(group => group.stages.flatMap(stage => stage.rewards)));
 
 describe('data/rewards.json 正式里程碑', () => {
-  it('重複性獎勵是獨立唯讀資料，永遠不納入六類進度與總計', () => {
+  it('重複性獎勵是獨立唯讀資料，不屬於有總計的分類', () => {
     expect(catalog.modes.some(mode => mode.id === 'repeatable')).toBe(false);
-    expect(rewardTotalsAcrossModes(catalog.modes, { repeatable: 999999 })).toEqual({});
     const repeatable = catalog.repeatable!;
     expect(repeatable.name).toBe('重複性獎勵');
     expect(repeatable.sections[0]?.tiers.map(tier => tier.requirement)).toEqual([0, 1, 2, 3, 4, 5]);

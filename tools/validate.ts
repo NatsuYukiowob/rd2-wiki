@@ -814,8 +814,8 @@ export function validate(svgText: string, opts: ValidateOpts): ValidateResult {
     const entry = record;
     if (!entry?.code) push(`規則 8(b): 詞彙 ${term} 缺少 code`);
     else {
-      // code 從 2026-08-22 起不只是個標識字串，它就是 /dice 與 /guide/* 上那個詞條的
-      // **HTML id 與網址錨點**（`/guide/status#FROZEN`）。兩件事因此變成硬性要求：
+      // code 從 2026-08-22 起不只是個標識字串，它就是 /dice 與 /guide/keywords 上那個詞條的
+      // **HTML id 與網址錨點**（`/guide/keywords#FROZEN`）。兩件事因此變成硬性要求：
       // 撞號會讓同一頁出現兩個相同的 id（瀏覽器只跳得到第一個，另一個詞從此連不到），
       // 含非 ASCII 或空白則會讓錨點在網址列被編碼成一長串轉義字元。
       if (!/^[A-Za-z][A-Za-z0-9_-]*$/.test(entry.code)) {
@@ -826,11 +826,11 @@ export function validate(svgText: string, opts: ValidateOpts): ValidateResult {
       else codeSeen.set(entry.code, term);
     }
     if (!/^#[0-9A-Fa-f]{6}$/.test(entry?.color ?? '')) push(`規則 8(b): 詞彙 ${term} 的 color 不是 #RRGGBB：${JSON.stringify(entry?.color)}`);
-    // 色碼不只是顏色，它決定這個詞印在 /guide 的哪一頁（src/lib/glossary-groups.ts 的 GROUPS）。
+    // 色碼不只是顏色，它決定這個詞歸在遊戲名詞頁的哪一個分類（src/lib/glossary-groups.ts 的 GROUPS）。
     // 出現沒見過的顏色時，那個詞會從每一頁消失，而所有引用它的 `#關鍵字` 會連到一個不存在的
     // 錨點——兩件事在畫面上都不報錯。buildGlossary() 也會對同一件事丟例外（建置當場失敗），
     // 這裡是資料閘門那一側的同一道防線，讓 `npm run validate` 就先說話。
-    else if (!groupOfColor(entry!.color)) push(`規則 8(b): 詞彙 ${term} 的 color ${entry!.color} 不屬於已知的關鍵字分組；請在 src/lib/glossary-groups.ts 的 GROUPS 補上這一組，並決定它印在 GUIDE_PAGES 的哪一頁`);
+    else if (!groupOfColor(entry!.color)) push(`規則 8(b): 詞彙 ${term} 的 color ${entry!.color} 不屬於已知的關鍵字分組；請在 src/lib/glossary-groups.ts 的 GROUPS 補上這一組，並決定它歸在 GUIDE_TABS 的哪一個分類`);
     if (!entry?.desc) push(`規則 8(b): 詞彙 ${term} 缺少 desc`);
     else if (entry.desc.length > MAX_TEXT_LENGTH) push(`規則 8(b): 詞彙 ${term} 的 desc 超過 ${MAX_TEXT_LENGTH} 字`);
     try { if (entry?.desc) extractKeywords(entry.desc, whitelist); }

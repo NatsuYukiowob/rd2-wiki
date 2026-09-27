@@ -1,7 +1,7 @@
-// 靜態頁（/dice、/guide/*）版本的 `#關鍵字` 渲染：標記變成跳到詞條的連結。
+// 靜態頁（/dice、/guide/keywords）版本的 `#關鍵字` 渲染：標記變成跳到詞條的連結。
 //
 // 跟 /tree 詳情面板的差別只有「一個詞怎麼包」：面板包成 <button>（點了在同一張卡片換頁），
-// 靜態頁包成 <a href="/guide/status#FROZEN">（沒有 JS 也能用，而且搜尋引擎爬得到）。
+// 靜態頁包成 <a href="/guide/keywords#FROZEN">（沒有 JS 也能用，而且搜尋引擎爬得到）。
 // 斷詞器是共用的那一支（src/lib/markup.ts），不要在這裡再寫一次。
 import { escapeHtml, renderTaggedText } from './markup.js';
 import { termHref, type GlossaryIndex } from './glossary-groups.js';

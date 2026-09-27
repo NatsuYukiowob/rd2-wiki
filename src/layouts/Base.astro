@@ -22,7 +22,7 @@ import '../styles/content.css';
 import '../styles/components.css';
 import { treeData as data } from '../lib/tree-data';
 import { FEATURES } from '../lib/flags';
-import { GUIDE_PAGES } from '../lib/glossary-groups';
+import { KEYWORDS_PATH } from '../lib/glossary-groups';
 import { ICONS } from '../lib/icons';
 
 interface Props {
@@ -41,7 +41,7 @@ const { title, noIndex = false } = Astro.props;
  *
  * 尾斜線要先剝掉：Astro 建出來的是 `/dice/index.html`，瀏覽器上的路徑是 `/dice/`，
  * 但導覽列寫的是 `/dice`，直接比字串永遠不相等。
- * `startsWith(href + '/')` 是給 /guide 用的——站在 /guide/mechanics 時，「遊戲介紹」
+ * `startsWith(href + '/')` 是給 /guide 用的——站在 /guide/keywords 時，「遊戲介紹」
  * 這個下拉本身也該亮起來。首頁例外處理，否則 '/' 會match到每一頁。
  */
 const path = Astro.url.pathname.replace(/\/+$/, '') || '/';
@@ -155,14 +155,8 @@ const imageUrl = new URL('/favicon.png', Astro.site).href;
         <summary aria-current={guideCurrent ? 'page' : undefined}>遊戲介紹<Fragment set:html={ICONS.down} /></summary>
         <div class="nav-menu-items">
           <a href="/guide" aria-current={path === '/guide' ? 'page' : undefined}>總覽</a>
-          {GUIDE_PAGES.map(page => (
-            <a
-              href={`/guide/${page.slug}`}
-              aria-current={path === `/guide/${page.slug}` ? 'page' : undefined}
-            >
-              {page.title}
-            </a>
-          ))}
+          <!-- 四個詞彙分類 2026-09-27 合併成一頁「遊戲名詞」（Yuki 裁決），頁內再切分類。 -->
+          <a href={KEYWORDS_PATH} aria-current={isCurrent(KEYWORDS_PATH) ? 'page' : undefined}>遊戲名詞</a>
           <!-- 戰術與 Boss 收在這個下拉裡（Yuki 2026-08-26 指定）：它們跟上面幾頁一樣是
                「遊戲有什麼」的說明，不是站台的互動工具（骰子樹／圖鑑／骰盤／模擬器）。
                ⚠️ 放進來就要一起改上面那個 `guideCurrent`，否則站在 /tactic 時整個下拉不會亮起來，

@@ -1,0 +1,113 @@
+---
+// 遊戲名詞：原本的四個詞彙頁（骰子機制與觸發／召喚物與投射物／狀態效果與增減益／怪物與基本名詞）
+// 2026-09-27 依 Yuki 裁決合併成這一頁，上方按鈕切換分類。
+//
+// ⚠️ 全部詞條都輸出進 HTML，切換只改 `hidden`：沒有 JS 時四個分類全部攤開、切換鈕不出現，
+// 搜尋引擎也看得到每一條。站內所有 `#關鍵字` 連結都指到這一頁的錨點（`termHref()`），
+// 所以腳本要能從錨點反查它在哪個分類；舊網址 `/guide/<slug>` 由 `public/_redirects` 301 到
+// `?tab=<slug>`。
+import Base from '../../layouts/Base.astro';
+import GlossaryEntry from '../../components/GlossaryEntry.astro';
+import { treeData as data } from '../../lib/tree-data';
+import keywordsRaw from '../../../data/keywords.json';
+import { buildGlossary, displayGlossary, GROUPS, GUIDE_TABS } from '../../lib/glossary-groups';
+import type { GlossaryRecord, TreeData } from '../../lib/types';
+
+const tree = data as unknown as TreeData;
+const keywords = keywordsRaw as Record<string, GlossaryRecord>;
+const index = buildGlossary(keywords, tree.nodes);
+const glossary = displayGlossary(keywords);
+const whitelist = Object.keys(keywords);
+
+const tabs = GUIDE_TABS.map(tab => {
+  const sections = tab.groups.map(slug => ({
+    group: GROUPS.find(g => g.slug === slug)!,
+    items: index.byGroup[slug],
+  }));
+  return { ...tab, sections, total: sections.reduce((n, s) => n + s.items.length, 0) };
+});
+const total = tabs.reduce((n, tab) => n + tab.total, 0);
+---
+
+<Base title="遊戲名詞">
+  <section class="page" data-kw-page>
+    <h1 class="page-head">遊戲名詞</h1>
+    {/* 中文句子不斷行：原始碼換行會在「。」後面渲染出一個空白。 */}
+    <p class="lede">骰子描述裡那些帶 <code>#</code> 的詞是遊戲的正式標記，共 {total} 條。分組依據是官方資料表給每個標記的<strong>底色碼</strong>（同色＝同一類機制），組名是本站取的。在<a href="/dice">骰子圖鑑</a>的卡片上點任何一個標記，會就地展開同一份解釋。</p>
+
+    <div class="kw-tabs" role="group" aria-label="名詞分類" data-kw-tabs hidden>
+      {tabs.map((tab, i) => (
+        <button type="button" class="btn btn-alt" data-kw-tab={tab.slug}
+          aria-controls={`kw-panel-${tab.slug}`} aria-pressed={i === 0 ? 'true' : 'false'}>
+          {tab.title}<span class="kw-tab-count">{tab.total}</span>
+        </button>
+      ))}
+    </div>
+
+    {tabs.map(tab => (
+      <section class="kw-tab-panel" id={`kw-panel-${tab.slug}`} data-kw-panel={tab.slug}
+        aria-labelledby={tab.sections.length > 1 ? undefined : `kw-heading-${tab.slug}`}
+        aria-label={tab.sections.length > 1 ? tab.title : undefined}>
+        {/* 只有一組時分類名稱就是組標題；多組時各組各印自己的標題，不重複印分類名。 */}
+        {tab.sections.length === 1 && <h2 class="sec-title" id={`kw-heading-${tab.slug}`}>{tab.title}</h2>}
+        <p class="note">{tab.intro}（{tab.total} 條）</p>
+        {tab.sections.map(section => (
+          <section class="kw-section">
+            {tab.sections.length > 1 && <h2 class="sec-title">{section.group.title}</h2>}
+            {tab.sections.length > 1 && <p class="note">{section.group.blurb}</p>}
+            <div class="kw-list">
+              {section.items.map(item => (
+                <GlossaryEntry item={item} index={index} whitelist={whitelist} glossary={glossary} />
+              ))}
+            </div>
+          </section>
+        ))}
+      </section>
+    ))}
+  </section>
+</Base>
+
+<script>
+  const root = document.querySelector<HTMLElement>('[data-kw-page]');
+  const bar = root?.querySelector<HTMLElement>('[data-kw-tabs]');
+  if (root && bar) {
+    const buttons = [...bar.querySelectorAll<HTMLButtonElement>('[data-kw-tab]')];
+    const panels = [...root.querySelectorAll<HTMLElement>('[data-kw-panel]')];
+    const slugs = panels.map(panel => panel.dataset.kwPanel ?? '');
+
+    const show = (slug: string): void => {
+      panels.forEach(panel => { panel.hidden = panel.dataset.kwPanel !== slug; });
+      buttons.forEach(button => button.setAttribute('aria-pressed', String(button.dataset.kwTab === slug)));
+    };
+    /** 錨點指到的詞條與它所在的分類；錨點不是詞條（或沒有錨點）時回 null。 */
+    const target = (): { entry: HTMLElement; slug: string } | null => {
+      const id = decodeURIComponent(location.hash.slice(1));
+      const entry = id ? document.getElementById(id) : null;
+      const slug = entry?.closest<HTMLElement>('[data-kw-panel]')?.dataset.kwPanel;
+      return entry && slug ? { entry, slug } : null;
+    };
+    // 跳到詞條：先切到它的分類再捲過去——切換前它是 hidden，瀏覽器自己的錨點捲動會落空。
+    const reveal = (): boolean => {
+      const hit = target();
+      if (!hit) return false;
+      show(hit.slug);
+      hit.entry.scrollIntoView();
+      return true;
+    };
+
+    if (!reveal()) {
+      const param = new URLSearchParams(location.search).get('tab') ?? '';
+      show(slugs.includes(param) ? param : slugs[0]!);
+    }
+    bar.hidden = false;
+
+    buttons.forEach(button => button.addEventListener('click', () => {
+      const slug = button.dataset.kwTab ?? '';
+      show(slug);
+      // 網址跟著分類走（可分享、重新整理停在同一個分類）；拿掉錨點，否則重新整理又被它帶走。
+      history.replaceState(history.state, '', `?tab=${slug}`);
+    }));
+    // 詞條解釋裡的 `#關鍵字` 連到別的分類時：同頁錨點只會觸發 hashchange。
+    window.addEventListener('hashchange', reveal);
+  }
+</script>

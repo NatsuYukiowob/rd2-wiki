@@ -68,7 +68,7 @@ const PSEUDO_PROPS = [
  * 長不長得一樣」，而新頁面在 before 那一側是 404，加進來只會讓每次比對都噴一頁導覽失敗。
  * 哪天它不再是新頁面（下一次改 CSS 時）再補進來。
  */
-const PAGES = ['/', '/tree', '/dice', '/guide/status', '/board', '/sim', '/about', '/tactic', '/boss'];
+const PAGES = ['/', '/tree', '/dice', '/guide/keywords', '/board', '/sim', '/about', '/tactic', '/boss'];
 const VIEWPORTS = [
   { name: 'desktop', width: 1280, height: 800 },
   { name: 'pixel7', width: 412, height: 915 },

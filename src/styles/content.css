@@ -87,6 +87,25 @@
 }
 
 /* --- 關鍵字詞條（/dice 底部與 /guide/* 共用） --- */
+/* 遊戲名詞頁的分類切換（/guide/keywords）。沒有 JS 時整列 hidden、四個分類全部攤開。 */
+.kw-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: var(--space-4) 0 var(--space-5);
+}
+
+.kw-tabs[hidden] {
+  display: none;
+}
+
+.kw-tab-count {
+  margin-inline-start: var(--space-2);
+  color: var(--muted);
+  font-family: var(--font-num);
+  font-size: var(--fs-sm);
+}
+
 .kw-section {
   margin-top: var(--space-6);
   padding-top: var(--space-5);

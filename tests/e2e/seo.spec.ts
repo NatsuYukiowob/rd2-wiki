@@ -32,10 +32,7 @@ const PAGES = [
   { request: '/events/chuseok-2026', canonical: `${SITE}/events/chuseok-2026/`, name: '中秋賞月活動' },
   { request: '/sim', canonical: `${SITE}/sim/`, name: '骰子樹-模擬器(beta)' },
   { request: '/guide', canonical: `${SITE}/guide/`, name: '總覽' },
-  { request: '/guide/mechanics', canonical: `${SITE}/guide/mechanics/`, name: '骰子機制與觸發' },
-  { request: '/guide/summons', canonical: `${SITE}/guide/summons/`, name: '召喚物與投射物' },
-  { request: '/guide/status', canonical: `${SITE}/guide/status/`, name: '狀態效果與增減益' },
-  { request: '/guide/monsters', canonical: `${SITE}/guide/monsters/`, name: '怪物與基本名詞' },
+  { request: '/guide/keywords', canonical: `${SITE}/guide/keywords/`, name: '遊戲名詞' },
   { request: '/about', canonical: `${SITE}/about/`, name: '貢獻' },
 ] as const;
 

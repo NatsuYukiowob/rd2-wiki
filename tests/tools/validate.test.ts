@@ -284,7 +284,7 @@ describe('validate', () => {
   });
 
   // code 從 2026-08-22 起是 /dice 與 /guide/* 上詞條的 HTML id 與網址錨點
-  // （`/guide/status#FROZEN`），撞號的兩個詞在同一頁上只有第一個連得到。
+  // （`/guide/keywords#FROZEN`），撞號的兩個詞在同一頁上只有第一個連得到。
   it('規則 8(b)：code 撞號或不是合法錨點都會被擋', () => {
     const bad = (patch: Record<string, unknown>) =>
       validate(svg, { ...opts, keywords: { ...keywords, ...patch } as typeof keywords }).errors;

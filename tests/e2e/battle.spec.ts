@@ -224,7 +224,7 @@ test('B2. 蛇王的 #一般怪物 是關鍵字標記，不是裸的 #', async ({
   await page.goto('/boss');
   const link = page.locator('#b1 .kw-link[data-term="一般怪物"]');
   await expect(link).toHaveText('#一般怪物');
-  await expect(link).toHaveAttribute('href', /\/guide\/[a-z]+#[A-Z_]+/);
+  await expect(link).toHaveAttribute('href', /\/guide\/keywords#[A-Z_]+/);
   // 顏色要是官方色，不是掉回內文色——別名／查不到的詞才會沒有顏色。
   await expect(link).toHaveCSS('color', 'rgb(160, 167, 184)');
 });
