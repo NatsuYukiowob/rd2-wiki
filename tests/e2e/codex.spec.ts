@@ -316,6 +316,13 @@ test('C7. 41 顆骰子的四個檔位數值全部是伺服器輸出的 HTML', as
   expect(html, '原子骰子的旋轉速度在 7 骰點是 4.6s（PR #61 依客戶端解包表補上）').toContain('>4.6s<');
   expect(html, '「待實測」已無樣本，出現就代表有人把佔位文字帶回畫面').not.toContain('待實測');
 
+  // 「局內升級」按住才顯示的 (+150) 也要進 HTML（CSS 只管看不看得見）。
+  // ⚠️ 切出火骰子那一張再比對：D200／D203 也是攻擊力 +150，對整頁比會被別張卡片救回來。
+  const fire = html.slice(html.indexOf('id="n1001"'), html.indexOf('</article>', html.indexOf('id="n1001"')));
+  expect(fire, '火骰子卡片要有局內升級按鈕').toContain('局內升級');
+  expect(fire, '火骰子每升 1 級攻擊力 +150').toMatch(/class="stat-up"[^>]*>\+150</);
+  expect(fire, '火骰子每升 1 級範圍傷害 +80%').toMatch(/class="stat-up"[^>]*>\+80%</);
+
   // 目標與備註也要在，那是基本面板的一部分。
   expect(html).toContain('高生命值');
   expect(html).toContain('技能物件型，無標準基本攻擊');
@@ -326,6 +333,56 @@ test('C7. 41 顆骰子的四個檔位數值全部是伺服器輸出的 HTML', as
   // 這條守著「別又把整欄照抄回去」。
   expect(html, '資料表的校訂記錄不可以印給玩家').not.toContain('原始目標文本');
   expect(html, '吞噬骰子的目標是正規化過的「範圍內」').toContain('範圍內');
+});
+
+test('C7b. 「局內升級」按住時 pill 右上角浮出每級增減、不佔版面，放開就收', { tag: '@mobile' }, async ({ page, isMobile }) => {
+  await page.goto('/dice');
+  const card = page.locator('#n1005');   // 風骰子：攻擊力 +100、攻擊速度 -0.025s
+  const up = (label: string) => card.locator('.stat-pill', { hasText: label }).locator('.stat-v > [data-m]:visible .stat-up');
+  const btn = card.locator('.stat-up-btn');
+  await card.scrollIntoViewIfNeeded();
+  await expect(card.locator('.stat-up:visible')).toHaveCount(0);
+  const box = (await btn.boundingBox())!;
+  const pt = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+  // 量「卡片內」的版面：pill 區塊相對卡片的位置與尺寸、卡片本身的尺寸。卡片的絕對 y 會被
+  // 進場動畫與桌機 hover 浮起（2px）帶著動，跟小標佔不佔版面無關，不拿來比。
+  // ⚠️ 兩個矩形要在同一幀量（一次 evaluate）：分兩次 boundingBox() 的話，中間那一幀卡片還在動就會差幾 px。
+  const layout = () => card.evaluate(c => {
+    const a = c.getBoundingClientRect();
+    const p = c.querySelector('.stat-pills')!.getBoundingClientRect();
+    return { cardW: a.width, cardH: a.height, dx: p.x - a.x, dy: p.y - a.y, w: p.width, h: p.height };
+  });
+  await expect(page.locator('html[data-enter]')).toHaveCount(0);   // 進場動畫收尾（Base.astro 約 1 秒後移除）
+  const before = await layout();
+  const cdp = isMobile ? await page.context().newCDPSession(page) : null;
+  const press = async () => {
+    if (cdp) await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [pt] });
+    else { await page.mouse.move(pt.x, pt.y); await page.mouse.down(); }
+  };
+  const lift = async () => {
+    if (cdp) await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    else await page.mouse.up();
+  };
+
+  await press();
+  await expect(up('攻擊力')).toHaveText('+100');
+  await expect(up('攻擊速度')).toHaveText('-0.025s');
+  // 不佔版面：pill 區塊與整張卡片的尺寸一個像素都不變
+  expect(await layout()).toEqual(before);
+  // 浮在 pill 上方：小標的頂緣高於 pill 的頂緣
+  const atkPill = (await card.locator('.stat-pill').first().boundingBox())!;
+  const badge = (await up('攻擊力').boundingBox())!;
+  expect(badge.y).toBeLessThan(atkPill.y);
+  await lift();
+  await expect(card.locator('.stat-up:visible')).toHaveCount(0);
+
+  if (!isMobile) {
+    // 7 骰點：攻擊間隔的增減 ÷ 7
+    await card.locator('.stat-modes input[value="dice7"]').check();
+    await press();
+    await expect(up('攻擊速度')).toHaveText('-0.0036s');
+    await lift();
+  }
 });
 
 test('C8. 切檔只換數字：41 張卡片的 pill 區塊高度在四個檔位全都不動', { tag: '@mobile' }, async ({ page }) => {

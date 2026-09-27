@@ -208,6 +208,43 @@
   gap: var(--space-1);
   margin-top: var(--space-2);
 }
+/* 「局內升級」按住時，浮在 pill 右上角的 +150 小標。**絕對定位、不佔版面**（Yuki 2026-09-28 指定）
+   ——跟著文字流的話 pill 一變寬就可能多擠出一列，同一排的卡片會被一起撐高。定位基準是 .stat-pill。
+   只有目前檔位那個 [data-m] 裡的小標看得見（其他三個整個 visibility: hidden，連帶子孫一起）。
+   ⚠️ 不加粗：delta 是官方原文，會帶「倍」這種中文單位，--fs-xs ＋ 600 的中文會糊成一條線。 */
+.stat-pill {
+  position: relative;
+}
+.stat-up {
+  display: none;
+  position: absolute;
+  top: 0;
+  right: var(--space-2);
+  z-index: 1;
+  transform: translateY(-75%);
+  padding: 0 var(--space-2);
+  border: 1px solid var(--gold);
+  border-radius: var(--r-pill);
+  background: var(--surface-2);
+  box-shadow: var(--shadow-1);
+  color: var(--gold);
+  font-size: var(--fs-xs);
+  font-weight: normal;
+  line-height: 1.4;
+  white-space: nowrap;
+  pointer-events: none;
+}
+.dice-stats[data-holding] .stat-up,
+.dice-stats:has(.stat-up-btn:active) .stat-up {
+  display: block;
+}
+/* 長按不要跳出選字／系統選單，否則手機上按不住。 */
+.stat-up-btn {
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  touch-action: manipulation;
+}
 /* 覺醒區塊原本靠左邊一條 --support 色條標示自己。卡片左緣 2026-08-22 改掛分支色條之後，
    同一張卡上會出現兩條顏色不同的直條，互相搶。改成填一階底色來分層，身分改由標題的
    --support 字色講。 */

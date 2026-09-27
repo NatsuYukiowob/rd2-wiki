@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { STAT_MODES, statValue, isFixed, growthNote, statsOf } from '../../src/lib/dice-stats';
+import { STAT_MODES, statValue, isFixed, growthNote, levelStep, statsOf } from '../../src/lib/dice-stats';
 import type { DiceStat, DiceStatsTable } from '../../src/lib/types';
 
 // 火骰子的攻擊力：四檔都不一樣，是「會成長」的樣本。
@@ -59,12 +59,14 @@ describe('isFixed', () => {
 });
 
 describe('growthNote', () => {
-  it('把骰點與 SP 兩條成長規則併成一句', () => {
-    expect(growthNote(ATK)).toBe('骰點：每提升1骰點：+100／強化：每強化1級：+150');
+  // 強化軸由卡片上「局內升級」按鈕（levelStep()）負責，這裡只剩骰點軸。
+  it('只寫骰點軸的成長規則', () => {
+    expect(growthNote(ATK)).toBe('骰點：每提升1骰點：+100');
   });
 
   it('固定項目沒有成長規則可寫', () => {
     expect(growthNote(FIXED)).toBeNull();
+    expect(growthNote(FLAT)).toBeNull();
   });
 });
 
@@ -85,5 +87,31 @@ describe('statsOf', () => {
 
   it('整張表是 null 時回 null', () => {
     expect(statsOf(null, 'D000')).toBeNull();
+  });
+});
+
+describe('levelStep', () => {
+  const SPEED: DiceStat = {
+    label: '攻擊速度',
+    base: '0.45 秒/次', dice7: '0.064 秒/次', lv15: '0.1 秒/次', lv15dice7: '0.014 秒/次',
+    diceGrowth: '基礎值 ÷ 骰點', spGrowth: '每強化1級：-0.025s',
+  };
+
+  it('取 spGrowth 冒號後的原值（客戶端 _UpAdd），四個檔位都一樣', () => {
+    for (const m of STAT_MODES) expect(levelStep(ATK, m.key)).toBe('+150');
+  });
+
+  // 攻擊間隔 ÷ 骰點：7 骰點的 pill 是 0.064，旁邊寫 -0.025 會大 7 倍。
+  it('攻擊間隔在 7 骰點的檔位 ÷ 7', () => {
+    expect(levelStep(SPEED, 'base')).toBe('-0.025s');
+    expect(levelStep(SPEED, 'lv15')).toBe('-0.025s');
+    expect(levelStep(SPEED, 'dice7')).toBe('-0.0036s');
+    expect(levelStep(SPEED, 'lv15dice7')).toBe('-0.0036s');
+  });
+
+  it('「無變化」與固定項目回 null——就算固定項目的 spGrowth 寫了「每強化1級」', () => {
+    expect(levelStep(FIXED, 'base')).toBeNull();
+    expect(levelStep(FLAT, 'base')).toBeNull();
+    expect(levelStep({ ...FIXED, spGrowth: '每強化1級：+1' }, 'base')).toBeNull();
   });
 });
