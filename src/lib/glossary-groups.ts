@@ -24,8 +24,8 @@ export interface GlossaryGroup {
 /**
  * 五個官方色碼分組。順序就是頁面上的顯示順序。
  *
- * `buffs` 只有 2 條（攻擊速度增加／減少），撐不起一頁，所以它跟 `status` 共用 /guide/status
- * ——見 GUIDE_PAGES。分組本身仍然保留，因為那是官方分的；合併的只是「頁面」這層。
+ * `buffs` 只有 2 條（攻擊速度增加／減少），撐不起一個分類，所以它跟 `status` 共用一個分類
+ * ——見 GUIDE_TABS。分組本身仍然保留，因為那是官方分的；合併的只是「顯示」這層。
  */
 export const GROUPS: readonly GlossaryGroup[] = [
   { slug: 'mechanics', color: '#FF8A3D', title: '骰子機制與觸發',
@@ -109,7 +109,7 @@ export function buildGlossary(
       throw new Error(
         `關鍵字「${term}」的色碼 ${rec.color} 不在已知的五組裡。`
         + '遊戲資料表新增了標記顏色時，要在 src/lib/glossary-groups.ts 的 GROUPS 補上這一組，'
-        + '並決定它印在 GUIDE_PAGES 的哪一頁。',
+        + '並決定它歸在 GUIDE_TABS 的哪一個分類。',
       );
     }
     const item: GlossaryItem = {
@@ -148,8 +148,15 @@ export function buildGlossary(
   return { byGroup, byTerm };
 }
 
-/** 「遊戲介紹」底下的頁面：一頁可以收不只一個分組（buffs 只有 2 條，併進 status）。 */
-export const GUIDE_PAGES: readonly { slug: string; title: string; groups: GroupSlug[]; intro: string }[] = [
+/**
+ * 詞彙全部印在同一頁（`/guide/keywords`「遊戲名詞」，2026-09-27 Yuki 裁決：原本四頁合併成一頁、
+ * 以分類切換顯示）。一個分類可以收不只一個色碼分組（buffs 只有 2 條，併進 status）。
+ * ⚠️ `slug` 是 `?tab=` 的值，也是舊網址 `/guide/<slug>` 301 過來時帶的參數（`public/_redirects`），
+ * 改名要連那份一起改。
+ */
+export const KEYWORDS_PATH = '/guide/keywords';
+
+export const GUIDE_TABS: readonly { slug: string; title: string; groups: GroupSlug[]; intro: string }[] = [
   { slug: 'mechanics', title: '骰子機制與觸發', groups: ['mechanics'],
     intro: '骰子自己的機制：合成、堆疊、觸發時機。骰子描述裡最常出現的一組——在骰子圖鑑的卡片上點任何一個標記，也會就地展開這裡的解釋。' },
   { slug: 'summons', title: '召喚物與投射物', groups: ['summons'],
@@ -160,24 +167,16 @@ export const GUIDE_PAGES: readonly { slug: string; title: string; groups: GroupS
     intro: '怪物種類與遊戲的基本名詞。這些詞本身不是效果，但幾乎每個效果的說明都會引用到它們。' },
 ] as const;
 
-/** 分組 slug → 那一組的詞條實際被印在哪一頁。 */
-const PAGE_OF_GROUP: Record<GroupSlug, string> = {
-  mechanics: '/guide/mechanics',
-  summons: '/guide/summons',
-  status: '/guide/status',
-  buffs: '/guide/status',
-  monsters: '/guide/monsters',
-};
-
 /**
- * 一個關鍵字的連結。同頁的錨點也照樣寫完整路徑——瀏覽器對同文件的 `/dice#COMBO` 就是
+ * 一個關鍵字的連結。錨點＝官方 code，全部詞條在同一頁；頁面腳本依錨點切到它所在的分類。
+ * 同頁的錨點也照樣寫完整路徑——瀏覽器對同文件的 `/dice#COMBO` 就是
  * 純錨點跳轉、不會重新載入，換一種寫法只是多一條分支。查不到（不該發生，規則 8 擋著）
  * 時回 null，呼叫端就不要包連結。
  */
 export function termHref(index: GlossaryIndex, term: string): string | null {
   const item = index.byTerm.get(term);
   if (!item) return null;
-  return `${PAGE_OF_GROUP[item.group.slug]}#${item.anchor}`;
+  return `${KEYWORDS_PATH}#${item.anchor}`;
 }
 
 /**

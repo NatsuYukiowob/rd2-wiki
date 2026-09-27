@@ -1,0 +1,10 @@
+# 2026-09-27 四個詞彙頁合併成 /guide/keywords（遊戲名詞），舊網址帶分類參數轉過去。
+# 原本網址上的 #錨點 瀏覽器會自動帶到新網址。slug 改名時要同步 src/lib/glossary-groups.ts 的 GUIDE_TABS。
+/guide/mechanics /guide/keywords/?tab=mechanics 301
+/guide/mechanics/ /guide/keywords/?tab=mechanics 301
+/guide/summons /guide/keywords/?tab=summons 301
+/guide/summons/ /guide/keywords/?tab=summons 301
+/guide/status /guide/keywords/?tab=status 301
+/guide/status/ /guide/keywords/?tab=status 301
+/guide/monsters /guide/keywords/?tab=monsters 301
+/guide/monsters/ /guide/keywords/?tab=monsters 301

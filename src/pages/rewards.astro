@@ -1,4 +1,8 @@
 ---
+// 獎勵系統：純瀏覽（2026-09-27 Yuki 裁決，不追蹤個人進度、不寫 localStorage）。
+// 每個分類頂端印「全部領完可拿到的資源總量」，建置時由 modeRewardTotals() 算好。
+// ⚠️ 面板在 HTML 裡全部不帶 hidden：沒有 JS 時七類全部攤開、切換選單不出現（CSS 看 `data-js`），
+// 腳本載入後才收成一次一類（同 /guide/keywords）。
 import Base from '../layouts/Base.astro';
 import RewardGrantView from '../components/RewardGrant.astro';
 import RewardTaskList from '../components/RewardTaskList.astro';
@@ -6,28 +10,19 @@ import RewardReferenceList from '../components/RewardReferenceList.astro';
 import '../styles/rewards.css';
 import rewardsRaw from '../../data/rewards.json';
 import { rewardDisplay } from '../lib/reward-display';
-import { rewardGrantKey, rewardGrantsInMode, sortedRewardTiers } from '../lib/rewards';
-import type { RewardCatalog, RewardGrant } from '../lib/types';
+import { modeRewardTotals, sortedRewardTiers } from '../lib/rewards';
+import type { RewardCatalog } from '../lib/types';
 
 const catalog = rewardsRaw as RewardCatalog;
-const defaultMode = catalog.modes[0];
+const defaultMode = catalog.modes[0]!;
 const navigation = [...catalog.modes, ...(catalog.repeatable ? [catalog.repeatable] : [])];
-const summaryGrants: RewardGrant[] = [];
-const summaryKeys = new Set<string>();
-for (const mode of catalog.modes) {
-  for (const reward of rewardGrantsInMode(mode)) {
-    const key = rewardGrantKey(reward);
-    if (summaryKeys.has(key)) continue;
-    summaryKeys.add(key);
-    summaryGrants.push(reward);
-  }
-}
+const totalsByMode = new Map(catalog.modes.map(mode => [mode.id, modeRewardTotals(mode)]));
 ---
 
 <Base title="獎勵系統">
   <section class="page rewards-page" data-rewards-page data-active-mode={defaultMode.id}>
     <h1 class="page-head">獎勵系統</h1>
-    <p class="lede">門檻獎勵以最高紀錄追蹤，成就依各組完成階段獨立追蹤；可重複取得的獎勵則提供資料查閱。</p>
+    <p class="lede">各模式、活動與成就的里程碑獎勵，每個分類頂端列出全部領完可拿到的資源總量；可重複取得的獎勵另列查閱。</p>
 
     <label class="reward-mode-select" for="reward-mode-select">
       <span>獎勵分類</span>
@@ -48,165 +43,137 @@ for (const mode of catalog.modes) {
       </nav>
 
       <div class="reward-mode-content" id="reward-mode-content">
-        <section class="reward-global-summary panel" aria-labelledby="reward-totals-all">
-          <div class="reward-global-heading">
-            <h2 id="reward-totals-all">已領取的總獎勵</h2>
-            <button type="button" class="btn btn-alt reward-clear-all" data-reward-clear-all>清除全部進度</button>
-          </div>
-          <div class="reward-summary-content" data-reward-summary="all" aria-live="polite">
-            <section class="reward-summary-kind" data-reward-summary-kind="all-currency" hidden>
-              <h3>固定貨幣</h3>
-              <dl class="reward-totals" data-reward-totals="all-currency"></dl>
-            </section>
-            <section class="reward-summary-kind" data-reward-summary-kind="all-collectible" hidden>
-              <h3>收藏型獎勵</h3>
-              <dl class="reward-totals reward-collected-items" data-reward-totals="all-collectible"></dl>
-            </section>
-            <p class="reward-total-empty" data-reward-empty="all">尚未領取獎勵</p>
-          </div>
-        </section>
+        {catalog.modes.map(mode => {
+          const totals = totalsByMode.get(mode.id)!;
+          const stageCount = mode.kind === 'threshold'
+            ? mode.tiers.length
+            : mode.groups.reduce((n, group) => n + group.stages.length, 0);
+          return (
+            <div data-reward-mode-panel={mode.id}>
+              <header class="reward-mode-heading">
+                <h2 class="sec-title">{mode.name}</h2>
+                <p>{mode.kind === 'threshold' ? `依${mode.requirementLabel}，共 ${stageCount} 階` : `${mode.groups.length} 項成就，共 ${stageCount} 階`}</p>
+              </header>
 
-        <header class="reward-mode-heading">
-          <h2 class="sec-title" data-reward-mode-title>{defaultMode.name}</h2>
-          <p data-reward-mode-note>{defaultMode.kind === 'threshold' ? `${defaultMode.requirementLabel}進度` : '各成就獨立追蹤'}</p>
-        </header>
-
-        <section class="reward-controls panel" aria-labelledby="reward-progress-heading">
-          <div data-reward-threshold-controls>
-            <h3 id="reward-progress-heading">目前最高紀錄</h3>
-            <form class="reward-progress-form" data-reward-progress-form>
-              <label for="reward-progress">目前進度</label>
-              <input id="reward-progress" name="progress" type="number" min="0" step="1"
-                inputmode="numeric" value="0" data-reward-progress-input />
-              <button type="submit" class="btn btn-pri">套用</button>
-              <button type="button" class="btn btn-alt" data-reward-clear>清除此頁進度</button>
-            </form>
-          </div>
-          <div data-reward-achievement-controls hidden>
-            <h3>成就進度</h3>
-            <p class="reward-achievement-note">各成就獨立追蹤；展開群組後可勾選階段。</p>
-            <button type="button" class="btn btn-alt" data-reward-clear-achievements>清除此頁進度</button>
-          </div>
-          <div class="reward-summary" aria-live="polite">
-            <p class="reward-completion">已完成 <strong data-reward-completed-count>0</strong> / <span data-reward-tier-count>{defaultMode.kind === 'threshold' ? defaultMode.tiers.length : 0}</span></p>
-            <section class="reward-total-group" aria-labelledby="reward-totals-current">
-              <h4 id="reward-totals-current">目前頁面已領取獎勵</h4>
-              <div class="reward-summary-content" data-reward-summary="current">
-                <section class="reward-summary-kind" data-reward-summary-kind="current-currency" hidden>
-                  <h5>固定貨幣</h5>
-                  <dl class="reward-totals" data-reward-totals="current-currency"></dl>
-                </section>
-                <section class="reward-summary-kind" data-reward-summary-kind="current-collectible" hidden>
-                  <h5>收藏型獎勵</h5>
-                  <dl class="reward-totals reward-collected-items" data-reward-totals="current-collectible"></dl>
-                </section>
-                <p class="reward-total-empty" data-reward-empty="current">尚未領取獎勵</p>
-              </div>
-            </section>
-          </div>
-          <div class="reward-task-actions">
-            <button type="button" class="btn btn-alt reward-task-toggle" data-reward-task-toggle
-              aria-expanded="false" hidden>查看每日任務與點數</button>
-          </div>
-        </section>
-
-        {catalog.modes.filter(mode => mode.kind === 'threshold' && mode.taskDays?.length).map(mode => (
-          <section class="reward-task-panel panel" id={`reward-task-panel-${mode.id}`}
-            data-reward-task-panel={mode.id} aria-label={`${mode.name}每日任務與點數`} hidden>
-            <h3>{mode.name}每日任務與點數</h3>
-            {mode.kind === 'threshold' && mode.taskDays?.map(day => (
-              <section class="reward-task-day" aria-label={`第${day.day}天任務`}>
-                <div class="reward-task-day-heading">
-                  <h4>第{day.day}天</h4>
-                  <span>當日合計 {day.totalPoints.toLocaleString('en-US')} 點</span>
-                </div>
-                <RewardTaskList tasks={day.tasks} />
+              <section class="reward-mode-summary panel" aria-labelledby={`reward-total-${mode.id}`} data-reward-summary={mode.id}>
+                <h3 id={`reward-total-${mode.id}`}>全部領完可獲得</h3>
+                {totals.currency.length > 0 && (
+                  <section class="reward-summary-kind">
+                    <h4>固定貨幣</h4>
+                    <dl class="reward-totals" data-reward-totals="currency">
+                      {totals.currency.map(({ key, reward, amount }) => (
+                        <div data-total-reward={key}>
+                          <dt class="sr-only">{rewardDisplay(reward).label}</dt>
+                          {/* RewardGrantView 整段 aria-hidden，數量要另外給讀屏（列上的數量由 li 的 aria-label 給）。 */}
+                          <dd><RewardGrantView reward={reward} amount={amount} /><span class="sr-only">{amount.toLocaleString('en-US')}</span></dd>
+                        </div>
+                      ))}
+                    </dl>
+                  </section>
+                )}
+                {totals.collectible.length > 0 && (
+                  <section class="reward-summary-kind">
+                    <h4>收藏型獎勵</h4>
+                    <dl class="reward-totals reward-collected-items" data-reward-totals="collectible">
+                      {totals.collectible.map(({ key, reward, amount }) => (
+                        <div data-total-reward={key}>
+                          <dt class="sr-only">{rewardDisplay(reward).label}</dt>
+                          <dd>
+                            <RewardGrantView reward={reward} />
+                            {amount > 1 && <span class="reward-collected-count">×{amount.toLocaleString('en-US')}</span>}
+                          </dd>
+                        </div>
+                      ))}
+                    </dl>
+                  </section>
+                )}
               </section>
-            ))}
-          </section>
-        ))}
 
-        {catalog.modes.map((mode, modeIndex) => (
-          <div data-reward-mode-panel={mode.id} hidden={modeIndex !== 0}>
-            {mode.kind === 'threshold' ? (
-              <>
-                <div class="reward-list-head" aria-hidden="true">
-                  <span>{mode.requirementLabel}</span><span>獎勵內容</span><span>完成</span>
-                </div>
-                <ol class="reward-list reward-milestone-list" aria-label={`${mode.name}獎勵階段`}>
-                  {sortedRewardTiers(mode.tiers).map((tier, index) => (
-                    <li class="reward-tier row-card" style={`--i:${index}`} data-reward-tier data-requirement={tier.requirement}>
-                      <strong class="reward-requirement">{tier.requirement.toLocaleString('en-US')}</strong>
-                      <ul class="reward-grants" aria-label="獎勵內容">
-                        {tier.rewards.map(reward => (
-                          <li aria-label={`${rewardDisplay(reward).label} ${reward.amount.toLocaleString('en-US')}`}>
-                            <RewardGrantView reward={reward} amount={reward.amount} />
+              {mode.kind === 'threshold' && (mode.taskDays?.length ?? 0) > 0 && (
+                <details class="reward-task-panel panel" data-reward-task-panel={mode.id}>
+                  <summary>每日任務與點數</summary>
+                  {mode.taskDays!.map(day => (
+                    <section class="reward-task-day" aria-label={`第${day.day}天任務`}>
+                      <div class="reward-task-day-heading">
+                        <h4>第{day.day}天</h4>
+                        <span>當日合計 {day.totalPoints.toLocaleString('en-US')} 點</span>
+                      </div>
+                      <RewardTaskList tasks={day.tasks} />
+                    </section>
+                  ))}
+                </details>
+              )}
+
+              {mode.kind === 'threshold' ? (
+                <>
+                  <div class="reward-list-head reward-reference-row" aria-hidden="true">
+                    <span>{mode.requirementLabel}</span><span>獎勵內容</span>
+                  </div>
+                  <ol class="reward-list reward-milestone-list" aria-label={`${mode.name}獎勵階段`}>
+                    {sortedRewardTiers(mode.tiers).map((tier, index) => (
+                      <li class="reward-tier reward-reference-row row-card" style={`--i:${index}`} data-reward-tier data-requirement={tier.requirement}>
+                        <strong class="reward-requirement">{tier.requirement.toLocaleString('en-US')}</strong>
+                        <ul class="reward-grants" aria-label="獎勵內容">
+                          {tier.rewards.map(reward => (
+                            <li aria-label={`${rewardDisplay(reward).label} ${reward.amount.toLocaleString('en-US')}`}>
+                              <RewardGrantView reward={reward} amount={reward.amount} />
+                            </li>
+                          ))}
+                        </ul>
+                      </li>
+                    ))}
+                  </ol>
+                </>
+              ) : (
+                <div class="reward-achievement-groups" aria-label="成就群組">
+                  {mode.groups.map(group => (
+                    <details class="reward-achievement-group panel" data-reward-achievement-group={group.id}>
+                      <summary>
+                        <span>{group.name}</span>
+                        <span class="reward-group-count">{group.stages.length} 階</span>
+                      </summary>
+                      <div class="reward-list-head reward-reference-row" aria-hidden="true">
+                        <span>階段／目標</span><span>獎勵內容</span>
+                      </div>
+                      <ol class="reward-list" aria-label={`${group.name}階段`}>
+                        {group.stages.map(stage => (
+                          <li class="reward-tier reward-reference-row row-card" data-reward-stage data-stage={stage.stage}>
+                            <strong class="reward-requirement reward-stage-requirement">
+                              <span>Stage {stage.stage}</span>
+                              <small>目標 {stage.requirement.toLocaleString('en-US')}</small>
+                            </strong>
+                            <ul class="reward-grants" aria-label="獎勵內容">
+                              {stage.rewards.map(reward => (
+                                <li aria-label={`${rewardDisplay(reward).label} ${reward.amount.toLocaleString('en-US')}`}>
+                                  <RewardGrantView reward={reward} amount={reward.amount} />
+                                </li>
+                              ))}
+                            </ul>
                           </li>
                         ))}
-                      </ul>
-                      <label class="reward-check">
-                        <span class="sr-only">完成 {tier.requirement.toLocaleString('en-US')} {mode.requirementLabel}</span>
-                        <input type="checkbox" data-reward-tier-checkbox value={tier.requirement} />
-                      </label>
-                    </li>
+                      </ol>
+                    </details>
                   ))}
-                </ol>
-              </>
-            ) : (
-              <div class="reward-achievement-groups" aria-label="成就群組">
-                {mode.groups.map(group => (
-                  <details class="reward-achievement-group panel" data-reward-achievement-group={group.id}>
-                    <summary>
-                      <span>{group.name}</span>
-                      <span class="reward-group-count"><strong data-reward-group-completed>0</strong> / {group.stages.length}</span>
-                    </summary>
-                    <div class="reward-list-head" aria-hidden="true">
-                      <span>階段／目標</span><span>獎勵內容</span><span>完成</span>
-                    </div>
-                    <ol class="reward-list" aria-label={`${group.name}階段`}>
-                      {group.stages.map(stage => (
-                        <li class="reward-tier row-card" data-reward-stage data-stage={stage.stage}>
-                          <strong class="reward-requirement reward-stage-requirement">
-                            <span>Stage {stage.stage}</span>
-                            <small>目標 {stage.requirement.toLocaleString('en-US')}</small>
-                          </strong>
-                          <ul class="reward-grants" aria-label="獎勵內容">
-                            {stage.rewards.map(reward => (
-                              <li aria-label={`${rewardDisplay(reward).label} ${reward.amount.toLocaleString('en-US')}`}>
-                                <RewardGrantView reward={reward} amount={reward.amount} />
-                              </li>
-                            ))}
-                          </ul>
-                          <label class="reward-check">
-                            <span class="sr-only">完成 {group.name} Stage {stage.stage}</span>
-                            <input type="checkbox" data-reward-stage-checkbox value={stage.stage} />
-                          </label>
-                        </li>
-                      ))}
-                    </ol>
-                  </details>
-                ))}
-              </div>
-            )}
-          </div>
-        ))}
+                </div>
+              )}
+            </div>
+          );
+        })}
         {catalog.repeatable && (
-          <div data-reward-mode-panel={catalog.repeatable.id} hidden>
+          <div data-reward-mode-panel={catalog.repeatable.id}>
+            <header class="reward-mode-heading">
+              <h2 class="sec-title">{catalog.repeatable.name}</h2>
+            </header>
             <section aria-labelledby="reward-daily-heading">
               <h3 class="sec-title" id="reward-daily-heading">每日任務</h3>
               <div class="reward-reference-card panel" data-repeatable-daily-rewards>
                 <RewardReferenceList section={catalog.repeatable.dailyTasks.rewards} showNote={false} />
-                <div class="reward-task-actions">
-                  <button type="button" class="btn btn-alt reward-task-toggle" data-reward-task-toggle
-                    data-reward-task-owner={catalog.repeatable.id} aria-expanded="false">查看每日任務與點數</button>
-                </div>
               </div>
-              <div class="reward-task-panel panel" id={`reward-task-panel-${catalog.repeatable.id}`}
-                data-reward-task-panel={catalog.repeatable.id} hidden>
-                <h3>每日任務與點數</h3>
+              <details class="reward-task-panel panel" data-reward-task-panel={catalog.repeatable.id}>
+                <summary>每日任務與點數</summary>
                 <p class="reward-achievement-note">每日合計 {catalog.repeatable.dailyTasks.totalPoints.toLocaleString('en-US')} 點</p>
                 <RewardTaskList tasks={catalog.repeatable.dailyTasks.tasks} />
-              </div>
+              </details>
             </section>
             {catalog.repeatable.sections.map(section => <RewardReferenceList section={section} card sectionTitle />)}
           </div>
@@ -214,23 +181,6 @@ for (const mode of catalog.modes) {
       </div>
     </div>
 
-    {summaryGrants.map(reward => (
-      <template data-reward-total-template={rewardGrantKey(reward)}>
-        <div data-total-reward={rewardGrantKey(reward)}>
-          <dt class="sr-only">{rewardDisplay(reward).label}</dt>
-          <dd><RewardGrantView reward={reward} amount={reward.type === 'currency' ? 0 : undefined} /></dd>
-        </div>
-      </template>
-    ))}
-
-    <dialog class="reward-clear-dialog" aria-labelledby="reward-clear-dialog-title" data-reward-clear-dialog>
-      <h2 id="reward-clear-dialog-title">清除全部進度？</h2>
-      <p>這會清除所有獎勵分類的追蹤進度。</p>
-      <form method="dialog" class="reward-dialog-actions">
-        <button type="submit" value="cancel" class="btn btn-alt">取消</button>
-        <button type="submit" value="clear" class="btn btn-alt reward-dialog-confirm">清除全部進度</button>
-      </form>
-    </dialog>
     <p class="sr-only" role="status" aria-live="polite" data-reward-status></p>
   </section>
 </Base>

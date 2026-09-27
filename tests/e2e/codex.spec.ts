@@ -167,7 +167,7 @@ test('C3b. 沒有 JS 時 #關鍵字 仍然是一條連得到詞條頁的連結',
   const hrefs = [...html.matchAll(/class="kw-link" href="([^"]+)" data-term="([^"]+)"/g)];
   expect(hrefs.length).toBeGreaterThan(0);
   for (const [, href] of hrefs) {
-    expect(href).toMatch(/^\/guide\/(mechanics|summons|status|monsters)#[A-Za-z][A-Za-z0-9_-]*$/);
+    expect(href).toMatch(/^\/guide\/keywords#[A-Za-z][A-Za-z0-9_-]*$/);
   }
   // 每一個標記都要有官方色。別名（播種／傳送）曾經是全站唯二沒有顏色的標記——
   // renderTaggedText 給的詞彙表不含別名，查不到就不上色，看起來像另一種東西。
@@ -216,7 +216,7 @@ test('C4. 導覽列的「遊戲介紹」選單能用鍵盤開、Esc 關，且焦
   await summary.focus();
   await page.keyboard.press('Enter');
   await expect(menu).toHaveAttribute('open', '');
-  await expect(menu.locator('a[href="/guide/status"]')).toBeVisible();
+  await expect(menu.locator('a[href="/guide/keywords"]')).toBeVisible();
 
   await page.keyboard.press('Escape');
   await expect(menu).not.toHaveAttribute('open', '');

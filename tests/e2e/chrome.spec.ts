@@ -55,10 +55,10 @@ test('D3. 目前分頁標 aria-current，而且沒有把下拉選單的箭頭吃
   await expect(page.locator('#site-nav a[href="/dice"][aria-current="page"]')).toHaveCount(1);
   await expect(page.locator('#site-nav a[href="/tree"][aria-current="page"]')).toHaveCount(0);
 
-  await page.goto('/guide/mechanics');
+  await page.goto('/guide/keywords');
   const summary = page.locator('#site-nav .nav-menu > summary');
   await expect(summary).toHaveAttribute('aria-current', 'page');
-  await expect(page.locator('.nav-menu-items a[href="/guide/mechanics"][aria-current="page"]')).toHaveCount(1);
+  await expect(page.locator('.nav-menu-items a[href="/guide/keywords"][aria-current="page"]')).toHaveCount(1);
 
   // ⚠️ 這一段是 2026-08-22 實際發生過的 bug 的守門。
   // 目前分頁的金線一度也畫在 ::after 上，跟下拉箭頭撞在同一個偽元素——而箭頭那條選擇器
@@ -199,11 +199,11 @@ test('D9. 導覽列永遠是一行：每一項都在同一列，高度不吃掉�
 test('D10. 錨點跳轉只加一次導覽列的偏移量', async ({ page }) => {
   // `html { scroll-padding-top }` 與 `.kw-entry { scroll-margin-top }` 一度同時帶著同一個
   // 算式，瀏覽器兩個都算，目標卡片停在導覽列下方 74px 而不是 12px（2026-08-22 review 抓到）。
-  await page.goto('/guide/status');
-  const id = await page.locator('.kw-entry').first().getAttribute('id');
+  await page.goto('/guide/keywords?tab=status');
+  const id = await page.locator('[data-kw-panel="status"] .kw-entry').first().getAttribute('id');
   expect(id, '詞條卡片沒有 id，錨點跳轉無從測起').toBeTruthy();
 
-  await page.goto(`/guide/status#${id}`);
+  await page.goto(`/guide/keywords#${id}`);
   await page.waitForTimeout(300);
   const gap = await page.evaluate(anchor => {
     const target = document.getElementById(anchor!)!;
@@ -220,7 +220,7 @@ test('D11. 下拉選單的目前分頁：金線與金字都要有', async ({ pag
   // `#site-nav .nav-menu > summary { color: var(--fg) }` 的具體度 (1,1,1) 贏過
   // `#site-nav [aria-current='page']` 的 (1,1,0)，於是「遊戲介紹」拿得到金線卻拿不到金字
   // ——又一次「兩條規則各贏一半」（2026-08-22 review 抓到）。
-  await page.goto('/guide/mechanics');
+  await page.goto('/guide/keywords');
   const summary = page.locator('#site-nav .nav-menu > summary');
   await expect(summary).toHaveAttribute('aria-current', 'page');
   const gold = await resolveColor(page, '--gold');

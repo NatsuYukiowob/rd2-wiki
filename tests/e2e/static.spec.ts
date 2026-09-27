@@ -8,8 +8,8 @@ import { test, expect } from '@playwright/test';
 const PAGES: { path: string; secTitle: number; card?: string; rowCard?: boolean; filterBar?: boolean }[] = [
   { path: '/', secTitle: 1, card: '.home-card' },
   { path: '/dice', secTitle: 0, card: '.dice-card', filterBar: true },
-  { path: '/guide', secTitle: 1, card: '.guide-card' },
-  { path: '/guide/status', secTitle: 1 },
+  { path: '/guide', secTitle: 0, card: '.guide-card' },
+  { path: '/guide/keywords', secTitle: 1 },
   { path: '/events', secTitle: 0, rowCard: true },
   { path: '/tactic', secTitle: 0, rowCard: true, filterBar: true },
   { path: '/boss', secTitle: 2, rowCard: true },
@@ -49,7 +49,7 @@ test('ST1b. /dice 的數值 pill 全部掛著 .pill', async ({ page }) => {
 });
 
 test('ST2. 頁首 h1 是 900 字重帶 --ink 字影；段落標題前面是一顆旋轉 45° 的金色菱形、沒有左邊金線', async ({ page }) => {
-  for (const path of ['/', '/guide', '/boss', '/events/chuseok-2026']) {
+  for (const path of ['/', '/guide/keywords', '/boss', '/events/chuseok-2026']) {
     await page.goto(path);
     const h1 = await page.locator('h1.page-head').evaluate(el => {
       const s = getComputedStyle(el);
@@ -140,7 +140,7 @@ test('ST4. 首頁 6 張入口依序排好、stagger 連號，320px 不撐出橫�
 });
 
 test('ST4b. 靜態頁的可見文字裡沒有文字箭頭 → ←，改成 SVG 圖示', async ({ page }) => {
-  for (const path of ['/', '/guide', '/guide/status', '/dice', '/events', '/events/chuseok-2026', '/no-such-page']) {
+  for (const path of ['/', '/guide', '/guide/keywords', '/dice', '/events', '/events/chuseok-2026', '/no-such-page']) {
     await page.goto(path);
     const text = await page.locator('main, section').first().innerText();
     expect(text, `${path} 還有文字箭頭`).not.toMatch(/[→←]/);
