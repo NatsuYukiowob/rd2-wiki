@@ -73,15 +73,27 @@ const FOCUS_MARGIN_PX = 40;
  * - ctrlKey＝觸控板捏合（Chrome／Safari 會把它合成成 ctrl＋wheel，delta 很小）→ 係數 ×10。
  * - 單一事件夾在 1/1.5–1.5：滑鼠加速或 ctrl＋實體滾輪時不會一格跳好幾倍。
  * deltaX／deltaMode 用 `?? 0`：單元測試的假事件只帶 deltaY。
+ * ⚠️ **deltaMode 一定要先讀**：Firefox 在頁面先讀 deltaX／deltaY 時改回報像素（行數 × 行高，
+ * Linux 上一格約 48–57 px ≈ 1.05 倍），先讀 deltaMode 才拿得到行模式（一格 3 行 ≈ 1.1 倍）。
  */
 export function wheelZoomFactor(
   e: Pick<WheelEvent, 'deltaY' | 'deltaX' | 'deltaMode' | 'ctrlKey'>, pageHeightPx: number,
 ): number {
+  const mode = e.deltaMode ?? 0;
   const dy = e.deltaY ?? 0, dx = e.deltaX ?? 0;
   if (Math.abs(dy) <= Math.abs(dx)) return 1;
-  const mode = e.deltaMode ?? 0;
   const px = dy * (mode === 1 ? 33 : mode === 2 ? pageHeightPx : 1) * (e.ctrlKey ? 10 : 1);
   return Math.min(1.5, Math.max(1 / 1.5, Math.pow(1.1, -px / 100)));
+}
+
+/**
+ * 這個 pointerdown 會不會被 controller 當成手勢起點（拖曳／點選）。滑鼠只收左鍵：右鍵／中鍵放開時
+ * 會走到點選，右鍵點空白處就把卡片關掉、?node= 清空。只看 mouse：筆的側鍵是筆自己的語意，
+ * 單元測試的假事件兩個欄位都沒帶。頁面腳本（tree-canvas.ts 的 cancelCenterPan）用同一個判準，
+ * 免得 controller 不理的事件仍把置中平移掐掉。
+ */
+export function isGesturePointer(e: Pick<PointerEvent, 'pointerType' | 'button'>): boolean {
+  return !(e.pointerType === 'mouse' && e.button !== 0);
 }
 
 export interface ScreenRect { left: number; top: number; width: number; height: number }
@@ -167,7 +179,8 @@ export function mountCanvasTree(host: HTMLElement, data: TreeData, opts: MountOp
   // 症狀是畫布全空、零錯誤訊息，要等使用者拖一下或視窗變一次大小才突然出現（2026-09-06
   // Task 9 接 /tree 時實測到：初次載入 stroke／drawImage 呼叫數都是 0）。
   let lastZoomAt = -Infinity;
-  // 靜態層上一次 blit 的位置與元素尺寸（`frame()` 的 blitKey）；null＝畫布剛被清空、必須重貼。
+  // 靜態層上一次 blit 的位置（`frame()` 的 blitKey）；null＝畫布剛被清空、必須重貼
+  // （measure() 設尺寸、2D context 遺失後恢復，兩條路都會把它歸 null）。
   let lastBlit: string | null = null;
   let settleTimer: ReturnType<typeof setTimeout> | undefined;
   // 上一次**真的重繪**時的 world→螢幕平移量與 pxPerUnit。拖曳／縮放中的 CSS transform 全部
@@ -244,9 +257,12 @@ export function mountCanvasTree(host: HTMLElement, data: TreeData, opts: MountOp
   let rawDpr = 1;
   const onDprChange = (): void => measure();
   function watchDpr(): void {
+    const now = globalThis.devicePixelRatio || 1;
+    // ResizeObserver 拖視窗邊緣時一秒呼叫 measure() 幾十次：dpr 沒變就沿用原本的查詢，不重建
+    if (dprQuery && now === rawDpr && !destroyed) return;
     dprQuery?.removeEventListener?.('change', onDprChange);
     dprQuery = null;
-    rawDpr = globalThis.devicePixelRatio || 1;
+    rawDpr = now;
     // linkedom（單元測試）沒有 matchMedia
     if (destroyed || typeof globalThis.matchMedia !== 'function') return;
     dprQuery = globalThis.matchMedia(`(resolution: ${rawDpr}dppx)`);
@@ -381,10 +397,10 @@ export function mountCanvasTree(host: HTMLElement, data: TreeData, opts: MountOp
     // 一份邊距。剛畫好的位圖 ox＝tx＋邊距，整條式子化簡成 (0, 0)＝1:1 整數搬移、不會糊。
     const [ox, oy] = cache.originPx;
     const bx = dpr * (tx + marginCss[0] - ox), by = dpr * (ty + marginCss[1] - oy);
-    // hover／focus 只改互動層：位圖沿用（reused）、貼的位置與元素尺寸都沒變時，靜態層上已經是
+    // hover／focus 只改互動層：位圖沿用（reused）、貼的位置沒變時，靜態層上已經是
     // 這張圖了，不必整張 clear＋blit 一次。⚠️ 守衛以 ensure() 的回傳值為準，**不能**比 bitmap
     // 實例——cache.ts 在尺寸不變時是原地重畫同一張 backing canvas，實例永遠相同。
-    const blitKey = bmp ? `${bx},${by},${staticEl.width},${staticEl.height}` : '';
+    const blitKey = bmp ? `${bx},${by}` : '';
     if (painted === 'redrawn' || blitKey !== lastBlit) {
       staticCtx.setTransform(1, 0, 0, 1, 0, 0);
       staticCtx.clearRect(0, 0, staticEl.width, staticEl.height);
@@ -428,7 +444,7 @@ export function mountCanvasTree(host: HTMLElement, data: TreeData, opts: MountOp
   // ── pointer：拖曳 vs 點選、雙指縮放、hover ──────────────────────────────────
   // down.id 是 pointerdown「當下」命中的節點：pointerup 時畫面可能已經平移過，再問一次會答錯，
   // 而 setPointerCapture 之後 e.target 一律是 overlayEl，也問不出來。
-  let down: { x: number; y: number; id: string | null } | null = null;
+  let down: { x: number; y: number; id: string | null; pointerId: number } | null = null;
   let dragged = false;
   let last: { x: number; y: number } | null = null;
   const touches = new Map<number, { x: number; y: number }>();
@@ -460,13 +476,11 @@ export function mountCanvasTree(host: HTMLElement, data: TreeData, opts: MountOp
   }
 
   overlayEl.addEventListener('pointerdown', (e: PointerEvent) => {
-    // 滑鼠只收左鍵：右鍵／中鍵放開時會走到 endPointer 的「點選」，右鍵點空白處就把卡片關掉、
-    // ?node= 清空。要擋在 touches.set 之前，否則右鍵選單吃掉 pointerup 時 touches 會殘留。
-    // 只看 mouse：筆的側鍵是 button 2 但那是筆自己的語意，不跟著擋；單元測試的假事件兩個欄位都沒帶。
-    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    // 要擋在 touches.set 之前，否則右鍵選單吃掉 pointerup 時 touches 會殘留。
+    if (!isGesturePointer(e)) return;
     touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (touches.size >= 2) { endDrag(); return; }   // 第二指落下＝縮放手勢，不是點選
-    down = { x: e.clientX, y: e.clientY, id: hitAt(e.clientX, e.clientY) };
+    down = { x: e.clientX, y: e.clientY, id: hitAt(e.clientX, e.clientY), pointerId: e.pointerId };
     dragged = false;
     last = { x: e.clientX, y: e.clientY };
     try { overlayEl.setPointerCapture?.(e.pointerId); } catch { /* 沒有捕捉能力就算了，不影響平移 */ }
@@ -524,6 +538,17 @@ export function mountCanvasTree(host: HTMLElement, data: TreeData, opts: MountOp
   };
   overlayEl.addEventListener('pointerup', (e: PointerEvent) => endPointer(e, false));
   overlayEl.addEventListener('pointercancel', (e: PointerEvent) => { endPointer(e, true); clearHover(); });
+  // 原生右鍵選單打開＝這一下不是點選也不是拖曳。macOS 的 Ctrl＋點擊是 button 0（isGesturePointer
+  // 擋不到），選單在 mousedown 時彈出、pointerup 可能被吃掉；Windows 的右鍵已經在 pointerdown 擋掉。
+  // 把手勢收掉：之後就算 pointerup 到了，down 已經是 null，endPointer 不會呼叫 onSelect。
+  overlayEl.addEventListener('contextmenu', () => {
+    if (!down) return;
+    touches.delete(down.pointerId);
+    if (touches.size < 2) lastDist = 0;
+    const id = down.pointerId;
+    endDrag();
+    try { overlayEl.releasePointerCapture?.(id); } catch { /* 沒捕捉過就沒得放 */ }
+  });
   // 指標離開畫布（滑到工具列、切出視窗）之後 canvas 再也收不到 pointermove，hover 會留在最後
   // 那顆節點上——符文的標籤是靠 hover 才畫的，不清就變成畫面上一個擦不掉的字。
   overlayEl.addEventListener('pointerleave', () => clearHover());
@@ -563,6 +588,12 @@ export function mountCanvasTree(host: HTMLElement, data: TreeData, opts: MountOp
     onBlur: () => { state = { ...state, focus: null }; requestRedraw(); },
     onActivate: id => { for (const cb of selectCbs) cb(id, 'keyboard'); },
   });
+
+  // 2D context 遺失再恢復（GPU 重置、記憶體壓力下瀏覽器收回 canvas backing）時兩張 canvas 都是空的。
+  // frame() 的 blit 守衛以為靜態層還在——不歸零的話要等到平移／縮放才補回來。互動層每幀都整張重畫，不必管。
+  for (const el of [staticEl, overlayEl]) {
+    el.addEventListener('contextrestored', () => { lastBlit = null; cache.invalidate(); requestRedraw(); });
+  }
 
   const ro = typeof ResizeObserver === 'function' ? new ResizeObserver(() => measure()) : null;
   ro?.observe(host);

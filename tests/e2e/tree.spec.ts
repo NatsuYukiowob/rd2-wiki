@@ -507,6 +507,12 @@ test('E2. 組合鍵與詳情卡片裡的方向鍵都不動畫布；左右滑的�
   await page.keyboard.press('ArrowDown');
   await page.keyboard.press('ArrowDown');
   expect(await nodeRect(page, '2108')).toEqual(before);
+  // 只放行方向鍵：卡片用不到 +／−，焦點在卡片裡照樣縮放畫布
+  const s2 = await treeScale(page);
+  await page.keyboard.press('Equal');
+  await expect.poll(() => treeScale(page)).not.toBe(s2);
+  await page.keyboard.press('Minus');
+  await settleCanvas(page);
 
   // Shift＋滾輪／觸控板左右滑（deltaY=0）：舊版每一下都當成縮小
   const s1 = await treeScale(page);
@@ -1066,6 +1072,18 @@ test('N5. 鍵盤 Enter 開節點也會置中，途中按其他鍵不會把平移
   await page.keyboard.press('a');
   await expect.poll(() => centerOffset(page, '5113'),
     { message: '平移途中按無關的鍵不該把它掐掉' }).toBeLessThanOrEqual(2);
+
+  // 第三半（PR #88 review）：controller 不理的指標事件（左右滑的滾輪、右鍵）也不能掐掉平移
+  for (const act of ['wheelX', 'rightClick'] as const) {
+    await page.goto('/tree');
+    await waitTree(page);
+    const c = await nodeCenter(page, '5113');
+    await clickNode(page, '5113');
+    if (act === 'wheelX') await page.mouse.wheel(120, 0);
+    else await page.mouse.click(c.x, c.y, { button: 'right' });
+    await expect.poll(() => centerOffset(page, '5113'),
+      { message: `平移途中 ${act} 不該把它掐掉` }).toBeLessThanOrEqual(2);
+  }
 });
 
 /**

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { parseHTML } from 'linkedom';
-import { mountCanvasTree, wheelZoomFactor } from '../../../src/lib/canvas/canvas-tree';
+import { mountCanvasTree, wheelZoomFactor, isGesturePointer } from '../../../src/lib/canvas/canvas-tree';
 import type { TreeData } from '../../../src/lib/types';
 import { readTree } from '../../helpers/read-tree';
 const data = readTree() as TreeData;
@@ -715,5 +715,82 @@ describe('hover 只重畫互動層', () => {
     expect(env.offscreenCalls()).toBe(0);
     expect(blits(env.staticLog())).toBe(2);
     h.destroy(); env.restore();
+  });
+});
+
+// ── PR #88 /code-review 第 1 輪 ───────────────────────────────────────────────
+describe('review 第 1 輪', () => {
+  it('Firefox：先讀 deltaMode 才拿得到行模式——讀取順序反了就只剩 1.05 倍', () => {
+    // 模擬 Firefox 的行為：deltaY 在 deltaMode 被讀過之前被讀到，就回報像素（3 行 × 19 px）並把 deltaMode 定成 0
+    const ff = () => {
+      let modeRead = false, pixelLocked = false;
+      return {
+        get deltaMode() { modeRead = true; return pixelLocked ? 0 : 1; },
+        get deltaY() { if (!modeRead) pixelLocked = true; return pixelLocked ? -57 : -3; },
+        get deltaX() { return 0; },
+        ctrlKey: false,
+      };
+    };
+    expect(wheelZoomFactor(ff() as never, 900)).toBeCloseTo(Math.pow(1.1, 0.99), 10);
+  });
+
+  it('isGesturePointer：滑鼠只收左鍵，觸控／筆與沒帶欄位的假事件一律收', () => {
+    expect(isGesturePointer({ pointerType: 'mouse', button: 0 })).toBe(true);
+    expect(isGesturePointer({ pointerType: 'mouse', button: 2 })).toBe(false);
+    expect(isGesturePointer({ pointerType: 'mouse', button: 1 })).toBe(false);
+    expect(isGesturePointer({ pointerType: 'pen', button: 2 })).toBe(true);
+    expect(isGesturePointer({} as never)).toBe(true);
+  });
+
+  it('macOS Ctrl＋點擊（button 0 ＋ contextmenu）：不算點選，也不留下觸控點', () => {
+    const { document, host } = laidOutHost();
+    const h = mountCanvasTree(host, data);
+    const overlay = host.querySelector('canvas.tree-overlay') as HTMLElement;
+    const r = h.nodeScreenRect('1001')!;
+    const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+    const got: (string | null)[] = [];
+    h.onSelect(id => got.push(id));
+    overlay.dispatchEvent(mousePtr(document, 'pointerdown', 10, 10, 0));
+    overlay.dispatchEvent(new (document.defaultView as unknown as { Event: typeof Event }).Event('contextmenu'));
+    overlay.dispatchEvent(mousePtr(document, 'pointerup', 10, 10, 0));
+    expect(got).toEqual([]);
+    // 選單吃掉 pointerup 的情形：觸控點不能殘留，否則之後的 hover 分支永遠走不到
+    overlay.dispatchEvent(mousePtr(document, 'pointerdown', 10, 10, 0));
+    overlay.dispatchEvent(new (document.defaultView as unknown as { Event: typeof Event }).Event('contextmenu'));
+    overlay.dispatchEvent(ptr(document, 'pointermove', cx, cy));
+    expect(h.getState().hover).toBe('1001');
+    h.destroy();
+  });
+
+  it('2D context 恢復之後：下一次 hover 就重貼靜態層（blit 守衛不能以為它還在）', () => {
+    const env = paintedHost();
+    const h = mountCanvasTree(env.host, data);
+    const overlay = env.host.querySelector('canvas.tree-overlay') as HTMLElement;
+    const staticEl = env.host.querySelector('canvas.tree-static') as HTMLElement;
+    env.flush(3); env.reset();
+    staticEl.dispatchEvent(new (env.document.defaultView as unknown as { Event: typeof Event }).Event('contextrestored'));
+    const r = h.nodeScreenRect('1001')!;
+    overlay.dispatchEvent(ptr(env.document, 'pointermove', r.left + r.width / 2, r.top + r.height / 2));
+    env.flush(1);
+    expect(env.staticLog().filter(c => c.m === 'drawImage').length).toBe(1);
+    h.destroy(); env.restore();
+  });
+
+  it('ResizeObserver 連續觸發但 dpr 沒變：不重建 matchMedia 查詢', () => {
+    const { host } = laidOutHost();
+    let created = 0;
+    let roCb: (() => void) | null = null;
+    const prevMM = globalThis.matchMedia, prevRO = globalThis.ResizeObserver;
+    globalThis.matchMedia = (() => { created++; return { matches: true, addEventListener() {}, removeEventListener() {} }; }) as never;
+    globalThis.ResizeObserver = class { constructor(cb: () => void) { roCb = cb; } observe() {} disconnect() {} } as never;
+    try {
+      const h = mountCanvasTree(host, data);
+      expect(created).toBe(1);
+      for (let i = 0; i < 10; i++) roCb!();
+      expect(created).toBe(1);
+      h.destroy();
+    } finally {
+      globalThis.matchMedia = prevMM; globalThis.ResizeObserver = prevRO;
+    }
   });
 });
