@@ -1600,6 +1600,8 @@ colors 重新著色，那張樹本來就看得見，等於用自己的無障礙�
   - 部署後有一步 **smoke check**：先等 `https://rd2wiki.org/deploy-sha.txt`（verify 上傳 dist 前寫入）回這次的 SHA，
     再驗 `/` 要 200、`POST /api/hits` 要回 `{"n":<數字>}`（每次部署計數 +1）。打正式網域是因為每次部署的專屬網址
     （`<hash>.rd2-wiki.pages.dev`）前面有 Cloudflare Access，匿名一律 302。
+  - deploy 只部署 **main 的最新 commit**（開頭一步查 `commits/main`，不是就跳過並留 warning），並用 `concurrency: deploy-production`
+    一次只跑一個。⚠️ **要回滾用 Cloudflare Pages 儀表板的 Rollback**，重跑舊 run 不會部署。
   - ⚠️ 正式網域寫死在很多地方（`astro.config.mjs` 的 `site`、`robots.txt`、`seo.spec.ts`、這個 smoke、README…）。
     換網域用 `git grep rd2wiki.org` 全找。
 - ⚠️ **`public/_headers` 對 Pages Functions 的回應無效**（官方文件明載）。CSP 之類的標頭要兩邊都寫：

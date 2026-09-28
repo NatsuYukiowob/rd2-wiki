@@ -96,14 +96,6 @@ jobs:
           echo "sprite.webp   = ${sprite} bytes / 預算 ${sprite_budget} bytes，餘裕 ${sprite_margin} bytes"
           test "$gz" -le "$gz_budget" || { echo "::error::tree.json gzip 後 ${gz} bytes 超過效能預算 ${gz_budget} bytes"; exit 1; }
           test "$sprite" -le "$sprite_budget" || { echo "::error::sprite.webp ${sprite} bytes 超過效能預算 ${sprite_budget} bytes"; exit 1; }
-      - name: 部署工具能不能打包 Functions（deploy/ 的 PR 期檢查）
-        # deploy job 只在 main 上跑，Dependabot 對 deploy/ 開的 wrangler 升級 PR 在這之前沒有任何東西會裝它、跑它。
-        # 這裡用 deploy job 同一套安裝方式（lockfile＋--ignore-scripts）打包 functions/，不需要 token：
-        # 升級壞了打包、engines 下限、或 Functions 沒被收進去，都在 PR 上就紅。
-        run: |
-          npm ci --ignore-scripts --prefix deploy
-          deploy/node_modules/.bin/wrangler pages functions build --outdir /tmp/functions-build
-          grep -q 'api/hits' /tmp/functions-build/index.js || { echo "::error::打包結果裡沒有 /api/hits 路由"; exit 1; }
       - name: 產生差異摘要（規則 11：id 變動警告）
         if: github.event_name == 'pull_request'
         run: |
@@ -119,6 +111,22 @@ jobs:
           # 渲染器決定，見 tools/diff-summary.ts 的 renderDiffComment 說明。
           name: diff-summary
           path: diff-summary.json
+      - name: 部署工具能不能打包 Functions（deploy/ 的 PR 期檢查）
+        # deploy job 只在 main 上跑，Dependabot 對 deploy/ 開的 wrangler 升級 PR 在這之前沒有任何東西會裝它、跑它。
+        # 這裡用 deploy job 同一套安裝方式（lockfile＋--ignore-scripts）打包 functions/，不需要 token：
+        # 升級壞了打包、engines 下限、或 Functions 沒被收進去，都在 PR 上就紅。
+        #
+        # ⚠️ 在**只有 functions/ 與 deploy/ 的乾淨目錄**裡做，重現 deploy job 的 sparse 工作區：
+        # 在這裡的完整 checkout 做的話，functions/ 誤 import src/ 或根目錄的套件也解析得到，擋不下來。
+        # ⚠️ 排在差異摘要上傳**之後**：這步要連 npm registry，它紅了不能連帶吃掉 id 變動警告。
+        run: |
+          work=$(mktemp -d)
+          cp -r functions deploy "$work/"
+          rm -rf "$work/deploy/node_modules"
+          cd "$work"
+          npm ci --ignore-scripts --prefix deploy
+          deploy/node_modules/.bin/wrangler pages functions build --outdir "$work/out"
+          grep -q 'api/hits' "$work/out/index.js" || { echo "::error::打包結果裡沒有 /api/hits 路由"; exit 1; }
       - name: 寫入部署標記（給 deploy 的 smoke check 認版本）
         # smoke check 打正式網域時要分得出「回應的是這一版還是上一版」：部署是原子的，
         # /deploy-sha.txt 回的是這次 commit 的 SHA，就代表整份新部署已經生效。
@@ -265,9 +273,29 @@ jobs:
     needs: [verify, e2e]
     runs-on: ubuntu-26.04
     timeout-minutes: 10
+    # 部署一次只跑一個；排隊中的舊 run 會被較新的取代（GitHub 對同 group 的 pending 只留最新一個）。
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
     permissions:
       contents: read
     steps:
+      - name: 確認這次仍是 main 的最新 commit
+        id: head
+        # 不是最新就跳過部署（不算失敗）：較新的 commit 會自己部署。擋兩種會把正式站倒回舊版的情況——
+        # 兩次 push 的 run 跑完順序顛倒，以及對舊 run 按「Re-run failed jobs」（smoke 紅之後最自然的動作，
+        # dist artifact 還在的一天內會用舊 dist 重新部署，而 smoke 照樣綠）。
+        # 真的要回滾，用 Cloudflare Pages 儀表板的 Rollback，不要重跑舊 run。
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tip=$(gh api "repos/${{ github.repository }}/commits/main" --jq .sha)
+          if [ "$tip" = "$GITHUB_SHA" ]; then
+            echo "latest=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::main 已經前進到 ${tip}，這次（${GITHUB_SHA}）不部署——較新的 run 會部署"
+            echo "latest=false" >> "$GITHUB_OUTPUT"
+          fi
       - name: 檢查部署憑證
         id: creds
         # secrets 不能用在 job 層的 `if`（GitHub 的 context 限制），所以在這裡判斷：
@@ -277,8 +305,12 @@ jobs:
         env:
           TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          LATEST: ${{ steps.head.outputs.latest }}
+        # ready 同時代表「憑證齊全」與「這次是 main 最新」——下面每一步只看這一個旗標。
         run: |
-          if [ -z "$TOKEN" ] || [ -z "$ACCOUNT" ]; then
+          if [ "$LATEST" != true ]; then
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          elif [ -z "$TOKEN" ] || [ -z "$ACCOUNT" ]; then
             echo "::warning::CLOUDFLARE_API_TOKEN／CLOUDFLARE_ACCOUNT_ID 未設定，跳過部署"
             echo "ready=false" >> "$GITHUB_OUTPUT"
           else
