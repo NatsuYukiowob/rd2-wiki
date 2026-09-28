@@ -1,0 +1,27 @@
+# 管兩塊：GitHub Actions（把 pin 住的 SHA 與後面的 tag 註解一起升級，repo 開了 sha_pinning_required）
+# 與 deploy/ 的部署工具（wrangler，deploy job 專用）。
+# 只把 minor／patch 併成一個 PR；major 各自一個 PR——deploy 與 pr-comment.yml 在 PR 上驗不到，
+# major 升級要各自看 release note，不能混在例行的小升級裡一起 merge。
+# 網站本身（repo 根目錄）的 npm 相依不交給它：資料與建置對版本敏感（E2E 的 Playwright 容器 tag 要跟 package-lock 同版），升級一律手動。
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      actions:
+        patterns: ['*']
+        update-types: [minor, patch]
+    commit-message:
+      prefix: ci
+  - package-ecosystem: npm
+    directory: /deploy
+    schedule:
+      interval: monthly
+    groups:
+      deploy-tools:
+        patterns: ['*']
+        update-types: [minor, patch]
+    commit-message:
+      prefix: ci

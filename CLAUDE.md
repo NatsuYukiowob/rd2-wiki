@@ -1584,15 +1584,26 @@ colors 重新著色，那張樹本來就看得見，等於用自己的無障礙�
 
 ## 部署
 
-- ⚠️ **`ci.yml` 的 `deploy` job 刻意沒有 `actions/checkout`**，只 `download-artifact` 拿 `verify` 驗過的
-  `dist/`，好讓「上線的位元組＝被驗過的位元組」。代價是 runner 的工作目錄裡**只有 dist/**，而
-  Cloudflare Pages 的 Functions 是看「執行指令的那個目錄底下有沒有 `functions/`」決定要不要打包的
-  （不存在就整段跳過，**沒有 warning、部署照樣回成功**）。哪天要加 Pages Functions：
+- `ci.yml` 的 `deploy` job：`download-artifact` 拿 `verify` 驗過的 `dist/`（上線的位元組＝被驗過的位元組），
+  另外 **sparse checkout 只取 `functions/` 與 `deploy/`**（部署工具，見下）——Cloudflare Pages 看「執行指令的目錄底下有沒有 `functions/`」決定要不要
+  打包 Functions，不存在就整段跳過，**沒有 warning、部署照樣回成功**。
   - ⚠️ **checkout 要放在 `download-artifact` 之前**（`actions/checkout` 預設 `clean: true` 會清空工作
     目錄，順序反了會把下載好的 `dist/` 洗掉，然後部署一個空目錄——而且大概不會報錯）。
+  - ⚠️ **不要改回整個 repo checkout**：deploy 只該有 `functions/` 與 `deploy/`，網站的相依樹不該進到拿得到 token 的 job。sparse 要關 cone mode（cone 會帶上根目錄檔案）。
+    `functions/` 要 import 目錄外的東西時，sparse 清單要跟著加。
   - ⚠️ action 要 pin 40 碼 SHA（repo 開了 `sha_pinning_required`）。
-  - **deploy 後面要補一步 smoke**，否則「binding 沒綁／表沒建／functions 沒上傳／CSP 擋掉」四種失敗
-    都會收斂成「那塊功能靜靜消失」，沒有任何人會知道。
+  - **不用 wrangler-action**（它在 token 已放進環境之後才自己 `npm i` wrangler）：部署工具放在 `deploy/`
+    （自己的 `package.json`＋`package-lock.json`），在沒有 secret 的前一步 `npm ci --ignore-scripts --prefix deploy`，
+    部署那步從 repo 根目錄跑 `deploy/node_modules/.bin/wrangler pages deploy`，token 只出現在那一步的 env。
+    升級 wrangler：`cd deploy && npm i wrangler@<新版> --ignore-scripts`，lockfile 一起 commit（Dependabot 每月也會開 PR）。
+    deploy job 在 PR 上不跑，所以 `verify` 有一步用同一套安裝方式打包 `functions/`（不需要 token），升級壞了在 PR 上就紅。
+  - 部署後有一步 **smoke check**：先等 `https://rd2wiki.org/deploy-sha.txt`（verify 上傳 dist 前寫入）回這次的 SHA，
+    再驗 `/` 要 200、`POST /api/hits` 要回 `{"n":<數字>}`（每次部署計數 +1）。打正式網域是因為每次部署的專屬網址
+    （`<hash>.rd2-wiki.pages.dev`）前面有 Cloudflare Access，匿名一律 302。
+  - deploy **不會把正式站倒回舊版**：開頭讀線上 `deploy-sha.txt`，用 compare API 比，這次比線上舊（`behind`）就跳過並留 warning。
+    ⚠️ **要回滾用 Cloudflare Pages 儀表板的 Rollback**，重跑舊 run 不會部署。
+  - ⚠️ 正式網域寫死在很多地方（`astro.config.mjs` 的 `site`、`robots.txt`、`seo.spec.ts`、這個 smoke、README…）。
+    換網域用 `git grep rd2wiki.org` 全找。
 - ⚠️ **`public/_headers` 對 Pages Functions 的回應無效**（官方文件明載）。CSP 之類的標頭要兩邊都寫：
   靜態頁走 `_headers`，Function 在程式碼裡自己放進 `Response`。驗收也要分開驗。
 - ⚠️ **`#hit-counter` 抓得到 HTML 不代表看得到。** 訪客計數器預設 `hidden`，前端拿到數字才顯示——

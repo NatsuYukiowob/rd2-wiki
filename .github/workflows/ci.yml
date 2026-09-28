@@ -18,7 +18,11 @@
 #
 # ⚠️ 所有 action 都 pin 到完整 commit SHA（後面註解保留原本的 tag）：repo 的 Actions 設定開了
 # 「Require actions to be pinned to a full-length commit SHA」，寫成 `@v4` 會被 GitHub 直接拒跑。
-# 升級時把 SHA 與註解一起換掉（`gh api repos/<owner>/<repo>/git/ref/tags/<tag>`）。
+# 升級時把 SHA 與註解一起換掉（`gh api repos/<owner>/<repo>/commits/<tag> --jq .sha`——
+# 用 commits 不用 git/ref：annotated tag 的 git/ref 拿到的是 tag 物件、不是 commit）。
+#
+# ⚠️ runner 寫死 `ubuntu-26.04` 而不是 `ubuntu-latest`：latest 在 2026-10-19～11-19 間會分批
+# 從 24.04 換成 26.04，同一個 commit 前後兩次 run 可能落在不同 image。寫死版本，換 image 就是一個看得到的 PR。
 name: CI
 on:
   pull_request:
@@ -33,14 +37,14 @@ concurrency:
 jobs:
   verify:
     name: verify
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         # fetch-depth 0：下面「產生差異摘要」步驟要用 git worktree 簽出 PR 的 base commit
         # 來跑一次 base 版本的 build:data，沒有完整歷史會找不到那個 commit。
         with: { fetch-depth: 0 }
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with: { node-version: '24', cache: npm }
       # --ignore-scripts：fork PR 改得動 package.json 的 lifecycle script，而 `npm ci` 會在
       # runner 上執行它。這個 repo 的相依套件不需要安裝腳本也能用（sharp 的原生二進位走
@@ -99,7 +103,7 @@ jobs:
           git worktree add /tmp/base ${{ github.event.pull_request.base.sha }}
           (cd /tmp/base && npm ci --ignore-scripts && npm run build:data && cp src/generated/tree.json /tmp/base.json)
           npx tsx tools/diff-summary.ts /tmp/base.json /tmp/head.json
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: github.event_name == 'pull_request'
         with:
           # 上傳的是**資料**（JSON）不是版面（Markdown）。這一步跑的是 PR 端的程式碼，
@@ -107,11 +111,35 @@ jobs:
           # 渲染器決定，見 tools/diff-summary.ts 的 renderDiffComment 說明。
           name: diff-summary
           path: diff-summary.json
+      - name: 部署工具能不能打包 Functions（deploy/ 的 PR 期檢查）
+        # 只在 PR 上跑：main 的 push 緊接著就是 deploy job 本身，在這裡多裝一次只是多一個 registry 抖動點。
+        if: github.event_name == 'pull_request'
+        # deploy job 只在 main 上跑，Dependabot 對 deploy/ 開的 wrangler 升級 PR 在這之前沒有任何東西會裝它、跑它。
+        # 這裡用 deploy job 同一套安裝方式（lockfile＋--ignore-scripts）打包 functions/，不需要 token：
+        # 升級壞了打包、engines 下限、或 Functions 沒被收進去，都在 PR 上就紅。
+        #
+        # ⚠️ 在**只有 functions/ 與 deploy/ 的乾淨目錄**裡做，重現 deploy job 的 sparse 工作區：
+        # 在這裡的完整 checkout 做的話，functions/ 誤 import src/ 或根目錄的套件也解析得到，擋不下來。
+        # ⚠️ 排在差異摘要上傳**之後**：這步要連 npm registry，它紅了不能連帶吃掉 id 變動警告。
+        run: |
+          work=$(mktemp -d)
+          cp -r functions deploy "$work/"
+          rm -rf "$work/deploy/node_modules"
+          cd "$work"
+          npm ci --ignore-scripts --prefix deploy
+          deploy/node_modules/.bin/wrangler pages functions build --outdir "$work/out"
+          grep -q 'api/hits' "$work/out/index.js" || { echo "::error::打包結果裡沒有 /api/hits 路由"; exit 1; }
+      - name: 寫入部署標記（給 deploy 的 smoke check 認版本）
+        # smoke check 打正式網域時要分得出「回應的是這一版還是上一版」：部署是原子的，
+        # /deploy-sha.txt 回的是這次 commit 的 SHA，就代表整份新部署已經生效。
+        # 寫在 verify、而不是 deploy：上線的位元組仍然是這裡上傳的這一份。
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: echo "$GITHUB_SHA" > dist/deploy-sha.txt
       - name: 上傳建置產物（給 deploy 用）
         # 「CI 綠才上線」要成立，上線的就得是**被驗過的那份 dist**，不是另外再建一次的產物。
         # 重建會引入 sharp 編碼、astro 資產雜湊、兩次 npm ci 之間 registry 變動等不確定性。
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: dist
           path: dist/
@@ -119,7 +147,7 @@ jobs:
 
   e2e-shard:
     name: e2e-shard ${{ matrix.shard }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     # ⚠️ 2026-09-06 起 E2E 跑在 Playwright 官方容器裡，tag **pin 到 package-lock 的 @playwright/test 版本**
     #（兩邊版本不同時 Playwright 會拒絕啟動瀏覽器）。理由不只是下面那段 apt 的歷史：畫布改成 canvas 之後
     # 四張快照（tests/e2e/tree.spec.ts 的 F）比的是點陣圖，標籤字型差一點就整張紅——第一次在 ubuntu-latest
@@ -160,8 +188,8 @@ jobs:
       matrix:
         shard: [1, 2, 3]
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with: { node-version: '24', cache: npm }
       - run: npm ci --ignore-scripts
       # E2E 驗證的是「建置後、真實瀏覽器裡」的行為（見 playwright.config.ts 開頭註解），
@@ -181,11 +209,12 @@ jobs:
       # 命中時仍得補跑 install-deps，等於把「唯一會慢的那件事」變成唯一還在做的事。
       #
       # 既然 apt 是我們控制不了的外部變因，作法是**完全不碰它**：只抓瀏覽器，不裝系統套件。
-      # 前提是 GitHub 的 ubuntu-latest runner image 本來就內建 Chromium 需要的共用函式庫——
+      # 前提是 GitHub 的 runner image 本來就內建 Chromium 需要的共用函式庫——
       # 這是**假設，不是已知**（本機環境跟 runner image 不同，驗不準）。若 Chromium 起不來，
       # 會在「端對端測試」那步立刻噴 launch 失敗，是幾秒內就看得到的紅燈，不是 20 分鐘的卡死。
       # 那時的下一手是改用官方容器（`container: mcr.microsoft.com/playwright:v1.62.1-noble`，
       # tag 要 pin 具體版本），image 內建瀏覽器與函式庫，整個問題類別消失。
+      # ⚠️ 以上是歷史：2026-09-06 起這個 job 已經跑在上面的容器裡，host runner image 的函式庫不再相關。
       # 不再 `npx playwright install chromium`：容器 image 已內建對應版本的瀏覽器與系統函式庫。
       - name: 端對端測試（含建置）
         # 這裡刻意沒有獨立的「建置站台」步驟：package.json 的 `pree2e` 已經會跑一次
@@ -202,10 +231,10 @@ jobs:
         # （config 的 screenshot: only-on-failure、trace: retain-on-failure）。
         # 想要 HTML 報告就得先改 config 的 reporter，不是在這裡多列一個目錄。
         #
-        # ⚠️ 名字**必須帶 shard 編號**：upload-artifact@v4 不允許同一次 run 上傳兩個同名 artifact，
+        # ⚠️ 名字**必須帶 shard 編號**：upload-artifact（v4 起）不允許同一次 run 上傳兩個同名 artifact，
         # 兩片一起紅的時候第二片會 409 失敗，而那正是最需要看痕跡的情況。
         if: failure()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: playwright-failure-traces-${{ matrix.shard }}
           path: test-results/
@@ -230,7 +259,7 @@ jobs:
     name: e2e
     needs: [e2e-shard]
     if: ${{ !cancelled() }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 5
     steps:
       - name: 檢查所有分片都綠
@@ -244,21 +273,59 @@ jobs:
     # 只有 main 上的 push 才部署；PR（含 fork PR）不部署，也拿不到下面的 secret。
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: [verify, e2e]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 10
+    # 不另設 job 層 concurrency：檔頭的 workflow 層 group（main 上 cancel-in-progress=false）已經讓 main 的 run
+    # 一次只跑一個、排隊中的舊 run 被較新的取代。
     permissions:
       contents: read
     steps:
+      - name: 確認不會把正式站倒回舊版
+        id: head
+        # 要守的是「不部署比正式站現在那版更舊的 commit」，不是「只部署 main 最新」——後者在較新的 run
+        # 失敗（或 [skip ci]）時，會讓這個已經全部驗過的 commit 永遠上不了線。
+        # 讀線上 /deploy-sha.txt，用 compare API 比先後（main 是線性歷史，squash merge＋non_fast_forward）：
+        #   ahead／identical → 部署（identical 是重跑同一版）；behind → 跳過並留 warning；
+        #   讀不到線上 SHA（第一次部署、站掛了）→ 照常部署，跟沒有這一步時一樣；
+        #   其他（diverged：main 被改寫過）→ 紅，交給人判斷。
+        # 擋的情況：對舊 run 按「Re-run failed jobs」（smoke 紅之後最自然的動作）會用舊 dist 蓋掉較新的線上版本。
+        # 真的要回滾，用 Cloudflare Pages 儀表板的 Rollback。
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          live=$(curl -sS --connect-timeout 5 --max-time 15 -H 'Cache-Control: no-cache' \
+            "https://rd2wiki.org/deploy-sha.txt?t=${GITHUB_RUN_ID}-pre" || true)
+          if ! printf '%s' "$live" | grep -Eq '^[0-9a-f]{40}$'; then
+            echo "讀不到線上的部署 SHA，照常部署"
+            echo "latest=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          status=$(gh api "repos/${{ github.repository }}/compare/${live}...${GITHUB_SHA}" --jq .status)
+          echo "線上 ${live}；這次 ${GITHUB_SHA}；相對線上：${status}"
+          case "$status" in
+            ahead|identical) echo "latest=true" >> "$GITHUB_OUTPUT" ;;
+            behind)
+              echo "::warning::正式站已經是較新的 ${live}，這次（${GITHUB_SHA}）不部署，免得倒回舊版"
+              echo "latest=false" >> "$GITHUB_OUTPUT" ;;
+            *)
+              echo "::error::線上版本與這次的關係是「${status}」，不是線性前後，停下來交給人判斷"
+              exit 1 ;;
+          esac
       - name: 檢查部署憑證
         id: creds
         # secrets 不能用在 job 層的 `if`（GitHub 的 context 限制），所以在這裡判斷：
-        # 憑證還沒設好時整個部署安靜跳過、CI 仍算綠，站台繼續由 Cloudflare 的 Git 整合更新。
-        # 設好之後這裡自動轉成 true，才真正變成「CI 綠才上線」。
+        # 憑證還沒設好時整個部署安靜跳過、CI 仍算綠（站台停在上一版）。
+        # ⚠️ Cloudflare Pages 專案沒有接 Git 整合（API 的 `source` 是 null，2026-09-28 查過），
+        # 這個 job 是唯一的上線路徑——下面 smoke 認 deploy-sha.txt 也靠這個前提。
         env:
           TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          LATEST: ${{ steps.head.outputs.latest }}
+        # ready 同時代表「憑證齊全」與「這次是 main 最新」——下面每一步只看這一個旗標。
         run: |
-          if [ -z "$TOKEN" ] || [ -z "$ACCOUNT" ]; then
+          if [ "$LATEST" != true ]; then
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          elif [ -z "$TOKEN" ] || [ -z "$ACCOUNT" ]; then
             echo "::warning::CLOUDFLARE_API_TOKEN／CLOUDFLARE_ACCOUNT_ID 未設定，跳過部署"
             echo "ready=false" >> "$GITHUB_OUTPUT"
           else
@@ -274,21 +341,96 @@ jobs:
         # **不存在就整段跳過，沒有 warning、部署照樣回成功**。這個 job 原本刻意不做 checkout
         # （只拿 verify 驗過的 dist），代價就是 repo 根的 functions/ 永遠到不了 runner。
         #
-        # 這裡只取原始碼、不跑 npm ci：Functions 由 wrangler 內建的 esbuild 打包，
+        # 這裡只取原始碼、不建置網站：Functions 由 wrangler 內建的 esbuild 打包，
         # 而 dist/ 仍然來自下一步的 artifact——**上線的靜態產物依舊是被驗過的那一份**。
+        # （唯一的安裝是下面「安裝 wrangler」對 deploy/ 的 `npm ci`。）
+        #
+        # ⚠️ **只取 functions/ 與 deploy/，不要整個 repo**：舊的 wrangler-action 在 repo 根目錄 `npm i`，
+        # 把網站整棵相依樹（2026-09-27 的 log：`added 478 packages`）連同 install script 裝進有 token 的環境。
+        # 部署工具改放 deploy/，有自己的 package.json＋package-lock.json，只裝那一份。
+        # ⚠️ 要關 cone mode：cone mode 一律帶上 repo 根目錄的檔案，package.json 會跟著進來。
+        # /.gitignore 不是必要的（git 對 skip-worktree 的 .gitignore 會從 index 讀，實測 dist/ 照樣被忽略），
+        # 取出來只是讓「工作區乾不乾淨」一眼看得出來。
+        # functions/ 只 import 自己目錄底下的檔案；哪天要 import src/ 或 npm 套件，這裡要跟著加。
         if: steps.creds.outputs.ready == 'true'
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: |
+            /functions/
+            /deploy/
+            /.gitignore
+          sparse-checkout-cone-mode: false
+          # 這個 job 之後不做任何 git 操作；不把 GITHUB_TOKEN 寫進 .git/config，
+          # 帶著 Cloudflare token 執行的 wrangler 就讀不到它。
+          persist-credentials: false
       - name: 取回 verify 驗過的建置產物
         # 刻意不在這裡重建：要上線的就是通過 validate／效能預算／單元測試／E2E 的那一份 dist。
         if: steps.creds.outputs.ready == 'true'
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: dist
           path: dist
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        # 明寫 Node 版本：wrangler 有 engines 下限，不要依賴 runner image 碰巧內建的那一版。
+        # 不開 cache：deploy/ 的相依很少，快取省不了幾秒，還多一個要信任的來源。
+        if: steps.creds.outputs.ready == 'true'
+        with: { node-version: '24' }
+      - name: 安裝 wrangler（這一步沒有 secret）
+        # 不用 cloudflare/wrangler-action：它是**先**把 token 放進 process.env、**再**跑沒有 lockfile、
+        # 會跑 install script 的 `npm i wrangler@<ver>`（v4.1.3 src/wranglerAction.ts 的
+        # authenticationSetup → installWrangler）。
+        #
+        # 這裡用 deploy/package-lock.json `npm ci`：wrangler 連同整棵相依樹都鎖在 lockfile（含 integrity），
+        # 下一步帶著 token 執行的每一行程式都是 commit 過的版本。wrangler 版本只寫在 deploy/package.json，
+        # 升級：`cd deploy && npm i wrangler@<新版> --ignore-scripts`，連 lockfile 一起 commit
+        #（Dependabot 也會對 deploy/ 開 PR）。
+        # --ignore-scripts：wrangler 的原生相依（esbuild、workerd）走 optionalDependencies 的預建檔，
+        # 不跑安裝腳本也能打包與部署（本機實測 `pages functions build` 與 `pages deploy` 都走得到）。
+        if: steps.creds.outputs.ready == 'true'
+        run: npm ci --ignore-scripts --prefix deploy
       - name: 部署到 Cloudflare Pages
         if: steps.creds.outputs.ready == 'true'
-        uses: cloudflare/wrangler-action@9acf94ace14e7dc412b076f2c5c20b8ce93c79cd # v3
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages deploy dist --project-name=rd2-wiki --branch=main
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        # 要在 repo 根目錄執行：Pages 看「執行目錄底下有沒有 functions/」決定要不要打包 Functions。
+        # 直接叫上一步裝好的執行檔：找不到就失敗，不會在這裡（有 token）臨時下載。
+        run: deploy/node_modules/.bin/wrangler pages deploy dist --project-name=rd2-wiki --branch=main
+      - name: 部署後 smoke check
+        # 部署回成功不代表站活著：Functions 沒打包進去、D1 binding 沒綁、表沒建，都會收斂成
+        #「訪客計數器靜靜消失」（#hit-counter 拿不到數字就保持 hidden），部署照樣綠。
+        #
+        # 打正式網域：每次部署的專屬網址（`<hash>.rd2-wiki.pages.dev`）前面有 Cloudflare Access，
+        # 匿名請求一律 302 到登入頁，CI 打不進去。正式網域在切換的那幾秒可能還是上一版，
+        # 所以先等 /deploy-sha.txt 回這次的 SHA（verify 寫進去的），確定是新部署了才驗功能。
+        #
+        # /api/hits 用 POST：訪客走的就是 POST（UPDATE … RETURNING，見 functions/lib/counter.ts
+        # 的 RETURNING 註解——這一步是唯一守它的東西）；GET 只走 SELECT、守不到。
+        # 代價是每次部署讓計數 +1。首頁要帶尾斜線，不帶會 308。
+        if: steps.creds.outputs.ready == 'true'
+        env:
+          URL: https://rd2wiki.org
+        run: |
+          c() { curl -sS --connect-timeout 5 --max-time 15 "$@"; }
+          live=''
+          tries=12
+          for i in $(seq 1 "$tries"); do
+            # 帶 query 與 no-cache：rd2wiki.org 的 .txt 會被邊緣快取（回 `cache-control: public, max-age=14400`、
+            # `cf-cache-status: REVALIDATED`），不能讓快取裡的上一版 SHA 害這裡等到逾時。
+            live=$(c -H 'Cache-Control: no-cache' "$URL/deploy-sha.txt?t=${GITHUB_RUN_ID}-${i}" || true)
+            [ "$live" = "$GITHUB_SHA" ] && break
+            echo "第 $i/$tries 次：/deploy-sha.txt 還是「${live:0:40}」，等新部署生效"
+            [ "$i" -lt "$tries" ] && sleep 10
+          done
+          if [ "$live" != "$GITHUB_SHA" ]; then
+            echo "::error::試了 $tries 次（每次間隔 10 秒），正式站仍沒切到這次部署（/deploy-sha.txt ≠ $GITHUB_SHA）"
+            exit 1
+          fi
+          page=$(c -o /dev/null -w '%{http_code}' "$URL/" || true)
+          # --data ''：帶 Content-Length: 0，沒有 body 的 HTTP/1.1 POST 有些代理會回 411。
+          hits=$(c -X POST --data '' "$URL/api/hits" || true)
+          echo "新部署已生效；/ → ${page}，POST /api/hits → ${hits}"
+          if [ "$page" != 200 ] || ! printf '%s' "$hits" | grep -Eq '^\{"n":[0-9]+\}$'; then
+            echo "::error::smoke check 失敗：首頁或 /api/hits 不正常"
+            exit 1
+          fi
