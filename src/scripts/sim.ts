@@ -74,7 +74,14 @@ const isMobile = typeof matchMedia === 'function' && matchMedia('(width <= 720px
  * ⚠️ 宣告是 function（會 hoist）：mountCanvasTree() 在它之前就拿到這個參照。
  */
 function obscuringRects(): ScreenRect[] {
-  return visibleRects(['sim-toolbar', 'sim-panel', 'sim-fabs']);
+  const rects = visibleRects(['sim-toolbar', 'sim-panel']);
+  // ⚠️ 浮動鍵不能直接量：它的 bottom 綁 `--sim-panel-h`，那個變數由 ResizeObserver **之後**才寫、
+  // 而且 bottom 還有過場——revealDetail() 剛把抽屜撐高時量到的是舊位置（在新抽屜範圍裡、等於沒算），
+  // 平移完它才滑上來蓋住剛挪出來的節點（PR #90 review：390×844 點右下的 3405）。用終點算：
+  // 抽屜上緣往上 FABS_GAP。
+  const fabs = visibleRects(['sim-fabs'])[0];   // 桌機 display:none → 量不到
+  if (fabs) rects.push({ ...fabs, top: $('sim-panel').getBoundingClientRect().top - FABS_GAP - fabs.height });
+  return rects;
 }
 
 /** 桌機常駐側欄從 host 右緣吃掉多寬（手機或量不到時 0）。 */
@@ -149,13 +156,24 @@ function applyState(next: SimState | null): boolean {
   return true;
 }
 
+/**
+ * 推一步 undo、清掉 redo。**本頁自己的操作**（commit、放開等級滑桿）走這裡；跨分頁同步也推，
+ * 但一串連續同步只推第一次（見 syncFromStorage 的 syncBurst）。
+ */
+function pushUndo(prev: SimState, fromSync = false): void {
+  undoStack.push(prev);
+  if (undoStack.length > UNDO_LIMIT) undoStack.shift();
+  redoStack.length = 0;
+  syncBurst = fromSync;
+}
+/** 上一步 undo 是跨分頁同步推的、之後本頁還沒自己動過。 */
+let syncBurst = false;
+
 /** applyState ＋ 推一步 undo ＋ 重畫。一般的單次操作都走這裡。 */
 function commit(next: SimState | null): boolean {
   const before = state;
   if (!applyState(next)) return false;
-  undoStack.push(before);
-  if (undoStack.length > UNDO_LIMIT) undoStack.shift();
-  redoStack.length = 0;
+  pushUndo(before);
   render();
   return true;
 }
@@ -165,6 +183,7 @@ function undo(): void {
   if (!prev) return;
   redoStack.push(state);
   state = prev;
+  syncBurst = false;
   save();
   render();
 }
@@ -174,6 +193,7 @@ function redo(): void {
   if (!next) return;
   undoStack.push(state);
   state = next;
+  syncBurst = false;
   save();
   render();
 }
@@ -186,17 +206,24 @@ function redo(): void {
  * 被換掉的那份推進 undo（按復原救得回來），不是清空堆疊。自己不 save()：內容就是從存檔來的。
  */
 function syncFromStorage(): void {
+  // ⚠️ 這一頁正在拖等級滑桿：render() 會整段重寫詳情、把手上按著的滑桿換掉（見 updateLevelReadout），
+  // 拖曳當場斷掉。延到放開（change）再同步——那時存檔多半已被這一頁的拖曳寫回自己那份，同步是 no-op，
+  // 另一個分頁那一步則由它自己的 storage 事件推進它自己的 undo（PR #90 review）。
+  if (levelDragFrom !== null) { syncPending = true; return; }
   const next = deserializeSim(readSaved(), ctx) ?? initialSimState(ctx);
   if (serializeSim(next) === serializeSim(state)) return;
-  // 拖等級滑桿拖到一半被換掉：放開時的 change 不能把拖曳前那份舊狀態推進 undo。
-  levelDragFrom = null;
-  undoStack.push(state);
-  if (undoStack.length > UNDO_LIMIT) undoStack.shift();
-  redoStack.length = 0;
+  // ⚠️ 一串連續同步只推一步 undo：另一個分頁拖等級滑桿時每一格都 save()，每一格都是一次 storage
+  // 事件——每次都推的話拖一顆 50 級節點就塞進 49 步幾乎一樣的復原、把這一頁真正的歷史擠出 UNDO_LIMIT
+  // （PR #90 review）。本頁自己動過（pushUndo／undo／redo）之後，下一次同步才重新推。
+  if (!syncBurst) pushUndo(state, true);
   state = next;
+  // 焦點在詳情裡（鍵盤使用者）時，innerHTML 重寫會把它丟回 <body>：接回標題。
+  const hadFocus = $('sim-detail').contains(document.activeElement);
   render();
+  if (hadFocus) $('sim-detail').querySelector<HTMLElement>('h3')?.focus({ preventScroll: true });
   toast('已同步其他分頁的變更（可按復原）');
 }
+let syncPending = false;
 
 // --- 持有資源 ---------------------------------------------------------------
 function readHolding(el: HTMLInputElement): number | null {
@@ -224,10 +251,15 @@ function saveHoldings(): void {
   try { localStorage.setItem(HOLDINGS_KEY, JSON.stringify(v)); } catch { /* 存不了就算了 */ }
 }
 
-/** 回填輸入框。沒有存檔時不動（留白）；有存檔時以存檔為準，蓋掉瀏覽器自己還原的表單值。 */
-function loadHoldings(): void {
+/**
+ * 回填輸入框。沒有存檔時不動（留白）；有存檔時以存檔為準，蓋掉瀏覽器自己還原的表單值。
+ * `clearIfMissing`：另一個分頁 localStorage.clear() 之後存檔沒了，這一頁的輸入框也要跟著清空，
+ * 不然差額一直拿著一份哪裡都不存在的數字算（PR #90 review）。
+ */
+function loadHoldings(clearIfMissing = false): void {
   let v: unknown = null;
   try { v = JSON.parse(localStorage.getItem(HOLDINGS_KEY) ?? 'null'); } catch { return; }
+  if (v === null && clearIfMissing) v = {};
   if (typeof v !== 'object' || v === null) return;
   for (const [k, id] of Object.entries(HOLDING_INPUT)) {
     const raw = (v as Record<string, unknown>)[k];
@@ -296,7 +328,9 @@ function describeNode(id: string, p: SimPaint): string {
     const max = p.maxLevels.get(id) ?? 1;
     text = max > 1 ? `已取得，Lv.${p.levels.get(id) ?? 1} / ${max}` : '已取得';
   } else if (ctx.optional.has(id)) text = '未勾選的初始骰子';
-  else text = p.available.has(id) ? '可取得，按下即取得' : '未解鎖';
+  // 被搜尋淡出的節點按 Enter 是「取消選取」不是取得（onSelect 的 dimmed 那道），不能說「按下即取得」。
+  else if (p.available.has(id)) text = dimmed.has(id) ? '可取得' : '可取得，按下即取得';
+  else text = '未解鎖';
   return dimmed.has(id) ? `${text}，不符合搜尋` : text;
 }
 
@@ -542,7 +576,9 @@ function revealSelected(): void {
 }
 // 使用者自己動畫布就停掉（兩股力量同時寫 view 會互相拉扯）。capture：controller 的監聽掛在
 // host 底下的互動層 canvas 上，要搶在它前面。
-for (const type of ['pointerdown', 'wheel'] as const) {
+// focusin：鍵盤 Tab 到別顆節點時 controller 的 ensureVisible 會自己平移，動畫剩下的幀再疊上去就歪了
+// （PR #90 review）。Enter 開節點時焦點是移到側欄（不在 host 裡），不會誤停自己。
+for (const type of ['pointerdown', 'wheel', 'focusin'] as const) {
   host.addEventListener(type, () => { stopReveal(); stopReveal = () => {}; }, { capture: true, passive: true });
 }
 
@@ -646,13 +682,10 @@ $('sim-detail').addEventListener('input', e => {
 
 $('sim-detail').addEventListener('change', e => {
   if ((e.target as HTMLInputElement).id !== 'sim-level-range') return;
-  if (levelDragFrom !== null && levelDragFrom !== state) {
-    undoStack.push(levelDragFrom);
-    if (undoStack.length > UNDO_LIMIT) undoStack.shift();
-    redoStack.length = 0;
-  }
+  if (levelDragFrom !== null && levelDragFrom !== state) pushUndo(levelDragFrom);
   levelDragFrom = null;
   render();
+  if (syncPending) { syncPending = false; syncFromStorage(); }
 });
 
 // --- 事件：工具列 ------------------------------------------------------------
@@ -1130,6 +1163,14 @@ function installMobileLayout(): void {
   }
   syncCredit();
   syncHandleState();
+  // 轉向／視窗變矮時上限跟著變（panelMaxH），已經撐高的抽屜要重新夾：CSS 只有 80dvh，
+  // 直立拖到頂再轉橫放，浮動鍵會被推出視窗頂端（PR #90 review：360×640 → 640×360，fabs top −36）。
+  // 不寫偏好：這是系統夾的，不是使用者拖的。
+  addEventListener('resize', () => {
+    if (!mobile()) return;
+    const max = panelMaxH();
+    if (panelH() > max + 0.5) { setPanelHeight(max); syncHandleState(); }
+  });
   if (panelMq && typeof panelMq.addEventListener === 'function') {
     // ⚠️ 跨斷點要重設狀態：桌機開著 sheet 把視窗縮到手機寬度（或反過來），留著的
     // `.is-open` 會變成一個使用者從沒打開過的面板。
@@ -1151,12 +1192,12 @@ render();
 addEventListener('storage', e => {
   // key 為 null＝另一個分頁 localStorage.clear()。
   if (e.key === SIM_STORAGE_KEY || e.key === null) syncFromStorage();
-  if (e.key === HOLDINGS_KEY || e.key === null) { loadHoldings(); renderTotals(); }
+  if (e.key === HOLDINGS_KEY || e.key === null) { loadHoldings(true); renderTotals(); }
 });
 // bfcache 回來（/sim → 別頁 → 上一頁）時記憶體是離開前那份，這之間存檔可能被別的分頁改過。
 addEventListener('pageshow', e => {
   if (!e.persisted) return;
   syncFromStorage();
-  loadHoldings();
+  loadHoldings(true);
   renderTotals();
 });

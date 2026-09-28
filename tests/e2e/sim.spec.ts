@@ -1139,6 +1139,8 @@ test('S38. 鍵盤：按鈕帶狀態，Enter 取得有播報、焦點進詳情，
   await openTools(page);
   await page.locator('#sim-search').fill('完全不存在的名字');
   await expect(btn).toHaveAttribute('aria-description', /不符合搜尋$/);
+  // 淡出的節點按 Enter 是取消選取、不是取得：不能說「按下即取得」（PR #90 review）
+  await expect(page.locator(`.tree-a11y-node[data-id="${TIER_F}"]`)).toHaveAttribute('aria-description', '可取得，不符合搜尋');
 });
 
 // gap-canvas-mobile-3：抽屜為了露出主按鈕長高之後，被選的節點不能留在它底下。
@@ -1168,6 +1170,33 @@ test('S39. 手機版：選了畫面下半部的節點，抽屜長高後節點仍
     return document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)?.tagName ?? null;
   }, id!);
   expect(hit, `${id} 選了之後中心被抽屜（或浮動鍵）蓋住`).toBe('CANVAS');
+
+  // 右側那一欄（浮動鍵的位置）：浮動鍵跟著抽屜滑上來，平移時要用它的終點算（PR #90 review：3405）。
+  await openSim(page);
+  const right = await page.evaluate(ids => {
+    const pt = document.getElementById('sim-panel')!.getBoundingClientRect().top;
+    return ids.filter(nid => {
+      const r = window.__tree.nodeScreenRect(nid)!;
+      const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+      return cx > innerWidth - 90 && cx < innerWidth - 10 && cy > innerHeight * 0.45 && cy < pt - 30
+        && document.elementFromPoint(cx, cy)?.tagName === 'CANVAS';
+    });
+  }, tree.nodes.map(n => n.id));
+  expect(right.length, '右側下半部沒有候選節點（前提不成立）').toBeGreaterThan(0);
+  const covered: string[] = [];
+  for (const nid of right) {
+    await openSim(page);
+    const r = await nodeRect(page, nid);
+    await page.mouse.click(r.left + r.width / 2, r.top + r.height / 2);
+    await page.waitForTimeout(600);
+    const h = await page.evaluate(x => {
+      const q = window.__tree.nodeScreenRect(x)!;
+      const el = document.elementFromPoint(q.left + q.width / 2, q.top + q.height / 2);
+      return el ? `${el.tagName}#${el.id}` : 'offscreen';
+    }, nid);
+    if (h !== 'CANVAS#') covered.push(`${nid}→${h}`);
+  }
+  expect(covered, '右側節點選了之後被浮動鍵蓋住').toEqual([]);
 });
 
 // gap-canvas-mobile-2：矮螢幕（手機橫放 ≤720 寬）抽屜撐高時浮動鍵不能被推出畫面。
@@ -1191,6 +1220,21 @@ test('S40. 手機橫放：選了節點之後兩顆浮動鍵仍在畫面裡、點
     });
     expect(inside, `${w}×${h} 主按鈕在抽屜外`).toBe(true);
   }
+  // 直立拖到頂再轉橫放：抽屜要重新夾（PR #90 review：CSS 只有 80dvh，浮動鍵被推到 −36）。
+  await page.setViewportSize({ width: 360, height: 640 });
+  await openSim(page);
+  const b = (await page.locator('#sim-panel-handle').boundingBox())!;
+  await page.mouse.move(b.x + b.width / 2, b.y + 20);
+  await page.mouse.down();
+  await page.mouse.move(b.x + b.width / 2, 60, { steps: 10 });
+  await page.mouse.up();
+  await page.setViewportSize({ width: 640, height: 360 });
+  await page.waitForTimeout(300);
+  const rotated = await page.evaluate(() => [...document.querySelectorAll<HTMLElement>('#sim-fabs button')].map(el => {
+    const r = el.getBoundingClientRect();
+    return el.contains(document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2));
+  }));
+  expect(rotated, '轉橫放之後浮動鍵被推出畫面').toEqual([true, true]);
 });
 
 // gap-canvas-mobile-8：在把手外放開之後，鍵盤 Enter 一次就要收合。
@@ -1279,6 +1323,26 @@ test('S44. 另一個分頁改了規劃，這一頁跟上，再操作也不會蓋
   await page.locator('#sim-undo').click();
   await page.locator('#sim-undo').click();
   expect(await owned(page)).not.toContain(READY);
+
+  // 另一個分頁拖等級滑桿＝一連串 storage 事件：只推一步 undo（PR #90 review：原本每一格推一步）。
+  await page.locator('#sim-redo').click();
+  await page.locator('#sim-redo').click();
+  const before = await owned(page);
+  for (let lv = 2; lv <= 6; lv++) {
+    await other.evaluate(([id, lv]) => localStorage.setItem('rd2-sim-v1',
+      JSON.stringify({ v: 1, unlocked: [id], levels: { [id]: lv }, initial: [] })), [READY, lv] as const);
+    await other.waitForTimeout(50);
+  }
+  await expect.poll(async () => (await owned(page)).includes(TIER_F), '這一頁沒跟上').toBe(false);
+  await page.locator('#sim-undo').click();
+  expect((await owned(page)).sort(), '一次復原要回到這一串同步之前').toEqual(before.sort());
+
+  // 另一個分頁 localStorage.clear()：持有量輸入框也要清空
+  await openTools(page);
+  await page.locator('#sim-limit-toggle').click();
+  await page.locator('#sim-limit-core').fill('77');
+  await other.evaluate(() => localStorage.clear());
+  await expect(page.locator('#sim-limit-core')).toHaveValue('');
   await other.close();
 });
 
@@ -1317,4 +1381,65 @@ test('S46. 取消勾選初始骰子說出連帶取消幾顆；空規劃按重置
   if (await page.locator('#sim-initial-menu').isHidden()) await page.locator('#sim-initial-toggle').click();
   await page.locator(`[data-initial="${opt}"]`).uncheck();
   await expect(page.locator('#sim-toast')).toHaveText(/^已連帶取消 \d+ 個後續節點（可按復原）$/);
+});
+
+// PR #90 review：手機 reveal 動畫進行中，鍵盤 Tab 到別顆節點（controller 的 ensureVisible 自己平移）
+// 要停掉動畫，不然剩下的幀疊上去，新聚焦的節點被推歪、甚至推回抽屜底下。
+test('S47. 手機版：選節點的平移還在跑時 Tab 到別顆，新聚焦的節點落定後不再被推走', { tag: '@mobile' }, async ({ page, isMobile }) => {
+  test.skip(!isMobile, '桌機沒有 reveal 平移');
+  await openSim(page);
+  const bad = await page.evaluate(async ids => {
+    const frames = (n: number) => new Promise(r => { const f = (k: number) => k ? requestAnimationFrame(() => f(k - 1)) : r(null); f(n); });
+    const out: string[] = [];
+    const panelTop = () => document.getElementById('sim-panel')!.getBoundingClientRect().top;
+    // 收起狀態下最靠下、看得見的幾顆：選了它們一定要平移
+    const low = ids.map(id => ({ id, r: window.__tree.nodeScreenRect(id)! }))
+      .filter(x => x.r.top + x.r.height / 2 < panelTop() - 40 && x.r.top > 120 && x.r.left > 20 && x.r.left < innerWidth - 90)
+      .sort((a, b) => b.r.top - a.r.top).slice(0, 4).map(x => x.id);
+    for (const id of low) {
+      document.documentElement.style.setProperty('--sim-panel-user-h', '56px');
+      (document.querySelector(`.tree-a11y-node[data-id="${id}"]`) as HTMLElement).click();
+      await frames(2);                                   // 動畫剛開始
+      const next = document.querySelector<HTMLElement>(`.tree-a11y-node[data-id="${id}"]`)!.parentElement!
+        .nextElementSibling?.querySelector<HTMLElement>('.tree-a11y-node') ?? null;
+      if (!next) continue;
+      next.focus();
+      await frames(2);                                   // ensureVisible 落地
+      const a = window.__tree.nodeScreenRect(next.dataset['id']!)!;
+      await frames(30);                                  // 動畫本來會跑完的時間之後
+      const r = window.__tree.nodeScreenRect(next.dataset['id']!)!;
+      const el = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+      const drift = Math.hypot(r.left - a.left, r.top - a.top);
+      if (el?.tagName !== 'CANVAS' || drift > 0.5) {
+        out.push(`${id}→${next.dataset['id']}: ${el ? el.tagName + '#' + el.id : 'offscreen'} drift ${drift.toFixed(1)}`);
+      }
+    }
+    return out;
+  }, tree.nodes.map(n => n.id));
+  expect(bad).toEqual([]);
+});
+
+// PR #90 review：拖等級滑桿時另一個分頁存檔 → 同步不准重建詳情（會把手上按著的滑桿換掉、拖曳斷掉）。
+test('S48. 拖等級滑桿途中另一個分頁改了存檔：滑桿不被換掉，照樣拖得到底', async ({ page, context, isMobile }) => {
+  test.skip(isMobile, '觸控拖曳原生 range 在 Playwright 驅動不了（CLAUDE.md S17 那條）');
+  await openSim(page);
+  await tapNode(page, READY);
+  const range = page.locator('#sim-level-range');
+  await range.evaluate(el => { (el as unknown as { __mark: number }).__mark = 1; });
+  const b = (await range.boundingBox())!;
+  await page.mouse.move(b.x + 2, b.y + b.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2, { steps: 5 });
+  const other = await context.newPage();
+  await other.goto('/sim', { waitUntil: 'networkidle' });
+  await other.evaluate(() => localStorage.setItem('rd2-sim-v1',
+    JSON.stringify({ v: 1, unlocked: ['1201', '1109'], levels: {}, initial: [] })));
+  await page.waitForTimeout(200);
+  await page.mouse.move(b.x + b.width - 1, b.y + b.height / 2, { steps: 5 });
+  // 放開之前量：放開時的 change 本來就會整段重畫（那是刻意的）。
+  expect(await page.locator('#sim-level-range').evaluate(el => (el as unknown as { __mark?: number }).__mark ?? null),
+    '拖曳途中滑桿元素被換掉了').toBe(1);
+  await expect(page.locator('.sim-level-value')).toHaveText('Lv.50 / 50');
+  await page.mouse.up();
+  await other.close();
 });
