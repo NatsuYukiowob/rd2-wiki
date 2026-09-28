@@ -1593,7 +1593,7 @@ colors 重新著色，那張樹本來就看得見，等於用自己的無障礙�
     `functions/` 要 import 目錄外的東西時，sparse 清單要跟著加。
   - ⚠️ action 要 pin 40 碼 SHA（repo 開了 `sha_pinning_required`）。
   - **不用 wrangler-action**（它在 token 已放進環境之後才自己 `npm i` wrangler）：wrangler 在沒有 secret 的前一步用
-    `--ignore-scripts` 裝好，部署那步 `npx --no-install wrangler pages deploy`，token 只出現在那一步的 env。
+    `--ignore-scripts` 裝好，部署那步直接跑 `./node_modules/.bin/wrangler pages deploy`，token 只出現在那一步的 env。
     版本只寫在 deploy job 的 `env.WRANGLER_VERSION`（Dependabot 不管它）。
   - 部署後有一步 **smoke check**：先等 `https://rd2wiki.org/deploy-sha.txt`（verify 上傳 dist 前寫入）回這次的 SHA，
     再驗 `/` 要 200、`POST /api/hits` 要回 `{"n":<數字>}`（每次部署計數 +1）。打正式網域是因為每次部署的專屬網址

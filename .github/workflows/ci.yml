@@ -267,8 +267,9 @@ jobs:
       - name: 檢查部署憑證
         id: creds
         # secrets 不能用在 job 層的 `if`（GitHub 的 context 限制），所以在這裡判斷：
-        # 憑證還沒設好時整個部署安靜跳過、CI 仍算綠，站台繼續由 Cloudflare 的 Git 整合更新。
-        # 設好之後這裡自動轉成 true，才真正變成「CI 綠才上線」。
+        # 憑證還沒設好時整個部署安靜跳過、CI 仍算綠（站台停在上一版）。
+        # ⚠️ Cloudflare Pages 專案沒有接 Git 整合（API 的 `source` 是 null，2026-09-28 查過），
+        # 這個 job 是唯一的上線路徑——下面 smoke 認 deploy-sha.txt 也靠這個前提。
         env:
           TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -309,6 +310,11 @@ jobs:
         with:
           name: dist
           path: dist
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        # 明寫 Node 版本：wrangler 有 engines 下限，不要依賴 runner image 碰巧內建的那一版。
+        # 不開 cache：這個 job 沒有 package-lock.json。
+        if: steps.creds.outputs.ready == 'true'
+        with: { node-version: '24' }
       - name: 安裝 wrangler（這一步沒有 secret）
         # 不用 cloudflare/wrangler-action：它是**先**把 token 放進 process.env、**再**跑沒有 lockfile、
         # 會跑 install script 的 `npm i wrangler@<ver>`（v4.1.3 src/wranglerAction.ts 的
@@ -323,8 +329,8 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        # --no-install：只用上一步裝好的那份，找不到就失敗，不會在這裡（有 token）臨時下載。
-        run: npx --no-install wrangler pages deploy dist --project-name=rd2-wiki --branch=main
+        # 直接叫上一步裝好的執行檔：找不到就失敗，不會經過 npx 在這裡（有 token）臨時下載。
+        run: ./node_modules/.bin/wrangler pages deploy dist --project-name=rd2-wiki --branch=main
       - name: 部署後 smoke check
         # 部署回成功不代表站活著：Functions 沒打包進去、D1 binding 沒綁、表沒建，都會收斂成
         #「訪客計數器靜靜消失」（#hit-counter 拿不到數字就保持 hidden），部署照樣綠。
@@ -344,7 +350,9 @@ jobs:
           live=''
           tries=12
           for i in $(seq 1 "$tries"); do
-            live=$(c "$URL/deploy-sha.txt" || true)
+            # 帶 query 與 no-cache：rd2wiki.org 的 .txt 會被邊緣快取（回 `cache-control: public, max-age=14400`、
+            # `cf-cache-status: REVALIDATED`），不能讓快取裡的上一版 SHA 害這裡等到逾時。
+            live=$(c -H 'Cache-Control: no-cache' "$URL/deploy-sha.txt?t=${GITHUB_RUN_ID}-${i}" || true)
             [ "$live" = "$GITHUB_SHA" ] && break
             echo "第 $i/$tries 次：/deploy-sha.txt 還是「${live:0:40}」，等新部署生效"
             [ "$i" -lt "$tries" ] && sleep 10
