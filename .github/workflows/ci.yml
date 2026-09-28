@@ -112,6 +112,8 @@ jobs:
           name: diff-summary
           path: diff-summary.json
       - name: 部署工具能不能打包 Functions（deploy/ 的 PR 期檢查）
+        # 只在 PR 上跑：main 的 push 緊接著就是 deploy job 本身，在這裡多裝一次只是多一個 registry 抖動點。
+        if: github.event_name == 'pull_request'
         # deploy job 只在 main 上跑，Dependabot 對 deploy/ 開的 wrangler 升級 PR 在這之前沒有任何東西會裝它、跑它。
         # 這裡用 deploy job 同一套安裝方式（lockfile＋--ignore-scripts）打包 functions/，不需要 token：
         # 升級壞了打包、engines 下限、或 Functions 沒被收進去，都在 PR 上就紅。
@@ -273,29 +275,42 @@ jobs:
     needs: [verify, e2e]
     runs-on: ubuntu-26.04
     timeout-minutes: 10
-    # 部署一次只跑一個；排隊中的舊 run 會被較新的取代（GitHub 對同 group 的 pending 只留最新一個）。
-    concurrency:
-      group: deploy-production
-      cancel-in-progress: false
+    # 不另設 job 層 concurrency：檔頭的 workflow 層 group（main 上 cancel-in-progress=false）已經讓 main 的 run
+    # 一次只跑一個、排隊中的舊 run 被較新的取代。
     permissions:
       contents: read
     steps:
-      - name: 確認這次仍是 main 的最新 commit
+      - name: 確認不會把正式站倒回舊版
         id: head
-        # 不是最新就跳過部署（不算失敗）：較新的 commit 會自己部署。擋兩種會把正式站倒回舊版的情況——
-        # 兩次 push 的 run 跑完順序顛倒，以及對舊 run 按「Re-run failed jobs」（smoke 紅之後最自然的動作，
-        # dist artifact 還在的一天內會用舊 dist 重新部署，而 smoke 照樣綠）。
-        # 真的要回滾，用 Cloudflare Pages 儀表板的 Rollback，不要重跑舊 run。
+        # 要守的是「不部署比正式站現在那版更舊的 commit」，不是「只部署 main 最新」——後者在較新的 run
+        # 失敗（或 [skip ci]）時，會讓這個已經全部驗過的 commit 永遠上不了線。
+        # 讀線上 /deploy-sha.txt，用 compare API 比先後（main 是線性歷史，squash merge＋non_fast_forward）：
+        #   ahead／identical → 部署（identical 是重跑同一版）；behind → 跳過並留 warning；
+        #   讀不到線上 SHA（第一次部署、站掛了）→ 照常部署，跟沒有這一步時一樣；
+        #   其他（diverged：main 被改寫過）→ 紅，交給人判斷。
+        # 擋的情況：對舊 run 按「Re-run failed jobs」（smoke 紅之後最自然的動作）會用舊 dist 蓋掉較新的線上版本。
+        # 真的要回滾，用 Cloudflare Pages 儀表板的 Rollback。
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          tip=$(gh api "repos/${{ github.repository }}/commits/main" --jq .sha)
-          if [ "$tip" = "$GITHUB_SHA" ]; then
+          live=$(curl -sS --connect-timeout 5 --max-time 15 -H 'Cache-Control: no-cache' \
+            "https://rd2wiki.org/deploy-sha.txt?t=${GITHUB_RUN_ID}-pre" || true)
+          if ! printf '%s' "$live" | grep -Eq '^[0-9a-f]{40}$'; then
+            echo "讀不到線上的部署 SHA，照常部署"
             echo "latest=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "::warning::main 已經前進到 ${tip}，這次（${GITHUB_SHA}）不部署——較新的 run 會部署"
-            echo "latest=false" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
+          status=$(gh api "repos/${{ github.repository }}/compare/${live}...${GITHUB_SHA}" --jq .status)
+          echo "線上 ${live}；這次 ${GITHUB_SHA}；相對線上：${status}"
+          case "$status" in
+            ahead|identical) echo "latest=true" >> "$GITHUB_OUTPUT" ;;
+            behind)
+              echo "::warning::正式站已經是較新的 ${live}，這次（${GITHUB_SHA}）不部署，免得倒回舊版"
+              echo "latest=false" >> "$GITHUB_OUTPUT" ;;
+            *)
+              echo "::error::線上版本與這次的關係是「${status}」，不是線性前後，停下來交給人判斷"
+              exit 1 ;;
+          esac
       - name: 檢查部署憑證
         id: creds
         # secrets 不能用在 job 層的 `if`（GitHub 的 context 限制），所以在這裡判斷：
@@ -334,6 +349,8 @@ jobs:
         # 把網站整棵相依樹（2026-09-27 的 log：`added 478 packages`）連同 install script 裝進有 token 的環境。
         # 部署工具改放 deploy/，有自己的 package.json＋package-lock.json，只裝那一份。
         # ⚠️ 要關 cone mode：cone mode 一律帶上 repo 根目錄的檔案，package.json 會跟著進來。
+        # /.gitignore 不是必要的（git 對 skip-worktree 的 .gitignore 會從 index 讀，實測 dist/ 照樣被忽略），
+        # 取出來只是讓「工作區乾不乾淨」一眼看得出來。
         # functions/ 只 import 自己目錄底下的檔案；哪天要 import src/ 或 npm 套件，這裡要跟著加。
         if: steps.creds.outputs.ready == 'true'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -341,6 +358,7 @@ jobs:
           sparse-checkout: |
             /functions/
             /deploy/
+            /.gitignore
           sparse-checkout-cone-mode: false
           # 這個 job 之後不做任何 git 操作；不把 GITHUB_TOKEN 寫進 .git/config，
           # 帶著 Cloudflare token 執行的 wrangler 就讀不到它。
@@ -409,7 +427,8 @@ jobs:
             exit 1
           fi
           page=$(c -o /dev/null -w '%{http_code}' "$URL/" || true)
-          hits=$(c -X POST "$URL/api/hits" || true)
+          # --data ''：帶 Content-Length: 0，沒有 body 的 HTTP/1.1 POST 有些代理會回 411。
+          hits=$(c -X POST --data '' "$URL/api/hits" || true)
           echo "新部署已生效；/ → ${page}，POST /api/hits → ${hits}"
           if [ "$page" != 200 ] || ! printf '%s' "$hits" | grep -Eq '^\{"n":[0-9]+\}$'; then
             echo "::error::smoke check 失敗：首頁或 /api/hits 不正常"
