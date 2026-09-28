@@ -111,12 +111,6 @@ jobs:
           # 渲染器決定，見 tools/diff-summary.ts 的 renderDiffComment 說明。
           name: diff-summary
           path: diff-summary.json
-      - name: TEMP 從 runner 打正式站（驗 Cloudflare 會不會擋 GitHub IP，merge 前移除）
-        run: |
-          c() { curl -sS --connect-timeout 5 --max-time 15 "$@"; }
-          echo "/ → $(c -o /dev/null -w '%{http_code}' https://rd2wiki.org/)"
-          echo "/deploy-sha.txt → $(c -o /dev/null -w '%{http_code}' https://rd2wiki.org/deploy-sha.txt)"
-          echo "POST /api/hits → $(c -X POST https://rd2wiki.org/api/hits)"
       - name: 寫入部署標記（給 deploy 的 smoke check 認版本）
         # smoke check 打正式網域時要分得出「回應的是這一版還是上一版」：部署是原子的，
         # /deploy-sha.txt 回的是這次 commit 的 SHA，就代表整份新部署已經生效。
