@@ -6,6 +6,7 @@
 // 的事，理由跟 selection.ts 一樣：邏輯與 DOM 分離，這支檔案才能在沒有瀏覽器的環境下
 // 用單元測試完整驗證。
 import type { Branch, NodeType, TreeNode } from './types.js';
+import { BRANCH_ZH, TYPE_ZH } from './labels.js';
 
 export interface FilterState {
   /** 選取的分支集合，空集合＝不篩（全部通過）。 */
@@ -65,12 +66,20 @@ export function stateToQueryString(state: FilterState, selected: string | null):
   return p.toString();
 }
 
-/** stateToQueryString() 的反函式，供頁面載入時從網址還原篩選狀態與選取節點。 */
+/**
+ * stateToQueryString() 的反函式，供頁面載入時從網址還原篩選狀態與選取節點。
+ *
+ * ⚠️ `?branch=`／`?type=` **只收合法值**（白名單是 labels.ts 那兩張以字面聯集為鍵的表）。
+ * 照單全收的話 `?branch=foo` 會把 243 顆全部篩掉，而篩選面板上沒有任何一顆是勾起來的——
+ * 使用者看不出是什麼把樹藏起來（2026-09-24 review）。丟掉之後 syncUrl() 會順手把網址洗乾淨。
+ * `?node=` 不在這裡驗：合法 id 要看資料，這支檔案不讀資料（見 tree-canvas.ts 的 select()）。
+ */
 export function queryStringToState(search: string): { state: FilterState; selected: string | null } {
   const p = new URLSearchParams(search);
-  const split = <T>(key: string) => new Set((p.get(key)?.split(',').filter(Boolean) ?? []) as T[]);
+  const split = <T extends string>(key: string, allowed: Record<T, string>) =>
+    new Set((p.get(key)?.split(',') ?? []).filter((v): v is T => Object.hasOwn(allowed, v)));
   return {
-    state: { branches: split<Branch>('branch'), types: split<NodeType>('type'), query: p.get('q') ?? '' },
+    state: { branches: split<Branch>('branch', BRANCH_ZH), types: split<NodeType>('type', TYPE_ZH), query: p.get('q') ?? '' },
     selected: p.get('node'),
   };
 }

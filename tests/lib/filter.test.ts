@@ -73,6 +73,14 @@ describe('filter', () => {
     expect(stateToQueryString(emptyState(), null)).toBe('');
   });
 
+  it('queryStringToState 丟掉未知的 branch／type 值（只留白名單內的）', () => {
+    // 照單全收的話 ?branch=foo 會把整棵樹篩光，而篩選面板上沒有任何一顆是勾起來的
+    const back = queryStringToState('branch=foo,nature,,toString&type=dice,__proto__,bar');
+    expect([...back.state.branches]).toEqual(['nature']);
+    expect([...back.state.types]).toEqual(['dice']);
+    expect(stateToQueryString(back.state, null)).toBe('branch=nature&type=dice');
+  });
+
   it('queryStringToState 對空字串回傳空狀態、selected 為 null', () => {
     const back = queryStringToState('');
     expect(back.selected).toBeNull();

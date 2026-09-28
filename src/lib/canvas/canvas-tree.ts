@@ -92,6 +92,17 @@ export function wheelZoomFactor(
  * 單元測試的假事件兩個欄位都沒帶。頁面腳本（tree-canvas.ts 的 cancelCenterPan）用同一個判準，
  * 免得 controller 不理的事件仍把置中平移掐掉。
  */
+/**
+ * 一個軸上要平移多少，才能讓座標 `v` 落進可見區間 `[lo, hi]` 內縮 FOCUS_MARGIN_PX 的範圍
+ * （0＝已經在裡面，不動）。可見區間窄到連兩邊的邊界都放不下時，對準區間中央——
+ * 手機橫放時工具列加抽屜可能只剩一條縫，夾到任何一邊都會落在遮蔽物底下。
+ */
+export function axisShift(v: number, lo: number, hi: number): number {
+  const m = FOCUS_MARGIN_PX;
+  if (hi - lo < 2 * m) return (lo + hi) / 2 - v;
+  return v < lo + m ? lo + m - v : v > hi - m ? hi - m - v : 0;
+}
+
 export function isGesturePointer(e: Pick<PointerEvent, 'pointerType' | 'button'>): boolean {
   return !(e.pointerType === 'mouse' && e.button !== 0);
 }
@@ -133,7 +144,17 @@ export interface TreeHandle {
  */
 export interface MountOptions {
   hiresBase?: string;
+  /**
+   * 畫布四邊**現在**被頁面浮層蓋掉多少（相對 host 各邊的 CSS px）：工具列、側欄、手機抽屜。
+   * 鍵盤焦點把節點帶進畫面時（`ensureVisible`）以扣掉這些之後的範圍為準，否則節點與焦點框
+   * 會停在工具列底下（WCAG 2.2 2.4.11；2026-09-24 review 實測 /tree 桌機 15 顆被蓋）。
+   * 每次聚焦時才呼叫，所以可以直接量版面；只算真的看得見的遮蔽物。不給＝四邊都是 0。
+   * 這不是 `/sim` 旗標：兩頁各自量自己的浮層，controller 只收數字。
+   */
+  safeInsets?: () => Insets;
 }
+
+export interface Insets { top: number; right: number; bottom: number; left: number }
 
 export function mountCanvasTree(host: HTMLElement, data: TreeData, opts: MountOptions = {}): TreeHandle {
   const doc = host.ownerDocument;
@@ -577,9 +598,9 @@ export function mountCanvasTree(host: HTMLElement, data: TreeData, opts: MountOp
     const n = scene.byId.get(id);
     if (!n) return;
     const [sx, sy] = view.worldToScreen(n.x, n.y);
-    const m = FOCUS_MARGIN_PX;
-    const dx = sx < m ? m - sx : sx > cssW - m ? cssW - m - sx : 0;
-    const dy = sy < m ? m - sy : sy > cssH - m ? cssH - m - sy : 0;
+    const ins = opts.safeInsets?.() ?? { top: 0, right: 0, bottom: 0, left: 0 };
+    const dx = axisShift(sx, ins.left, cssW - ins.right);
+    const dy = axisShift(sy, ins.top, cssH - ins.bottom);
     if (dx || dy) { view.pan(dx, dy); cache.invalidate(); }   // 程式化平移一樣要補畫（呼叫端會排一幀）
   }
 

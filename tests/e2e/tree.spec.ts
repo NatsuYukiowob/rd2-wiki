@@ -852,7 +852,7 @@ test('N. 選節點時鏡頭置中、卡片貼在節點上方或下方，不擋�
  * 沒有任何一側能全避開。這條測試守的是「該歸零的有歸零」，不是「全站零遮擋」。
  */
 test('N2. 詳情卡片不蓋住前置鏈（這一輪改動的驗收）', async ({ page, isMobile }) => {
-  test.skip(isMobile, '僅桌機：手機版卡片是底部抽屜，本來就不疊在節點上');
+  test.skip(isMobile, '僅桌機：手機版卡片是底部抽屜，不走置中＋貼上下；抽屜蓋節點由 A3 守');
   for (const [id, wasCovered] of [['2304', 14], ['2113', 13], ['5113', 12], ['4112', 7]] as const) {
     await page.goto(`/tree?node=${id}`);
     await waitTree(page);
@@ -1097,7 +1097,7 @@ test('N5. 鍵盤 Enter 開節點也會置中，途中按其他鍵不會把平移
  * （CENTER_SLACK），讓這種長高吸收得掉、不必冒出捲軸。
  */
 test('N6. 打字改篩選之後，卡片不壓到節點、也不跳到另一邊', async ({ page, isMobile }) => {
-  test.skip(isMobile, '僅桌機：手機版卡片是底部抽屜，本來就不疊在節點上');
+  test.skip(isMobile, '僅桌機：手機版卡片是底部抽屜，不走置中＋貼上下；抽屜蓋節點由 A3 守');
   for (const id of ['2113', '4112', '2304', '5113']) {
     await page.goto(`/tree?node=${id}`);
     await waitTree(page);
@@ -1785,4 +1785,123 @@ test('T2. 詳情面板的成本帶遊戲貨幣圖：三種貨幣各一張、每�
   // 圖跟著字級走：高度等於該行的 font-size（1em），不是寫死的 px。
   const { h, fs } = await icons.first().evaluate(el => ({ h: el.getBoundingClientRect().height, fs: parseFloat(getComputedStyle(el.parentElement!).fontSize) }));
   expect(Math.abs(h - fs)).toBeLessThan(1);
+});
+
+// ---------------------------------------------------------------------------
+// A1–A5：/tree 的鍵盤與 a11y（2026-09-24 review 的 P2 包）
+// ---------------------------------------------------------------------------
+
+/** 節點中心那一點最上層的元素：CANVAS＝看得見；其他（工具列、抽屜）或 null（畫面外）＝被蓋。 */
+async function hitAtNodeCenter(page: Page, id: string): Promise<string> {
+  return page.evaluate(nid => {
+    const r = window.__tree.nodeScreenRect(nid)!;
+    const el = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+    return el ? (el.tagName === 'CANVAS' ? 'CANVAS' : `${el.tagName}#${el.id}.${el.className}`) : 'offscreen';
+  }, id);
+}
+
+test('A1. Tab 走過每一顆節點：鍵盤帶進畫面的節點不被工具列、側欄蓋住', { tag: '@mobile' }, async ({ page }) => {
+  test.setTimeout(90_000);
+  await page.goto('/tree');
+  await waitTree(page);
+  // 在頁面內一顆一顆 focus（243 顆逐一 round-trip 太慢），每顆等兩幀讓 ensureVisible 的平移落地。
+  // 判準是 elementFromPoint 命中畫布——焦點框畫在畫布上，被 DOM 浮層蓋住就等於看不到（WCAG 2.4.11）。
+  const bad = await page.evaluate(async () => {
+    const frames = () => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+    const out: string[] = [];
+    for (const btn of document.querySelectorAll<HTMLButtonElement>('.tree-a11y-node')) {
+      btn.focus();
+      await frames();
+      const r = window.__tree.nodeScreenRect(btn.dataset.id!)!;
+      const el = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+      if (el?.tagName !== 'CANVAS') out.push(`${btn.dataset.id}→${el ? `${el.tagName}#${el.id}` : 'offscreen'}`);
+    }
+    return out;
+  });
+  expect(bad, '這些節點聚焦後中心被蓋住').toEqual([]);
+});
+
+test('A2. 鍵盤開節點焦點進卡片；Esc／✕ 關掉後焦點回到那顆節點', { tag: '@mobile' }, async ({ page }) => {
+  await page.goto('/tree');
+  await waitTree(page);
+  const btn = page.locator('.tree-a11y-node[data-id="1001"]');
+  const focusedTitle = () => page.evaluate(() =>
+    document.activeElement?.closest('#detail .view')?.querySelector('h2')?.textContent ?? null);
+  const focusedNode = () => page.evaluate(() => (document.activeElement as HTMLElement | null)?.dataset.id ?? null);
+
+  await btn.focus();
+  await page.keyboard.press('Enter');
+  await expect.poll(focusedTitle, { message: 'Enter 之後焦點要在卡片的節點頁上' }).toBe('火骰子');
+  await expect(btn).toHaveAttribute('aria-current', 'true');
+  // 從卡片往後 Tab 一下就是卡片裡的控制項，不是兩百多顆節點按鈕
+  await page.keyboard.press('Tab');
+  expect(await page.evaluate(() => Boolean(document.activeElement?.closest('#detail')))).toBe(true);
+
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#detail')).toBeHidden();
+  expect(await focusedNode(), 'Esc 關掉後焦點回到原節點').toBe('1001');
+  await expect(btn).not.toHaveAttribute('aria-current', /.*/);
+  await page.keyboard.press('Tab');
+  expect(await page.evaluate(() => document.activeElement?.classList.contains('tree-a11y-node')),
+    '下一個 Tab 接著走節點，不是從頁首重來').toBe(true);
+
+  // ✕ 用鍵盤按
+  await btn.focus();
+  await page.keyboard.press('Enter');
+  await expect.poll(focusedTitle).toBe('火骰子');
+  await page.locator('#detail [data-detail-close]').focus();
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#detail')).toBeHidden();
+  expect(await focusedNode(), '✕ 關掉後焦點回到原節點').toBe('1001');
+});
+
+test('A3. 手機選節點（深連結與觸控）後，節點不被抽屜蓋住、也不在畫面外', { tag: '@mobile' }, async ({ page, isMobile }) => {
+  test.skip(!isMobile, '僅手機：桌機走置中＋卡片貼上下（N／N2 守）');
+  const clear = async (id: string) => {
+    await expect.poll(() => hitAtNodeCenter(page, id), { message: `${id} 中心要露出來` }).toBe('CANVAS');
+    const [r, top] = await Promise.all([nodeRect(page, id),
+      page.locator('#detail').evaluate(el => el.getBoundingClientRect().top)]);
+    expect(r.top + r.height / 2, `${id} 要在抽屜上方`).toBeLessThan(top);
+  };
+  // 2026-09-24 review 實測被蓋或在畫面外的幾顆（1001 抽屜底下、2006 右緣、2405 左緣、1103 抽屜上緣）
+  for (const id of ['1001', '2006', '2405', '1103']) {
+    await page.goto(`/tree?node=${id}`);
+    await waitTree(page);
+    await expect(page.locator('#detail')).toBeVisible();
+    await clear(id);
+  }
+  // 觸控：預設視角下 1001 在畫面下半部，點下去抽屜升起會蓋住它
+  await page.goto('/tree');
+  await waitTree(page);
+  await clickNode(page, '1001');
+  await expect(page.locator('#detail')).toBeVisible();
+  await clear('1001');
+});
+
+test('A4. ?node= 指到不存在的 id、?branch= 帶未知值：不開空卡片，網址洗乾淨', { tag: '@mobile' }, async ({ page }) => {
+  await page.goto('/tree?node=9999&branch=zzz&type=dice');
+  await waitTree(page);
+  await expect(page.locator('#detail')).toBeHidden();
+  const url = new URL(page.url());
+  expect(url.searchParams.get('node')).toBeNull();
+  expect(url.searchParams.get('branch')).toBeNull();
+  expect(url.searchParams.get('type'), '合法的條件照留').toBe('dice');
+  const st = await treeState(page);
+  expect(st.selected).toBeNull();
+  expect(st.filteredOut.includes('1001'), '未知的分支不該把整棵樹篩掉').toBe(false);
+});
+
+test('A5. 在詞彙頁重新整理之後，再推一層按 ← 第一下就退得回去', async ({ page }) => {
+  await page.goto('/tree?node=1002');
+  await waitTree(page);
+  await page.locator('#detail .kw').first().click();
+  await expect(topViewTitle(page)).toHaveText('#尖刺');
+  await page.reload();
+  await waitTree(page);
+  await expect(topViewTitle(page)).toHaveText('尖刺骰子');
+  await page.locator('#detail .kw').first().click();
+  await expect(topViewTitle(page)).toHaveText('#尖刺');
+  await page.locator('#detail [data-detail-back]').click();
+  await expect(topViewTitle(page)).toHaveText('尖刺骰子');
+  expect(new URL(page.url()).searchParams.get('node')).toBe('1002');
 });

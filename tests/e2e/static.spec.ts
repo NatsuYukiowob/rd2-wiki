@@ -206,3 +206,16 @@ test('ST4c. 箭頭圖示只在靠文字那一側留間距：返回箭頭在前�
   await page.goto('/dice');
   expect(await margins('.card-link .icon'), '「在骰子樹查看前置鏈 →」的箭頭').toEqual(['4px', '0px']);
 });
+
+// ST2：畫布頁的主標題是視覺隱藏的（畫面上的「標題」是畫布本身），所以不走 ST1——ST1 要求
+// h1 掛 .page-head（可見的頁首），在這兩頁那會動到零偏移量的版面。只驗「恰好一個 h1、
+// 在無障礙樹裡」，少了它讀屏的標題導覽在 /tree 一個標題都找不到（2026-09-24 review）。
+for (const [path, name] of [['/tree', '骰子樹'], ['/sim', '骰子樹模擬器']] as const) {
+  test(`ST2. ${path} 有一個視覺隱藏的 h1`, async ({ page }) => {
+    await page.goto(path);
+    await expect(page.locator('h1')).toHaveCount(1);
+    await expect(page.getByRole('heading', { level: 1, name })).toHaveCount(1);
+    const box = await page.locator('h1').boundingBox();
+    expect(box && box.width <= 1 && box.height <= 1, 'h1 要視覺隱藏（.sr-only），不佔版面').toBe(true);
+  });
+}

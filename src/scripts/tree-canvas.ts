@@ -12,7 +12,9 @@ import { treeData as rawData } from '../lib/tree-data.js';
 // 的 gzip 預算。`/sim` 用的是同一份檔案、同一種載法。詳情面板有兩個地方需要它：
 // 「練滿 N 級累計」（1601 太陽強化的費用在 special 裡）與前置鏈的「前置練等」那一段。
 import rawTables from '../../data/passive-upgrade-cost.json';
-import { mountCanvasTree, isGesturePointer, wheelZoomFactor, type TreeHandle } from '../lib/canvas/canvas-tree.js';
+import {
+  mountCanvasTree, isGesturePointer, wheelZoomFactor, axisShift, type Insets, type TreeHandle,
+} from '../lib/canvas/canvas-tree.js';
 import { cssMs } from '../lib/css-ms.js';
 import { DESKTOP_ICON_TARGET_PX, MOBILE_ICON_TARGET_PX, minReadableScale } from '../lib/canvas/view.js';
 import { computeSelection } from '../lib/selection.js';
@@ -70,7 +72,7 @@ if (!hostOrNull) {
 const host: HTMLElement = hostOrNull;
 // controller 會在 host 底下掛兩張 canvas（靜態層／互動層）與一份無障礙節點按鈕清單，
 // 並自己接上 pointer（拖曳平移、雙指縮放、滾輪、hover 命中）與鍵盤焦點。
-const tree: TreeHandle = mountCanvasTree(host, data);
+const tree: TreeHandle = mountCanvasTree(host, data, { safeInsets: obscuredInsets });
 // `vp` 是 controller 的座標狀態機（src/lib/canvas/view.ts）。下面既有的
 // `vp.pan／vp.zoomAt／vp.scale／vp.pxPerUnit` 呼叫語意跟 SVG 時期一樣，
 // ⚠️ 只有一點不同：**它吃的是相對 host 的 CSS px，不是 clientX/clientY**。
@@ -93,6 +95,7 @@ host.addEventListener('wheel', e => {
 // （filterState／initialSelected／currentSelected）要在算初始視角之前就準備好。
 // searchEl/filtersEl 這些真正要抓 DOM 表單元素的部分仍留在檔案後面（靠近它們自己的事件
 // 監聽器，閱讀時比較好對照），不需要跟著搬。
+// ?node= 指到不存在的 id 不在這裡擋，由 select() 開頭那一道統一處理（見那裡）。
 const { state: filterState, selected: initialSelected } = queryStringToState(location.search);
 // select() 每次呼叫都會把這個變數更新成當下選取的節點 id，applyFilter() 用它判斷
 // 「篩選條件變了、要不要重新對目前選取的節點跑一次 select() 讓面板/高亮跟著更新」，
@@ -309,7 +312,12 @@ function resetViewStack(): void {
 }
 
 function select(id: string | null): void {
+  // 不認得的 id（改版後的舊分享連結、被截斷的 ?node=）一律當成清掉選取，而且要在打開面板與
+  // syncUrl() **之前**：否則面板開成一條空白外框、網址也一直帶著錯的 id（2026-09-24 review）。
+  // ?node= 進站走的也是這裡（模組底部 applyFilter() → select(currentSelected)）。
+  if (id !== null && !byId.has(id)) id = null;
   resetViewStack();
+  markSelectedButton(id);
   currentSelected = id;
   panel.hidden = id === null;
   syncUrl();
@@ -319,9 +327,7 @@ function select(id: string | null): void {
     return;
   }
 
-  const node = byId.get(id);
-  if (!node) return;
-
+  const node = byId.get(id)!;   // 開頭已經擋過不認得的 id
   const sel = selectionFor(id);
   // 邊的高亮不必另外算：painter 用「兩端都在 chain 裡」判斷（state.ts 的 edgeAlpha／
   // edgeColor），跟舊版逐條 line 掛 .in-chain 是同一個判準，少一份會漂移的複本。
@@ -345,6 +351,48 @@ function select(id: string | null): void {
     sidePickedFor = id;
   }
   positionPanel();
+}
+
+/**
+ * 把「選了誰」同步到無障礙按鈕上（`aria-current`）。畫布上的選取光暈與前置鏈金光讀屏看不到，
+ * 按鈕本身又從不更新，Enter 之後讀屏只聽得到按鈕原本的名字（2026-09-24 review）。
+ * 用 aria-current 不用 aria-pressed：後者會把按鈕變成切換鈕語意，而再按一次並不會取消選取。
+ */
+// 自己記「上次標的是誰」，不拿 currentSelected 當舊值：?node= 進站時它一開始就是那顆，
+// 第一次 select() 會被當成「沒換」而漏標。
+let markedSelected: string | null = null;
+function markSelectedButton(next: string | null): void {
+  if (markedSelected === next) return;
+  if (markedSelected) tree.buttons.byId.get(markedSelected)?.removeAttribute('aria-current');
+  if (next) tree.buttons.byId.get(next)?.setAttribute('aria-current', 'true');
+  markedSelected = next;
+}
+
+/**
+ * 把被篩掉的節點標在按鈕上。畫面上它們淡掉了，Tab 順序裡卻跟命中的節點一模一樣。
+ * 用 aria-description 不改 aria-label：aria-label 是 E2E 選取器的來源，也是節點的名字本身。
+ * 只寫有變的那幾顆——這條每打一個字就跑一次。
+ */
+let describedFiltered = new Set<string>();
+function markFilteredButtons(next: Set<string>): void {
+  for (const id of describedFiltered) {
+    if (!next.has(id)) tree.buttons.byId.get(id)?.removeAttribute('aria-description');
+  }
+  for (const id of next) {
+    if (!describedFiltered.has(id)) tree.buttons.byId.get(id)?.setAttribute('aria-description', '不符合目前的篩選');
+  }
+  describedFiltered = new Set(next);
+}
+
+/**
+ * 關掉詳情面板。焦點原本在面板裡（✕、Esc）時還給那顆節點的按鈕——面板一 hidden，焦點就掉回
+ * `<body>`，下一個 Tab 從頁首重新開始。焦點不在面板裡（點畫布空白處）就不動它。
+ */
+function closeDetail(): void {
+  const prev = currentSelected;
+  const hadFocus = panel.contains(document.activeElement);
+  select(null);
+  if (hadFocus && prev) tree.buttons.byId.get(prev)?.focus({ preventScroll: true });
 }
 
 /**
@@ -478,6 +526,40 @@ function panelTopLimit(): number {
     : parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--nav-h')) || 48;
 }
 
+/**
+ * 畫布四邊現在被浮層蓋掉多少（相對 host 各邊的 CSS px），給 controller 的 ensureVisible
+ * （鍵盤焦點帶節點進畫面）與手機版選節點後的 revealOnNarrow() 共用。
+ *
+ * 每個浮層明指它蓋哪一邊，不靠「貼著哪條邊」去猜：#toolbar 同時貼著上緣與左緣，猜的話
+ * 左邊會多扣一整條工具列寬。
+ * - 上：#toolbar（手機展開的篩選抽屜在它的正常流程裡，會一起算進去）
+ * - 左：#branch-nav（桌機側欄；手機是 display:none，量到 0）
+ * - 下：手機的 #detail 抽屜、#branch-chips（桌機的 #detail 是浮在節點旁的卡片，不貼任何一邊，不算）
+ * ⚠️ 只算**現在看得見**的（CLAUDE.md：收起來的 sheet 仍量得到 rect，照扣會把安全區扣光）。
+ */
+function obscuredInsets(): Insets {
+  const hr = host.getBoundingClientRect();
+  const ins: Insets = { top: 0, right: 0, bottom: 0, left: 0 };
+  const visibleRect = (id: string): DOMRect | null => {
+    const el = document.getElementById(id);
+    // linkedom（單元測試）沒有版面：量不到就當沒有遮蔽，跟 nodeScreenRect() 回 null 同一個退路。
+    if (!el || el.hidden || typeof el.getBoundingClientRect !== 'function') return null;
+    const r = el.getBoundingClientRect();
+    if (!r || r.width <= 0 || r.height <= 0 || r.bottom <= 0 || r.top >= window.innerHeight) return null;
+    return typeof getComputedStyle === 'function' && getComputedStyle(el).visibility === 'hidden' ? null : r;
+  };
+  const clampTo = (v: number, max: number) => Math.max(0, Math.min(v, max));
+  const toolbar = visibleRect('toolbar');
+  if (toolbar) ins.top = clampTo(toolbar.bottom - hr.top, hr.height);
+  const nav = visibleRect('branch-nav');
+  if (nav) ins.left = clampTo(nav.right - hr.left, hr.width);
+  for (const id of isNarrow() ? ['detail', 'branch-chips'] : ['branch-chips']) {
+    const r = visibleRect(id);
+    if (r) ins.bottom = Math.max(ins.bottom, clampTo(hr.bottom - r.top, hr.height));
+  }
+  return ins;
+}
+
 /** 置中平移的長度。跟 FILTERS_MS／SLIDE_MS 同一個原則：**從 CSS 讀**，不在 JS 寫第二份。 */
 const CENTER_MS = cssMs('--t-med', 200);
 
@@ -568,9 +650,11 @@ function targetCenterY(
  * 垂直目標是「工具列下緣 → 視窗底部」的中央；卡片比那個位置上方的空間還高時，把節點再往下
  * 推到「卡片剛好放得下」為止（需求卡驗收 3：卡片完整顯示且不蓋到節點）。水平目標就是視窗
  * 中央——側欄只是左上角一小塊浮層，畫布本身是整個視窗寬。
+ * 窄畫面（手機抽屜）不置中，改走 revealOnNarrow()：只在節點被蓋住時把它挪出來。
  */
 function centerOnSelected(): void {
-  if (isNarrow() || panel.hidden || !currentSelected) return;
+  if (panel.hidden || !currentSelected) return;
+  if (isNarrow()) { revealOnNarrow(currentSelected); return; }
   // 上一段還在跑就先收乾淨（含解除釘住），再重新量、重新釘。
   cancelCenterPan();
   const n = nodeRect(currentSelected);
@@ -602,6 +686,26 @@ function centerOnSelected(): void {
       positionPanel();
     },
   );
+}
+
+/**
+ * 手機版：抽屜升起之後，被選的節點若落在工具列、抽屜底下或畫面外，把畫布平移到剛好露出來。
+ *
+ * 桌機那套「置中＋卡片貼上下」不適用（手機的卡片是底部抽屜），但不代表可以放著不管：
+ * 2026-09-24 review 實測 390×844 開 41 顆 ?node= 有 28 顆節點中心被抽屜蓋住或在畫面外，
+ * 在畫面下半部點節點也一樣——前置鏈金光是這一頁的核心回饋，被蓋住就看不到。
+ * 只動畫布、不動抽屜；已經看得見就不動（axisShift 回 0），能少動就少動。
+ * 抽屜沒有進場過場（tree.astro），select() 剛寫完內容時量到的 rect 就是最終版面。
+ */
+function revealOnNarrow(id: string): void {
+  cancelCenterPan();
+  const n = nodeRect(id);
+  if (!n) return;
+  const hr = host.getBoundingClientRect();
+  const ins = obscuredInsets();
+  const dx = axisShift(n.left + n.width / 2 - hr.left, ins.left, hr.width - ins.right);
+  const dy = axisShift(n.top + n.height / 2 - hr.top, ins.top, hr.height - ins.bottom);
+  if (dx || dy) animatePan(dx, dy, () => {});
 }
 
 /** 「使用者開啟了一個節點」：選取 ＋ 把鏡頭帶過去。`id` 為 null 時就只是清掉選取。 */
@@ -778,7 +882,14 @@ window.addEventListener('resize', () => schedulePositionPanel());
 // canvas-tree.ts 的檔頭，連 setPointerCapture 會改標 target 那個坑一起搬過去了）。
 // 空白處＝`id` 為 null＝清掉選取。
 // 兩個來源（畫布點擊、無障礙按鈕上按 Enter）刻意做同一件事：Enter 也要置中（E2E 的 N5）。
-tree.onSelect(id => openNode(id));
+// 只差焦點：鍵盤開的節點把焦點移進卡片。留在節點按鈕上的話，要按兩百多次 Tab 才走得到卡片
+// （按鈕清單在 DOM 裡排在 #detail 前面，2026-09-24 review 實測 243 次）。
+tree.onSelect((id, source) => {
+  openNode(id);
+  if (source !== 'keyboard' || panel.hidden) return;
+  const view = topViewEl();
+  if (view) focusView(view);
+});
 
 // Esc 掛在 host 上而不是 window：事件要先冒泡經過 host 才會觸發這裡，所以只有「焦點在畫布
 // 內（無障礙節點按鈕或畫布本身）」時才生效。搜尋框不是 host 的子節點，使用者在搜尋框按 Esc
@@ -805,6 +916,7 @@ function applyFilter(): void {
   // 被篩掉就一起淡下去」（否則它會變成全畫面唯一還亮著的東西）。判準與數值原封不動搬進
   // src/lib/canvas/state.ts 的 edgeAlpha()／centerAlpha()，由 tests/lib/canvas/state.test.ts 守。
   tree.setState({ filteredOut });
+  markFilteredButtons(filteredOut);
   const matchCount = data.nodes.length - filteredOut.size;
 
   updateFilterStatus(matchCount);
@@ -1312,12 +1424,26 @@ if (typeof window !== 'undefined') {
   });
 }
 
+// 重新整理（或分頁還原、複製分頁）時瀏覽器會留著這一筆的 history.state，但視圖堆疊從根視圖
+// 重新開始。深度是絕對值，留著 1 的話：之後再推一層也寫 1，按返回落回這一筆 → syncStackDepth(1)
+// 判定「不用退」，返回鍵第一下完全沒反應（2026-09-24 review 實測）。所以載入時把這一筆歸零。
+// ⚠️ 一定要在第一次 syncUrl()（模組底部的 applyFilter()）之前：syncUrl 會原樣帶著舊 state 走。
+// 做不到的事：重整後什麼都沒推就按系統上一頁，會落到重整前推入的那筆（同網址、沒有對應視圖），
+// 畫面不動——那是「同網址 pushState」本身的代價，不是這裡能補的。
+if (canUseHistory) {
+  const st = history.state as Record<string, unknown> | null;
+  const raw = st?.[HISTORY_DEPTH_KEY];
+  if (typeof raw === 'number' && raw > 0) {
+    history.replaceState({ ...st, [HISTORY_DEPTH_KEY]: 0 }, '', location.href);
+  }
+}
+
 panel.addEventListener('click', e => {
   const target = e.target as Element;
   const back = target.closest?.('[data-detail-back]');
   if (back) { goBack(); return; }
   const close = target.closest?.('[data-detail-close]');
-  if (close) { afterHistoryUnwind(() => select(null)); return; }
+  if (close) { afterHistoryUnwind(closeDetail); return; }
   const awakening = target.closest?.('[data-detail-awakening]');
   if (awakening && currentSelected) { pushView({ kind: 'awakening', id: currentSelected }); return; }
   const searchBtn = target.closest?.('[data-detail-search]');
@@ -1347,7 +1473,7 @@ panel.addEventListener('keydown', e => {
   if (e.key !== 'Escape') return;
   e.stopPropagation();
   if (viewStack.length > 1) goBack();
-  else select(null);
+  else closeDetail();
 });
 
 // 焦點不在卡片上時的後備（例如使用者用滑鼠點完就把游標移開、或焦點被別處搶走）：
@@ -1434,5 +1560,5 @@ if (filterState.query.trim() !== '') focusMatches();
 // `?node=` 進站也要置中——分享連結指名了一顆節點，它落在初始視角的哪個角落是隨機的。
 // 順序在 focusMatches() **之後**：兩個參數同時出現時，指名的那顆節點比「命中的那一群」具體。
 // 選取本身是上面 applyFilter() 內部的 select(currentSelected) 做掉的（見那裡的註解），
-// 這裡只補鏡頭；centerOnSelected() 自己會在窄畫面／沒有選取時直接返回。
+// 這裡只補鏡頭；centerOnSelected() 沒有選取時直接返回，窄畫面改走 revealOnNarrow()。
 centerOnSelected();

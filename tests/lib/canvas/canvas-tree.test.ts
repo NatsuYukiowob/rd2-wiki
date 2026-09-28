@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { parseHTML } from 'linkedom';
-import { mountCanvasTree, wheelZoomFactor, isGesturePointer } from '../../../src/lib/canvas/canvas-tree';
+import { parseHTML, Event as LinkedomEvent } from 'linkedom';
+import { mountCanvasTree, wheelZoomFactor, isGesturePointer, axisShift } from '../../../src/lib/canvas/canvas-tree';
 import type { TreeData } from '../../../src/lib/types';
 import { readTree } from '../../helpers/read-tree';
 const data = readTree() as TreeData;
@@ -792,5 +792,47 @@ describe('review 第 1 輪', () => {
     } finally {
       globalThis.matchMedia = prevMM; globalThis.ResizeObserver = prevRO;
     }
+  });
+});
+
+describe('axisShift：鍵盤焦點把節點帶進可見範圍', () => {
+  it('已經在 [lo+40, hi−40] 內不動；超出哪邊就推回那邊的邊界', () => {
+    expect(axisShift(500, 100, 900)).toBe(0);
+    expect(axisShift(120, 100, 900)).toBe(20);     // 貼著上緣的遮蔽物 → 推到 140
+    expect(axisShift(890, 100, 900)).toBe(-30);    // 貼著下緣 → 拉到 860
+  });
+  it('可見範圍窄到放不下兩邊的邊界：對準中央，不是夾到其中一邊', () => {
+    expect(axisShift(0, 100, 150)).toBe(125);
+  });
+});
+
+describe('safeInsets：ensureVisible 扣掉頁面浮層', () => {
+  const focusNode = (host: HTMLElement, id: string) =>
+    host.querySelector(`button[data-id="${id}"]`)!.dispatchEvent(new LinkedomEvent('focus') as unknown as Event);
+
+  it('節點在上緣 60px（工具列底下）：給了 top=100 → 聚焦後被帶到 140；沒給就不動（40px 邊界內）', () => {
+    for (const [insets, want] of [[{ top: 100, right: 0, bottom: 0, left: 0 }, 140], [undefined, 60]] as const) {
+      const { host } = laidOutHost();
+      const h = mountCanvasTree(host, data, insets ? { safeInsets: () => insets } : {});
+      const n = h.scene.byId.get('1001')!;
+      const [, sy] = h.view.worldToScreen(n.x, n.y);
+      h.view.pan(0, 60 - sy);
+      focusNode(host, '1001');
+      expect(h.view.worldToScreen(n.x, n.y)[1]).toBeCloseTo(want, 6);
+      h.destroy();
+    }
+  });
+
+  it('四邊都算：右邊 300、下邊 200 的遮蔽物也會把節點推出來', () => {
+    const { host } = laidOutHost();
+    const h = mountCanvasTree(host, data, { safeInsets: () => ({ top: 0, right: 300, bottom: 200, left: 0 }) });
+    const n = h.scene.byId.get('1001')!;
+    const [sx, sy] = h.view.worldToScreen(n.x, n.y);
+    h.view.pan(1200 - sx, 850 - sy);
+    focusNode(host, '1001');
+    const [x, y] = h.view.worldToScreen(n.x, n.y);
+    expect(x).toBeCloseTo(1280 - 300 - 40, 6);
+    expect(y).toBeCloseTo(900 - 200 - 40, 6);
+    h.destroy();
   });
 });

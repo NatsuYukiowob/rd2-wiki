@@ -131,7 +131,7 @@ function pageHtml(): string {
 /** location／history 的手刻存根：linkedom 的 window 不含這兩個全域物件（實測驗證過，
  * 見 task-16 報告），tree-canvas.ts 用 history.replaceState(null, '', url) 寫網址、
  * 用 location.search 讀初始網址，這裡用一個共用的 `search` 字串模擬單一事實來源。 */
-function makeLocationAndHistory(initialSearch: string) {
+function makeLocationAndHistory(initialSearch: string, initialState: unknown = null) {
   const box = { search: initialSearch, pathname: '/tree' };
   const location = {
     get search() {
@@ -140,11 +140,14 @@ function makeLocationAndHistory(initialSearch: string) {
     get pathname() {
       return box.pathname;
     },
+    get href() {
+      return `http://localhost${box.pathname}${box.search}`;
+    },
   };
   // 視圖堆疊把深度存在 history.state 裡、並用 back()/go() 退回（見 tree-canvas.ts 的
   // HISTORY_DEPTH_KEY），所以存根要有一疊真的 state，不能只是幾個空函式——空函式會讓
   // 「按上一頁等於卡片返回」這件事在測試裡永遠是綠的，實際上壞掉也看不出來。
-  const entries: unknown[] = [null];
+  const entries: unknown[] = [initialState];
   let index = 0;
   const firePopState = () => {
     (globalThis as { window?: { dispatchEvent?: (e: unknown) => void } }).window
@@ -177,10 +180,10 @@ function makeLocationAndHistory(initialSearch: string) {
 
 async function loadTreePage(
   initialSearch: string,
-  opts: { mobile?: boolean; width?: number; height?: number } = {},
+  opts: { mobile?: boolean; width?: number; height?: number; historyState?: unknown } = {},
 ) {
   const { document, window } = parseHTML(pageHtml());
-  const { location, history, box } = makeLocationAndHistory(initialSearch);
+  const { location, history, box } = makeLocationAndHistory(initialSearch, opts.historyState ?? null);
 
   // ⚠️ 容器尺寸的 stub 必須在 import 之前掛：controller 的 measure() 在 mountCanvasTree()
   // 當下就讀一次，初始視角（fitAll／jumpToBranch ＋ 可讀性下限）也是在模組執行期算完的。
@@ -282,6 +285,18 @@ describe('tree-canvas 整合：搜尋、篩選、網址狀態同步', () => {
 
     const detailText = (page.detailEl as unknown as HTMLElement).textContent ?? '';
     expect(detailText).toContain('含 3 個被篩選隱藏的前置');
+  });
+
+  it('?node= 指到不存在的 id：面板不開、網址的 node 被洗掉（branch／type 的未知值同理）', async () => {
+    const page = await loadTreePage('?node=9999&branch=zzz&type=dice');
+    expect((page.detailEl as unknown as HTMLElement).hidden).toBe(true);
+    expect(page.state().selected).toBeNull();
+    expect(page.getSearchBox()).toBe('?type=dice');
+    // 之後的篩選輸入也不會把壞 id 帶回來
+    page.searchInput.value = '火';
+    fireInput(page.searchInput);
+    expect((page.detailEl as unknown as HTMLElement).hidden).toBe(true);
+    expect(page.getSearchBox()).not.toContain('node=');
   });
 
   it('沒有選取節點時，光是勾選分支就會把不符合的節點放進 filteredOut、並寫回網址', async () => {
@@ -438,7 +453,17 @@ describe('tree-canvas 整合：分支快速跳轉（task-17，spec §6.2.6）', 
     const nature = expectedBranchView('nature', 390, 800, MOBILE_ICON_TARGET_PX);
     // 前提：兩個分支的鏡頭真的落在不同位置，否則下面的斷言驗不出東西。
     expect(engineering.worldToScreen(0, 0)).not.toEqual(nature.worldToScreen(0, 0));
-    expectNodeDrawnAt('2001', engineering);
+    // 分支視角之後還有一步 revealOnNarrow()：2001 在 engineering 視角裡貼著右緣（中心 x≈370），
+    // 會被平移到離邊 40px。所以比的是「engineering 視角 ＋ 一小段平移」，不是逐位元組相同。
+    const n = treeData.nodes.find(x => x.id === '2001')!;
+    const [ex, ey] = engineering.worldToScreen(n.x, n.y);
+    const [nx, ny] = nature.worldToScreen(n.x, n.y);
+    const r = debug().nodeScreenRect('2001')!;
+    const cx = r.left + r.width / 2 - HOST_LEFT, cy = r.top + r.height / 2 - HOST_TOP;
+    expect(Math.hypot(cx - ex, cy - ey), '離 engineering 視角只差 reveal 那一小段').toBeLessThan(60);
+    expect(Math.hypot(nx - ex, ny - ey), '前提：nature 視角離得遠，上一條才分得出兩者').toBeGreaterThan(200);
+    expect(cx).toBeGreaterThanOrEqual(40 - 1e-6);
+    expect(cx).toBeLessThanOrEqual(390 - 40 + 1e-6);
   });
 });
 
@@ -482,6 +507,19 @@ describe('tree-canvas 整合：詳情面板的視圖堆疊', () => {
     expect(topTitle(page)).toBe('#尖刺');
 
     history.back();
+    expect(topTitle(page)).toBe('尖刺骰子');
+  });
+
+  it('重新整理後 history.state 還留著深度 1：載入時歸零，之後推一層再返回第一下就退得回去', async () => {
+    // 瀏覽器重整會保留這一筆的 state，但視圖堆疊從根視圖重來。不歸零的話新推的那層也寫 1，
+    // 返回落回這一筆 → syncStackDepth(1) 判定不用退，返回鍵第一下沒反應（2026-09-24 review）。
+    const page = await loadTreePage('?node=1002', { historyState: { rd2DetailDepth: 1 } });
+    expect((history.state as Record<string, unknown>).rd2DetailDepth).toBe(0);
+    expect(page.getSearchBox()).toBe('?node=1002');   // 歸零不動網址
+
+    fireClick(page.detailEl.querySelector('.kw')!);
+    expect(topTitle(page)).toBe('#尖刺');
+    fireClick(page.detailEl.querySelector('[data-detail-back]')!);
     expect(topTitle(page)).toBe('尖刺骰子');
   });
 
@@ -577,6 +615,73 @@ describe('tree-canvas 整合：詳情面板的視圖堆疊', () => {
     } finally {
       proto.focus = origFocus;
     }
+  });
+
+  // ── 鍵盤開節點與關面板的焦點、按鈕上的選取／篩選狀態（2026-09-24 review tree-canvas-6）──
+  // linkedom 沒有真焦點：跟上一條一樣用 prototype 補丁記下誰被 .focus()、用 defineProperty
+  // 假造 activeElement。
+  function spyFocus(doc: Document) {
+    let proto = Object.getPrototypeOf(doc.getElementById('search')!);
+    while (proto && !Object.getOwnPropertyDescriptor(proto, 'focus')) proto = Object.getPrototypeOf(proto);
+    const orig = proto.focus;
+    const focused: Element[] = [];
+    proto.focus = function (this: Element) { focused.push(this); };
+    return { focused, restore: () => { proto.focus = orig; } };
+  }
+  const nodeBtn = (page: { document: Document }, id: string) =>
+    page.document.querySelector(`button.tree-a11y-node[data-id="${id}"]`)!;
+
+  it('節點按鈕上按 Enter：焦點移進卡片的節點頁；滑鼠點（pointer）不搬焦點', async () => {
+    const page = await loadTreePage('');
+    const spy = spyFocus(page.document as unknown as Document);
+    try {
+      fireKeydown(nodeBtn(page, '1002'), 'Enter');
+      expect(topTitle(page)).toBe('尖刺骰子');
+      const views = spy.focused.filter(el => el.classList?.contains('view') && page.detailEl.contains(el));
+      expect(views.length, 'Enter 開節點後焦點要進 #detail 的 .view').toBe(1);
+      expect(views[0]!.querySelector('h2')?.textContent).toBe('尖刺骰子');
+    } finally { spy.restore(); }
+  });
+
+  it('按鈕反映選取（aria-current）與篩選（aria-description）；換選取時舊的那顆拿掉', async () => {
+    const page = await loadTreePage('?node=1002');
+    expect(nodeBtn(page, '1002').getAttribute('aria-current')).toBe('true');
+    fireKeydown(nodeBtn(page, '1001'), 'Enter');
+    expect(nodeBtn(page, '1001').getAttribute('aria-current')).toBe('true');
+    expect(nodeBtn(page, '1002').hasAttribute('aria-current')).toBe(false);
+
+    const natureCb = page.filtersEl.querySelector<HTMLInputElement>('input[data-branch="nature"]')!;
+    natureCb.checked = true;
+    fireChange(natureCb);
+    expect(nodeBtn(page, '2001').getAttribute('aria-description')).toBe('不符合目前的篩選');
+    expect(nodeBtn(page, '1001').hasAttribute('aria-description')).toBe(false);
+    natureCb.checked = false;
+    fireChange(natureCb);
+    expect(nodeBtn(page, '2001').hasAttribute('aria-description')).toBe(false);
+  });
+
+  it('✕／Esc 關面板時焦點在面板裡 → 還給原節點的按鈕；焦點不在面板裡就不動', async () => {
+    for (const how of ['close', 'esc'] as const) {
+      const page = await loadTreePage('?node=1002');
+      const doc = page.document as unknown as Document;
+      const spy = spyFocus(doc);
+      try {
+        const closeBtn = page.detailEl.querySelector('[data-detail-close]')!;
+        Object.defineProperty(doc, 'activeElement', { configurable: true, get: () => closeBtn });
+        if (how === 'close') fireClick(closeBtn); else fireKeydown(closeBtn, 'Escape');
+        expect((page.detailEl as HTMLElement).hidden).toBe(true);
+        expect(spy.focused.map(el => (el as HTMLElement).dataset?.id), how).toContain('1002');
+        expect(nodeBtn(page, '1002').hasAttribute('aria-current')).toBe(false);
+      } finally { spy.restore(); }
+    }
+    const page = await loadTreePage('?node=1002');
+    const doc = page.document as unknown as Document;
+    const spy = spyFocus(doc);
+    try {
+      Object.defineProperty(doc, 'activeElement', { configurable: true, get: () => doc.body });
+      fireClick(page.detailEl.querySelector('[data-detail-close]')!);
+      expect(spy.focused.length, '焦點不在面板裡時不搶').toBe(0);
+    } finally { spy.restore(); }
   });
 
   it('點詳情面板裡不是按鈕的地方不會有任何反應（委派只認那幾個 data-*）', async () => {
