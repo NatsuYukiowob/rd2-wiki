@@ -29,6 +29,10 @@ const TYPES: Array<[string, string]> = [
 ---
 
 <Base title="骰子樹">
+  <!-- 整頁的主標題。畫面上的「標題」是畫布本身，所以視覺隱藏；少了它讀屏的標題導覽在這一頁
+       一個標題都找不到（2026-09-24 review）。.sr-only 是 absolute ＋ clip-path，不佔版面，
+       不影響 body:has(#canvas-host) 的零偏移量排版。 -->
+  <h1 class="sr-only">骰子樹</h1>
   <!-- #tree-controls：把 #toolbar 與 #branch-nav 包進同一個 position:fixed 的直向
        flex 容器（修 bug：舊版兩者各自用寫死的 top 值疊放，#branch-nav 的 top:6rem
        假設 #toolbar 永遠只有 3rem 高，但 #toolbar 有 flex-wrap，視窗變窄換行變高後
@@ -87,7 +91,7 @@ const TYPES: Array<[string, string]> = [
       import '../scripts/tree-canvas.ts';
     </script>
   </div>
-  <aside id="detail" class="panel" hidden></aside>
+  <aside id="detail" class="panel" aria-label="節點詳情" hidden></aside>
   <!-- 手機版底部的分支切換列（DOM 契約，見 task-17 brief：#branch-chips 內含 5 個
        button[data-branch]，第 18 個任務的 E2E 已經寫死這個結構）。 -->
   <div id="branch-chips">
