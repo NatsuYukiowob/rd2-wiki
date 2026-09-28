@@ -1593,8 +1593,13 @@ colors 重新著色，那張樹本來就看得見，等於用自己的無障礙�
     有 `package.json` 就把整棵相依樹裝一遍，而那一步拿得到 Cloudflare token。sparse 要關 cone mode（cone 會帶上根目錄檔案）。
     `functions/` 要 import 目錄外的東西時，sparse 清單要跟著加。
   - ⚠️ action 要 pin 40 碼 SHA（repo 開了 `sha_pinning_required`）；`wranglerVersion` 也鎖版，升級時一起換。
-  - 部署後有一步 **smoke check**：`https://rd2wiki.org/` 要 200、`GET /api/hits` 要回 `{"n":<數字>}`。打正式網域是因為
-    每次部署的專屬網址（`<hash>.rd2-wiki.pages.dev`）前面有 Cloudflare Access，匿名一律 302。
+  - wrangler 在**沒有 secret 的前一步**用 `--ignore-scripts` 先裝好（wrangler-action 自己的安裝是在 token 放進環境之後跑的）。
+    版本只寫在 deploy job 的 `env.WRANGLER_VERSION`。
+  - 部署後有一步 **smoke check**：先等 `https://rd2wiki.org/deploy-sha.txt`（verify 上傳 dist 前寫入）回這次的 SHA，
+    再驗 `/` 要 200、`POST /api/hits` 要回 `{"n":<數字>}`（每次部署計數 +1）。打正式網域是因為每次部署的專屬網址
+    （`<hash>.rd2-wiki.pages.dev`）前面有 Cloudflare Access，匿名一律 302。
+  - ⚠️ 正式網域寫死在很多地方（`astro.config.mjs` 的 `site`、`robots.txt`、`seo.spec.ts`、這個 smoke、README…）。
+    換網域用 `git grep rd2wiki.org` 全找。
 - ⚠️ **`public/_headers` 對 Pages Functions 的回應無效**（官方文件明載）。CSP 之類的標頭要兩邊都寫：
   靜態頁走 `_headers`，Function 在程式碼裡自己放進 `Response`。驗收也要分開驗。
 - ⚠️ **`#hit-counter` 抓得到 HTML 不代表看得到。** 訪客計數器預設 `hidden`，前端拿到數字才顯示——
