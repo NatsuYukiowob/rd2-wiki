@@ -18,7 +18,11 @@
 #
 # ⚠️ 所有 action 都 pin 到完整 commit SHA（後面註解保留原本的 tag）：repo 的 Actions 設定開了
 # 「Require actions to be pinned to a full-length commit SHA」，寫成 `@v4` 會被 GitHub 直接拒跑。
-# 升級時把 SHA 與註解一起換掉（`gh api repos/<owner>/<repo>/git/ref/tags/<tag>`）。
+# 升級時把 SHA 與註解一起換掉（`gh api repos/<owner>/<repo>/commits/<tag> --jq .sha`——
+# 用 commits 不用 git/ref：annotated tag 的 git/ref 拿到的是 tag 物件、不是 commit）。
+#
+# ⚠️ runner 寫死 `ubuntu-26.04` 而不是 `ubuntu-latest`：latest 在 2026-10-19～11-19 間會分批
+# 從 24.04 換成 26.04，同一個 commit 前後兩次 run 可能落在不同 image。寫死版本，換 image 就是一個看得到的 PR。
 name: CI
 on:
   pull_request:
@@ -33,14 +37,14 @@ concurrency:
 jobs:
   verify:
     name: verify
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         # fetch-depth 0：下面「產生差異摘要」步驟要用 git worktree 簽出 PR 的 base commit
         # 來跑一次 base 版本的 build:data，沒有完整歷史會找不到那個 commit。
         with: { fetch-depth: 0 }
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with: { node-version: '24', cache: npm }
       # --ignore-scripts：fork PR 改得動 package.json 的 lifecycle script，而 `npm ci` 會在
       # runner 上執行它。這個 repo 的相依套件不需要安裝腳本也能用（sharp 的原生二進位走
@@ -99,7 +103,7 @@ jobs:
           git worktree add /tmp/base ${{ github.event.pull_request.base.sha }}
           (cd /tmp/base && npm ci --ignore-scripts && npm run build:data && cp src/generated/tree.json /tmp/base.json)
           npx tsx tools/diff-summary.ts /tmp/base.json /tmp/head.json
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: github.event_name == 'pull_request'
         with:
           # 上傳的是**資料**（JSON）不是版面（Markdown）。這一步跑的是 PR 端的程式碼，
@@ -111,7 +115,7 @@ jobs:
         # 「CI 綠才上線」要成立，上線的就得是**被驗過的那份 dist**，不是另外再建一次的產物。
         # 重建會引入 sharp 編碼、astro 資產雜湊、兩次 npm ci 之間 registry 變動等不確定性。
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: dist
           path: dist/
@@ -119,7 +123,7 @@ jobs:
 
   e2e-shard:
     name: e2e-shard ${{ matrix.shard }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     # ⚠️ 2026-09-06 起 E2E 跑在 Playwright 官方容器裡，tag **pin 到 package-lock 的 @playwright/test 版本**
     #（兩邊版本不同時 Playwright 會拒絕啟動瀏覽器）。理由不只是下面那段 apt 的歷史：畫布改成 canvas 之後
     # 四張快照（tests/e2e/tree.spec.ts 的 F）比的是點陣圖，標籤字型差一點就整張紅——第一次在 ubuntu-latest
@@ -160,8 +164,8 @@ jobs:
       matrix:
         shard: [1, 2, 3]
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with: { node-version: '24', cache: npm }
       - run: npm ci --ignore-scripts
       # E2E 驗證的是「建置後、真實瀏覽器裡」的行為（見 playwright.config.ts 開頭註解），
@@ -202,10 +206,10 @@ jobs:
         # （config 的 screenshot: only-on-failure、trace: retain-on-failure）。
         # 想要 HTML 報告就得先改 config 的 reporter，不是在這裡多列一個目錄。
         #
-        # ⚠️ 名字**必須帶 shard 編號**：upload-artifact@v4 不允許同一次 run 上傳兩個同名 artifact，
+        # ⚠️ 名字**必須帶 shard 編號**：upload-artifact（v4 起）不允許同一次 run 上傳兩個同名 artifact，
         # 兩片一起紅的時候第二片會 409 失敗，而那正是最需要看痕跡的情況。
         if: failure()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: playwright-failure-traces-${{ matrix.shard }}
           path: test-results/
@@ -230,7 +234,7 @@ jobs:
     name: e2e
     needs: [e2e-shard]
     if: ${{ !cancelled() }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 5
     steps:
       - name: 檢查所有分片都綠
@@ -244,7 +248,7 @@ jobs:
     # 只有 main 上的 push 才部署；PR（含 fork PR）不部署，也拿不到下面的 secret。
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: [verify, e2e]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 10
     permissions:
       contents: read
@@ -277,18 +281,21 @@ jobs:
         # 這裡只取原始碼、不跑 npm ci：Functions 由 wrangler 內建的 esbuild 打包，
         # 而 dist/ 仍然來自下一步的 artifact——**上線的靜態產物依舊是被驗過的那一份**。
         if: steps.creds.outputs.ready == 'true'
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: 取回 verify 驗過的建置產物
         # 刻意不在這裡重建：要上線的就是通過 validate／效能預算／單元測試／E2E 的那一份 dist。
         if: steps.creds.outputs.ready == 'true'
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: dist
           path: dist
       - name: 部署到 Cloudflare Pages
         if: steps.creds.outputs.ready == 'true'
-        uses: cloudflare/wrangler-action@9acf94ace14e7dc412b076f2c5c20b8ce93c79cd # v3
+        uses: cloudflare/wrangler-action@953926a2e2182532811c01a25e53647d93bf07c0 # v4.1.3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          # wrangler-action v4 不指定時裝 `latest`——拿得到 API token 的這一步會跑一份沒鎖版的套件。
+          # 釘死版本，升級時跟 action 的 SHA 一起換（`npm view wrangler version`）。
+          wranglerVersion: '4.142.0'
           command: pages deploy dist --project-name=rd2-wiki --branch=main
