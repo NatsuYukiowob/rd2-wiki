@@ -53,8 +53,9 @@ jobs:
     #
     # 這裡刻意**不**看 workflow_run 的整體 conclusion：差異摘要是 verify job 產出的，
     # e2e 掛掉（含偶發失敗）時 artifact 照樣存在，而「節點 id 消失、分享網址會失效」這種警告
-    # 正是紅燈的 PR 更需要看到的。改成「artifact 抓得到就貼、抓不到就安靜結束」——
+    # 正是紅燈的 PR 更需要看到的。改成「有 artifact 就貼、沒有就整個 job 跳過」（check job 判斷）——
     # verify 自己失敗時本來就不會有 artifact，效果等同原本的守門，但不會誤殺。
+    # ⚠️ 有 artifact 卻下載失敗時這個 job **應該紅**（digest 不符＝損毀或被竄改），不要加回 continue-on-error。
     needs: [check]
     if: needs.check.outputs.n != '0'
     runs-on: ubuntu-26.04
