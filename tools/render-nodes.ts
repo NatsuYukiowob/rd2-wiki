@@ -35,6 +35,11 @@ import type { Shape } from '../src/lib/types.js';
  *
  * 跑完 `data/icons/` 會被整個換掉、`data/dice-tree.svg` 的每個節點會指向新圖並帶上新的
  * 顯示尺寸。之後照常跑 `npm run validate`／`npm test`／`npm run build`。
+ *
+ * ⚠️ **輸出跨 Chromium 版本不是位元組可重現**：零改動重跑時，五個支援節點（1114／2114／3114／
+ * 4114／5114）的 PNG 會出現純邊緣的次像素位移；同一台機器連跑兩次則完全相同。`@playwright/test`
+ * 是 caret 範圍，`npm install` 換到新 Chromium 就會漂，所以「重跑後 PNG 位元組不變」不可以拿來
+ * 當驗收條件。
  */
 
 /** 原圖的座標系是站台的兩倍（見 CLAUDE.md「版面來自遊戲內的原圖」：座標取原圖 ×0.5）。 */
@@ -96,6 +101,11 @@ function reshape(shape: Shape, w: number, h: number): { re: RegExp; to: string }
   }
 }
 
+/**
+ * ⚠️ 超越骰子 1501／2503 與符文 1601／2603 的圖示不是這支產的（遊戲的超越節點底板疊骰子 sprite，
+ * 配方見 `data/CLAUDE.md`）。正本裡 1501 仍是 `<rect>`、六角只在圖裡；重跑時若把它判成 6 點
+ * polygon 會被當成支援節點、規則 3 擋下——重跑前要排除或另外處理這四顆。
+ */
 function shapeOf(block: string): Shape {
   if (/<rect /.test(block)) return 'rect';
   if (/<circle /.test(block)) return 'circle';

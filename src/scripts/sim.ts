@@ -353,6 +353,8 @@ function syncButtons(p: SimPaint | null = lastPaint): void {
 // 太陽核心只在有值時才印：三列合計是側欄常駐的東西，為一個只有太陽骰子那一支花得到的
 // 貨幣固定多佔一段寬度，會讓 239 顆節點裡的 237 顆看到一段永遠是 0 的字。
 // 帶貨幣圖的版本在 src/lib/cost-html.ts（文字跟以前逐字相同，E2E 的 toHaveText 不受影響）。
+// ⚠️ 下面用 innerHTML 塞進三列合計：安全只因為字串裡的數字全部來自 `Cost` 的 number 欄位、
+// 圖示網址是本站常數。日後要併入任何資料來的文字（節點名稱、描述），先跳脫再拼。
 const cost = (c: Cost) => simCostHtml(c);
 
 function renderTotals(): void {
