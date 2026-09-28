@@ -185,11 +185,12 @@ jobs:
       # 命中時仍得補跑 install-deps，等於把「唯一會慢的那件事」變成唯一還在做的事。
       #
       # 既然 apt 是我們控制不了的外部變因，作法是**完全不碰它**：只抓瀏覽器，不裝系統套件。
-      # 前提是 GitHub 的 ubuntu-latest runner image 本來就內建 Chromium 需要的共用函式庫——
+      # 前提是 GitHub 的 runner image 本來就內建 Chromium 需要的共用函式庫——
       # 這是**假設，不是已知**（本機環境跟 runner image 不同，驗不準）。若 Chromium 起不來，
       # 會在「端對端測試」那步立刻噴 launch 失敗，是幾秒內就看得到的紅燈，不是 20 分鐘的卡死。
       # 那時的下一手是改用官方容器（`container: mcr.microsoft.com/playwright:v1.62.1-noble`，
       # tag 要 pin 具體版本），image 內建瀏覽器與函式庫，整個問題類別消失。
+      # ⚠️ 以上是歷史：2026-09-06 起這個 job 已經跑在上面的容器裡，host runner image 的函式庫不再相關。
       # 不再 `npx playwright install chromium`：容器 image 已內建對應版本的瀏覽器與系統函式庫。
       - name: 端對端測試（含建置）
         # 這裡刻意沒有獨立的「建置站台」步驟：package.json 的 `pree2e` 已經會跑一次
@@ -280,8 +281,18 @@ jobs:
         #
         # 這裡只取原始碼、不跑 npm ci：Functions 由 wrangler 內建的 esbuild 打包，
         # 而 dist/ 仍然來自下一步的 artifact——**上線的靜態產物依舊是被驗過的那一份**。
+        #
+        # ⚠️ **只取 functions/，不要整個 repo**：wrangler-action 會在工作目錄跑 `npm i wrangler@<ver>`
+        #（沒有 --ignore-scripts），工作目錄有 package.json／package-lock.json 時等於把整棵相依樹
+        #（2026-09-27 的 log：`added 478 packages`）連同 install script 裝一遍，而那一步的環境變數裡
+        # 就有 Cloudflare token。只取 functions/ 之後只裝 wrangler 自己的相依（本機實測 36 個）。
+        # ⚠️ 要關 cone mode：cone mode 一律帶上 repo 根目錄的檔案，package.json 會跟著進來。
+        # functions/ 只 import 自己目錄底下的檔案；哪天要 import src/ 或 npm 套件，這裡要跟著加。
         if: steps.creds.outputs.ready == 'true'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: /functions/
+          sparse-checkout-cone-mode: false
       - name: 取回 verify 驗過的建置產物
         # 刻意不在這裡重建：要上線的就是通過 validate／效能預算／單元測試／E2E 的那一份 dist。
         if: steps.creds.outputs.ready == 'true'
@@ -295,7 +306,28 @@ jobs:
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          # wrangler-action v4 不指定時裝 `latest`——拿得到 API token 的這一步會跑一份沒鎖版的套件。
-          # 釘死版本，升級時跟 action 的 SHA 一起換（`npm view wrangler version`）。
+          # wrangler-action v4.1.3 不指定時裝 `"4"`（4.x 的最新版）——拿得到 API token 的這一步
+          # 會跑一份每次都可能不同的套件。釘死版本，升級時跟 action 的 SHA 一起換（`npm view wrangler version`）。
           wranglerVersion: '4.142.0'
           command: pages deploy dist --project-name=rd2-wiki --branch=main
+      - name: 部署後 smoke check
+        # 部署回成功不代表站活著：Functions 沒打包進去、D1 binding 沒綁、表沒建，都會收斂成
+        #「訪客計數器靜靜消失」（#hit-counter 拿不到數字就保持 hidden），部署照樣綠。
+        # 打正式網域：每次部署的專屬網址（`<hash>.rd2-wiki.pages.dev`、wrangler-action 的
+        # deployment-url 輸出）前面有 Cloudflare Access，匿名請求一律 302 到登入頁，CI 打不進去。
+        # 代價：分不出回應的是這一版還是上一版——它抓的是「站或 Functions 整個掛了」，不是逐版比對。
+        # /api/hits 用 GET（只讀），POST 會讓計數 +1。首頁要帶尾斜線，不帶會 308。
+        # 重試是給新部署生效的時間，不是容忍失敗。
+        if: steps.creds.outputs.ready == 'true'
+        env:
+          URL: https://rd2wiki.org
+        run: |
+          for i in 1 2 3 4 5 6; do
+            page=$(curl -fsS "$URL/" -o /dev/null -w '%{http_code}' || true)
+            hits=$(curl -fsS "$URL/api/hits" || true)
+            echo "第 $i 次：/ → ${page}，/api/hits → ${hits}"
+            if [ "$page" = 200 ] && printf '%s' "$hits" | grep -Eq '^\{"n":[0-9]+\}$'; then exit 0; fi
+            sleep 10
+          done
+          echo "::error::smoke check 失敗：$URL 的首頁或 /api/hits 不正常"
+          exit 1

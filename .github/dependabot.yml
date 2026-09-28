@@ -1,0 +1,14 @@
+# 只管 GitHub Actions：把 workflow 裡 pin 住的 SHA 與後面的 tag 註解一起升級（repo 開了 sha_pinning_required）。
+# ⚠️ ci.yml 的 `wranglerVersion` 是 action 的 input，不在 Dependabot 的範圍，要手動跟著升。
+# npm 相依不交給它：資料與建置對版本敏感（E2E 的 Playwright 容器 tag 要跟 package-lock 同版），升級一律手動。
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      actions:
+        patterns: ['*']
+    commit-message:
+      prefix: ci
