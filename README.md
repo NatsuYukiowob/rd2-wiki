@@ -138,6 +138,7 @@ Git 自動建置已關閉，所以不存在「還沒過 CI 就先上線」的第
 
 ## 授權
 
-- **程式碼**：[MIT License](./LICENSE)
-- **`data/` 內的遊戲圖示與效果文字**：著作權屬 111 Percent Inc.，詳見
+- **程式碼與本專案整理出的資料結構**：[MIT License](./LICENSE)（資料結構的範圍見
+  [`data/NOTICE.md`](./data/NOTICE.md)）
+- **`data/` 內的遊戲圖示與效果文字**：著作權屬 111 Percent Inc.，**不在 MIT 授權範圍內**，詳見
   [`data/NOTICE.md`](./data/NOTICE.md)。本站僅整理呈現遊戲內公開內容，不主張這些素材的著作權。
