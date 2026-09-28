@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { parseHTML, Event as LinkedomEvent } from 'linkedom';
-import { mountCanvasTree, wheelZoomFactor, isGesturePointer, axisShift } from '../../../src/lib/canvas/canvas-tree';
+import { mountCanvasTree, wheelZoomFactor, isGesturePointer, escapeShift } from '../../../src/lib/canvas/canvas-tree';
 import type { TreeData } from '../../../src/lib/types';
 import { readTree } from '../../helpers/read-tree';
 const data = readTree() as TreeData;
@@ -795,44 +795,59 @@ describe('review 第 1 輪', () => {
   });
 });
 
-describe('axisShift：鍵盤焦點把節點帶進可見範圍', () => {
-  it('已經在 [lo+40, hi−40] 內不動；超出哪邊就推回那邊的邊界', () => {
-    expect(axisShift(500, 100, 900)).toBe(0);
-    expect(axisShift(120, 100, 900)).toBe(20);     // 貼著上緣的遮蔽物 → 推到 140
-    expect(axisShift(890, 100, 900)).toBe(-30);    // 貼著下緣 → 拉到 860
+describe('escapeShift：鍵盤焦點把節點帶到看得見的地方', () => {
+  const R = (left: number, top: number, width: number, height: number) => ({ left, top, width, height });
+  it('沒有遮蔽物：已經在四邊 40px 內不動，超出就推回邊界', () => {
+    expect(escapeShift(500, 500, 1280, 900, [])).toEqual([0, 0]);
+    expect(escapeShift(10, 890, 1280, 900, [])).toEqual([30, -30]);
   });
-  it('可見範圍窄到放不下兩邊的邊界：對準中央，不是夾到其中一邊', () => {
-    expect(axisShift(0, 100, 150)).toBe(125);
+  it('只避開真的蓋住它的矩形：左上角工具列不會把右上角的節點白推一段', () => {
+    const toolbar = R(0, 0, 700, 60);
+    expect(escapeShift(1100, 60, 1280, 900, [toolbar])).toEqual([0, 0]);
+    // 在工具列底下：挑最短的出路（往下到工具列下緣＋40 = 20px，比往右 640px 近）
+    expect(escapeShift(300, 80, 1280, 900, [toolbar])).toEqual([0, 20]);
+  });
+  it('往下推會撞進另一個遮蔽物時改走別條路；四邊都算', () => {
+    const toolbar = R(0, 0, 700, 60), nav = R(0, 60, 80, 200);
+    const [dx, dy] = escapeShift(60, 100, 1280, 900, [toolbar, nav]);
+    const px = 60 + dx, py = 100 + dy;
+    for (const r of [toolbar, nav]) {
+      expect(px > r.left - 40 && px < r.left + r.width + 40 && py > r.top - 40 && py < r.top + r.height + 40).toBe(false);
+    }
+    expect(Math.hypot(dx, dy)).toBeLessThanOrEqual(80);   // 往右 80 就出來了
+  });
+  it('放不下（整片被蓋）：退回只夾 host 四邊，不丟例外', () => {
+    expect(escapeShift(500, 500, 1280, 900, [R(0, 0, 1280, 900)])).toEqual([0, 0]);
   });
 });
 
-describe('safeInsets：ensureVisible 扣掉頁面浮層', () => {
+describe('obscurers：ensureVisible 與 visibleShift 避開頁面浮層', () => {
   const focusNode = (host: HTMLElement, id: string) =>
     host.querySelector(`button[data-id="${id}"]`)!.dispatchEvent(new LinkedomEvent('focus') as unknown as Event);
 
-  it('節點在上緣 60px（工具列底下）：給了 top=100 → 聚焦後被帶到 140；沒給就不動（40px 邊界內）', () => {
-    for (const [insets, want] of [[{ top: 100, right: 0, bottom: 0, left: 0 }, 140], [undefined, 60]] as const) {
+  it('節點在工具列底下：聚焦後被帶出來；沒給遮蔽物就不動（已在 40px 邊界內）', () => {
+    const toolbar = { left: 0, top: 0, width: 1280, height: 100 };
+    for (const [obs, want] of [[[toolbar], 140], [undefined, 60]] as const) {
       const { host } = laidOutHost();
-      const h = mountCanvasTree(host, data, insets ? { safeInsets: () => insets } : {});
+      const h = mountCanvasTree(host, data, obs ? { obscurers: () => [...obs] } : {});
       const n = h.scene.byId.get('1001')!;
       const [, sy] = h.view.worldToScreen(n.x, n.y);
       h.view.pan(0, 60 - sy);
+      expect(h.visibleShift('1001')[1]).toBeCloseTo(want - 60, 6);   // 同一份計算，只是不平移
       focusNode(host, '1001');
       expect(h.view.worldToScreen(n.x, n.y)[1]).toBeCloseTo(want, 6);
       h.destroy();
     }
   });
 
-  it('四邊都算：右邊 300、下邊 200 的遮蔽物也會把節點推出來', () => {
+  it('遮蔽物是視窗座標：host 有 offset 時先換算成 host 內座標', () => {
     const { host } = laidOutHost();
-    const h = mountCanvasTree(host, data, { safeInsets: () => ({ top: 0, right: 300, bottom: 200, left: 0 }) });
+    host.getBoundingClientRect = (() => ({ width: 1280, height: 900, left: 0, top: 50, right: 1280, bottom: 950, x: 0, y: 50, toJSON() {} })) as never;
+    const h = mountCanvasTree(host, data, { obscurers: () => [{ left: 0, top: 50, width: 1280, height: 100 }] });
     const n = h.scene.byId.get('1001')!;
-    const [sx, sy] = h.view.worldToScreen(n.x, n.y);
-    h.view.pan(1200 - sx, 850 - sy);
-    focusNode(host, '1001');
-    const [x, y] = h.view.worldToScreen(n.x, n.y);
-    expect(x).toBeCloseTo(1280 - 300 - 40, 6);
-    expect(y).toBeCloseTo(900 - 200 - 40, 6);
+    const [, sy] = h.view.worldToScreen(n.x, n.y);
+    h.view.pan(0, 60 - sy);   // host 內 y=60，被 host 內 0–100 的工具列蓋住
+    expect(h.visibleShift('1001')[1]).toBeCloseTo(80, 6);
     h.destroy();
   });
 });

@@ -92,19 +92,36 @@ export function wheelZoomFactor(
  * 單元測試的假事件兩個欄位都沒帶。頁面腳本（tree-canvas.ts 的 cancelCenterPan）用同一個判準，
  * 免得 controller 不理的事件仍把置中平移掐掉。
  */
-/**
- * 一個軸上要平移多少，才能讓座標 `v` 落進可見區間 `[lo, hi]` 內縮 FOCUS_MARGIN_PX 的範圍
- * （0＝已經在裡面，不動）。可見區間窄到連兩邊的邊界都放不下時，對準區間中央——
- * 手機橫放時工具列加抽屜可能只剩一條縫，夾到任何一邊都會落在遮蔽物底下。
- */
-export function axisShift(v: number, lo: number, hi: number): number {
-  const m = FOCUS_MARGIN_PX;
-  if (hi - lo < 2 * m) return (lo + hi) / 2 - v;
-  return v < lo + m ? lo + m - v : v > hi - m ? hi - m - v : 0;
-}
-
 export function isGesturePointer(e: Pick<PointerEvent, 'pointerType' | 'button'>): boolean {
   return !(e.pointerType === 'mouse' && e.button !== 0);
+}
+
+/**
+ * 把 host 內的一點 (x, y) 移到「看得見」的位置要平移多少（CSS px，[0, 0]＝已經看得見）。
+ *
+ * 看得見＝離 host 四邊至少 FOCUS_MARGIN_PX，而且不在任何遮蔽矩形外擴 FOCUS_MARGIN_PX 的範圍內。
+ * 遮蔽物用**實際的矩形**，不是「上緣一整條／左緣一整條」：工具列只蓋左上角，當成整條上緣的話
+ * 聚焦右上角的節點也會被白推一段（2026-09-28 PR #89 review）。
+ * 做法：每個軸的候選位移＝0、貼齊 host 兩邊、貼齊每個矩形兩側，全部組合挑最短的合法那一組
+ * （遮蔽物只有個位數，組合數是幾十到一兩百）。沒有任何合法組合（視窗小到放不下）時退回只夾 host 四邊。
+ */
+export function escapeShift(
+  x: number, y: number, w: number, h: number, rects: readonly ScreenRect[],
+): [number, number] {
+  const m = FOCUS_MARGIN_PX;
+  const inside = (px: number, py: number) => rects.some(r =>
+    px > r.left - m && px < r.left + r.width + m && py > r.top - m && py < r.top + r.height + m);
+  const inHost = (px: number, py: number) => px >= m - 1e-6 && px <= w - m + 1e-6 && py >= m - 1e-6 && py <= h - m + 1e-6;
+  const dxs = [0, m - x, w - m - x, ...rects.flatMap(r => [r.left - m - x, r.left + r.width + m - x])];
+  const dys = [0, m - y, h - m - y, ...rects.flatMap(r => [r.top - m - y, r.top + r.height + m - y])];
+  let best: [number, number] | null = null;
+  for (const dx of dxs) for (const dy of dys) {
+    if (!inHost(x + dx, y + dy) || inside(x + dx, y + dy)) continue;
+    if (!best || Math.hypot(dx, dy) < Math.hypot(best[0], best[1])) best = [dx, dy];
+  }
+  if (best) return best;
+  const clamp = (v: number, size: number) => (size < 2 * m ? size / 2 - v : Math.min(Math.max(v, m), size - m) - v);
+  return [clamp(x, w), clamp(y, h)];
 }
 
 export interface ScreenRect { left: number; top: number; width: number; height: number }
@@ -128,6 +145,12 @@ export interface TreeHandle {
   pan(dxPx: number, dyPx: number): void;
   fitAll(pad?: number): void;
   fitBounds(b: [number, number, number, number]): void;
+  /**
+   * 要把節點移到看得見的位置得平移多少（CSS px；[0, 0]＝已經看得見）。跟鍵盤焦點的
+   * ensureVisible 是**同一份**計算（含 `MountOptions.obscurers`），差別只在這裡不自己平移：
+   * 呼叫端要用自己的緩動動畫（/tree 手機版選節點後的 revealOnNarrow）。
+   */
+  visibleShift(id: string): [number, number];
   onSelect(cb: (id: string | null, source: 'pointer' | 'keyboard') => void): void;
   /** 平移縮放後（每幀）呼叫，讓呼叫端跟著移動浮在畫布上的東西（詳情卡片）。 */
   onViewChange(cb: () => void): void;
@@ -145,16 +168,14 @@ export interface TreeHandle {
 export interface MountOptions {
   hiresBase?: string;
   /**
-   * 畫布四邊**現在**被頁面浮層蓋掉多少（相對 host 各邊的 CSS px）：工具列、側欄、手機抽屜。
-   * 鍵盤焦點把節點帶進畫面時（`ensureVisible`）以扣掉這些之後的範圍為準，否則節點與焦點框
-   * 會停在工具列底下（WCAG 2.2 2.4.11；2026-09-24 review 實測 /tree 桌機 15 顆被蓋）。
-   * 每次聚焦時才呼叫，所以可以直接量版面；只算真的看得見的遮蔽物。不給＝四邊都是 0。
-   * 這不是 `/sim` 旗標：兩頁各自量自己的浮層，controller 只收數字。
+   * 現在疊在畫布上的頁面浮層（工具列、側欄、手機抽屜）的矩形，**視窗座標**。
+   * 鍵盤焦點把節點帶進畫面時（`ensureVisible`）與 `visibleShift()` 會避開它們，否則節點與
+   * 焦點框會停在工具列底下（WCAG 2.2 2.4.11；2026-09-24 review 實測 /tree 桌機 15 顆被蓋）。
+   * 每次要用時才呼叫，所以可以直接量版面；只給真的看得見的。不給＝沒有遮蔽物。
+   * 這不是 `/sim` 旗標：兩頁各自量自己的浮層，controller 只收矩形。
    */
-  safeInsets?: () => Insets;
+  obscurers?: () => ScreenRect[];
 }
-
-export interface Insets { top: number; right: number; bottom: number; left: number }
 
 export function mountCanvasTree(host: HTMLElement, data: TreeData, opts: MountOptions = {}): TreeHandle {
   const doc = host.ownerDocument;
@@ -594,13 +615,18 @@ export function mountCanvasTree(host: HTMLElement, data: TreeData, opts: MountOp
   }, { passive: false });
 
   // ── 鍵盤焦點：a11y 按鈕拿到焦點時把節點帶進畫面 ─────────────────────────────
-  function ensureVisible(id: string): void {
+  function visibleShift(id: string): [number, number] {
     const n = scene.byId.get(id);
-    if (!n) return;
+    if (!n) return [0, 0];
     const [sx, sy] = view.worldToScreen(n.x, n.y);
-    const ins = opts.safeInsets?.() ?? { top: 0, right: 0, bottom: 0, left: 0 };
-    const dx = axisShift(sx, ins.left, cssW - ins.right);
-    const dy = axisShift(sy, ins.top, cssH - ins.bottom);
+    const hr = typeof host.getBoundingClientRect === 'function' ? host.getBoundingClientRect() : null;
+    const ox = hr?.left ?? 0, oy = hr?.top ?? 0;
+    const rects = (opts.obscurers?.() ?? []).map(r => ({ ...r, left: r.left - ox, top: r.top - oy }));
+    return escapeShift(sx, sy, cssW, cssH, rects);
+  }
+
+  function ensureVisible(id: string): void {
+    const [dx, dy] = visibleShift(id);
     if (dx || dy) { view.pan(dx, dy); cache.invalidate(); }   // 程式化平移一樣要補畫（呼叫端會排一幀）
   }
 
@@ -658,6 +684,7 @@ export function mountCanvasTree(host: HTMLElement, data: TreeData, opts: MountOp
     pan(dxPx, dyPx) { view.pan(dxPx, dyPx); cache.invalidate(); requestRedraw(); },
     fitAll(pad) { view.fitTo(scene.viewBox, pad); cache.invalidate(); requestRedraw(); },
     fitBounds(b) { view.fitTo(b); cache.invalidate(); requestRedraw(); },
+    visibleShift,
     onSelect(cb) { selectCbs.push(cb); },
     onViewChange(cb) { viewCbs.push(cb); },
     destroy() {

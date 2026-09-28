@@ -131,7 +131,7 @@ function pageHtml(): string {
 /** location／history 的手刻存根：linkedom 的 window 不含這兩個全域物件（實測驗證過，
  * 見 task-16 報告），tree-canvas.ts 用 history.replaceState(null, '', url) 寫網址、
  * 用 location.search 讀初始網址，這裡用一個共用的 `search` 字串模擬單一事實來源。 */
-function makeLocationAndHistory(initialSearch: string, initialState: unknown = null) {
+function makeLocationAndHistory(initialSearch: string, initialStates: unknown[] = [null]) {
   const box = { search: initialSearch, pathname: '/tree' };
   const location = {
     get search() {
@@ -147,8 +147,9 @@ function makeLocationAndHistory(initialSearch: string, initialState: unknown = n
   // 視圖堆疊把深度存在 history.state 裡、並用 back()/go() 退回（見 tree-canvas.ts 的
   // HISTORY_DEPTH_KEY），所以存根要有一疊真的 state，不能只是幾個空函式——空函式會讓
   // 「按上一頁等於卡片返回」這件事在測試裡永遠是綠的，實際上壞掉也看不出來。
-  const entries: unknown[] = [initialState];
-  let index = 0;
+  // 最後一筆是「現在這一筆」（重整時瀏覽器會留著前面幾筆與各自的 state）
+  const entries: unknown[] = [...initialStates];
+  let index = entries.length - 1;
   const firePopState = () => {
     (globalThis as { window?: { dispatchEvent?: (e: unknown) => void } }).window
       ?.dispatchEvent?.(new LinkedomEvent('popstate'));
@@ -180,10 +181,10 @@ function makeLocationAndHistory(initialSearch: string, initialState: unknown = n
 
 async function loadTreePage(
   initialSearch: string,
-  opts: { mobile?: boolean; width?: number; height?: number; historyState?: unknown } = {},
+  opts: { mobile?: boolean; width?: number; height?: number; historyStates?: unknown[] } = {},
 ) {
   const { document, window } = parseHTML(pageHtml());
-  const { location, history, box } = makeLocationAndHistory(initialSearch, opts.historyState ?? null);
+  const { location, history, box } = makeLocationAndHistory(initialSearch, opts.historyStates);
 
   // ⚠️ 容器尺寸的 stub 必須在 import 之前掛：controller 的 measure() 在 mountCanvasTree()
   // 當下就讀一次，初始視角（fitAll／jumpToBranch ＋ 可讀性下限）也是在模組執行期算完的。
@@ -242,8 +243,11 @@ function fireKeydown(el: Element, key: string): void {
   Object.defineProperty(ev, 'key', { value: key });
   el.dispatchEvent(ev);
 }
-function fireClick(el: Element): void {
-  el.dispatchEvent(new LinkedomEvent('click', { bubbles: true }) as unknown as Event);
+function fireClick(el: Element, detail?: number): void {
+  const ev = new LinkedomEvent('click', { bubbles: true }) as unknown as Event;
+  // detail：滑鼠點擊 ≥ 1、鍵盤（Enter／Space）合成的 click 是 0。linkedom 不帶這個欄位。
+  if (detail !== undefined) Object.defineProperty(ev, 'detail', { value: detail });
+  el.dispatchEvent(ev);
 }
 
 describe('tree-canvas 整合：搜尋、篩選、網址狀態同步', () => {
@@ -513,10 +517,23 @@ describe('tree-canvas 整合：詳情面板的視圖堆疊', () => {
   it('重新整理後 history.state 還留著深度 1：載入時歸零，之後推一層再返回第一下就退得回去', async () => {
     // 瀏覽器重整會保留這一筆的 state，但視圖堆疊從根視圖重來。不歸零的話新推的那層也寫 1，
     // 返回落回這一筆 → syncStackDepth(1) 判定不用退，返回鍵第一下沒反應（2026-09-24 review）。
-    const page = await loadTreePage('?node=1002', { historyState: { rd2DetailDepth: 1 } });
+    const page = await loadTreePage('?node=1002', { historyStates: [null, { rd2DetailDepth: 1 }] });
     expect((history.state as Record<string, unknown>).rd2DetailDepth).toBe(0);
     expect(page.getSearchBox()).toBe('?node=1002');   // 歸零不動網址
 
+    fireClick(page.detailEl.querySelector('.kw')!);
+    expect(topTitle(page)).toBe('#尖刺');
+    fireClick(page.detailEl.querySelector('[data-detail-back]')!);
+    expect(topTitle(page)).toBe('尖刺骰子');
+  });
+
+  it('重整前推了兩層：重整 → 上一頁回到還記著深度 1 的舊紀錄 → 夾回 0，再推一層返回照樣第一下就退', async () => {
+    // 重整只歸零得了當下那一筆；更早的紀錄還帶著舊的絕對深度（2026-09-28 PR #89 review）
+    const page = await loadTreePage('?node=1002', {
+      historyStates: [{ rd2DetailDepth: 0 }, { rd2DetailDepth: 1 }, { rd2DetailDepth: 2 }],
+    });
+    history.back();
+    expect((history.state as Record<string, unknown>).rd2DetailDepth).toBe(0);
     fireClick(page.detailEl.querySelector('.kw')!);
     expect(topTitle(page)).toBe('#尖刺');
     fireClick(page.detailEl.querySelector('[data-detail-back]')!);
@@ -660,7 +677,7 @@ describe('tree-canvas 整合：詳情面板的視圖堆疊', () => {
     expect(nodeBtn(page, '2001').hasAttribute('aria-description')).toBe(false);
   });
 
-  it('✕／Esc 關面板時焦點在面板裡 → 還給原節點的按鈕；焦點不在面板裡就不動', async () => {
+  it('用鍵盤關（✕ 上按 Enter、Esc）且焦點在面板裡 → 還給原節點的按鈕；滑鼠點 ✕、焦點不在面板裡都不動', async () => {
     for (const how of ['close', 'esc'] as const) {
       const page = await loadTreePage('?node=1002');
       const doc = page.document as unknown as Document;
@@ -668,20 +685,27 @@ describe('tree-canvas 整合：詳情面板的視圖堆疊', () => {
       try {
         const closeBtn = page.detailEl.querySelector('[data-detail-close]')!;
         Object.defineProperty(doc, 'activeElement', { configurable: true, get: () => closeBtn });
-        if (how === 'close') fireClick(closeBtn); else fireKeydown(closeBtn, 'Escape');
+        if (how === 'close') fireClick(closeBtn, 0); else fireKeydown(closeBtn, 'Escape');
         expect((page.detailEl as HTMLElement).hidden).toBe(true);
         expect(spy.focused.map(el => (el as HTMLElement).dataset?.id), how).toContain('1002');
         expect(nodeBtn(page, '1002').hasAttribute('aria-current')).toBe(false);
       } finally { spy.restore(); }
     }
-    const page = await loadTreePage('?node=1002');
-    const doc = page.document as unknown as Document;
-    const spy = spyFocus(doc);
-    try {
-      Object.defineProperty(doc, 'activeElement', { configurable: true, get: () => doc.body });
-      fireClick(page.detailEl.querySelector('[data-detail-close]')!);
-      expect(spy.focused.length, '焦點不在面板裡時不搶').toBe(0);
-    } finally { spy.restore(); }
+    for (const [active, detail, why] of [
+      ['body', 0, '焦點不在面板裡時不搶'],
+      ['close', 1, '滑鼠點 ✕（Chromium 會讓 ✕ 拿到焦點）不還焦點：否則畫布多一圈焦點框、還可能跳一下'],
+    ] as const) {
+      const page = await loadTreePage('?node=1002');
+      const doc = page.document as unknown as Document;
+      const spy = spyFocus(doc);
+      try {
+        const closeBtn = page.detailEl.querySelector('[data-detail-close]')!;
+        Object.defineProperty(doc, 'activeElement', { configurable: true, get: () => (active === 'body' ? doc.body : closeBtn) });
+        fireClick(closeBtn, detail);
+        expect((page.detailEl as HTMLElement).hidden).toBe(true);
+        expect(spy.focused.length, why).toBe(0);
+      } finally { spy.restore(); }
+    }
   });
 
   it('點詳情面板裡不是按鈕的地方不會有任何反應（委派只認那幾個 data-*）', async () => {

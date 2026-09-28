@@ -13,7 +13,7 @@ import { treeData as rawData } from '../lib/tree-data.js';
 // 「練滿 N 級累計」（1601 太陽強化的費用在 special 裡）與前置鏈的「前置練等」那一段。
 import rawTables from '../../data/passive-upgrade-cost.json';
 import {
-  mountCanvasTree, isGesturePointer, wheelZoomFactor, axisShift, type Insets, type TreeHandle,
+  mountCanvasTree, isGesturePointer, wheelZoomFactor, type ScreenRect, type TreeHandle,
 } from '../lib/canvas/canvas-tree.js';
 import { cssMs } from '../lib/css-ms.js';
 import { DESKTOP_ICON_TARGET_PX, MOBILE_ICON_TARGET_PX, minReadableScale } from '../lib/canvas/view.js';
@@ -72,7 +72,7 @@ if (!hostOrNull) {
 const host: HTMLElement = hostOrNull;
 // controller 會在 host 底下掛兩張 canvas（靜態層／互動層）與一份無障礙節點按鈕清單，
 // 並自己接上 pointer（拖曳平移、雙指縮放、滾輪、hover 命中）與鍵盤焦點。
-const tree: TreeHandle = mountCanvasTree(host, data, { safeInsets: obscuredInsets });
+const tree: TreeHandle = mountCanvasTree(host, data, { obscurers: obscuringRects });
 // `vp` 是 controller 的座標狀態機（src/lib/canvas/view.ts）。下面既有的
 // `vp.pan／vp.zoomAt／vp.scale／vp.pxPerUnit` 呼叫語意跟 SVG 時期一樣，
 // ⚠️ 只有一點不同：**它吃的是相對 host 的 CSS px，不是 clientX/clientY**。
@@ -381,18 +381,21 @@ function markFilteredButtons(next: Set<string>): void {
   for (const id of next) {
     if (!describedFiltered.has(id)) tree.buttons.byId.get(id)?.setAttribute('aria-description', '不符合目前的篩選');
   }
-  describedFiltered = new Set(next);
+  describedFiltered = next;   // applyFilter() 每次都給一份新的 Set、之後不再改，不必複製
 }
 
 /**
- * 關掉詳情面板。焦點原本在面板裡（✕、Esc）時還給那顆節點的按鈕——面板一 hidden，焦點就掉回
- * `<body>`，下一個 Tab 從頁首重新開始。焦點不在面板裡（點畫布空白處）就不動它。
+ * 關掉詳情面板。**用鍵盤關**（Esc、在 ✕ 上按 Enter／Space）而且焦點原本在面板裡時，把焦點還給
+ * 那顆節點的按鈕——面板一 hidden，焦點就掉回 `<body>`，下一個 Tab 從頁首重新開始。
+ * 滑鼠點 ✕ 不還：Chromium 點按鈕會讓它拿到焦點，還回去的話畫布上多一圈金色焦點框、節點靠邊時
+ * ensureVisible 還會把畫布跳一下（2026-09-28 PR #89 review）；Safari／Firefox 點擊不給焦點，
+ * 看焦點的話兩邊行為還不一致。
  */
-function closeDetail(): void {
+function closeDetail(byKeyboard: boolean): void {
   const prev = currentSelected;
   const hadFocus = panel.contains(document.activeElement);
   select(null);
-  if (hadFocus && prev) tree.buttons.byId.get(prev)?.focus({ preventScroll: true });
+  if (byKeyboard && hadFocus && prev) tree.buttons.byId.get(prev)?.focus({ preventScroll: true });
 }
 
 /**
@@ -527,37 +530,27 @@ function panelTopLimit(): number {
 }
 
 /**
- * 畫布四邊現在被浮層蓋掉多少（相對 host 各邊的 CSS px），給 controller 的 ensureVisible
- * （鍵盤焦點帶節點進畫面）與手機版選節點後的 revealOnNarrow() 共用。
- *
- * 每個浮層明指它蓋哪一邊，不靠「貼著哪條邊」去猜：#toolbar 同時貼著上緣與左緣，猜的話
- * 左邊會多扣一整條工具列寬。
- * - 上：#toolbar（手機展開的篩選抽屜在它的正常流程裡，會一起算進去）
- * - 左：#branch-nav（桌機側欄；手機是 display:none，量到 0）
- * - 下：手機的 #detail 抽屜、#branch-chips（桌機的 #detail 是浮在節點旁的卡片，不貼任何一邊，不算）
+ * 現在疊在畫布上、看得見的浮層矩形（視窗座標），給 controller 的 ensureVisible（鍵盤焦點帶節點
+ * 進畫面）與手機版選節點後的 revealOnNarrow() 共用——兩者都走 `tree.visibleShift()`。
+ * - #toolbar（手機展開的篩選抽屜在它的正常流程裡，會一起量進去）、#branch-nav（桌機側欄）
+ * - 手機的 #detail 抽屜、#branch-chips
+ * ⚠️ 桌機的 #detail **不算**：那張卡片跟著被選的節點走（onViewChange → positionPanel），平移畫布
+ * 它也一起動，旁邊的節點永遠躲不出去；把它當遮蔽物只會讓 Tab 每一下都把畫布推來推去。
  * ⚠️ 只算**現在看得見**的（CLAUDE.md：收起來的 sheet 仍量得到 rect，照扣會把安全區扣光）。
  */
-function obscuredInsets(): Insets {
-  const hr = host.getBoundingClientRect();
-  const ins: Insets = { top: 0, right: 0, bottom: 0, left: 0 };
-  const visibleRect = (id: string): DOMRect | null => {
+function obscuringRects(): ScreenRect[] {
+  const out: ScreenRect[] = [];
+  const ids = isNarrow() ? ['toolbar', 'branch-nav', 'detail', 'branch-chips'] : ['toolbar', 'branch-nav', 'branch-chips'];
+  for (const id of ids) {
     const el = document.getElementById(id);
     // linkedom（單元測試）沒有版面：量不到就當沒有遮蔽，跟 nodeScreenRect() 回 null 同一個退路。
-    if (!el || el.hidden || typeof el.getBoundingClientRect !== 'function') return null;
+    if (!el || el.hidden || typeof el.getBoundingClientRect !== 'function') continue;
     const r = el.getBoundingClientRect();
-    if (!r || r.width <= 0 || r.height <= 0 || r.bottom <= 0 || r.top >= window.innerHeight) return null;
-    return typeof getComputedStyle === 'function' && getComputedStyle(el).visibility === 'hidden' ? null : r;
-  };
-  const clampTo = (v: number, max: number) => Math.max(0, Math.min(v, max));
-  const toolbar = visibleRect('toolbar');
-  if (toolbar) ins.top = clampTo(toolbar.bottom - hr.top, hr.height);
-  const nav = visibleRect('branch-nav');
-  if (nav) ins.left = clampTo(nav.right - hr.left, hr.width);
-  for (const id of isNarrow() ? ['detail', 'branch-chips'] : ['branch-chips']) {
-    const r = visibleRect(id);
-    if (r) ins.bottom = Math.max(ins.bottom, clampTo(hr.bottom - r.top, hr.height));
+    if (!r || r.width <= 0 || r.height <= 0 || r.bottom <= 0 || r.top >= window.innerHeight) continue;
+    if (typeof getComputedStyle === 'function' && getComputedStyle(el).visibility === 'hidden') continue;
+    out.push({ left: r.left, top: r.top, width: r.width, height: r.height });
   }
-  return ins;
+  return out;
 }
 
 /** 置中平移的長度。跟 FILTERS_MS／SLIDE_MS 同一個原則：**從 CSS 讀**，不在 JS 寫第二份。 */
@@ -694,17 +687,14 @@ function centerOnSelected(): void {
  * 桌機那套「置中＋卡片貼上下」不適用（手機的卡片是底部抽屜），但不代表可以放著不管：
  * 2026-09-24 review 實測 390×844 開 41 顆 ?node= 有 28 顆節點中心被抽屜蓋住或在畫面外，
  * 在畫面下半部點節點也一樣——前置鏈金光是這一頁的核心回饋，被蓋住就看不到。
- * 只動畫布、不動抽屜；已經看得見就不動（axisShift 回 0），能少動就少動。
+ * 只動畫布、不動抽屜；已經看得見就不動，能少動就少動。位移跟鍵盤焦點同一份計算（visibleShift）。
+ * 換頁（詞彙頁、覺醒頁）不重跑：2026-09-28 在 412×915 與 720×1280 掃過 243 顆，推入之後抽屜
+ * 一次都沒變高（節點頁本來就頂到 55vh 上限）。版面改了讓節點頁變短的話要回頭看這條。
  * 抽屜沒有進場過場（tree.astro），select() 剛寫完內容時量到的 rect 就是最終版面。
  */
 function revealOnNarrow(id: string): void {
   cancelCenterPan();
-  const n = nodeRect(id);
-  if (!n) return;
-  const hr = host.getBoundingClientRect();
-  const ins = obscuredInsets();
-  const dx = axisShift(n.left + n.width / 2 - hr.left, ins.left, hr.width - ins.right);
-  const dy = axisShift(n.top + n.height / 2 - hr.top, ins.top, hr.height - ins.bottom);
+  const [dx, dy] = tree.visibleShift(id);
   if (dx || dy) animatePan(dx, dy, () => {});
 }
 
@@ -1419,8 +1409,16 @@ function afterHistoryUnwind(run: () => void, depthOverride?: number): void {
 
 if (typeof window !== 'undefined') {
   window.addEventListener('popstate', () => {
-    const raw = (history.state as Record<string, unknown> | null)?.[HISTORY_DEPTH_KEY];
-    syncStackDepth(typeof raw === 'number' ? raw : 0);
+    const st = history.state as Record<string, unknown> | null;
+    const raw = st?.[HISTORY_DEPTH_KEY];
+    const depth = typeof raw === 'number' ? raw : 0;
+    syncStackDepth(depth);
+    // 退到一筆比現在的堆疊還深的紀錄：那是重整之前推入的（重整只歸零得了當下那一筆，更早的幾筆
+    // 還記著舊的絕對深度）。不夾回來的話，之後再推一層會寫出同一個深度，返回第一下又沒反應
+    // （2026-09-28 PR #89 review：兩層 → 重整 → 上一頁 → 推一層 → ←）。
+    if (depth > viewStack.length - 1 && canUseHistory) {
+      history.replaceState({ ...st, [HISTORY_DEPTH_KEY]: viewStack.length - 1 }, '', location.href);
+    }
   });
 }
 
@@ -1443,7 +1441,8 @@ panel.addEventListener('click', e => {
   const back = target.closest?.('[data-detail-back]');
   if (back) { goBack(); return; }
   const close = target.closest?.('[data-detail-close]');
-  if (close) { afterHistoryUnwind(closeDetail); return; }
+  // detail === 0：鍵盤（Enter／Space）合成的 click，真的滑鼠點擊至少是 1。
+  if (close) { const byKeyboard = (e as MouseEvent).detail === 0; afterHistoryUnwind(() => closeDetail(byKeyboard)); return; }
   const awakening = target.closest?.('[data-detail-awakening]');
   if (awakening && currentSelected) { pushView({ kind: 'awakening', id: currentSelected }); return; }
   const searchBtn = target.closest?.('[data-detail-search]');
@@ -1473,7 +1472,7 @@ panel.addEventListener('keydown', e => {
   if (e.key !== 'Escape') return;
   e.stopPropagation();
   if (viewStack.length > 1) goBack();
-  else closeDetail();
+  else closeDetail(true);
 });
 
 // 焦點不在卡片上時的後備（例如使用者用滑鼠點完就把游標移開、或焦點被別處搶走）：

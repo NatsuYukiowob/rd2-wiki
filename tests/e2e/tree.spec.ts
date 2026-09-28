@@ -1853,6 +1853,15 @@ test('A2. 鍵盤開節點焦點進卡片；Esc／✕ 關掉後焦點回到那顆
   await page.keyboard.press('Enter');
   await expect(page.locator('#detail')).toBeHidden();
   expect(await focusedNode(), '✕ 關掉後焦點回到原節點').toBe('1001');
+
+  // 滑鼠點 ✕ 不還焦點（PR #89 review）：Chromium 點按鈕會給它焦點，還回去的話畫布上多一圈焦點框
+  await page.locator('.tree-a11y-node[data-id="1001"]').evaluate(el => (el as HTMLElement).blur());
+  await clickNode(page, '1001');
+  await expect(page.locator('#detail')).toBeVisible();
+  await page.locator('#detail [data-detail-close]').click();
+  await expect(page.locator('#detail')).toBeHidden();
+  expect(await focusedNode(), '滑鼠關卡片不把焦點搬到節點按鈕').toBeNull();
+  expect((await treeState(page)).focus, '畫布上不該多一圈焦點框').toBeNull();
 });
 
 test('A3. 手機選節點（深連結與觸控）後，節點不被抽屜蓋住、也不在畫面外', { tag: '@mobile' }, async ({ page, isMobile }) => {
@@ -1870,6 +1879,13 @@ test('A3. 手機選節點（深連結與觸控）後，節點不被抽屜蓋住�
     await expect(page.locator('#detail')).toBeVisible();
     await clear(id);
   }
+  // 推詞彙頁之後抽屜變高，節點要照樣露出來（PR #89 review：只在開節點那一刻挪一次不夠）
+  await page.goto('/tree?node=1002');
+  await waitTree(page);
+  await clear('1002');
+  await page.locator('#detail .kw').first().click();
+  await expect(topViewTitle(page)).toHaveText('#尖刺');
+  await clear('1002');
   // 觸控：預設視角下 1001 在畫面下半部，點下去抽屜升起會蓋住它
   await page.goto('/tree');
   await waitTree(page);
