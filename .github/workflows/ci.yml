@@ -260,7 +260,7 @@ jobs:
     permissions:
       contents: read
     env:
-      # 只有這裡一個來源：「安裝 wrangler」與 wrangler-action 的 wranglerVersion 都讀它。
+      # wrangler 的版本只寫在這裡（「安裝 wrangler」那步讀它）。
       # 升級時改這裡（`npm view wrangler version`）；Dependabot 不會動它。
       WRANGLER_VERSION: '4.142.0'
     steps:
@@ -292,11 +292,9 @@ jobs:
         # 這裡只取原始碼、不跑 npm ci：Functions 由 wrangler 內建的 esbuild 打包，
         # 而 dist/ 仍然來自下一步的 artifact——**上線的靜態產物依舊是被驗過的那一份**。
         #
-        # ⚠️ **只取 functions/，不要整個 repo**：wrangler-action 會在工作目錄跑 `npm i wrangler@<ver>`
-        #（沒有 --ignore-scripts），工作目錄有 package.json／package-lock.json 時等於把整棵相依樹
-        #（2026-09-27 的 log：`added 478 packages`）連同 install script 裝一遍，而那一步的環境變數裡
-        # 就有 Cloudflare token。只取 functions/ 之後只剩 wrangler 自己的相依，而且改由下面
-        # 「安裝 wrangler」那步先裝好。
+        # ⚠️ **只取 functions/，不要整個 repo**：下面「安裝 wrangler」在工作目錄跑 `npm i`，
+        # 工作目錄有 package.json／package-lock.json 時會把整棵相依樹（2026-09-27 舊 wrangler-action
+        # 的 log：`added 478 packages`）一起裝進來。只取 functions/ 之後只剩 wrangler 自己的相依。
         # ⚠️ 要關 cone mode：cone mode 一律帶上 repo 根目錄的檔案，package.json 會跟著進來。
         # functions/ 只 import 自己目錄底下的檔案；哪天要 import src/ 或 npm 套件，這裡要跟著加。
         if: steps.creds.outputs.ready == 'true'
@@ -312,24 +310,21 @@ jobs:
           name: dist
           path: dist
       - name: 安裝 wrangler（這一步沒有 secret）
-        # wrangler-action 是**先**把 token 放進 process.env、**再**跑 `npm i wrangler@<ver>`
-        #（v4.1.3 src/wranglerAction.ts 的 authenticationSetup → installWrangler），那次安裝沒有
-        # lockfile、也會跑 install script。在這裡先裝好同一版，action 用 `npx --no-install wrangler --version`
-        # 查到版本完全相等就跳過自己的安裝（log 會印 `✅ Using Wrangler <ver>`）。
+        # 不用 cloudflare/wrangler-action：它是**先**把 token 放進 process.env、**再**跑沒有 lockfile、
+        # 會跑 install script 的 `npm i wrangler@<ver>`（v4.1.3 src/wranglerAction.ts 的
+        # authenticationSetup → installWrangler）。預先裝好能讓它跳過，但那靠的是它內部的版本比對，
+        # 對不上就安靜地在有 token 的環境重裝。自己裝、自己跑，token 只出現在下一步的 env。
         # --ignore-scripts：wrangler 的原生相依（esbuild、workerd）走 optionalDependencies 的預建檔，
         # 不跑安裝腳本也能打包與部署（本機實測 `pages functions build` 與 `pages deploy` 都走得到）。
         if: steps.creds.outputs.ready == 'true'
         run: npm i --no-save --ignore-scripts "wrangler@${WRANGLER_VERSION}"
       - name: 部署到 Cloudflare Pages
         if: steps.creds.outputs.ready == 'true'
-        uses: cloudflare/wrangler-action@953926a2e2182532811c01a25e53647d93bf07c0 # v4.1.3
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          # 版本寫在 job 的 env（上一步安裝也用同一個值）。兩邊不相等時 action 會自己重裝一次、
-          # 而且是在 token 已經放進環境之後——所以只能有一個來源。
-          wranglerVersion: ${{ env.WRANGLER_VERSION }}
-          command: pages deploy dist --project-name=rd2-wiki --branch=main
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        # --no-install：只用上一步裝好的那份，找不到就失敗，不會在這裡（有 token）臨時下載。
+        run: npx --no-install wrangler pages deploy dist --project-name=rd2-wiki --branch=main
       - name: 部署後 smoke check
         # 部署回成功不代表站活著：Functions 沒打包進去、D1 binding 沒綁、表沒建，都會收斂成
         #「訪客計數器靜靜消失」（#hit-counter 拿不到數字就保持 hidden），部署照樣綠。
@@ -347,14 +342,15 @@ jobs:
         run: |
           c() { curl -sS --connect-timeout 5 --max-time 15 "$@"; }
           live=''
-          for i in $(seq 1 12); do
+          tries=12
+          for i in $(seq 1 "$tries"); do
             live=$(c "$URL/deploy-sha.txt" || true)
             [ "$live" = "$GITHUB_SHA" ] && break
-            echo "第 $i 次：/deploy-sha.txt 還是「${live:0:40}」，等新部署生效"
-            sleep 10
+            echo "第 $i/$tries 次：/deploy-sha.txt 還是「${live:0:40}」，等新部署生效"
+            [ "$i" -lt "$tries" ] && sleep 10
           done
           if [ "$live" != "$GITHUB_SHA" ]; then
-            echo "::error::兩分鐘內正式站沒切到這次部署（/deploy-sha.txt ≠ $GITHUB_SHA）"
+            echo "::error::試了 $tries 次（每次間隔 10 秒），正式站仍沒切到這次部署（/deploy-sha.txt ≠ $GITHUB_SHA）"
             exit 1
           fi
           page=$(c -o /dev/null -w '%{http_code}' "$URL/" || true)

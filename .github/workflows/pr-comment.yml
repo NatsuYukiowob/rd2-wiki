@@ -53,6 +53,12 @@ jobs:
           path: incoming
           run-id: ${{ github.event.workflow_run.id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: 下載失敗時留下警告
+        # download-artifact v8 起 digest 不符會直接報錯；加上 continue-on-error 之後，
+        #「artifact 被竄改或損毀」跟「verify 失敗、本來就沒有 artifact」長得一樣，都是安靜跳過。
+        # 這一步讓兩者都在 run 的 annotation 看得到，要分辨就點進上一步的 log。
+        if: steps.dl.outcome == 'failure'
+        run: echo "::warning::下載 diff-summary 失敗（沒有 artifact，或 digest 不符）——沒有貼留言，原因見「下載差異資料」的 log"
       - name: 渲染留言（用 default branch 的程式碼）
         if: steps.dl.outcome == 'success'
         run: npx tsx tools/render-pr-comment.ts incoming/diff-summary.json comment.md

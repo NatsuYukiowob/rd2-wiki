@@ -1589,12 +1589,12 @@ colors 重新著色，那張樹本來就看得見，等於用自己的無障礙�
   打包 Functions，不存在就整段跳過，**沒有 warning、部署照樣回成功**。
   - ⚠️ **checkout 要放在 `download-artifact` 之前**（`actions/checkout` 預設 `clean: true` 會清空工作
     目錄，順序反了會把下載好的 `dist/` 洗掉，然後部署一個空目錄——而且大概不會報錯）。
-  - ⚠️ **不要改回整個 repo checkout**：wrangler-action 會在工作目錄跑 `npm i wrangler@<ver>`（有 install script），
-    有 `package.json` 就把整棵相依樹裝一遍，而那一步拿得到 Cloudflare token。sparse 要關 cone mode（cone 會帶上根目錄檔案）。
+  - ⚠️ **不要改回整個 repo checkout**：deploy 會在工作目錄跑 `npm i wrangler@<ver>`，有 `package.json` 就把整棵相依樹裝一遍。sparse 要關 cone mode（cone 會帶上根目錄檔案）。
     `functions/` 要 import 目錄外的東西時，sparse 清單要跟著加。
-  - ⚠️ action 要 pin 40 碼 SHA（repo 開了 `sha_pinning_required`）；`wranglerVersion` 也鎖版，升級時一起換。
-  - wrangler 在**沒有 secret 的前一步**用 `--ignore-scripts` 先裝好（wrangler-action 自己的安裝是在 token 放進環境之後跑的）。
-    版本只寫在 deploy job 的 `env.WRANGLER_VERSION`。
+  - ⚠️ action 要 pin 40 碼 SHA（repo 開了 `sha_pinning_required`）。
+  - **不用 wrangler-action**（它在 token 已放進環境之後才自己 `npm i` wrangler）：wrangler 在沒有 secret 的前一步用
+    `--ignore-scripts` 裝好，部署那步 `npx --no-install wrangler pages deploy`，token 只出現在那一步的 env。
+    版本只寫在 deploy job 的 `env.WRANGLER_VERSION`（Dependabot 不管它）。
   - 部署後有一步 **smoke check**：先等 `https://rd2wiki.org/deploy-sha.txt`（verify 上傳 dist 前寫入）回這次的 SHA，
     再驗 `/` 要 200、`POST /api/hits` 要回 `{"n":<數字>}`（每次部署計數 +1）。打正式網域是因為每次部署的專屬網址
     （`<hash>.rd2-wiki.pages.dev`）前面有 Cloudflare Access，匿名一律 302。
