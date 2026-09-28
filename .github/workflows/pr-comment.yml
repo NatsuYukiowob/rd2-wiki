@@ -25,6 +25,29 @@ permissions:
   pull-requests: write
   actions: read
 jobs:
+  check:
+    # 先分清楚兩種情況：verify 失敗時本來就沒有 artifact → 整個 comment job 跳過（不裝相依、不下載）；
+    # 有 artifact 卻下載失敗（download-artifact v8 起 digest 不符會直接報錯，代表 artifact 損毀或被竄改）
+    # → comment job 紅。原本用 continue-on-error 一律吞掉，兩者看起來一樣。
+    # 判斷只在這裡一次、由 comment 的 job 層 `if` 接住——在 PR 上驗不到這支檔案，條件不要散在每一步。
+    # 過期的 artifact 不算（API 的 total_count 會把它算進去，但已經下載不到）。
+    if: github.event.workflow_run.event == 'pull_request'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    outputs:
+      n: ${{ steps.has.outputs.n }}
+    steps:
+      - name: 查有沒有差異資料
+        id: has
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+        run: |
+          n=$(gh api "repos/${{ github.repository }}/actions/runs/${RUN_ID}/artifacts?name=diff-summary" \
+            --jq '[.artifacts[] | select(.expired | not)] | length')
+          echo "可下載的 diff-summary artifact 數：$n"
+          echo "n=$n" >> "$GITHUB_OUTPUT"
+
   comment:
     # 只在觸發來源是 pull_request（不是 push to main）時才動作。
     #
@@ -32,7 +55,8 @@ jobs:
     # e2e 掛掉（含偶發失敗）時 artifact 照樣存在，而「節點 id 消失、分享網址會失效」這種警告
     # 正是紅燈的 PR 更需要看到的。改成「artifact 抓得到就貼、抓不到就安靜結束」——
     # verify 自己失敗時本來就不會有 artifact，效果等同原本的守門，但不會誤殺。
-    if: github.event.workflow_run.event == 'pull_request'
+    needs: [check]
+    if: needs.check.outputs.n != '0'
     runs-on: ubuntu-26.04
     timeout-minutes: 10
     steps:
@@ -44,20 +68,7 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with: { node-version: '24', cache: npm }
       - run: npm ci --ignore-scripts
-      - name: 查有沒有差異資料
-        # 先分清楚兩種情況：verify 失敗時本來就沒有 artifact → 安靜結束；有 artifact 卻下載失敗
-        #（download-artifact v8 起 digest 不符會直接報錯，代表 artifact 損毀或被竄改）→ 讓這支 job 紅。
-        # 原本用 continue-on-error 一律吞掉，兩者看起來一樣。
-        id: has
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RUN_ID: ${{ github.event.workflow_run.id }}
-        run: |
-          n=$(gh api "repos/${{ github.repository }}/actions/runs/${RUN_ID}/artifacts?name=diff-summary" --jq .total_count)
-          echo "diff-summary artifact 數：$n"
-          echo "n=$n" >> "$GITHUB_OUTPUT"
       - name: 下載差異資料
-        if: steps.has.outputs.n != '0'
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: diff-summary
@@ -65,10 +76,8 @@ jobs:
           run-id: ${{ github.event.workflow_run.id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
       - name: 渲染留言（用 default branch 的程式碼）
-        if: steps.has.outputs.n != '0'
         run: npx tsx tools/render-pr-comment.ts incoming/diff-summary.json comment.md
       - name: 貼上或更新留言
-        if: steps.has.outputs.n != '0'
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           script: |

@@ -259,10 +259,6 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: read
-    env:
-      # wrangler 的版本只寫在這裡（「安裝 wrangler」那步讀它）。
-      # 升級時改這裡（`npm view wrangler version`）；Dependabot 不會動它。
-      WRANGLER_VERSION: '4.142.0'
     steps:
       - name: 檢查部署憑證
         id: creds
@@ -293,15 +289,17 @@ jobs:
         # 這裡只取原始碼、不跑 npm ci：Functions 由 wrangler 內建的 esbuild 打包，
         # 而 dist/ 仍然來自下一步的 artifact——**上線的靜態產物依舊是被驗過的那一份**。
         #
-        # ⚠️ **只取 functions/，不要整個 repo**：下面「安裝 wrangler」在工作目錄跑 `npm i`，
-        # 工作目錄有 package.json／package-lock.json 時會把整棵相依樹（2026-09-27 舊 wrangler-action
-        # 的 log：`added 478 packages`）一起裝進來。只取 functions/ 之後只剩 wrangler 自己的相依。
+        # ⚠️ **只取 functions/ 與 deploy/，不要整個 repo**：舊的 wrangler-action 在 repo 根目錄 `npm i`，
+        # 把網站整棵相依樹（2026-09-27 的 log：`added 478 packages`）連同 install script 裝進有 token 的環境。
+        # 部署工具改放 deploy/，有自己的 package.json＋package-lock.json，只裝那一份。
         # ⚠️ 要關 cone mode：cone mode 一律帶上 repo 根目錄的檔案，package.json 會跟著進來。
         # functions/ 只 import 自己目錄底下的檔案；哪天要 import src/ 或 npm 套件，這裡要跟著加。
         if: steps.creds.outputs.ready == 'true'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          sparse-checkout: /functions/
+          sparse-checkout: |
+            /functions/
+            /deploy/
           sparse-checkout-cone-mode: false
       - name: 取回 verify 驗過的建置產物
         # 刻意不在這裡重建：要上線的就是通過 validate／效能預算／單元測試／E2E 的那一份 dist。
@@ -312,25 +310,30 @@ jobs:
           path: dist
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         # 明寫 Node 版本：wrangler 有 engines 下限，不要依賴 runner image 碰巧內建的那一版。
-        # 不開 cache：這個 job 沒有 package-lock.json。
+        # 不開 cache：deploy/ 的相依很少，快取省不了幾秒，還多一個要信任的來源。
         if: steps.creds.outputs.ready == 'true'
         with: { node-version: '24' }
       - name: 安裝 wrangler（這一步沒有 secret）
         # 不用 cloudflare/wrangler-action：它是**先**把 token 放進 process.env、**再**跑沒有 lockfile、
         # 會跑 install script 的 `npm i wrangler@<ver>`（v4.1.3 src/wranglerAction.ts 的
-        # authenticationSetup → installWrangler）。預先裝好能讓它跳過，但那靠的是它內部的版本比對，
-        # 對不上就安靜地在有 token 的環境重裝。自己裝、自己跑，token 只出現在下一步的 env。
+        # authenticationSetup → installWrangler）。
+        #
+        # 這裡用 deploy/package-lock.json `npm ci`：wrangler 連同整棵相依樹都鎖在 lockfile（含 integrity），
+        # 下一步帶著 token 執行的每一行程式都是 commit 過的版本。wrangler 版本只寫在 deploy/package.json，
+        # 升級：`cd deploy && npm i wrangler@<新版> --ignore-scripts`，連 lockfile 一起 commit
+        #（Dependabot 也會對 deploy/ 開 PR）。
         # --ignore-scripts：wrangler 的原生相依（esbuild、workerd）走 optionalDependencies 的預建檔，
         # 不跑安裝腳本也能打包與部署（本機實測 `pages functions build` 與 `pages deploy` 都走得到）。
         if: steps.creds.outputs.ready == 'true'
-        run: npm i --no-save --ignore-scripts "wrangler@${WRANGLER_VERSION}"
+        run: npm ci --ignore-scripts --prefix deploy
       - name: 部署到 Cloudflare Pages
         if: steps.creds.outputs.ready == 'true'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        # 直接叫上一步裝好的執行檔：找不到就失敗，不會經過 npx 在這裡（有 token）臨時下載。
-        run: ./node_modules/.bin/wrangler pages deploy dist --project-name=rd2-wiki --branch=main
+        # 要在 repo 根目錄執行：Pages 看「執行目錄底下有沒有 functions/」決定要不要打包 Functions。
+        # 直接叫上一步裝好的執行檔：找不到就失敗，不會在這裡（有 token）臨時下載。
+        run: deploy/node_modules/.bin/wrangler pages deploy dist --project-name=rd2-wiki --branch=main
       - name: 部署後 smoke check
         # 部署回成功不代表站活著：Functions 沒打包進去、D1 binding 沒綁、表沒建，都會收斂成
         #「訪客計數器靜靜消失」（#hit-counter 拿不到數字就保持 hidden），部署照樣綠。
