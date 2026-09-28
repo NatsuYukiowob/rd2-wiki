@@ -212,8 +212,16 @@ for (const btn of document.querySelectorAll<HTMLButtonElement>('#branch-chips bu
 // 的 isTypingTarget()，是純函式（只吃 tagName 字串），才能在沒有瀏覽器的環境下單元測試；
 // 這裡的 window keydown 事件本身能不能正確反映搜尋框 focus 狀態，只有真的瀏覽器才驗
 // 得了，留給第 18 個任務的 E2E。
+//
+// 另外兩個例外（2026-09-24 review）：
+// (1) 帶 Ctrl／Meta／Alt 的組合鍵是瀏覽器的（Ctrl＋＋ 放大網頁、Alt＋← 上一頁），不能順便再縮放
+//     或平移一次畫布。Shift 不擋：有些鍵盤配置的 `+` 要按 Shift。
+// (2) 焦點在詳情卡片裡時方向鍵是捲卡片（#detail 是 overflow-y: auto）；不放行的話畫布每按一下
+//     平移 60 px，卡片跟著節點整張被拖走。
 window.addEventListener('keydown', e => {
   if (isTypingTarget(document.activeElement?.tagName)) return;
+  if (e.ctrlKey || e.metaKey || e.altKey || e.defaultPrevented) return;
+  if (panel.contains(document.activeElement)) return;
   const step = 60;
   let moved = true;
   // ⚠️ 縮放錨點要用**畫布中心**（相對 host 的 CSS px），不是 innerWidth/2：`CanvasView`

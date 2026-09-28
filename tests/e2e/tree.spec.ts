@@ -165,11 +165,19 @@ async function clickNode(page: Page, id: string): Promise<void> {
   await page.mouse.click(c.x, c.y);
 }
 
-/** 以某個螢幕座標為錨點滾輪縮放 n 次（deltaY < 0 = 放大，見 canvas-tree.ts 的 wheel handler）。 */
+/**
+ * 以某個螢幕座標為錨點滾輪縮放 n 格（deltaY < 0 = 放大；一格＝頁面收到 deltaY −100＝1.1 倍，
+ * 見 canvas-tree.ts 的 wheelZoomFactor）。
+ *
+ * ⚠️ 送出去的量要乘 devicePixelRatio：Chromium 在裝置模擬（mobile project 的 Pixel 7）下會把
+ * 合成的 wheel delta 除以 dpr，`wheel(0, −100)` 頁面收到的是 −38.1（2026-09-28 實測）。縮放
+ * 倍率照 delta 大小算之後，不補回來的話手機 project 的「一格」只有 1.037 倍。
+ */
 async function zoomInAt(page: Page, point: { x: number; y: number }, notches: number): Promise<void> {
+  const dpr = await page.evaluate(() => devicePixelRatio);
   await page.mouse.move(point.x, point.y);
   for (let i = 0; i < notches; i++) {
-    await page.mouse.wheel(0, -100);
+    await page.mouse.wheel(0, -100 * dpr);
   }
 }
 
@@ -472,6 +480,40 @@ test('E. 搜尋框 focus 時，方向鍵不會誤觸畫布平移', async ({ page
   await page.locator('.tree-a11y-node').first().focus();
   await page.keyboard.press('ArrowLeft');
   await expect.poll(() => canvasFingerprint(page)).not.toBe(afterSearchFocused);
+});
+
+test('E2. 組合鍵與詳情卡片裡的方向鍵都不動畫布；左右滑的滾輪不縮放', async ({ page }) => {
+  await page.goto('/tree?node=2108');
+  await waitTree(page);
+  await expect(page.locator('#detail')).toBeVisible();
+  await settleCanvas(page);
+
+  // Ctrl＋＋／Ctrl＋－ 是瀏覽器縮放網頁，不能順便再縮放畫布一次
+  const s0 = await treeScale(page);
+  await page.locator('.tree-a11y-node').first().focus();
+  await page.keyboard.press('Control+Equal');
+  await page.keyboard.press('Control+Minus');
+  await page.keyboard.press('Control+Minus');
+  expect(await treeScale(page)).toBe(s0);
+  // 正對照組：同一個焦點下不帶修飾鍵的 `=` 照樣縮放
+  await page.keyboard.press('Equal');
+  await expect.poll(() => treeScale(page)).not.toBe(s0);
+  await page.keyboard.press('Minus');
+  await settleCanvas(page);
+
+  // 焦點在卡片裡：方向鍵留給卡片自己捲動，節點（與跟著它的卡片）不能被拖走
+  await page.locator('#detail .view-close').focus();
+  const before = await nodeRect(page, '2108');
+  await page.keyboard.press('ArrowDown');
+  await page.keyboard.press('ArrowDown');
+  expect(await nodeRect(page, '2108')).toEqual(before);
+
+  // Shift＋滾輪／觸控板左右滑（deltaY=0）：舊版每一下都當成縮小
+  const s1 = await treeScale(page);
+  const c = await nodeCenter(page, '2108');
+  await page.mouse.move(c.x, c.y);
+  for (let i = 0; i < 3; i++) await page.mouse.wheel(120, 0);
+  expect(await treeScale(page)).toBe(s1);
 });
 
 /**
