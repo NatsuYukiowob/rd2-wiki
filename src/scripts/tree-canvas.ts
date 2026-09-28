@@ -12,7 +12,7 @@ import { treeData as rawData } from '../lib/tree-data.js';
 // 的 gzip 預算。`/sim` 用的是同一份檔案、同一種載法。詳情面板有兩個地方需要它：
 // 「練滿 N 級累計」（1601 太陽強化的費用在 special 裡）與前置鏈的「前置練等」那一段。
 import rawTables from '../../data/passive-upgrade-cost.json';
-import { mountCanvasTree, type TreeHandle } from '../lib/canvas/canvas-tree.js';
+import { mountCanvasTree, isGesturePointer, wheelZoomFactor, type TreeHandle } from '../lib/canvas/canvas-tree.js';
 import { cssMs } from '../lib/css-ms.js';
 import { DESKTOP_ICON_TARGET_PX, MOBILE_ICON_TARGET_PX, minReadableScale } from '../lib/canvas/view.js';
 import { computeSelection } from '../lib/selection.js';
@@ -80,8 +80,12 @@ const vp = tree.view;
 // ⚠️ 掛在 **host** 上而不是 canvas 元素上：controller 把 pointer 監聽器掛在互動層那張
 // canvas（見 canvas-tree.ts 的說明），事件會冒泡到 host，一個掛勾同時涵蓋兩張 canvas
 // 與無障礙按鈕清單，也不必知道 controller 內部把 canvas 叫什麼。
-host.addEventListener('pointerdown', cancelCenterPan);
-host.addEventListener('wheel', cancelCenterPan, { passive: true });
+// ⚠️ 只在 controller 真的會動畫布的事件上讓位（同一組判準）：右鍵、左右滑的滾輪 controller 不理，
+// 這裡照樣掐掉的話節點會停在半路、卡片擺偏，畫布卻一動都沒動。
+host.addEventListener('pointerdown', e => { if (isGesturePointer(e)) cancelCenterPan(); });
+host.addEventListener('wheel', e => {
+  if (wheelZoomFactor(e, host.getBoundingClientRect().height) !== 1) cancelCenterPan();
+}, { passive: true });
 
 // --- 搜尋、篩選與網址狀態（?node=/?branch=/?type=/?q=，spec §6.3）---
 // 提前到這裡宣告（原本這段連同 searchEl/filtersEl 一起放在詳情面板段落之後）：下面「手機版
@@ -212,8 +216,16 @@ for (const btn of document.querySelectorAll<HTMLButtonElement>('#branch-chips bu
 // 的 isTypingTarget()，是純函式（只吃 tagName 字串），才能在沒有瀏覽器的環境下單元測試；
 // 這裡的 window keydown 事件本身能不能正確反映搜尋框 focus 狀態，只有真的瀏覽器才驗
 // 得了，留給第 18 個任務的 E2E。
+//
+// 另外兩個例外（2026-09-24 review）：
+// (1) 帶 Ctrl／Meta／Alt 的組合鍵是瀏覽器的（Ctrl＋＋ 放大網頁、Alt＋← 上一頁），不能順便再縮放
+//     或平移一次畫布。Shift 不擋：有些鍵盤配置的 `+` 要按 Shift。
+// (2) 焦點在詳情卡片裡時方向鍵是捲卡片（#detail 是 overflow-y: auto）；不放行的話畫布每按一下
+//     平移 60 px，卡片跟著節點整張被拖走。只放行方向鍵：+／− 卡片用不到，照樣縮放畫布。
 window.addEventListener('keydown', e => {
   if (isTypingTarget(document.activeElement?.tagName)) return;
+  if (e.ctrlKey || e.metaKey || e.altKey || e.defaultPrevented) return;
+  if (e.key.startsWith('Arrow') && panel.contains(document.activeElement)) return;
   const step = 60;
   let moved = true;
   // ⚠️ 縮放錨點要用**畫布中心**（相對 host 的 CSS px），不是 innerWidth/2：`CanvasView`

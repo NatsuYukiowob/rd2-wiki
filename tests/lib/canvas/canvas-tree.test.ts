@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { parseHTML } from 'linkedom';
-import { mountCanvasTree } from '../../../src/lib/canvas/canvas-tree';
+import { mountCanvasTree, wheelZoomFactor, isGesturePointer } from '../../../src/lib/canvas/canvas-tree';
 import type { TreeData } from '../../../src/lib/types';
 import { readTree } from '../../helpers/read-tree';
 const data = readTree() as TreeData;
@@ -169,6 +169,8 @@ function paintedHost(): {
   layerCalls(): number;
   /** 互動層那張 ctx 的呼叫紀錄（含引數）。 */
   overlayLog(): Call[];
+  /** 靜態層那張 ctx 的呼叫紀錄（含引數）。 */
+  staticLog(): Call[];
   reset(): void; flush(n?: number): void; restore(): void;
 } {
   const { document, host } = laidOutHost();
@@ -191,7 +193,8 @@ function paintedHost(): {
     offscreenCalls: () => offscreen.reduce((n, c) => n + c.calls, 0),
     layerCalls: () => layers.reduce((n, c) => n + c.calls, 0),
     overlayLog: () => layers[1]!.log,   // 建立順序：靜態層先、互動層後
-    reset: () => { for (const c of [...offscreen, ...layers]) c.calls = 0; },
+    staticLog: () => layers[0]!.log,
+    reset: () => { for (const c of [...offscreen, ...layers]) { c.calls = 0; c.log.length = 0; } },
     flush(n = 1) { for (let i = 0; i < n; i++) { const q = queue; queue = []; for (const cb of q) cb(1); } },
     restore() { globalThis.requestAnimationFrame = prevRaf; globalThis.cancelAnimationFrame = prevCancel; },
   };
@@ -492,5 +495,302 @@ describe('2× 圖示的預載視錐', () => {
 
     globalThis.Image = prevImage;
     h.destroy(); env.restore();
+  });
+});
+
+// ── 2026-09-24 review P1：畫布輸入 ────────────────────────────────────────────
+// linkedom 沒有 WheelEvent／PointerEvent，照 wheel()／ptr() 的做法補上 controller 會讀的欄位。
+function wheelXY(document: Document, deltaX: number, deltaY: number, x: number, y: number): Event {
+  const ev = new (document.defaultView as unknown as { Event: typeof Event }).Event('wheel', { cancelable: true });
+  for (const [k, v] of Object.entries({ deltaX, deltaY, deltaMode: 0, clientX: x, clientY: y })) {
+    Object.defineProperty(ev, k, { value: v });
+  }
+  return ev;
+}
+function mousePtr(document: Document, type: string, x: number, y: number, button: number): Event {
+  const ev = ptr(document, type, x, y);
+  Object.defineProperty(ev, 'pointerType', { value: 'mouse' });
+  Object.defineProperty(ev, 'button', { value: button });
+  return ev;
+}
+
+describe('wheelZoomFactor：倍率照 delta 大小與方向', () => {
+  const f = (deltaY: number, o: Partial<{ deltaX: number; deltaMode: number; ctrlKey: boolean }> = {}): number =>
+    wheelZoomFactor({ deltaY, deltaX: 0, deltaMode: 0, ctrlKey: false, ...o }, 900);
+
+  it('一格滑鼠滾輪（±100 px）仍是 1.1 倍——E2E 的 zoomInAt() 靠這個值', () => {
+    expect(f(-100)).toBeCloseTo(1.1, 10);
+    expect(f(100)).toBeCloseTo(1 / 1.1, 10);
+  });
+
+  it('水平為主（含 deltaY=0）不縮放：舊版把它一律當縮小', () => {
+    expect(f(0, { deltaX: 120 })).toBe(1);
+    expect(f(10, { deltaX: -40 })).toBe(1);
+    expect(f(0)).toBe(1);
+  });
+
+  it('觸控板的小 delta 累積起來跟總量成正比：20 個 −3 ≈ 一格的 60%，不是 1.1²⁰', () => {
+    let s = 1;
+    for (let i = 0; i < 20; i++) s *= f(-3);
+    expect(s).toBeCloseTo(Math.pow(1.1, 0.6), 10);
+    expect(s).toBeLessThan(1.1);
+  });
+
+  it('行模式（Firefox）三行＝一格；ctrlKey（觸控板捏合）放大係數；單一事件夾在 1/1.5–1.5', () => {
+    expect(f(-3, { deltaMode: 1 })).toBeCloseTo(Math.pow(1.1, 0.99), 10);
+    expect(f(-5, { ctrlKey: true })).toBeCloseTo(Math.pow(1.1, 0.5), 10);
+    expect(f(-2000)).toBe(1.5);
+    expect(f(2000)).toBeCloseTo(1 / 1.5, 10);
+  });
+
+  it('單元測試的假事件只帶 deltaY：deltaX／deltaMode 是 undefined 時照常縮放', () => {
+    expect(wheelZoomFactor({ deltaY: -100 } as never, 900)).toBeCloseTo(1.1, 10);
+  });
+});
+
+describe('wheel 事件接到 controller', () => {
+  it('Shift＋滾輪／觸控板左右滑（deltaX=120、deltaY=0）三次：scale 不變', () => {
+    const { document, host } = laidOutHost();
+    const h = mountCanvasTree(host, data);
+    const overlay = host.querySelector('canvas.tree-overlay') as HTMLElement;
+    const before = h.view.scale;
+    for (let i = 0; i < 3; i++) overlay.dispatchEvent(wheelXY(document, 120, 0, 640, 450));
+    expect(h.view.scale).toBe(before);
+    h.destroy();
+  });
+
+  it('觸控板連送 20 次 deltaY=−3：放大不到一格滑鼠滾輪（舊版直接衝到 MAX_SCALE）', () => {
+    const { document, host } = laidOutHost();
+    const h = mountCanvasTree(host, data);
+    const overlay = host.querySelector('canvas.tree-overlay') as HTMLElement;
+    const before = h.view.scale;
+    for (let i = 0; i < 20; i++) overlay.dispatchEvent(wheelXY(document, 0, -3, 640, 450));
+    expect(h.view.scale).toBeGreaterThan(before);
+    expect(h.view.scale / before).toBeLessThan(1.1);
+    h.destroy();
+  });
+});
+
+describe('右鍵／中鍵不算點選', () => {
+  it('滑鼠右鍵、中鍵在節點上按下放開：onSelect 不被呼叫；左鍵照常', () => {
+    const { document, host } = laidOutHost();
+    const h = mountCanvasTree(host, data);
+    const overlay = host.querySelector('canvas.tree-overlay') as HTMLElement;
+    const r = h.nodeScreenRect('1001')!;
+    const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+    const got: (string | null)[] = [];
+    h.onSelect(id => got.push(id));
+    for (const b of [2, 1]) {
+      overlay.dispatchEvent(mousePtr(document, 'pointerdown', cx, cy, b));
+      overlay.dispatchEvent(mousePtr(document, 'pointerup', cx, cy, b));
+    }
+    expect(got).toEqual([]);
+    overlay.dispatchEvent(mousePtr(document, 'pointerdown', cx, cy, 0));
+    overlay.dispatchEvent(mousePtr(document, 'pointerup', cx, cy, 0));
+    expect(got).toEqual(['1001']);
+    h.destroy();
+  });
+
+  it('右鍵按下沒有 pointerup（原生選單吃掉）：之後的 pointermove 仍走 hover，不是拖曳', () => {
+    const { document, host } = laidOutHost();
+    const h = mountCanvasTree(host, data);
+    const overlay = host.querySelector('canvas.tree-overlay') as HTMLElement;
+    const r = h.nodeScreenRect('1001')!;
+    overlay.dispatchEvent(mousePtr(document, 'pointerdown', 10, 10, 2));
+    overlay.dispatchEvent(ptr(document, 'pointermove', r.left + r.width / 2, r.top + r.height / 2));
+    expect(h.getState().hover).toBe('1001');
+    h.destroy();
+  });
+});
+
+describe('devicePixelRatio 改變但 host 尺寸不變', () => {
+  it('matchMedia 的 change 觸發後重新量：canvas 解析度跟上新的 dpr；destroy 拆掉監聽', () => {
+    const { host } = laidOutHost();
+    const listeners = new Set<() => void>();
+    const queries: string[] = [];
+    const prevMM = globalThis.matchMedia, prevDpr = globalThis.devicePixelRatio;
+    globalThis.matchMedia = ((q: string) => {
+      queries.push(q);
+      return {
+        matches: true,
+        addEventListener: (_: string, cb: () => void) => listeners.add(cb),
+        removeEventListener: (_: string, cb: () => void) => listeners.delete(cb),
+      };
+    }) as never;
+    (globalThis as { devicePixelRatio?: number }).devicePixelRatio = 1;
+    try {
+      const h = mountCanvasTree(host, data);
+      const staticEl = host.querySelector('canvas.tree-static') as HTMLCanvasElement;
+      const w1 = staticEl.width;
+      expect(listeners.size).toBe(1);
+      expect(queries.at(-1)).toBe('(resolution: 1dppx)');
+
+      (globalThis as { devicePixelRatio?: number }).devicePixelRatio = 2;
+      for (const cb of [...listeners]) cb();
+      expect(staticEl.width).toBe(w1 * 2);
+      expect(queries.at(-1)).toBe('(resolution: 2dppx)');
+      expect(listeners.size).toBe(1);   // 舊的拆掉、只留新的一個，不會越掛越多
+
+      h.destroy();
+      expect(listeners.size).toBe(0);
+    } finally {
+      globalThis.matchMedia = prevMM;
+      (globalThis as { devicePixelRatio?: number }).devicePixelRatio = prevDpr;
+    }
+  });
+
+  it('查詢用原始 dpr，不是夾過 1–3 的值（dpr 4 的裝置上 3dppx 一開始就不成立）', () => {
+    const { host } = laidOutHost();
+    const queries: string[] = [];
+    const prevMM = globalThis.matchMedia, prevDpr = globalThis.devicePixelRatio;
+    globalThis.matchMedia = ((q: string) => {
+      queries.push(q);
+      return { matches: true, addEventListener() {}, removeEventListener() {} };
+    }) as never;
+    (globalThis as { devicePixelRatio?: number }).devicePixelRatio = 4;
+    try {
+      const h = mountCanvasTree(host, data);
+      expect(queries.at(-1)).toBe('(resolution: 4dppx)');
+      h.destroy();
+    } finally {
+      globalThis.matchMedia = prevMM;
+      (globalThis as { devicePixelRatio?: number }).devicePixelRatio = prevDpr;
+    }
+  });
+});
+
+describe('devicePixelRatio 的備援：沒收到 matchMedia change 也要跟上', () => {
+  it('下一次重畫先發現 dpr 變了 → 重新量，canvas 解析度翻倍（CDP 裝置模擬就是這種情形）', () => {
+    const env = paintedHost();
+    const prevDpr = globalThis.devicePixelRatio;
+    (globalThis as { devicePixelRatio?: number }).devicePixelRatio = 1;
+    try {
+      const h = mountCanvasTree(env.host, data);
+      const staticEl = env.host.querySelector('canvas.tree-static') as HTMLCanvasElement;
+      env.flush(3);
+      const w1 = staticEl.width;
+      (globalThis as { devicePixelRatio?: number }).devicePixelRatio = 2;
+      h.setState({ hover: '1001' });
+      env.flush(2);
+      expect(staticEl.width).toBe(w1 * 2);
+      h.destroy();
+    } finally {
+      (globalThis as { devicePixelRatio?: number }).devicePixelRatio = prevDpr;
+      env.restore();
+    }
+  });
+});
+
+describe('hover 只重畫互動層', () => {
+  const blits = (log: Call[]): number => log.filter(c => c.m === 'drawImage' || c.m === 'clearRect').length;
+
+  it('滑過節點進出：靜態層不 clear 也不 blit；互動層照畫', () => {
+    const env = paintedHost();
+    const h = mountCanvasTree(env.host, data);
+    const overlay = env.host.querySelector('canvas.tree-overlay') as HTMLElement;
+    env.flush(3); env.reset();
+    const r = h.nodeScreenRect('1001')!;
+    for (let i = 0; i < 3; i++) {
+      overlay.dispatchEvent(ptr(env.document, 'pointermove', r.left + r.width / 2, r.top + r.height / 2));
+      env.flush(1);
+      overlay.dispatchEvent(ptr(env.document, 'pointermove', 5, 5));
+      env.flush(1);
+    }
+    expect(blits(env.staticLog())).toBe(0);
+    expect(env.overlayLog().length).toBeGreaterThan(0);
+    h.destroy(); env.restore();
+  });
+
+  it('位圖重畫（選取改變）或平移（blit 位置變）那一幀照樣 blit——守衛不能擋掉真的變化', () => {
+    const env = paintedHost();
+    const h = mountCanvasTree(env.host, data);
+    env.flush(3); env.reset();
+    h.setState({ selected: '1001', chain: new Set(['1001']) });
+    env.flush(1);
+    expect(env.offscreenCalls()).toBeGreaterThan(0);
+    expect(blits(env.staticLog())).toBe(2);
+    env.reset();
+    h.view.pan(-40, 0);            // 邊距內：位圖沿用，但貼的位置變了
+    h.requestRedraw(); env.flush(1);
+    expect(env.offscreenCalls()).toBe(0);
+    expect(blits(env.staticLog())).toBe(2);
+    h.destroy(); env.restore();
+  });
+});
+
+// ── PR #88 /code-review 第 1 輪 ───────────────────────────────────────────────
+describe('review 第 1 輪', () => {
+  it('Firefox：先讀 deltaMode 才拿得到行模式——讀取順序反了就只剩 1.05 倍', () => {
+    // 模擬 Firefox 的行為：deltaY 在 deltaMode 被讀過之前被讀到，就回報像素（3 行 × 19 px）並把 deltaMode 定成 0
+    const ff = () => {
+      let modeRead = false, pixelLocked = false;
+      return {
+        get deltaMode() { modeRead = true; return pixelLocked ? 0 : 1; },
+        get deltaY() { if (!modeRead) pixelLocked = true; return pixelLocked ? -57 : -3; },
+        get deltaX() { return 0; },
+        ctrlKey: false,
+      };
+    };
+    expect(wheelZoomFactor(ff() as never, 900)).toBeCloseTo(Math.pow(1.1, 0.99), 10);
+  });
+
+  it('isGesturePointer：滑鼠只收左鍵，觸控／筆與沒帶欄位的假事件一律收', () => {
+    expect(isGesturePointer({ pointerType: 'mouse', button: 0 })).toBe(true);
+    expect(isGesturePointer({ pointerType: 'mouse', button: 2 })).toBe(false);
+    expect(isGesturePointer({ pointerType: 'mouse', button: 1 })).toBe(false);
+    expect(isGesturePointer({ pointerType: 'pen', button: 2 })).toBe(true);
+    expect(isGesturePointer({} as never)).toBe(true);
+  });
+
+  it('macOS Ctrl＋點擊（button 0 ＋ contextmenu）：不算點選，也不留下觸控點', () => {
+    const { document, host } = laidOutHost();
+    const h = mountCanvasTree(host, data);
+    const overlay = host.querySelector('canvas.tree-overlay') as HTMLElement;
+    const r = h.nodeScreenRect('1001')!;
+    const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+    const got: (string | null)[] = [];
+    h.onSelect(id => got.push(id));
+    overlay.dispatchEvent(mousePtr(document, 'pointerdown', 10, 10, 0));
+    overlay.dispatchEvent(new (document.defaultView as unknown as { Event: typeof Event }).Event('contextmenu'));
+    overlay.dispatchEvent(mousePtr(document, 'pointerup', 10, 10, 0));
+    expect(got).toEqual([]);
+    // 選單吃掉 pointerup 的情形：觸控點不能殘留，否則之後的 hover 分支永遠走不到
+    overlay.dispatchEvent(mousePtr(document, 'pointerdown', 10, 10, 0));
+    overlay.dispatchEvent(new (document.defaultView as unknown as { Event: typeof Event }).Event('contextmenu'));
+    overlay.dispatchEvent(ptr(document, 'pointermove', cx, cy));
+    expect(h.getState().hover).toBe('1001');
+    h.destroy();
+  });
+
+  it('2D context 恢復之後：下一次 hover 就重貼靜態層（blit 守衛不能以為它還在）', () => {
+    const env = paintedHost();
+    const h = mountCanvasTree(env.host, data);
+    const overlay = env.host.querySelector('canvas.tree-overlay') as HTMLElement;
+    const staticEl = env.host.querySelector('canvas.tree-static') as HTMLElement;
+    env.flush(3); env.reset();
+    staticEl.dispatchEvent(new (env.document.defaultView as unknown as { Event: typeof Event }).Event('contextrestored'));
+    const r = h.nodeScreenRect('1001')!;
+    overlay.dispatchEvent(ptr(env.document, 'pointermove', r.left + r.width / 2, r.top + r.height / 2));
+    env.flush(1);
+    expect(env.staticLog().filter(c => c.m === 'drawImage').length).toBe(1);
+    h.destroy(); env.restore();
+  });
+
+  it('ResizeObserver 連續觸發但 dpr 沒變：不重建 matchMedia 查詢', () => {
+    const { host } = laidOutHost();
+    let created = 0;
+    let roCb: (() => void) | null = null;
+    const prevMM = globalThis.matchMedia, prevRO = globalThis.ResizeObserver;
+    globalThis.matchMedia = (() => { created++; return { matches: true, addEventListener() {}, removeEventListener() {} }; }) as never;
+    globalThis.ResizeObserver = class { constructor(cb: () => void) { roCb = cb; } observe() {} disconnect() {} } as never;
+    try {
+      const h = mountCanvasTree(host, data);
+      expect(created).toBe(1);
+      for (let i = 0; i < 10; i++) roCb!();
+      expect(created).toBe(1);
+      h.destroy();
+    } finally {
+      globalThis.matchMedia = prevMM; globalThis.ResizeObserver = prevRO;
+    }
   });
 });
