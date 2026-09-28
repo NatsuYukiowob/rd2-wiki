@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import {
   buildSimContext, initialSimState, ownedIds, isAvailable, missingParents, missingPrereqRanks,
   unlockNode, removeNode, setNodeLevel, setInitialDice, pathTo, unlockMany,
-  simTotals, maxSelectableLevel, minSelectableLevel, summarizeAbilities, resourceGap,
+  simTotals, maxSelectableLevel, minSelectableLevel, summarizeAbilities, resourceGap, gapText,
   edgeWasUsed, edgeIsLinked,
 } from '../../src/lib/sim';
 import type { Edge, PassiveUpgradeCost, TreeData, TreeNode } from '../../src/lib/types';
@@ -353,6 +353,14 @@ describe('資源差額', () => {
   it('填了持有量但規劃沒用到的超越核心，列成全部剩餘', () => {
     const gap = resourceGap({ core: 0, gold: 0 }, { core: null, gold: null, mythic: { solar: 2000 } });
     expect(gap).toEqual([{ key: 'solar', label: '太陽核心', need: 0, held: 2000, short: -2000 }]);
+  });
+
+  it('差額文字：剛好夠用印「剩餘 0」不是「剩餘 -0」，千分位照印', () => {
+    const [exact] = resourceGap({ core: 0, gold: 0 }, { core: 0, gold: null, mythic: {} });
+    expect(Object.is(-exact!.short, -0)).toBe(true);   // 前提：-short 真的是 -0
+    expect(gapText(exact!)).toBe('剩餘 0');
+    expect(gapText({ short: 1500 })).toBe('還差 1,500');
+    expect(gapText({ short: -2000 })).toBe('剩餘 2,000');
   });
 
   it('表裡沒登記的超越核心 kind 不列', () => {

@@ -139,6 +139,7 @@ describe('版面級距', () => {
       '--chips-h', // src/scripts/tree-canvas.ts 量手機版底部分支列高度
       '--sim-panel-h', // src/scripts/sim.ts 量 /sim 手機版抽屜的實際高度（footer 與兩顆浮動鍵靠它讓位）
       '--sim-panel-user-h', // 同上：使用者把 /sim 手機版抽屜拖到的高度，存在 localStorage
+      '--sim-panel-w', // sim.astro 自己在 body 上設：桌機側欄寬度，#sim-panel 與工具列的 max-width 共用
       '--branch', // .dice-card[data-branch=…] 自己設，見 components.css 的分支色條
       // 進場動畫的序號，由 Astro 在建置時寫成每張卡片的 inline style（index.astro／
       // guide/index.astro／DiceCard.astro）。⚠️ base.css 引用它時**一定要帶預設值**

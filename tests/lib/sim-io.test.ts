@@ -45,10 +45,27 @@ describe('存檔', () => {
     expect(back.unlocked.has('9999')).toBe(false);
   });
 
-  it('丟掉不該出現在 unlocked 裡的起始骰子與可選初始骰子', () => {
+  it('unlocked 裡的起始骰子丟掉、可選初始骰子搬進 initial', () => {
     const back = deserializeSim(JSON.stringify({ v: 1, unlocked: ['1001', '5006'], levels: {}, initial: [] }), ctx)!;
     expect(back.unlocked.has('1001')).toBe(false);
     expect(back.unlocked.has('5006')).toBe(false);
+    expect(back.initial.has('5006')).toBe(true);
+  });
+
+  // 官方哪天多送一顆（unlock-exceptions 改一行）：舊存檔裡它在 unlocked，新版它是可選初始骰子。
+  // 丟掉的話它的整棵子樹會在前置收斂裡一起消失（2026-09-24 review sim-5）。
+  it('改版後變成可選初始骰子的節點連同子樹都留著', () => {
+    const rune = data.nodes.find(x => x.id === '1109')!;
+    let s = initialSimState(ctx);
+    s = unlockMany(s, ctx, pathTo('1109', s, ctx));
+    const child = data.edges.find(([from]) => from === '1109')?.[1];
+    if (child) s = unlockMany(s, ctx, pathTo(child, s, ctx));
+    const saved = serializeSim(s);
+    const drifted = { ...ctx, optional: new Set([...ctx.optional, rune.id]) };
+    const back = deserializeSim(saved, drifted)!;
+    expect(back.initial.has(rune.id)).toBe(true);
+    expect(back.unlocked.size).toBe(s.unlocked.size - 1);
+    if (child) expect(back.unlocked.has(child)).toBe(true);
   });
 
   it('把超出上限的等級夾回上限', () => {

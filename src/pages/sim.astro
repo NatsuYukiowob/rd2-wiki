@@ -53,7 +53,7 @@ const optional = [...ctx.optional]
         初始骰子<span class="sim-count" id="sim-initial-count">0</span>
       </button>
       <div class="sim-menu-body" id="sim-initial-menu" hidden>
-        <p class="note">這幾顆不用花資源，但要靠遊戲外的條件取得。勾起來代表你已經有了。</p>
+        <p class="note">這幾顆不用花資源，但要靠遊戲外的條件取得。勾起來代表你已經有了；取消勾選會連帶取消靠它解開的後續節點。</p>
         {optional.map(n => (
           <label class="sim-check">
             <input type="checkbox" data-initial={n.id} />
@@ -72,10 +72,12 @@ const optional = [...ctx.optional]
       </button>
       <div class="sim-menu-body" id="sim-limit-menu" hidden>
         <p class="note">填入目前持有量，側欄會顯示還差多少。留白＝不計算。</p>
-        <label class="sim-field">核心 <input id="sim-limit-core" type="number" min="0" step="1" inputmode="numeric" /></label>
-        <label class="sim-field">金幣 <input id="sim-limit-gold" type="number" min="0" step="1" inputmode="numeric" /></label>
+        <!-- autocomplete="off"：持有量由 sim.ts 存在 localStorage、載入時回填（2026-09-24 review sim-8）。
+             Firefox 重新整理時會自己還原表單值，兩份來源打架時以存檔為準，所以關掉瀏覽器那份。 -->
+        <label class="sim-field">核心 <input id="sim-limit-core" type="number" min="0" step="1" inputmode="numeric" autocomplete="off" /></label>
+        <label class="sim-field">金幣 <input id="sim-limit-gold" type="number" min="0" step="1" inputmode="numeric" autocomplete="off" /></label>
         {MYTHIC_CORES.map(d => (
-          <label class="sim-field">{d.label} <input id={`sim-limit-${d.kind}`} type="number" min="0" step="1" inputmode="numeric" /></label>
+          <label class="sim-field">{d.label} <input id={`sim-limit-${d.kind}`} type="number" min="0" step="1" inputmode="numeric" autocomplete="off" /></label>
         ))}
       </div>
     </div>
@@ -126,7 +128,7 @@ const optional = [...ctx.optional]
   <aside id="sim-panel" class="panel">
     <!-- 抽屜把手（桌機 display:none）：拖曳改高度、點一下收合／展開。
          ⚠️ 它是收起狀態下唯一看得到的一列，高度固定不隨狀態變（同工具列那條）。 -->
-    <button type="button" id="sim-panel-handle" aria-expanded="false" aria-label="展開資源合計">
+    <button type="button" id="sim-panel-handle" aria-expanded="false" aria-controls="sim-totals" aria-label="展開資源合計">
       <span class="sim-grip" aria-hidden="true"></span>
       <span class="sim-head-sum">
         <span id="sim-head-cost">核心 0 ／金幣 0</span>
@@ -160,15 +162,18 @@ const optional = [...ctx.optional]
     </div>
   </dialog>
 
-  <div id="sim-ability-modal" hidden>
-    <div class="sim-modal-box" role="dialog" aria-modal="true" aria-labelledby="sim-ability-title">
+  <!-- 原生 <dialog>＋showModal()：焦點困住、Esc、背景 inert 都是瀏覽器給的（2026-09-24 review sim-3：
+       舊版是 <div role="dialog" aria-modal>，Tab 一下焦點就掉到 <body>，關掉後也不回到「能力彙總」）。
+       dialog 本身撐滿視窗、透明，點到它自己（盒子外面）＝點背景。 -->
+  <dialog id="sim-ability-modal" aria-labelledby="sim-ability-title">
+    <div class="sim-modal-box">
       <div class="sim-modal-head">
         <h2 id="sim-ability-title">能力彙總</h2>
         <button type="button" id="sim-ability-close" aria-label="關閉">✕</button>
       </div>
       <div id="sim-ability-body"></div>
     </div>
-  </div>
+  </dialog>
 
   <p id="sim-toast" role="status" aria-live="polite"></p>
 </Base>
@@ -178,11 +183,20 @@ const optional = [...ctx.optional]
      標記上的 data 屬性生效，動態元素拿不到那個屬性（tree.astro 同一段註解）。 */
 
   /* --- 工具列 --------------------------------------------------------------- */
+  /* 側欄寬度只有這一份：#sim-panel 的 width 與工具列的 max-width 都讀它。 */
+  body {
+    --sim-panel-w: 22rem;
+  }
+
   #sim-toolbar {
     position: fixed;
     top: var(--nav-h, 3rem);
     left: 0;
     z-index: 5;
+    /* ⚠️ 不准伸進側欄底下：工具列的自然寬度約 849px，721–1200px 寬（iPad、手機橫放）時它壓在
+       側欄上、蓋掉「資源合計」與總計列（2026-09-24 review gap-canvas-mobile-1）。夾住之後在側欄
+       左邊換行。`100%` 是 fixed 元素的包含塊＝視口（不含捲軸）。 */
+    max-width: calc(100% - var(--sim-panel-w));
     display: flex;
     flex-wrap: wrap;
     align-items: center;
@@ -357,7 +371,7 @@ const optional = [...ctx.optional]
     z-index: 4;
     display: flex;
     flex-direction: column;
-    width: 22rem;
+    width: var(--sim-panel-w);
     padding: var(--space-3);
     overflow-y: auto;
     /* 面在 components.css 的 `.panel`（2026-09-23 骰桌 PR ④）。這裡只把它收回「貼右邊的全高側欄」：
@@ -511,19 +525,30 @@ const optional = [...ctx.optional]
   }
 
   /* --- 能力彙總 ------------------------------------------------------------- */
+  /* 原生 <dialog>：UA 樣式給它置中的小框、邊框與底色，這裡改成撐滿視窗的透明容器，
+     盒子本身（.sim-modal-box）才是看得見的那塊。
+     ⚠️ `display: flex` 只能掛在 `[open]` 上：寫在 #sim-ability-modal (1,0,0) 上會壓過 UA 的
+     `dialog:not([open]) { display: none }`，關著的對話框照樣留在畫面上（review 的 fix_opinion 提醒過）。 */
   #sim-ability-modal {
-    position: fixed;
-    inset: 0;
-    z-index: 20;
+    width: 100%;
+    max-width: none;
+    height: 100%;
+    max-height: none;
+    margin: 0;
+    padding: var(--space-4);
+    color: var(--fg);
+    background: transparent;
+    border: none;
+  }
+
+  #sim-ability-modal[open] {
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: var(--space-4);
-    background: rgb(0 0 0 / 55%);
   }
 
-  #sim-ability-modal[hidden] {
-    display: none;
+  #sim-ability-modal::backdrop {
+    background: rgb(0 0 0 / 55%);
   }
 
   .sim-modal-box {
@@ -603,6 +628,9 @@ const optional = [...ctx.optional]
     border-radius: var(--r-pill);
     box-shadow: var(--shadow-2);
     transform: translateX(-50%);
+    /* 只是告知，不接點擊：它浮在畫布與抽屜上，接了就會吃掉底下那一下（「已取得」的 toast 正好
+       蓋在手機抽屜的主按鈕上，2026-09-29 S26 抓到）。 */
+    pointer-events: none;
   }
 
   /* ⚠️ 不要用 `[hidden]`／`display:none`／`visibility:hidden` 收這個元素：它是這一頁唯一的
@@ -637,6 +665,7 @@ const optional = [...ctx.optional]
       right: 0;
       bottom: 0;
       z-index: 7;
+      max-width: none;
       max-height: 80dvh;
       padding-bottom: calc(var(--space-3) + env(safe-area-inset-bottom, 0px));
       overflow-y: auto;
@@ -800,6 +829,11 @@ const optional = [...ctx.optional]
        高度用 sim.ts 量出來的實際值，不寫死數字。 */
     body:has(#canvas-host) > footer {
       padding-bottom: calc(var(--space-4) + var(--sim-panel-h, 3.5rem));
+    }
+
+    /* toast 浮在抽屜上緣之上：抽屜撐開時主按鈕就在它的舊位置（視窗底部往上 --space-6）。 */
+    #sim-toast {
+      bottom: calc(var(--sim-panel-h, 3.5rem) + var(--space-3));
     }
 
     /* 兩顆浮動鍵。`bottom` 綁抽屜的實際高度：拖高時跟著上移，永遠浮在抽屜上緣之上。 */

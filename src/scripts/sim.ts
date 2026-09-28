@@ -11,7 +11,11 @@
 // 模擬器的差異全部收斂成 state.ts 的 `SimPaint`，controller 內沒有第二條繪圖路徑。
 import { treeData as rawData } from '../lib/tree-data.js';
 import rawTables from '../../data/passive-upgrade-cost.json';
-import { mountCanvasTree } from '../lib/canvas/canvas-tree.js';
+import { mountCanvasTree, type ScreenRect } from '../lib/canvas/canvas-tree.js';
+import { animatePan } from '../lib/canvas/animate-pan.js';
+import { visibleRects } from '../lib/canvas/obscurers.js';
+import type { SimPaint } from '../lib/canvas/state.js';
+import { cssMs } from '../lib/css-ms.js';
 import {
   DESKTOP_ICON_TARGET_PX, MOBILE_ICON_TARGET_PX, minReadableScale,
 } from '../lib/canvas/view.js';
@@ -19,7 +23,7 @@ import { isTypingTarget } from '../lib/filter.js';
 import {
   buildSimContext, initialSimState, ownedIds, isAvailable, missingParents, missingPrereqRanks,
   unlockNode, removeNode, setNodeLevel, setInitialDice, pathTo, unlockMany,
-  simTotals, maxSelectableLevel, minSelectableLevel, summarizeAbilities, resourceGap,
+  simTotals, maxSelectableLevel, minSelectableLevel, summarizeAbilities, resourceGap, gapText,
 } from '../lib/sim.js';
 import type { AbilityGroup, GapEntry, SimHoldings, SimState } from '../lib/sim.js';
 import { SIM_STORAGE_KEY, deserializeSim, serializeSim, simReport } from '../lib/sim-io.js';
@@ -54,13 +58,31 @@ const host = $('canvas-host');
 // 並自己接上 pointer（拖曳平移、雙指縮放、滾輪、hover 命中）與鍵盤焦點。
 // ⚠️ 跟 `/tree` 呼叫的是**同一支、同樣的參數**：模擬器的差異全部由 `setState({ sim })`
 // 表達，controller 內部沒有第二條繪圖路徑，也沒有任何「這是 /sim」的旗標可傳
-// （見 canvas-tree.ts 的 MountOptions）。
-const tree = mountCanvasTree(host, data);
+// （見 canvas-tree.ts 的 MountOptions）。`obscurers` 不是這種旗標：兩頁各自量自己的浮層。
+const tree = mountCanvasTree(host, data, { obscurers: obscuringRects });
 // `vp` 是 controller 的座標狀態機（src/lib/canvas/view.ts）。
 // ⚠️ 它吃的是**相對 host 的 CSS px**，不是 clientX/clientY。
 const vp = tree.view;
 
 const isMobile = typeof matchMedia === 'function' && matchMedia('(width <= 720px)').matches;
+
+/**
+ * 疊在畫布上、看得見的浮層（視窗座標），給 controller 的鍵盤焦點 ensureVisible 與手機版選節點後
+ * 的 revealSelected() 共用（2026-09-24 review tree-canvas-5 的 /sim 那一半）。
+ * 桌機：左上的工具列、右側整條側欄。手機：抽屜、兩顆浮動鍵、升起來時的 sheet
+ * （收起的 sheet 是 visibility: hidden，visibleRects() 會跳過）。
+ * ⚠️ 宣告是 function（會 hoist）：mountCanvasTree() 在它之前就拿到這個參照。
+ */
+function obscuringRects(): ScreenRect[] {
+  return visibleRects(['sim-toolbar', 'sim-panel', 'sim-fabs']);
+}
+
+/** 桌機常駐側欄從 host 右緣吃掉多寬（手機或量不到時 0）。 */
+function sidePanelInset(hostRect: DOMRect): number {
+  if (mobile()) return 0;
+  const p = $('sim-panel').getBoundingClientRect();
+  return p.width > 0 ? Math.max(0, hostRect.right - p.left) : 0;
+}
 
 /**
  * 初始視角：整棵樹塞進容器，再套一次可讀性下限。
@@ -73,16 +95,24 @@ const isMobile = typeof matchMedia === 'function' && matchMedia('(width <= 720px
 function fitAll(): void {
   tree.fitAll(0.9);
   const rect = host.getBoundingClientRect();
+  // ⚠️ 桌機的側欄常駐在 host 右邊（host 是全寬、在側欄底下）。以全寬置中的話樹的右半塞在側欄
+  // 底下（2026-09-24 review gap-canvas-mobile-4：1024 寬 64 顆、1280 寬 24 顆節點中心被蓋）。
+  // 樹寬超過可視寬度就先縮，最後再往左平移半個側欄寬，讓樹的中心落在可視區中央。
+  const side = sidePanelInset(rect);
+  const visW = rect.width - side;
+  if (side > 0 && visW > 0) {
+    const treeW = data.meta.viewBox[2] * vp.pxPerUnit;
+    if (treeW > visW * 0.9) vp.zoomAt((visW * 0.9) / treeW, rect.width / 2, rect.height / 2);
+  }
   const floor = minReadableScale(
     rect.width, rect.height, data.meta.viewBox[2], data.meta.viewBox[3],
     tree.scene.diceIconWidth, isMobile ? MOBILE_ICON_TARGET_PX : DESKTOP_ICON_TARGET_PX,
   );
   // 下限只是下限：fitAll 給的倍率已經夠大時不該反過來把畫面拉近。
-  if (vp.scale < floor) {
-    vp.zoomAt(floor / vp.scale, rect.width / 2, rect.height / 2);
-    // 直接動 vp 的地方要自己排一幀——controller 只在自己的 pointer／wheel 路徑上排。
-    tree.requestRedraw();
-  }
+  if (vp.scale < floor) vp.zoomAt(floor / vp.scale, rect.width / 2, rect.height / 2);
+  if (side > 0) vp.pan(-side / 2, 0);
+  // 直接動 vp 的地方要自己排一幀——controller 只在自己的 pointer／wheel 路徑上排。
+  tree.requestRedraw();
 }
 
 // 平移、雙指縮放、滾輪縮放、視窗尺寸變化全部在 controller 裡（canvas-tree.ts 的 pointer
@@ -148,6 +178,26 @@ function redo(): void {
   render();
 }
 
+/**
+ * 另一個分頁改了存檔（`storage` 事件），或從 bfcache 回到這一頁（`pageshow`）：換成存檔裡的那份。
+ *
+ * ⚠️ 不跟上的話兩個 /sim 分頁會互相覆寫：`save()` 每次都把**整份**記憶體裡的狀態寫回去，
+ * B 分頁解了 5 顆、回 A 分頁再解一顆，B 的 5 顆就沒了，全程沒有任何提示（2026-09-24 review sim-2）。
+ * 被換掉的那份推進 undo（按復原救得回來），不是清空堆疊。自己不 save()：內容就是從存檔來的。
+ */
+function syncFromStorage(): void {
+  const next = deserializeSim(readSaved(), ctx) ?? initialSimState(ctx);
+  if (serializeSim(next) === serializeSim(state)) return;
+  // 拖等級滑桿拖到一半被換掉：放開時的 change 不能把拖曳前那份舊狀態推進 undo。
+  levelDragFrom = null;
+  undoStack.push(state);
+  if (undoStack.length > UNDO_LIMIT) undoStack.shift();
+  redoStack.length = 0;
+  state = next;
+  render();
+  toast('已同步其他分頁的變更（可按復原）');
+}
+
 // --- 持有資源 ---------------------------------------------------------------
 function readHolding(el: HTMLInputElement): number | null {
   const raw = el.value.trim();
@@ -161,6 +211,29 @@ const MYTHIC_LIMIT_IDS = MYTHIC_CORES.map(d => [d.kind, `sim-limit-${d.kind}`] a
 const HOLDING_INPUT: Record<string, string> = {
   core: 'sim-limit-core', gold: 'sim-limit-gold', ...Object.fromEntries(MYTHIC_LIMIT_IDS),
 };
+
+/**
+ * 持有量另存一個鍵（2026-09-24 review sim-8：以前重新整理就要重填）。⚠️ 不塞進 `rd2-sim-v1`：
+ * `/board` 讀那份存檔，改它的格式就得換鍵名，而換鍵名 `/board` 就讀不到（CLAUDE.md /board 那節）。
+ * 存的是輸入框的原字串（留白＝不計算，跟畫面一致），鍵是貨幣種類不是元素 id。
+ */
+const HOLDINGS_KEY = 'rd2-wiki:sim-holdings';
+
+function saveHoldings(): void {
+  const v = Object.fromEntries(Object.entries(HOLDING_INPUT).map(([k, id]) => [k, $<HTMLInputElement>(id).value]));
+  try { localStorage.setItem(HOLDINGS_KEY, JSON.stringify(v)); } catch { /* 存不了就算了 */ }
+}
+
+/** 回填輸入框。沒有存檔時不動（留白）；有存檔時以存檔為準，蓋掉瀏覽器自己還原的表單值。 */
+function loadHoldings(): void {
+  let v: unknown = null;
+  try { v = JSON.parse(localStorage.getItem(HOLDINGS_KEY) ?? 'null'); } catch { return; }
+  if (typeof v !== 'object' || v === null) return;
+  for (const [k, id] of Object.entries(HOLDING_INPUT)) {
+    const raw = (v as Record<string, unknown>)[k];
+    $<HTMLInputElement>(id).value = typeof raw === 'string' ? raw : '';
+  }
+}
 
 function holdings(): SimHoldings {
   return {
@@ -178,8 +251,7 @@ function gapIcon(key: string): string {
 
 /** 差額的一列：「還差」標警示色，夠用的印剩餘量。數字全來自 number，不含自由文字（innerHTML 安全）。 */
 function gapRow(g: GapEntry): string {
-  const n = (v: number) => v.toLocaleString('en-US');
-  const text = g.short > 0 ? `還差 ${n(g.short)}` : `剩餘 ${n(-g.short)}`;
+  const text = gapText(g);
   return `<div class="sim-total-row ${g.short > 0 ? 'is-short' : 'is-enough'}" data-gap="${g.key}">`
     + `<dt>${gapIcon(g.key)}${g.label}</dt><dd>${text}</dd></div>`;
 }
@@ -199,7 +271,49 @@ function gapRow(g: GapEntry): string {
  * 一行，239 個牌子全部留在畫面上，全套測試綠、截圖才看得出來。
  */
 function renderCanvas(): void {
-  tree.setState({ sim: simPaintFor(state, ctx, data, selected) });
+  const paint = simPaintFor(state, ctx, data, selected);
+  tree.setState({ sim: paint });
+  syncButtons(paint);
+}
+
+/**
+ * 把模擬器狀態寫到無障礙節點按鈕上（2026-09-24 review sim-4／tree-canvas-6）。
+ *
+ * 畫布上「已取得／可取得／鎖住」全是顏色，按鈕的 aria-label 只在掛載時寫一次（名稱，類型，成本），
+ * 讀屏使用者按 Enter 之前聽不出這顆取得了沒——而可取得的節點按 Enter 就直接花資源取得。
+ * - 狀態走 `aria-description`，**不動 aria-label**：a11y.ts 是 /tree 共用的，aria-label 也是
+ *   E2E 選取器與 a11y.test 斷言的來源。
+ * - 選取走 `aria-current`（同 /tree 的 markSelectedButton）。
+ * - 只寫有變的那幾顆：拖等級滑桿時每一格都會跑到這裡。
+ */
+const describedAs = new Map<string, string>();
+let lastPaint: SimPaint | null = null;
+let markedSelected: string | null = null;
+
+function describeNode(id: string, p: SimPaint): string {
+  let text: string;
+  if (p.owned.has(id)) {
+    const max = p.maxLevels.get(id) ?? 1;
+    text = max > 1 ? `已取得，Lv.${p.levels.get(id) ?? 1} / ${max}` : '已取得';
+  } else if (ctx.optional.has(id)) text = '未勾選的初始骰子';
+  else text = p.available.has(id) ? '可取得，按下即取得' : '未解鎖';
+  return dimmed.has(id) ? `${text}，不符合搜尋` : text;
+}
+
+function syncButtons(p: SimPaint | null = lastPaint): void {
+  if (!p) return;
+  lastPaint = p;
+  for (const [id, btn] of tree.buttons.byId) {
+    const text = describeNode(id, p);
+    if (describedAs.get(id) === text) continue;
+    btn.setAttribute('aria-description', text);
+    describedAs.set(id, text);
+  }
+  if (markedSelected !== selected) {
+    if (markedSelected) tree.buttons.byId.get(markedSelected)?.removeAttribute('aria-current');
+    if (selected) tree.buttons.byId.get(selected)?.setAttribute('aria-current', 'true');
+    markedSelected = selected;
+  }
 }
 
 // 太陽核心只在有值時才印：三列合計是側欄常駐的東西，為一個只有太陽骰子那一支花得到的
@@ -345,7 +459,7 @@ function renderDetailPanel(): void {
   }
 
   box.innerHTML = `
-    <h3>${esc(node.name)}</h3>
+    <h3 tabindex="-1">${esc(node.name)}</h3>
     <p><span class="tag">${esc(typeLabel(node))}</span><span class="tag">${esc(node.id)}</span></p>
     <p class="desc">${renderTaggedText(node.description, node.keywords, data.meta.glossary, (term, entry) => {
       // 顏色照抄遊戲內該標記的底色（同色＝同一類機制），跟 /tree 的詳情面板同一份資料來源。
@@ -362,7 +476,7 @@ function render(): void {
   renderCanvas();
   renderTotals();
   renderDetailPanel();
-  if (!$('sim-ability-modal').hasAttribute('hidden')) renderAbilities();
+  if ($<HTMLDialogElement>('sim-ability-modal').open) renderAbilities();
 }
 
 // --- toast ------------------------------------------------------------------
@@ -388,7 +502,7 @@ function toast(msg: string): void {
 // 沒超過門檻才算點選。空白處回 null＝清掉選取。
 // 鍵盤的 Enter／Space 走同一條路：a11y.ts 那份隱形按鈕清單的 onActivate 也進 onSelect。
 
-function activate(id: string | null): void {
+function activate(id: string | null, source: 'pointer' | 'keyboard' = 'pointer'): void {
   selected = id;
   // 前置齊了就直接取得——先選再按按鈕，在一棵 239 節點的樹上太累。
   // ⚠️ 沒有取得（點的是還不能取得的節點、或 `commit()` 失敗）時**一定要自己補一次 render**：`selected` 已經
@@ -396,8 +510,40 @@ function activate(id: string | null): void {
   // `selected`——按下去作用在畫面上看不到的那顆（`/code-review high` 抓到）。
   const taken = id !== null && isAvailable(id, state, ctx) && commit(unlockNode(state, ctx, id));
   if (!taken) render();
-  // 手機抽屜預設收起，選了節點得看得到詳情的主按鈕（見 revealDetail 的說明）。
-  if (id !== null) revealDetail();
+  // 取得是會花資源的動作，畫面上只是節點變亮、側欄數字變了——讀屏什麼都聽不到
+  // （#sim-toast 是這一頁唯一的 live region；2026-09-24 review sim-4）。
+  if (taken) toast(`已取得 ${ctx.byId.get(id)?.name ?? id}`);
+  if (id === null) return;
+  // 手機抽屜預設收起，選了節點得看得到詳情的主按鈕（見 revealDetail 的說明）；抽屜長高之後
+  // 被選的節點可能落在它底下，再把畫布挪一下（revealSelected）。
+  revealDetail();
+  revealSelected();
+  // 鍵盤開的：焦點移進詳情（標題），不然 Enter 之後還得 Tab 過其餘兩百多顆節點按鈕才到得了
+  // 面板（DOM 順序是畫布在前、側欄在後）。Esc 回到節點按鈕（見 #sim-panel 的 keydown）。
+  // preventScroll：revealDetail 已經把主按鈕捲進抽屜可視範圍，標題不該把它捲回去。
+  if (source === 'keyboard') $('sim-detail').querySelector<HTMLElement>('h3')?.focus({ preventScroll: true });
+}
+
+/** 手機版選節點後的平移長度，從 CSS 讀（同 /tree 的 CENTER_MS）。 */
+const REVEAL_MS = cssMs('--t-med', 200);
+let stopReveal: () => void = () => {};
+
+/**
+ * 手機版：抽屜為了露出主按鈕長高之後，被選的節點若落在抽屜、浮動鍵底下或畫面外，把畫布挪到
+ * 剛好露出來（2026-09-24 review gap-canvas-mobile-3：390×844 點 2007 之後節點在抽屜底下，
+ * 接著點下半部其他節點點到的是抽屜）。位移跟鍵盤焦點同一份計算（`tree.visibleShift()`）。
+ * 桌機不需要：點得到的節點本來就看得見，鍵盤聚焦則由 controller 的 ensureVisible 處理。
+ */
+function revealSelected(): void {
+  if (!mobile() || selected === null) return;
+  stopReveal();
+  const [dx, dy] = tree.visibleShift(selected);
+  if (dx || dy) stopReveal = animatePan(tree, dx, dy, REVEAL_MS, () => { stopReveal = () => {}; });
+}
+// 使用者自己動畫布就停掉（兩股力量同時寫 view 會互相拉扯）。capture：controller 的監聽掛在
+// host 底下的互動層 canvas 上，要搶在它前面。
+for (const type of ['pointerdown', 'wheel'] as const) {
+  host.addEventListener(type, () => { stopReveal(); stopReveal = () => {}; }, { capture: true, passive: true });
 }
 
 /**
@@ -414,7 +560,7 @@ const dimmed = new Set<string>();
 // 穿到 SVG 本身、`downTarget` 是 null，於是那一下等於「點空白處」＝清掉選取。canvas 沒有
 // pointer-events 這回事（畫的是像素不是元素），命中測試一律答得出節點 id，所以那條語意要
 // 在這裡自己補回來——不補的話搜尋中點一顆看不見的節點會直接把它解鎖，而畫面上幾乎沒有反應。
-tree.onSelect(id => activate(id !== null && dimmed.has(id) ? null : id));
+tree.onSelect((id, source) => activate(id !== null && dimmed.has(id) ? null : id, source));
 
 // Esc 取消選取。掛在 host 上而不是 window：事件要先冒泡經過 host 才會觸發，所以只有「焦點
 // 在畫布內（無障礙節點按鈕或兩張 canvas）」時才生效——搜尋框與持有資源輸入框都不是 host 的
@@ -424,15 +570,37 @@ host.addEventListener('keydown', e => {
   if (e.key === 'Escape' && !isTypingTarget(document.activeElement?.tagName)) activate(null);
 });
 
+/**
+ * 取消節點／取消勾選初始骰子：會連帶取消靠它解開的後續，最多一次 46 顆（4008 陰陽骰子）。
+ * 畫面上只是一片節點變暗，被連帶的有幾顆要說出來，並提示可以復原（2026-09-24 review sim-6）。
+ */
+function commitCascading(next: SimState | null): boolean {
+  const before = ownedIds(state, ctx).size;
+  if (!commit(next)) return false;
+  const lost = before - ownedIds(state, ctx).size - 1;   // 扣掉被取消的那一顆自己
+  if (lost > 0) toast(`已連帶取消 ${lost} 個後續節點（可按復原）`);
+  return true;
+}
+
 // --- 事件：側欄 --------------------------------------------------------------
+// 焦點在側欄裡按 Esc：回到被選節點的按鈕（鍵盤 Enter 開節點會把焦點移進來，這是回去的路）。
+// 選取不動；在節點按鈕上再按一次 Esc 才取消選取（host 上那個監聽）。
+$('sim-panel').addEventListener('keydown', e => {
+  if (e.key !== 'Escape' || selected === null) return;
+  // 文字與數字輸入框讓路；等級滑桿（也是 INPUT）不打字，照樣可以 Esc 回去。
+  const a = document.activeElement as HTMLInputElement | null;
+  if (isTypingTarget(a?.tagName) && a?.type !== 'range') return;
+  tree.buttons.byId.get(selected)?.focus({ preventScroll: true });
+});
+
 $('sim-detail').addEventListener('click', e => {
   const btn = (e.target as HTMLElement).closest('button');
   if (!btn || selected === null) return;
   const id = selected;
   if (btn.hasAttribute('data-unlock')) commit(unlockNode(state, ctx, id));
-  else if (btn.hasAttribute('data-remove')) commit(removeNode(state, ctx, id));
+  else if (btn.hasAttribute('data-remove')) commitCascading(removeNode(state, ctx, id));
   else if (btn.hasAttribute('data-check')) commit(setInitialDice(state, ctx, id, true));
-  else if (btn.hasAttribute('data-uncheck')) commit(setInitialDice(state, ctx, id, false));
+  else if (btn.hasAttribute('data-uncheck')) commitCascading(setInitialDice(state, ctx, id, false));
   else if (btn.hasAttribute('data-path')) {
     const plan = pathTo(id, state, ctx);
     if (plan.blocked.length > 0) {
@@ -513,7 +681,8 @@ document.addEventListener('click', closeMenus);
 
 for (const el of document.querySelectorAll<HTMLInputElement>('[data-initial]')) {
   el.addEventListener('change', () => {
-    const ok = commit(setInitialDice(state, ctx, el.dataset['initial']!, el.checked));
+    const next = setInitialDice(state, ctx, el.dataset['initial']!, el.checked);
+    const ok = el.checked ? commit(next) : commitCascading(next);
     // 被擋下來（那顆根本不是可選初始骰子）時，勾選框要跟著回到真實狀態，
     // 否則畫面上會顯示一個沒有生效的勾。
     if (!ok) el.checked = state.initial.has(el.dataset['initial']!);
@@ -522,13 +691,20 @@ for (const el of document.querySelectorAll<HTMLInputElement>('[data-initial]')) 
 
 // 超越核心的持有欄也要掛：以前只掛了核心與金幣，太陽核心那格改了數字要等下一個操作才重算。
 for (const id of ['sim-limit-core', 'sim-limit-gold', ...MYTHIC_LIMIT_IDS.map(([, x]) => x)]) {
-  $<HTMLInputElement>(id).addEventListener('input', () => { renderTotals(); });
+  $<HTMLInputElement>(id).addEventListener('input', () => { renderTotals(); saveHoldings(); });
 }
 
 $('sim-undo').addEventListener('click', undo);
 $('sim-redo').addEventListener('click', redo);
 
 $('sim-reset').addEventListener('click', () => {
+  // initialSimState() 每次都是新物件，commit() 的 `next === state` 擋不到「本來就是空的」：
+  // 會推一步內容相同的復原、清掉重做、還說「已重置」（2026-09-24 review sim-7）。
+  // 比序列化而不是比 size：拖回 Lv.1 的等級會留在 levels 裡，serializeSim 會濾掉它。
+  if (serializeSim(state) === serializeSim(initialSimState(ctx))) {
+    toast('規劃已經是空的');
+    return;
+  }
   if (commit(initialSimState(ctx))) {
     selected = null;
     render();
@@ -647,17 +823,23 @@ function renderAbilities(): void {
     </section>`).join('');
 }
 
+// 原生 <dialog>（sim.astro 有理由）：焦點困住、Esc 關閉都是 showModal() 給的，這裡只接開與關。
+const abilityDialog = $<HTMLDialogElement>('sim-ability-modal');
 $('sim-abilities').addEventListener('click', () => {
   renderAbilities();
-  $('sim-ability-modal').removeAttribute('hidden');
+  abilityDialog.showModal();
   $('sim-ability-close').focus();
 });
-$('sim-ability-close').addEventListener('click', () => $('sim-ability-modal').setAttribute('hidden', ''));
-$('sim-ability-modal').addEventListener('click', e => {
-  if (e.target === e.currentTarget) $('sim-ability-modal').setAttribute('hidden', '');
+$('sim-ability-close').addEventListener('click', () => abilityDialog.close());
+// dialog 撐滿整個視窗、盒子在中間：點到 dialog 自己＝點盒子外面的背景。
+abilityDialog.addEventListener('click', e => {
+  if (e.target === abilityDialog) abilityDialog.close();
 });
-addEventListener('keydown', e => {
-  if (e.key === 'Escape') $('sim-ability-modal').setAttribute('hidden', '');
+// 關掉之後焦點回到「能力彙總」。瀏覽器會自己還給開啟前的焦點，但那顆按鈕在手機 sheet 裡、
+// 開啟前焦點不一定在它身上；只在焦點掉到 <body> 或還卡在對話框裡時才接（同 restoreExportFocus）。
+abilityDialog.addEventListener('close', () => {
+  const a = document.activeElement;
+  if (a === null || a === document.body || abilityDialog.contains(a)) $<HTMLButtonElement>('sim-abilities').focus();
 });
 
 // --- 搜尋 -------------------------------------------------------------------
@@ -671,6 +853,7 @@ $<HTMLInputElement>('sim-search').addEventListener('input', e => {
   // 但集合是同一個參照——controller 的 stateSignature() 會拿它算靜態層快取簽章，共用參照的話
   // 「下一次輸入就地改掉內容」在簽章看來是同一份狀態，畫面不會跟著更新。
   tree.setState({ filteredOut: new Set(dimmed) });
+  syncButtons();
 });
 
 // --- 手機版：抽屜高度追蹤 ------------------------------------------------------
@@ -713,8 +896,24 @@ function panelMinH(): number {
   return h > 0 ? h : 56;
 }
 
-const clampPanel = (px: number): number =>
-  Math.min(Math.max(px, panelMinH()), innerHeight * PANEL_MAX_RATIO);
+/** 浮動鍵與抽屜上緣、與導覽列之間的間距（px）。＝CSS `#sim-fabs` bottom 裡的 `--space-3`；
+ *  純視覺值，差幾 px 只是浮動鍵離導覽列近一點（理由同 CTA_BOTTOM_GAP 不從 token 讀）。 */
+const FABS_GAP = 12;
+
+/**
+ * 抽屜最高能到哪：80dvh，**而且要留得下兩顆浮動鍵**。
+ * 浮動鍵的 bottom 綁抽屜高度，矮螢幕（手機橫放 640×360、667×375）撐到 80dvh 時它們被推出
+ * 視窗頂端、藏到導覽列底下（2026-09-24 review gap-canvas-mobile-2：fabs top −36）。
+ * 撐不到的部分 revealDetail() 照舊用捲動補。
+ */
+function panelMaxH(): number {
+  const navBottom = document.getElementById('site-nav')?.getBoundingClientRect().bottom ?? 0;
+  const fabsH = $('sim-fabs').getBoundingClientRect().height;
+  const room = innerHeight - navBottom - fabsH - FABS_GAP * 2;
+  return Math.max(panelMinH(), Math.min(innerHeight * PANEL_MAX_RATIO, room));
+}
+
+const clampPanel = (px: number): number => Math.min(Math.max(px, panelMinH()), panelMaxH());
 
 function setPanelHeight(px: number): void {
   document.documentElement.style.setProperty('--sim-panel-user-h', `${Math.round(px)}px`);
@@ -748,6 +947,12 @@ function writePanelPref(pref: PanelPref): void {
 
 /** 使用者展開時要回到的高度。拖曳與點開都會更新它，收合**不會**。 */
 let openPanelH: number | null = null;
+/**
+ * 目前的高度是 revealDetail() 為了露出主按鈕撐出來的（不是使用者拖／點出來的）。
+ * 收合時看它：是的話不把這個高度記成「下次展開要回到的地方」——否則使用者拖到 256、選一顆
+ * 節點被撐到 406、收合，再展開就變 406（2026-09-24 review gap-canvas-mobile-9）。
+ */
+let systemOpened = false;
 const openTarget = (): number => clampPanel(openPanelH ?? innerHeight * PANEL_OPEN_RATIO);
 
 const panelH = (): number => $('sim-panel').getBoundingClientRect().height;
@@ -774,7 +979,7 @@ function revealDetail(): void {
   // 捲動內容裡的位置（把手是 sticky，仍然佔著那一列，所以已經算進去了）。
   const cta = panel.querySelector<HTMLElement>('#sim-detail .cta');
   if (!cta) {
-    if (panelCollapsed()) setPanelHeight(openTarget());
+    if (panelCollapsed()) { setPanelHeight(openTarget()); systemOpened = true; }
     syncHandleState();
     return;
   }
@@ -782,7 +987,7 @@ function revealDetail(): void {
   // 是 sticky、`offsetTop` 本來就含它——那 56px 是白給出去的畫布，實測 243 顆全部中招。
   const want = cta.offsetTop + cta.offsetHeight + CTA_BOTTOM_GAP;
   // 只長不縮：使用者自己拖大過的抽屜不該因為換了一顆節點就被收回去。
-  if (panelH() < want) setPanelHeight(clampPanel(want));
+  if (panelH() < want) { setPanelHeight(clampPanel(want)); systemOpened = true; }
   // ⚠️ `want` 會被 80dvh 的上限夾住：矮螢幕 ＋ 多行「缺少前置／需達 Lv.N」的節點高度不夠，
   // 光改高度主按鈕仍然在框外（實測 iPhone SE 375×568 的 2503 差 2px）。夾住時改用捲動把它
   // 帶進可視範圍——「選了節點就看得到主按鈕」不能只在大螢幕上成立。
@@ -827,6 +1032,7 @@ function installPanelHandle(): void {
       const h = panelH();
       const open = h > panelMinH() + 4;
       if (open) openPanelH = h;
+      systemOpened = false;
       writePanelPref({ h: openPanelH ?? innerHeight * PANEL_OPEN_RATIO, open });
     }
     syncHandleState();
@@ -835,19 +1041,25 @@ function installPanelHandle(): void {
   addEventListener('pointercancel', endDrag);
 
   // 沒有位移的那一下＝點擊，收合／展開。鍵盤的 Enter／Space 也走這裡（它是 <button>）。
-  handle.addEventListener('click', () => {
-    if (moved) { moved = false; return; }
+  handle.addEventListener('click', e => {
+    // 拖曳收尾那一下的 click 要吞掉，但**鍵盤觸發的 click（detail 0）不算**：在把手外放開、或觸控
+    // 拖曳（不產生 click）之後 moved 會一直留著 true，下一次按 Enter 就被吞掉
+    // （2026-09-24 review gap-canvas-mobile-8：拖到上限在把手外放開，Enter 要按兩次）。
+    const swallow = moved && e.detail !== 0;
+    moved = false;
+    if (swallow) return;
     if (panelCollapsed()) {
       const target = openTarget();
       openPanelH = target;
       setPanelHeight(target);
       writePanelPref({ h: target, open: true });
     } else {
-      // 收合之前先把目前的高度記下來——它就是下次展開要回到的地方。
-      openPanelH = panelH();
+      // 收合之前先把目前的高度記下來——它就是下次展開要回到的地方。系統撐出來的不算（見 systemOpened）。
+      if (!systemOpened) openPanelH = panelH();
       setPanelHeight(panelMinH());
-      writePanelPref({ h: openPanelH, open: false });
+      writePanelPref({ h: openPanelH ?? innerHeight * PANEL_OPEN_RATIO, open: false });
     }
+    systemOpened = false;
     syncHandleState();
   });
 }
@@ -879,7 +1091,9 @@ function installSheet(): void {
   $('sim-scrim').addEventListener('click', () => setSheet(null));
   $('sim-sheet-close').addEventListener('click', () => setSheet(null));
   addEventListener('keydown', e => {
-    if (e.key === 'Escape' && sheetMode !== null) setSheet(null);
+    // 對話框開著時 Esc 是關對話框的：同一下不該連 sheet 一起收掉（能力彙總的入口就在 sheet 裡，
+    // 收掉之後焦點回不去）。
+    if (e.key === 'Escape' && sheetMode !== null && !document.querySelector('dialog[open]')) setSheet(null);
   });
 }
 
@@ -931,4 +1145,18 @@ function installMobileLayout(): void {
 trackPanelHeight();
 installMobileLayout();
 fitAll();
+loadHoldings();   // 要在第一次 renderTotals() 之前
 render();
+
+addEventListener('storage', e => {
+  // key 為 null＝另一個分頁 localStorage.clear()。
+  if (e.key === SIM_STORAGE_KEY || e.key === null) syncFromStorage();
+  if (e.key === HOLDINGS_KEY || e.key === null) { loadHoldings(); renderTotals(); }
+});
+// bfcache 回來（/sim → 別頁 → 上一頁）時記憶體是離開前那份，這之間存檔可能被別的分頁改過。
+addEventListener('pageshow', e => {
+  if (!e.persisted) return;
+  syncFromStorage();
+  loadHoldings();
+  renderTotals();
+});

@@ -67,10 +67,19 @@ export function drawNodeImage(ctx: Ctx2D, n: SceneNode, assets: AssetStore, useH
   const [sx, sy, sw, sh] = n.cell;
   ctx.drawImage(sp, sx, sy, sw, sh, n.x - n.w / 2, n.y - n.h / 2, n.w, n.h);
 }
-function drawLabel(ctx: Ctx2D, n: SceneNode, theme: Theme): void {
+/**
+ * 這顆節點底下有沒有等級牌（/sim：已取得且能升級）。牌子畫在節點下緣、正好是標籤的位置，
+ * 所以標籤要讓開（見 drawLabel 的 dy）。判準只有這一份，畫牌子的迴圈也用它。
+ * 不是「/sim 分支」：沒有 `state.sim` 的頁面永遠是 false，差異仍全由狀態表達。
+ */
+function hasBadge(state: PaintState, id: string): boolean {
+  return !!state.sim && state.sim.owned.has(id) && (state.sim.maxLevels.get(id) ?? 1) > 1;
+}
+/** `dy`：額外往下讓的距離。⚠️ 不改 LABEL_DY 本身，那是預覽 SVG 也在用的位置。 */
+function drawLabel(ctx: Ctx2D, n: SceneNode, theme: Theme, dy = 0): void {
   ctx.font = `700 ${theme.labelPx}px ${theme.font}`; ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
   ctx.lineJoin = 'round'; ctx.lineWidth = 3; ctx.strokeStyle = theme.bg; ctx.fillStyle = theme.fg;
-  const y = n.y + n.h / 2 + LABEL_DY;
+  const y = n.y + n.h / 2 + LABEL_DY + dy;
   ctx.strokeText(n.label, n.x, y); ctx.fillText(n.label, n.x, y); // paint-order: stroke
 }
 function drawEdges(ctx: Ctx2D, scene: Scene, theme: Theme, state: PaintState): void {
@@ -129,11 +138,13 @@ export function drawStatic(ctx: Ctx2D, scene: Scene, view: ViewGeometry, theme: 
     drawNodeImage(ctx, n, assets, useHires);
     ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
   }
-  for (const n of scene.nodes) if (n.labelAlways) { ctx.globalAlpha = nodeAlpha(state, n.id); drawLabel(ctx, n, theme); }
+  for (const n of scene.nodes) {
+    if (n.labelAlways) { ctx.globalAlpha = nodeAlpha(state, n.id); drawLabel(ctx, n, theme, hasBadge(state, n.id) ? BADGE_H : 0); }
+  }
   if (state.sim) {
     for (const n of scene.nodes) {
+      if (!hasBadge(state, n.id)) continue;
       const max = state.sim.maxLevels.get(n.id) ?? 1;
-      if (!state.sim.owned.has(n.id) || max <= 1) continue;
       // ⚠️ 牌子也要吃 nodeAlpha，不能寫死 1。舊版 `<g class="sim-badge">` 是 `<g class="node">`
       // 的子節點，`.sim-dimmed { opacity: .08 }` 掛在父層、牌子自然跟著淡；canvas 沒有父子
       // 關係，不自己乘就會在搜尋時留下一個滿亮的白框牌子浮在暗節點上、底下什麼都沒有。
@@ -194,7 +205,13 @@ export function drawOverlay(ctx: Ctx2D, scene: Scene, view: ViewGeometry, theme:
   }
   // hover／focus 叫出來的標籤：被篩掉的節點連標籤都要跟著淡，否則滑過一顆看不見的節點會
   // 冒出一個滿亮的名字，那是畫面上唯一提示「這裡其實有東西」的東西，跟淡出的用意相反。
-  for (const n of scene.nodes) if (!n.labelAlways && labelVisible(state, n)) { ctx.globalAlpha = nodeAlpha(state, n.id); drawLabel(ctx, n, theme); }
+  // 等級牌（靜態層）就在標籤的位置：有牌子的節點標籤往下讓一個牌子高，不然滑過／聚焦時
+  // 「50/50」整個被名字蓋掉（2026-09-24 review gap-canvas-mobile-10）。
+  for (const n of scene.nodes) {
+    if (n.labelAlways || !labelVisible(state, n)) continue;
+    ctx.globalAlpha = nodeAlpha(state, n.id);
+    drawLabel(ctx, n, theme, hasBadge(state, n.id) ? BADGE_H : 0);
+  }
   if (state.focus) {
     const n = scene.byId.get(state.focus);
     if (n) {

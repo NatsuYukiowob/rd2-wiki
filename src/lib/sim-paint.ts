@@ -9,9 +9,10 @@ import type { TreeData } from './types.js';
 export function simPaintFor(
   state: SimState, ctx: SimContext, data: Pick<TreeData, 'nodes' | 'edges'>, selected: string | null,
 ): SimPaint {
+  // owned 只建這一份，底下每一個判斷都傳進去（見 src/lib/sim.ts 的 isAvailable 說明）。
   const owned = ownedIds(state, ctx);
   const available = new Set(
-    data.nodes.filter(n => !owned.has(n.id) && isAvailable(n.id, state, ctx)).map(n => n.id),
+    data.nodes.filter(n => !owned.has(n.id) && isAvailable(n.id, state, ctx, owned)).map(n => n.id),
   );
   const linked = new Set<string>();
   const active = new Set<string>();
@@ -20,9 +21,9 @@ export function simPaintFor(
     // 三階：沒到手＝暗、兩端都在手上＝正常亮度（edgeIsLinked）、真的走過＝再加金色
     // （edgeWasUsed，是 linked 的子集）。少了中間那階，火骰子連著風與冰那兩條（三顆都是
     // 遊戲一開始就送的）不是被畫成金線＝看起來像自己解過，就是跟沒走到的路一樣暗。
-    if (edgeIsLinked(from, to, state, ctx)) linked.add(edgeKey(from, to));
-    if (edgeWasUsed(from, to, state, ctx)) active.add(edgeKey(from, to));
-    if (owned.has(from) && !owned.has(to) && isAvailable(to, state, ctx)) ready.add(edgeKey(from, to));
+    if (edgeIsLinked(from, to, state, ctx, owned)) linked.add(edgeKey(from, to));
+    if (edgeWasUsed(from, to, state, ctx, owned)) active.add(edgeKey(from, to));
+    if (owned.has(from) && !owned.has(to) && available.has(to)) ready.add(edgeKey(from, to));
   }
   return {
     owned, available, selected, linked, active, ready,

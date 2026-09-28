@@ -4,7 +4,7 @@ import { buildScene } from '../../../src/lib/canvas/scene';
 import { CanvasView } from '../../../src/lib/canvas/view';
 import { DEFAULT_THEME } from '../../../src/lib/canvas/theme';
 import { emptyPaintState } from '../../../src/lib/canvas/state';
-import { drawStatic, drawOverlay, type Ctx2D } from '../../../src/lib/canvas/painter';
+import { drawStatic, drawOverlay, LABEL_DY, type Ctx2D } from '../../../src/lib/canvas/painter';
 import type { AssetStore } from '../../../src/lib/canvas/assets';
 import type { TreeData } from '../../../src/lib/types';
 import { readTree } from '../../helpers/read-tree';
@@ -274,6 +274,26 @@ describe('drawOverlay', () => {
     const glow = calls.filter(c => c.op === 'drawImage');
     expect(glow).toHaveLength(1);
     expect(glow[0]!.alpha).toBe(1);
+  });
+  // 2026-09-24 review gap-canvas-mobile-10：等級牌畫在靜態層、節點下緣 −2～+14，hover／focus 標籤的
+  // 基線在 +15、字身從 +4 左右開始——滑過一顆練過的節點，「50/50」整個被名字蓋掉。
+  it('/sim：有等級牌的節點，hover／focus 標籤的字身整個落在牌子下緣之下；沒牌子的照舊', () => {
+    const n = scene.byId.get('1201')!;
+    const badgeBottom = n.y + n.h / 2 - 2 + 16;
+    const labelY = (sim: ReturnType<typeof emptyPaintState>['sim']) => {
+      const { ctx, calls } = fakeCtx();
+      drawOverlay(ctx, scene, view, DEFAULT_THEME, { ...emptyPaintState(), focus: '1201', sim }, fakeAssets, 1, false);
+      return calls.find(c => c.op === 'fillText' && c.args[0] === n.label)!.args[2] as number;
+    };
+    const base = {
+      owned: new Set(['1201']), available: new Set<string>(), selected: null,
+      linked: new Set<string>(), active: new Set<string>(), ready: new Set<string>(),
+      levels: new Map([['1201', 12]]),
+    };
+    // 字身頂端＝基線 − 字級（保守估計，實際字身比字級矮）。
+    expect(labelY({ ...base, maxLevels: new Map([['1201', 50]]) }) - DEFAULT_THEME.labelPx).toBeGreaterThanOrEqual(badgeBottom);
+    expect(labelY({ ...base, maxLevels: new Map([['1201', 1]]) })).toBe(n.y + n.h / 2 + LABEL_DY);
+    expect(labelY(null)).toBe(n.y + n.h / 2 + LABEL_DY);
   });
   it('focus 在符文上：畫它的標籤與焦點框（菱形＝1 個 moveTo＋3 個 lineTo＋1 個 closePath）', () => {
     const { ctx, calls } = fakeCtx();

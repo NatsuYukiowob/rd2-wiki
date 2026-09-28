@@ -41,7 +41,12 @@ export function deserializeSim(text: string | null, ctx: SaveContext): SimState 
   if (!Array.isArray(unlocked) || !Array.isArray(initial)) return null;
   if (typeof levels !== 'object' || levels === null || Array.isArray(levels)) return null;
 
-  const nextInitial = new Set(initial.filter((id): id is string => typeof id === 'string' && ctx.optional.has(id)));
+  // ⚠️ 存檔 unlocked 裡的節點改版後變成可選初始骰子（官方多送一顆）時要**搬進 initial**，不是丟掉：
+  // 玩家付錢解過，就代表他確實有這顆；丟掉的話它的整棵子樹會在下面的收斂裡一起消失
+  // （2026-09-24 review sim-5：模擬 1109 改成贈送，全樹點滿的規劃 235 → 221 顆）。
+  // 反方向（起始骰子改成付費）救不回來：起始骰子從不寫進存檔，那個資訊本來就不存在。
+  const isOptional = (id: unknown): id is string => typeof id === 'string' && ctx.optional.has(id);
+  const nextInitial = new Set([...initial.filter(isOptional), ...unlocked.filter(isOptional)]);
   const nextUnlocked = new Set(unlocked.filter((id): id is string =>
     typeof id === 'string' && ctx.byId.has(id) && !ctx.free.has(id) && !ctx.optional.has(id)));
 

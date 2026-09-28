@@ -15,6 +15,8 @@ import rawTables from '../../data/passive-upgrade-cost.json';
 import {
   mountCanvasTree, isGesturePointer, wheelZoomFactor, type ScreenRect, type TreeHandle,
 } from '../lib/canvas/canvas-tree.js';
+import { animatePan as animatePanShared } from '../lib/canvas/animate-pan.js';
+import { visibleRects } from '../lib/canvas/obscurers.js';
 import { cssMs } from '../lib/css-ms.js';
 import { DESKTOP_ICON_TARGET_PX, MOBILE_ICON_TARGET_PX, minReadableScale } from '../lib/canvas/view.js';
 import { computeSelection } from '../lib/selection.js';
@@ -113,12 +115,12 @@ let currentSelected: string | null = initialSelected;
 let filteredOut = new Set<string>();
 
 // --- 手機版視角（task-17）：預設聚焦單一分支，不像桌機版一次看全部 5 個分支 ---
-// 置中平移的 rAF 控制碼，以及卡片擺在節點的哪一邊。⚠️ 宣告刻意提到這裡（離它自己的函式很
+// 取消進行中置中平移的函式，以及卡片擺在節點的哪一邊。⚠️ 宣告刻意提到這裡（離它自己的函式很
 // 遠），而且**是實際踩到的**：jumpToBranch()（手機版初始視角，模組初始化階段就會跑）會呼叫
 // cancelCenterPan()，宣告留在函式旁邊時 400×800 與 720×800 都直接
 // `ReferenceError: Cannot access 'centerRaf' before initialization`，整個模組掛掉、詳情面板
 // 永遠是 hidden。1440×900 完全正常——桌機不走 jumpToBranch()，所以只有窄畫面會炸。
-let centerRaf = 0;
+let stopCenterPan: () => void = () => {};
 // 卡片放在節點上方還是下方。select() 決定（見 sideLeastCovered()），positionPanel() 與
 // centerOnSelected() 共用同一個值——兩邊各算一次的話，平移目標與實際擺法會對不上。
 let panelSide: 'above' | 'below' = 'above';
@@ -539,18 +541,7 @@ function panelTopLimit(): number {
  * ⚠️ 只算**現在看得見**的（CLAUDE.md：收起來的 sheet 仍量得到 rect，照扣會把安全區扣光）。
  */
 function obscuringRects(): ScreenRect[] {
-  const out: ScreenRect[] = [];
-  const ids = isNarrow() ? ['toolbar', 'branch-nav', 'detail', 'branch-chips'] : ['toolbar', 'branch-nav', 'branch-chips'];
-  for (const id of ids) {
-    const el = document.getElementById(id);
-    // linkedom（單元測試）沒有版面：量不到就當沒有遮蔽，跟 nodeScreenRect() 回 null 同一個退路。
-    if (!el || el.hidden || typeof el.getBoundingClientRect !== 'function') continue;
-    const r = el.getBoundingClientRect();
-    if (!r || r.width <= 0 || r.height <= 0 || r.bottom <= 0 || r.top >= window.innerHeight) continue;
-    if (typeof getComputedStyle === 'function' && getComputedStyle(el).visibility === 'hidden') continue;
-    out.push({ left: r.left, top: r.top, width: r.width, height: r.height });
-  }
-  return out;
+  return visibleRects(isNarrow() ? ['toolbar', 'branch-nav', 'detail', 'branch-chips'] : ['toolbar', 'branch-nav', 'branch-chips']);
 }
 
 /** 置中平移的長度。跟 FILTERS_MS／SLIDE_MS 同一個原則：**從 CSS 讀**，不在 JS 寫第二份。 */
@@ -563,8 +554,8 @@ const CENTER_MS = cssMs('--t-med', 200);
  * 都要叫：兩股力量同時寫 transform 的話，畫面會在兩個目標之間來回被拉扯。
  */
 function cancelCenterPan(): void {
-  if (typeof cancelAnimationFrame === 'function') cancelAnimationFrame(centerRaf);
-  centerRaf = 0;
+  stopCenterPan();
+  stopCenterPan = () => {};
   // 中途被打斷（使用者自己動畫布）時一定要解除釘住並重新對齊，否則卡片會停在一個
   // 「本來預定要到、但畫布沒走完」的位置，跟節點對不上而且再也不會自己修正。
   if (panelPinned) {
@@ -574,41 +565,13 @@ function cancelCenterPan(): void {
 }
 
 /**
- * 以螢幕座標的位移量做一段緩動平移（easeOutCubic）。
- *
- * 逐幀累加**差值**而不是每幀重算絕對位置：`vp.pan()` 收的就是差值，這樣寫不必知道畫布現在
- * 在哪，也不會跟同一幀裡別的平移互相覆蓋。
- * `canAnimate()` 為 false（linkedom 測試環境沒有 rAF、或使用者要求減少動態）時直接跳到位。
+ * 緩動平移（實作在 src/lib/canvas/animate-pan.ts，/sim 共用同一份）。
+ * ⚠️ 這裡**不**呼叫 cancelCenterPan()：它會順手解除釘住並重新對齊，而呼叫端正是在
+ * 「卡片剛剛釘到終點」之後才進來的，清掉等於把剛擺好的位置又推回節點現在的位置。
+ * 「取消上一段動畫」由呼叫端在釘住**之前**做。
  */
 function animatePan(dx: number, dy: number, onDone: () => void): void {
-  // ⚠️ 這裡**不**呼叫 cancelCenterPan()：它會順手解除釘住並重新對齊，而呼叫端正是在
-  // 「卡片剛剛釘到終點」之後才進來的，清掉等於把剛擺好的位置又推回節點現在的位置。
-  // 「取消上一段動畫」由呼叫端在釘住**之前**做。
-  if (!canAnimate() || typeof performance === 'undefined'
-    || (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5)) {
-    tree.pan(dx, dy);   // 一步到位＝平移已經結束，走會補畫靜態層的那條
-    onDone();
-    return;
-  }
-  const start = performance.now();
-  let done = 0;
-  const step = (now: number): void => {
-    const t = Math.min(1, (now - start) / CENTER_MS);
-    const eased = 1 - (1 - t) ** 3;
-    // 動畫中間的每一幀只 pan＋排一幀（直接動 vp 的地方要自己排，controller 只在自己的
-    // pointer／wheel 路徑上排）；最後一幀才走 `tree.pan()` 補畫靜態層，把位圖邊距重新置中。
-    // 每一幀都補畫的話，這段緩動就等於重畫 241 顆節點十幾次。
-    if (t < 1) { vp.pan(dx * (eased - done), dy * (eased - done)); tree.requestRedraw(); }
-    else tree.pan(dx * (eased - done), dy * (eased - done));
-    done = eased;
-    if (t < 1) {
-      centerRaf = requestAnimationFrame(step);
-      return;
-    }
-    centerRaf = 0;
-    onDone();
-  };
-  centerRaf = requestAnimationFrame(step);
+  stopCenterPan = animatePanShared(tree, dx, dy, CENTER_MS, () => { stopCenterPan = () => {}; onDone(); });
 }
 
 /**
