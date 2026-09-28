@@ -131,16 +131,21 @@ export function ownedIds(state: SimState, ctx: Pick<SimContext, 'free'>): Set<st
   return new Set([...ctx.free, ...state.initial, ...state.unlocked]);
 }
 
-export function isAvailable(id: string, state: SimState, ctx: SimContext): boolean {
+/**
+ * 這幾支判斷（isAvailable／missingPrereqRanks／edgeIsLinked／edgeWasUsed）最後一個參數 `owned`
+ * 是選填的：呼叫端已經有一份 `ownedIds(state, ctx)` 時傳進來，省掉每次重建集合。
+ * `simPaintFor()` 每畫一幀要對 243 顆節點＋254 條邊各問一次，不共用的話一次重畫要建上千份
+ * （2026-09-24 review：全樹點滿 6.8ms，滑桿每一格都跑）。⚠️ 傳進來的必須就是 `ownedIds(state, ctx)`。
+ */
+export function isAvailable(id: string, state: SimState, ctx: SimContext, owned = ownedIds(state, ctx)): boolean {
   if (!ctx.byId.has(id)) return false;
   // 可選初始骰子不花錢，讓玩家在樹上點一下就拿到等於送他一顆。
   if (ctx.optional.has(id)) return false;
-  const owned = ownedIds(state, ctx);
   if (owned.has(id)) return false;
   if (!(ctx.parents.get(id) ?? []).every(p => owned.has(p))) return false;
   // 「前置都在手上」還不夠：太陽骰子另外要求 1201 練滿 Lv.50（TreeNode.prereqRanks）。
   // 少了這一句，畫面會把一顆遊戲裡點不開的節點標成「可取得」，玩家點下去才發現扣不了款。
-  return missingPrereqRanks(id, state, ctx).length === 0;
+  return missingPrereqRanks(id, state, ctx, owned).length === 0;
 }
 
 export function missingParents(id: string, state: SimState, ctx: SimContext): string[] {
@@ -169,8 +174,9 @@ export interface RankShortfall {
  * 對著一棵已經解完的前置鏈找不到問題出在哪。所以這裡連「差多少」都帶出去
  *（「子彈傷害%增加需達 Lv.50（目前 Lv.12）」）。
  */
-export function missingPrereqRanks(id: string, state: SimState, ctx: SimContext): RankShortfall[] {
-  const owned = ownedIds(state, ctx);
+export function missingPrereqRanks(
+  id: string, state: SimState, ctx: SimContext, owned = ownedIds(state, ctx),
+): RankShortfall[] {
   const out: RankShortfall[] = [];
   for (const [prereqId, rank] of Object.entries(ctx.byId.get(id)?.prereqRanks ?? {})) {
     const has = owned.has(prereqId);
@@ -404,6 +410,16 @@ export function resourceGap(total: Cost, held: SimHoldings): GapEntry[] {
 }
 
 /**
+ * 差額那一列的文字：「還差 N」或「剩餘 N」。
+ * ⚠️ 剛好夠用時 `short` 是 0，`-short` 是 **-0**，`toLocaleString` 會印成「-0」
+ * （2026-09-24 review：太陽核心填 0、規劃沒用到 → 「剩餘 -0」）。`Math.max(0, …)` 回 +0。
+ */
+export function gapText(g: Pick<GapEntry, 'short'>): string {
+  const n = (v: number) => v.toLocaleString('en-US');
+  return g.short > 0 ? `還差 ${n(g.short)}` : `剩餘 ${n(Math.max(0, -g.short))}`;
+}
+
+/**
  * 這條邊的兩端都在手上嗎？——也就是這條路通不通。
  *
  * 跟 `edgeWasUsed()` 是兩件事，畫面上也是兩種樣子：**連通＝正常亮度**（不淡出），
@@ -414,8 +430,9 @@ export function resourceGap(total: Cost, held: SimHoldings): GapEntry[] {
  * ⚠️ **`edgeWasUsed` 是這個的子集**（它多要求終點不是白拿的）。CSS 靠這個包含關係把兩件事
  * 拆成互不搶屬性的兩條規則：`.sim-linked` 只設 opacity、`.sim-active` 只設 stroke。
  */
-export function edgeIsLinked(from: string, to: string, state: SimState, ctx: SimContext): boolean {
-  const owned = ownedIds(state, ctx);
+export function edgeIsLinked(
+  from: string, to: string, state: SimState, ctx: SimContext, owned = ownedIds(state, ctx),
+): boolean {
   return owned.has(from) && owned.has(to);
 }
 
@@ -427,9 +444,11 @@ export function edgeIsLinked(from: string, to: string, state: SimState, ctx: Sim
  * 一進頁面就有兩條金線亮著，玩家會以為自己已經解了什麼。可選初始骰子（貪婪／空虛）同理：
  * 那是從討伐獎勵與競技場通行證直接領的，指向它的那條邊沒有被使用過。
  */
-export function edgeWasUsed(from: string, to: string, state: SimState, ctx: SimContext): boolean {
+export function edgeWasUsed(
+  from: string, to: string, state: SimState, ctx: SimContext, owned = ownedIds(state, ctx),
+): boolean {
   if (ctx.free.has(to) || ctx.optional.has(to)) return false;
-  return edgeIsLinked(from, to, state, ctx);
+  return edgeIsLinked(from, to, state, ctx, owned);
 }
 
 /**

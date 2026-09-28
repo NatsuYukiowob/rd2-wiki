@@ -1184,8 +1184,9 @@ PNG，檔名＝內容 sha256 前 12 碼，`addIcon()` 直接重用）＋ `data/b
 - ⚠️ **`deserializeSim()` 吃的是 `SaveContext`（`SimContext` 的子集）**，`/board` 也用它讀同一份存檔
   （見 `/board` 一節）。`maxSelectableLevel()` 只查 `ctx.caps`（`buildSimContext()` 預先用 `levelTableFor()`
   算好）——要改「哪些節點能升級」改 `levelTableFor()`，兩頁會一起跟上。
-- **畫布跟 `/tree` 共用同一個 controller**：兩頁都是 `mountCanvasTree(host, data)`，**沒有
-  「這是 /sim」的參數**。平移／縮放／命中測試／隱形按鈕清單／兩層 canvas 全部只有一份實作，
+- **畫布跟 `/tree` 共用同一個 controller**：兩頁都是 `mountCanvasTree(host, data, { obscurers })`，**沒有
+  「這是 /sim」的參數**（`obscurers` 是兩頁各自量自己的浮層，量法共用 `src/lib/canvas/obscurers.ts` 的
+  `visibleRects()`：只算看得見的）。平移／縮放／命中測試／隱形按鈕清單／兩層 canvas 全部只有一份實作，
   `/sim` 只多傳一個 `PaintState.sim`（`SimPaint`：owned／available／selected／linked／active／
   ready／levels／maxLevels）進去，畫成什麼樣由 `state.ts` 與 `painter.ts` 決定。
   ⚠️ **差異全部由 `setState({ sim })` 表達**——不要為了 `/sim` 在 `painter.ts` 裡開分支，
@@ -1236,6 +1237,18 @@ PNG，檔名＝內容 sha256 前 12 碼，`addIcon()` 直接重用）＋ `data/b
 - ⚠️ **`#sim-toast` 是這一頁唯一的 `role="status"`，不可以用 `hidden` 收放。** 收放靠清空
   `textContent`，視覺由 CSS 的 `:empty` 收——`hidden`／`display:none`／`visibility:hidden` 三種
   都會讓它從無障礙樹消失，於是「請先勾選初始骰子」這類唯一的失敗回饋對螢幕閱讀器完全不存在。S19 守。
+  ⚠️ 它是 `pointer-events: none`，手機版浮在抽屜上緣之上（`--sim-panel-h`）：「已取得 X」的 toast
+  原本正好蓋在抽屜的主按鈕上（S26 抓到）。
+- **鍵盤與讀屏**（2026-09-24 review P3）：節點按鈕的 `aria-description` 帶模擬器狀態（已取得 Lv／可取得／
+  未解鎖／不符合搜尋），選取是 `aria-current`——都寫在 `sim.ts` 的 `syncButtons()`，**不動 `a11y.ts` 與
+  aria-label**（/tree 共用、也是 E2E 選取器）。鍵盤 Enter 開節點 → 焦點移到 `#sim-detail h3`；側欄裡按 Esc
+  回到節點按鈕（選取不動），節點上再按 Esc 才取消選取。取得成功一律 toast。S35／S38 守。
+- **桌機側欄寬只有一份**：`sim.astro` 在 `body` 上設 `--sim-panel-w`，`#sim-panel` 的寬與 `#sim-toolbar` 的
+  `max-width` 都讀它——工具列自然寬約 849px，721–1200px 寬時原本壓在側欄上（S36）。初始視角 `fitAll()` 也扣掉
+  側欄（以可視區置中，S37）；1280 以下可讀性下限讓樹比可視區寬，側欄底下仍會有幾顆，那是必然的。
+- **存檔之外的兩份 localStorage**：`rd2-wiki:sim-holdings`（持有資源輸入框的原字串）、`rd2-wiki:sim-panel-h`
+  （抽屜偏好）。**不要塞進 `rd2-sim-v1`**：`/board` 讀那份。兩個分頁之間靠 `storage` 事件同步（被換掉的
+  那份推進 undo），bfcache 回來靠 `pageshow`。S44／S45 守。
 - ⚠️ **「可取得」的節點不發光、不變亮**（2026-09-23 Yuki：點亮一顆之後後面跟著亮起來會誤導成
   已經拿到）。`nodeAlpha()` 對 `available` 回 0.28（跟鎖住的一樣），`drawOverlay` 不再替它畫金光；
   「下一步在哪」**只由 `ready` 邊（0.7）表達**。`SimPaint.available` 留著是給 `state().sim` 與 E2E 問的。
@@ -1304,6 +1317,10 @@ PNG，檔名＝內容 sha256 前 12 碼，`addIcon()` 直接重用）＋ `data/b
   ⚠️ **光改高度不夠，夾到上限時要用捲動補**：`want` 會被 80dvh 夾住，矮螢幕 ＋ 多行
   「缺少前置／需達 Lv.N」的節點高度湊不出來（實測 iPhone SE 375×568 的 `2503` 差 2px）。
   **S26 因此在 375×568 掃全部 243 顆**，不寫死 id——只驗一顆剛好驗不到。
+  ⚠️ **上限不只 80dvh，還要留得下兩顆浮動鍵**（`panelMaxH()`）：手機橫放 640×360 撐到 80dvh 時浮動鍵
+  被推到導覽列底下。S40 守。
+  ⚠️ 撐高之後被選的節點可能落在抽屜底下 → `revealSelected()` 用 `tree.visibleShift()` ＋ 共用的
+  `src/lib/canvas/animate-pan.ts` 把畫布挪開（S39）。撐出來的高度收合時**不記成展開高度**（`systemOpened`，S42）。
 - ⚠️ **浮動鍵的 `bottom` 綁 `--sim-panel-h`**（抽屜量出來的實際高度），抽屜拖高時跟著上移。
   寫死偏移量的話它們會被抽屜蓋住而真人點不到——「浮動 UI 被畫布外、z-index 更高的兄弟元素蓋掉」
   在這個 repo 咬過兩次。**S27 用 `elementFromPoint` 驗**，不是 `.click()` 不 timeout：
