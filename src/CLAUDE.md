@@ -1,6 +1,7 @@
-# 頁面（src/pages/ 各頁的契約）
+# 頁面（各頁的契約）
 
-頁面的腳本在 `src/scripts/`、樣式在 `src/styles/`，改那些檔時也適用本檔；全站規則見 repo 根目錄 `CLAUDE.md`。
+頁面本體在 `src/pages/`、腳本在 `src/scripts/`、樣式在 `src/styles/`，三處都適用本檔；全站規則見 repo 根目錄 `CLAUDE.md`。
+⚠️ 本檔不可搬進 `src/pages/`：Astro 會把那裡的 `.md` 建成公開頁面。
 每條只留結論＋檔案指標＋守它的測試；成因與實測數字在該處的程式碼註解裡。
 
 ## 跨頁共通

@@ -241,7 +241,7 @@ const HOLDING_INPUT: Record<string, string> = {
 
 /**
  * 持有量另存一個鍵（2026-09-24 review sim-8：以前重新整理就要重填）。⚠️ 不塞進 `rd2-sim-v1`：
- * `/board` 讀那份存檔，改它的格式就得換鍵名，而換鍵名 `/board` 就讀不到（src/pages/CLAUDE.md 的 /board 與 /sim 兩節）。
+ * `/board` 讀那份存檔，改它的格式就得換鍵名，而換鍵名 `/board` 就讀不到（src/CLAUDE.md 的 /board 與 /sim 兩節）。
  * 存的是輸入框的原字串（留白＝不計算，跟畫面一致），鍵是貨幣種類不是元素 id。
  */
 const HOLDINGS_KEY = 'rd2-wiki:sim-holdings';

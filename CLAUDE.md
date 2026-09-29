@@ -29,7 +29,8 @@
 - **不要調高 `workers`**（3 workers 時 mobile 的 `/sim`、`/tree` 穩定 `Page crashed`）。全套紅在
   `Page crashed`／`Target crashed` 時先單跑該檔，不要當程式 bug 追。
 - **分資料夾的 CLAUDE.md**：只在讀到該資料夾的檔案時自動載入，下列情況**要自己先讀**：
-  - `src/pages/CLAUDE.md`（各頁契約）：改 `src/pages/`，**或改 `src/scripts/`、`src/styles/` 的頁面檔**（`board.ts`、`sim.ts`、`battle.css`…）。
+  - `src/CLAUDE.md`（各頁契約）：讀到 `src/` 底下任何檔都會載入，涵蓋 `src/pages/`、`src/scripts/`、`src/styles/`。
+    ⚠️ **不可放在 `src/pages/`**：Astro 會把那裡的 `.md` 建成公開頁面（`/CLAUDE/`，`seo.spec.ts` SEO-2 會紅）。
   - `src/lib/canvas/CLAUDE.md`（畫布）：改 `src/lib/canvas/`，**或 `src/scripts/tree-canvas.ts`、`src/scripts/sim.ts` 的畫布部分**。
   - `data/CLAUDE.md`（資料來源、對帳流程、各資料檔的匯入裁決）：改 `data/` 或重產資料檔。
 
