@@ -416,6 +416,9 @@ npm run compare -- <beforeURL> <afterURL>  # computed-style 逐元素比對，�
 README 是產品頁形式（banner ＋ 徽章 ＋ `> [!WARNING]` 免責 ＋ 分讀者章節）。
 
 - 素材在 `.github/media/`（banner 原始碼 `banner.src.html`，重產指令在檔頭），**不要放 `public/`**（會進站台吃規則 12 預算）。
+- **README 截圖**（`screenshot-tree.webp`／`screenshot-mobile.webp`）從正式站拍：`/tree?node=2004`（原子骰子，前置鏈亮起＋詳情卡片），
+  `colorScheme: 'dark'`、等 `networkidle` 再 2.5 秒；桌機 viewport 1440×900、`deviceScaleFactor: 1`，手機 `devices['Pixel 7']`；
+  `sharp(png).webp({ quality: 86 })`。腳本放 repo 底下才 import 得到 `playwright`。站台外觀改版後要重拍，README 的節點／連線／圖示數也一起對。
 - banner 裡不放節點數這類會隨資料變的數字；banner 與 tagline 文案沿用 `Base.astro` 的 `OG_TITLE`／`DESCRIPTION`。
 - 已知限制與 `src/lib/flags.ts` 的暫停功能不寫進 README。
 - 不用 root-relative 連結（`[/about](/about)` 會連到 `github.com/about`）；README 與 `CONTRIBUTING.md` 都寫完整網址。
