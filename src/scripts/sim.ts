@@ -241,7 +241,7 @@ const HOLDING_INPUT: Record<string, string> = {
 
 /**
  * 持有量另存一個鍵（2026-09-24 review sim-8：以前重新整理就要重填）。⚠️ 不塞進 `rd2-sim-v1`：
- * `/board` 讀那份存檔，改它的格式就得換鍵名，而換鍵名 `/board` 就讀不到（CLAUDE.md /board 那節）。
+ * `/board` 讀那份存檔，改它的格式就得換鍵名，而換鍵名 `/board` 就讀不到（src/pages/CLAUDE.md 的 /board 與 /sim 兩節）。
  * 存的是輸入框的原字串（留白＝不計算，跟畫面一致），鍵是貨幣種類不是元素 id。
  */
 const HOLDINGS_KEY = 'rd2-wiki:sim-holdings';
@@ -351,7 +351,7 @@ function syncButtons(p: SimPaint | null = lastPaint): void {
 }
 
 // 太陽核心只在有值時才印：三列合計是側欄常駐的東西，為一個只有太陽骰子那一支花得到的
-// 貨幣固定多佔一段寬度，會讓 239 顆節點裡的 237 顆看到一段永遠是 0 的字。
+// 貨幣固定多佔一段寬度，會讓絕大多數節點看到一段永遠是 0 的字。
 // 帶貨幣圖的版本在 src/lib/cost-html.ts（文字跟以前逐字相同，E2E 的 toHaveText 不受影響）。
 // ⚠️ 下面用 innerHTML 塞進三列合計：安全只因為字串裡的數字全部來自 `Cost` 的 number 欄位、
 // 圖示網址是本站常數。日後要併入任何資料來的文字（節點名稱、描述），先跳脫再拼。
@@ -895,7 +895,7 @@ $<HTMLInputElement>('sim-search').addEventListener('input', e => {
 // 兩個消費者：沒有 JS 時 footer 的讓位（`body:has(#canvas-host) > footer`），以及兩顆
 // 浮動鍵的 `bottom`——浮動鍵必須永遠浮在抽屜上緣之上，否則真人點不到。
 // 量**實際**高度而不是寫一個 dvh：抽屜可以被拖高拖低，而這個 repo 的固定偏移量已經
-// 咬過五次（CLAUDE.md 有一整節）。
+// 咬過五次（CLAUDE.md〈版面沒有固定偏移量〉）。
 function trackPanelHeight(): void {
   const panel = $('sim-panel');
   const write = (): void => {

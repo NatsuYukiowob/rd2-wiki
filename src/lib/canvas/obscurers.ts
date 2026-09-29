@@ -5,7 +5,7 @@ import type { ScreenRect } from './canvas-tree.js';
 /**
  * 依 id 量元素，只回**現在看得見**的：hidden、0 尺寸、整個在視窗外、`visibility: hidden` 都跳過。
  * ⚠️ 收起來的東西仍量得到 rect（/sim 手機版收起的 sheet 在視窗底下、只是 visibility: hidden），
- * 照扣的話安全區會被扣光（CLAUDE.md「只准扣現在真的看得見的遮蔽物」）。
+ * 照扣的話安全區會被扣光（src/pages/CLAUDE.md 的 /sim 一節：只扣現在真的看得見的遮蔽物）。
  * linkedom（單元測試）沒有版面：量不到就當沒有遮蔽，跟 nodeScreenRect() 回 null 同一個退路。
  */
 export function visibleRects(ids: readonly string[], doc: Document = document): ScreenRect[] {

@@ -50,7 +50,8 @@
 - **圖示不是 `render-nodes` 產的**，重跑 `render-nodes` 時要另外處理：節點 ＝ `DiceTree_Transcendence_on`
   等比縮到高 210 放 (8,0)，疊 `Dice_<名>2`（正面卡片版；`_3` 是 3D 版不要用）以 132/172 縮放、水平置中、y=9（LANCZOS）；
   符文 ＝ `Runenode_<名>_0` 等比縮放；`/board` 純骰子圖用 `Dice_<名>2`（`Dice_GearSecond1` 是執行期才疊齒輪的空框）。
-  ⚠️ 正本裡 `1501` 仍是 `<rect>`，六角只在圖裡——`shapeOf()` 會把 6 點 polygon 判成支援節點，規則 3 擋。
+  ⚠️ `render-nodes` 沒有排除清單，重跑會把這四顆蓋成扁平渲染且 validate 不擋——重跑前自己排除或事後換回。
+  正本裡 `1501` 刻意仍是 `<rect>`，六角只在圖裡；不要為了配合圖改成 6 點 polygon（`shapeOf()` 判成 `'hex'`＝支援節點的形狀）。
 
 ## 各資料檔的匯入裁決（重產時照做）
 

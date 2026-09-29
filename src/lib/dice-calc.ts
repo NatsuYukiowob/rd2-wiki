@@ -2,14 +2,14 @@
 // 再算任意（骰點, 局內強化 Lv）組合的顯示字串。純函式，不碰 DOM。
 //
 // ⚠️ 參數是「反推」出來的，刻意不另存一份：四檔本身就是拿客戶端表的 _LvAdd（骰點）／
-// _UpAdd（局內強化）算出來的（見 CLAUDE.md「data/dice-stats.json」第 4 點），這裡只做代數還原。
+// _UpAdd（局內強化）算出來的（見 data/CLAUDE.md〈`dice-stats.json`〉第 4 點），這裡只做代數還原。
 // 還原的前提是兩軸各自等差、彼此可加——deriveParams() 對每一項驗這個前提，不成立就丟例外。
 // 規則 23(i)（tools/validate.ts）與 board.astro 的建置期注入共用這一支，不要複製第二份。
 import type { DiceStat, DiceStatsTable } from './types.js';
 
 /** 官方對「攻擊間隔隨骰點等分」的寫法，逐字比對 dice-stats.json 的 diceGrowth。 */
 export const INTERVAL_GROWTH = '基礎值 ÷ 骰點';
-/** 官方自己空著的格子（CLAUDE.md 明文允許的值），處理方式見 deriveParams() 的說明。 */
+/** 官方自己空著的格子（data/CLAUDE.md〈`dice-stats.json`〉第 5 點明文允許的值），處理方式見 deriveParams() 的說明。 */
 export const PENDING = '待實測';
 /** 攻擊間隔一律顯示到小數第 3 位——官方四檔就是這個精度（例：0.143 秒/次）。 */
 const INTERVAL_DECIMALS = 3;
@@ -73,7 +73,7 @@ export function formatNumber(n: number, decimals: number): string {
  *
  * - 沒有四檔 → `const`（原字串照印）。
  * - 任一檔是「待實測」→ `pending`：(1,1) 印 base，其餘一律「待實測」。⚠️ 不能讓它觸發下面的守門
- *   ——那是 CLAUDE.md 明文允許的值，觸發就等於把 CI 弄紅；也不能退回 base，那會冒充「不會變」。
+ *   ——那是 data/CLAUDE.md 明文允許的值，觸發就等於把 CI 弄紅；也不能退回 base，那會冒充「不會變」。
  * - `diceGrowth === INTERVAL_GROWTH` → `interval`：(base + perLevel×(Lv−1)) ÷ 骰點。
  * - 其餘 → `linear`：base + perPip×(骰點−1) + perLevel×(Lv−1)。
  *

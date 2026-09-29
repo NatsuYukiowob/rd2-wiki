@@ -42,7 +42,7 @@ import type { Shape } from '../src/lib/types.js';
  * 當驗收條件。
  */
 
-/** 原圖的座標系是站台的兩倍（見 CLAUDE.md「版面來自遊戲內的原圖」：座標取原圖 ×0.5）。 */
+/** 原圖的座標系是站台的兩倍（見 CLAUDE.md〈核心概念〉：座標取原圖 ×0.5）。 */
 const DRAWING_TO_SITE = 0.5;
 /**
  * 瀏覽器的算繪倍率。輸出 PNG 的邊長＝站台顯示尺寸 ×（1/DRAWING_TO_SITE）× SCALE ＝ 4 倍。
@@ -103,8 +103,9 @@ function reshape(shape: Shape, w: number, h: number): { re: RegExp; to: string }
 
 /**
  * ⚠️ 超越骰子 1501／2503 與符文 1601／2603 的圖示不是這支產的（遊戲的超越節點底板疊骰子 sprite，
- * 配方見 `data/CLAUDE.md`）。正本裡 1501 仍是 `<rect>`、六角只在圖裡；重跑時若把它判成 6 點
- * polygon 會被當成支援節點、規則 3 擋下——重跑前要排除或另外處理這四顆。
+ * 配方見 `data/CLAUDE.md`）。這支沒有排除清單：重跑會把這四顆的手工合成圖蓋成扁平渲染，validate 不擋，
+ * 重跑前要自己排除或事後換回。正本裡 1501 刻意仍是 `<rect>`、六角只在圖裡——不要為了配合圖把它改成
+ * 6 點 polygon（下面會判成 'hex'，那是支援節點的形狀）。
  */
 function shapeOf(block: string): Shape {
   if (/<rect /.test(block)) return 'rect';

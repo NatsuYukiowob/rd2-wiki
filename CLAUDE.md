@@ -28,8 +28,10 @@
   `test.skip(!isMobile, …)`、或幾何在手機寬度不同的測試 → `test('…', { tag: '@mobile' }, …)`。漏標不會紅。
 - **不要調高 `workers`**（3 workers 時 mobile 的 `/sim`、`/tree` 穩定 `Page crashed`）。全套紅在
   `Page crashed`／`Target crashed` 時先單跑該檔，不要當程式 bug 追。
-- **分資料夾的 CLAUDE.md**：`src/pages/CLAUDE.md`（各頁）、`src/lib/canvas/CLAUDE.md`（畫布）、
-  `data/CLAUDE.md`（資料來源、對帳流程、各資料檔的匯入裁決）。動那一塊之前先讀。
+- **分資料夾的 CLAUDE.md**：只在讀到該資料夾的檔案時自動載入，下列情況**要自己先讀**：
+  - `src/pages/CLAUDE.md`（各頁契約）：改 `src/pages/`，**或改 `src/scripts/`、`src/styles/` 的頁面檔**（`board.ts`、`sim.ts`、`battle.css`…）。
+  - `src/lib/canvas/CLAUDE.md`（畫布）：改 `src/lib/canvas/`，**或 `src/scripts/tree-canvas.ts`、`src/scripts/sim.ts` 的畫布部分**。
+  - `data/CLAUDE.md`（資料來源、對帳流程、各資料檔的匯入裁決）：改 `data/` 或重產資料檔。
 
 ## 核心概念
 
@@ -51,10 +53,10 @@
 - **文案不放 SVG**（含 `<text>`，標籤搬到 `label` 欄）：改一句描述＝JSON 一行 diff。正本用 Inkscape 打開是
   無名圖示，`npm run preview` 把標籤與 id 注回；**正本 → preview → normalize 必須逐位元組回到正本**
   （`tests/tools/build-preview-svg.test.ts`）。
-- **節點外觀是遊戲原圖多層疊出來的**，換圖示不能只複製檔案，要跑 `npm run render-nodes`（Chromium 渲染成
+- **版面與節點外觀來自遊戲內的原圖**（座標取原圖 ×0.5，`render-nodes.ts` 的 `DRAWING_TO_SITE`；原圖不在版控內）。節點外觀是多層疊出來的，換圖示不能只複製檔案，要跑 `npm run render-nodes`（Chromium 渲染成
   扁平 PNG 並寫回正本；不掛在建置流程上）。⚠️ `data/dice-tree.svg` 是它的**輸出**：正本裡寫死的 `fill`
   站台讀不到。⚠️ **`render-nodes` 跨 Chromium 版本不是位元組可重現**——「重跑後 PNG 不變」不可當驗收條件。
-  ⚠️ 超越骰子（`1501`／`1601`／`2503`／`2603`）的圖**不是 `render-nodes` 產的**，重跑時要另外處理（見 `data/CLAUDE.md`）。
+  ⚠️ 超越骰子 `1501`／`2503` 與它們的符文 `1601`／`2603`（`type` 是骰子符文）的圖**不是 `render-nodes` 產的**，重跑時會被蓋掉、validate 不擋，要另外處理（見 `data/CLAUDE.md`）。
 - **節點底盤色改不動**（大多數節點的底盤是遊戲貼圖）。站台底色因此刻意不跟原圖一致，見 `tokens.css` 的 `--bg` 註解。
 - ⚠️ **瀏覽器不渲染這份 SVG，站台上沒有節點元素**。`build:data` 把正本壓成 `src/generated/tree.json`，
   `/tree` 與 `/sim` 由 `src/lib/canvas/`（`mountCanvasTree()`）用 **Canvas 2D** 畫。
@@ -154,6 +156,8 @@ npm run compare -- <beforeURL> <afterURL>  # computed-style 逐元素比對，�
 |---|---|
 | 0 | 邊是 `<svg>` 直屬；節點與邊不帶 `display`／`visibility`／`style`／`opacity="0"`；`marker-end` 指向正本定義過的箭頭、不得有 `marker-start`；座標與 viewBox 是有限數 |
 | 1 | `nodes.json` 結構：必填、型別、長度 ≤ 500、無未知欄位；**選用欄位不用時整個省略，不可寫 `""`** |
+| 2 | id 唯一且符合 `^[1-5][0-6]\d\d$`（首碼＝分支 1–5，次碼 0–6） |
+| 3 | `type` ↔ 外框 `stroke` 對應：支援節點的 stroke 必須是 support 色，反之亦然（看 stroke 不看形狀） |
 | 4 | `cost` 只寫錢，等級行不准混進去（改語意時 tree.json 不變，要有自己的測試） |
 | 5 | 一個端點同時對上兩顆節點 → 報錯 |
 | 6 | 無環、根集合正確、全部從根可達（`data-wip="1"` 豁免可達性；6(c) 只警告） |
