@@ -583,7 +583,7 @@ if (grid && deckH && deckRow && deckLegend && picker && pickerClose && live && c
    * 「隱藏星數」：切換兩盤骰盤的 `.cell-pips`（格子右下角 1–7 那個數字）。
    *
    * ⚠️ 按鈕文字固定不變（不要「隱藏星數」↔「顯示星數」互換），否則工具列寬度會跳動
-   * ——CLAUDE.md「工具列的尺寸不准隨狀態改變」那段記過同一個問題。用 `aria-pressed`
+   * ——CLAUDE.md〈版面的硬規則〉「`/tree` 工具列尺寸不准隨篩選狀態改變」那條記過同一個問題。用 `aria-pressed`
    * 表達狀態，視覺只換底色（見 board.css），不加尺寸會變的指示元素。
    *
    * ⚠️ 用 `visibility: hidden` 而不是 `display: none`——後者會讓 `.board-cell` 內部重排
@@ -607,7 +607,7 @@ if (grid && deckH && deckRow && deckLegend && picker && pickerClose && live && c
 
     exportBtn.addEventListener('click', async () => {
       // 按鈕文字固定不變：改成「產生中…」會讓整條工具列的寬度跳動
-      // （CLAUDE.md「工具列的尺寸不准隨篩選狀態改變」）。
+      // （CLAUDE.md〈版面的硬規則〉）。
       exportBtn.disabled = true;
       try {
         // 分享圖跟著隱藏（Yuki 拍板）：使用者按了隱藏就是不想看到那些數字，分享出去

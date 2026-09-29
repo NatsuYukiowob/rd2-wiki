@@ -4,1698 +4,435 @@
 （https://rd2wiki.org/），GitHub `NatsuYukiowob/rd2-wiki`（public）。
 
 > 這份檔案只收「開工前不讀就會做錯，而且讀程式碼讀不到」的事。單點成因與實測數字寫在
-> 該處的程式碼註解裡（`src/`＋`tools/` 有 25% 是註解），歷史沿革看 git log 與 PR。
+> 該處的程式碼註解裡，歷史沿革看 git log 與 PR。**不要把日期、PR 號、「誰裁決」、會漂移的
+> 數字寫進來**——決策只寫「決策：X（不要改回）」，數字當場跑。
 
 ## 開工前必讀
 
 - **資料正本是兩個檔**：`data/dice-tree.svg`（只有幾何，一個字都沒有）＋ `data/nodes.json`
-  （全部文案，以節點 id 為鍵）。兩邊的 id 集合必須雙射（規則 19）。join key 一律用 `data-id`，
-  **不要拿座標配對**——浮點與 `transform` 一改就對不上。
+  （全部文案，以節點 id 為鍵），id 集合必須雙射（規則 19）。join key 一律用 `data-id`，
+  **不要拿座標配對**（浮點與 `transform` 一改就對不上）。
 - **這份 CLAUDE.md 與整個 repo 是公開的**。不要寫進絕對路徑、主機名稱、內網 IP 或憑證。
   掃描：`git ls-files -z | xargs -0 grep -lnE '/mnt/|/home/|內網IP'`。
 - **樣式一律用 `:root` 的 token**，不准寫裸的 px／rem（`tests/styles/tokens.test.ts` 守）。
-- **動版面要用幾何斷言驗收**（兩矩形不相交、top 差 < 0.5px、`scrollHeight === innerHeight`），
-  不是看截圖；反過來，**純視覺的改動測試綠不等於做對**——用 Playwright 截圖自己先看一遍。
-  這兩件事各自咬過（前者：寫死偏移量五次；後者：全套測試綠卻同時帶著兩個只有人工看圖才發現的 bug）。
-- **本機跑 E2E 前先確認 4321 沒有 `astro dev` 在聽**。`reuseExistingServer: true` 會直接拿它
-  當受測站台，測到的是 dev server 不是 `dist/`。開著預覽時用 `E2E_PORT=4399 npm run e2e`。
-- **`npx playwright test` 不會重新建置**（`npm run e2e` 才有 `pree2e`）。拿它做「改壞看會不會紅」
-  的抽查時，順序必須是：改壞 → `npm run build` → `npx playwright test -g …` → 還原 → 再 build。
-- **開發中只跑受影響的 spec，全套留到收尾跑一次**：task 內用
-  `npm run build && npx playwright test tests/e2e/<檔>.spec.ts --project=desktop`，動到手機版面才加
-  `--project=mobile`。全套（`npm run e2e`）只在 PR 收尾跑；修正後重跑**紅掉的那幾個檔**，不是再跑全套。
-  改了共用 CSS／`chrome.css`／發版前，用 `E2E_MOBILE_ALL=1 npm run e2e` 讓 mobile 跑完整一次。
-- **mobile project 只跑標了 `@mobile` 的測試**（`playwright.config.ts` 的 `grep`）。新測試有 `isMobile`
-  分支、`test.skip(!isMobile, …)`、或驗的幾何在手機寬度會不同 → 寫成 `test('…', { tag: '@mobile' }, …)`。
-  漏標不會紅，只會讓手機分支永遠沒被執行。
-- **不要調高 `workers`**：3 workers 時 mobile 的 `/sim`、`/tree` 會穩定出現 Chromium `Page crashed`。
-  全套紅在 `Page crashed`／`Target crashed` 時，先單跑該檔確認，不要當成程式 bug 追。
-- **文件裡不要寫測試條數、節點數這類會隨改動漂移的數字**，寫了就會說謊而 CI 擋不住
-  （banner 犯過一次）。要數字就當場跑。
+- **動版面用幾何斷言驗收**（兩矩形不相交、top 差 < 0.5px、`scrollHeight === innerHeight`），不是看截圖；
+  反過來，**純視覺的改動測試綠不等於做對**——用 Playwright 截圖自己先看一遍。
+- **本機跑 E2E 前確認 4321 沒有 `astro dev` 在聽**（`reuseExistingServer: true` 會拿它當受測站台）；
+  開著預覽時用 `E2E_PORT=4399 npm run e2e`。
+- **`npx playwright test` 不會重新建置**（`npm run e2e` 才有 `pree2e`）。「改壞看會不會紅」的順序：
+  改壞 → `npm run build` → `npx playwright test -g …` → 還原 → 再 build。
+- **開發中只跑受影響的 spec**：`npm run build && npx playwright test tests/e2e/<檔>.spec.ts --project=desktop`，
+  動到手機版面才加 `--project=mobile`。全套（`npm run e2e`）只在 PR 收尾跑一次，修正後只重跑紅掉的檔。
+  改了共用 CSS／`chrome.css`／發版前：`E2E_MOBILE_ALL=1 npm run e2e`。
+- **mobile project 只跑標了 `@mobile` 的測試**（`playwright.config.ts` 的 `grep`）。有 `isMobile` 分支、
+  `test.skip(!isMobile, …)`、或幾何在手機寬度不同的測試 → `test('…', { tag: '@mobile' }, …)`。漏標不會紅。
+- **不要調高 `workers`**（3 workers 時 mobile 的 `/sim`、`/tree` 穩定 `Page crashed`）。全套紅在
+  `Page crashed`／`Target crashed` 時先單跑該檔，不要當程式 bug 追。
+- **分資料夾的 CLAUDE.md**：只在讀到該資料夾的檔案時自動載入，下列情況**要自己先讀**：
+  - `src/CLAUDE.md`（各頁契約）：讀到 `src/` 底下任何檔都會載入，涵蓋 `src/pages/`、`src/scripts/`、`src/styles/`。
+    ⚠️ **不可放在 `src/pages/`**：Astro 會把那裡的 `.md` 建成公開頁面（`/CLAUDE/`，`seo.spec.ts` SEO-2 會紅）。
+  - `src/lib/canvas/CLAUDE.md`（畫布）：改 `src/lib/canvas/`，**或 `src/scripts/tree-canvas.ts`、`src/scripts/sim.ts` 的畫布部分**。
+  - `data/CLAUDE.md`（資料來源、對帳流程、各資料檔的匯入裁決）：改 `data/` 或重產資料檔。
 
 ## 核心概念
 
-- **`data/dice-tree.svg`**——只有**幾何**（243 個 `<g class="node">`／254 條邊）：`data-id`、
-  `transform`、形狀與 `stroke`、`<image>`、`data-wip`。
-- **`data/nodes.json`**——全部**文案**：`name` `label` `type` `category?` `gameId` `cost`
-  `maxLevel` `description` `awakening?`。
-- 外加 `data/icons/`（242 張 PNG，檔名＝內容 sha256 前 12 碼）、`data/tree-center.png`、
-  `data/board-icons/`（43 張純骰子圖，見 `/board`）、`data/dice3-icons/`（43 張 3D 立體骰子圖，見 `/dice`）、`data/tactic-icons/`（60 張，含 69 的 3 個子選項；9 與 40 共用一張，見 `/tactic`）、
-  `data/boss-icons/`（21 張，見 `/boss`）、`data/rift-shop-icons/`（35 張，見 `/rift-shop`）。
-  由社群發 PR 維護，**CI 是唯一防線**（維護者不可能逐行 review SVG 的 diff）。
-  ⚠️ **六條資產路徑彼此獨立**：`data/icons/` 由正本 SVG 引用（規則 7）、`board-icons` 與
-  `dice3-icons` 各有一份 `{節點 id: hash}` 對應表（規則 21／30，共用 `checkDiceIconMap()`），
-  戰術、Boss 與裂縫效果的雜湊則直接寫在各自資料檔那一筆的
-  `icon` 欄（規則 24／25／27）——那三份資料不對應任何節點，沒有「要對到 SVG 裡的 id」這個約束。
-  ⚠️ **同一顆骰子在三處的圖不一樣，不要互相接線**：節點圖（`data/icons/`，有底板，骰子樹上用）、
-  純骰子圖（`board-icons`，2 號素材＝扁平卡片視角，骰盤格裡用）、3D 立體圖（`dice3-icons`，
-  3 號素材，圖鑑卡片用）。接錯了畫面上只是「圖鑑的骰子變回扁平」，兩份檔案各自都完全合法——
-  規則 30 的測試有一條專門守這件事（兩份對應表不得有任何一顆指向同一個雜湊）。
-  ⚠️ **`public/events/`（活動的遊戲內截圖）與 `public/rewards/`（獎勵的收藏品圖）不在這一族**：它沒有內容雜湊、沒有轉檔管線，
-  就是一批 `<img src>` 直接指過去的檔，由規則 29(j) 驗「引用得到」而已。
-  ⚠️ **只有 `rift-shop-icons` 是多對一**（35 張圖對 55 筆）：客戶端只給 `*Low` 畫圖，同一個效果
-  的三個檔位在遊戲裡本來就是同一張圖，所以規則 27 用 `sharedIconKey: 'name'` 放行同名之間的共用。
+| 資產 | 內容 | 守門 |
+|---|---|---|
+| `data/dice-tree.svg` | 只有**幾何**：`<g class="node">` 的 `data-id`、`transform`、形狀與 `stroke`、`<image>`、`data-wip`；邊 | 見 CI 規則表 |
+| `data/nodes.json` | 全部**文案**：`name` `label` `type` `category?` `gameId` `cost` `maxLevel` `description` `awakening?` | 見 CI 規則表 |
+| `data/icons/` | 節點圖（有底板，檔名＝內容 sha256 前 12 碼），由正本 SVG 引用 | 規則 7 |
+| `data/board-icons/`／`data/dice3-icons/` | 純骰子圖（2 號素材，骰盤用）／3D 立體圖（3 號素材，圖鑑用），各有一份 `{節點 id: hash}` 對應表 | 規則 21／30（共用 `checkDiceIconMap()`） |
+| `data/tree-center.png` | 中央樞紐圖 | 規則 10 |
+| `data/tactic-icons/`／`boss-icons/`／`rift-shop-icons/` | 雜湊直接寫在資料檔那一筆的 `icon` 欄，不對應任何節點 | 規則 24／25／27 |
+| `public/events/`、`public/rewards/` | 固定檔名直接 `<img src>`，**沒有內容雜湊、沒有轉檔管線** | 規則 29(j)／`tests/data/rewards.test.ts` |
 
-**為什麼拆**：`<title>` 曾是 `name` ＋ `description` 的完整副本（23.5 KB），文案佔正本 48.6%。
-拆完之後改一句描述＝JSON 一行 diff，而不是一行 500 字元、rect/image/text 混在一起的 `<g>`。
-`<text>` 標籤同樣搬走改成 `label` 欄位（60 個是縮寫，`所有骰子傷害` → `全骰傷害`，是真資料
-不是副本）——留在 SVG 的話線上編輯器（#32）改一個縮寫仍得對 SVG 動行區塊外科手術。
-代價是正本用 Inkscape 打開是 239 個無名圖示，補償是 `npm run preview` 把標籤與 id 注回幾何。
-那條動線可逆：**正本 → preview → normalize 逐位元組回到正本**，`tests/tools/build-preview-svg.test.ts` 守。
-
-**外觀整個來自遊戲內的原圖**（2026-08-18 依 `RD2骰子樹 v1.0.1` 重做，座標取原圖 ×0.5，素材不在版控內）。
-原圖**只有畫面、沒有任何文字資料**。
-⚠️ **原圖的節點不是「一張圖」，是多層疊出來的**（底盤圖＋SVG 漸層＋CSS filter＋投影濾鏡），
-所以「換圖示」不能只是複製檔案，要跑 `npm run render-nodes`：用真的 Chromium 把每個節點渲染成
-一張扁平 PNG，再把結果與尺寸寫回正本。這支**不掛在建置流程上**，CI 與貢獻者都不必裝瀏覽器。
-
-⚠️ **`data/dice-tree.svg` 是 `render-nodes` 的輸出，不是輸入**（輸入是 `process.argv[2]` 傳進來的
-遊戲原圖）。所以正本裡那六個寫死的 `fill`（`#405276`／`#55506d`／`#322b4b`／`#7d4cb1`／`#736b91`／
-`#2f2942`）**站台一個都讀不到**——改它們只會影響「有人把正本拖進看圖軟體」時的長相。
-⚠️ **節點底盤色改不動**（2026-08-26 實測，不要再試）：239 顆裡 123 顆符文的整顆節點就是一張遊戲
-貼圖（`<use href="#sprite-N">`），70 顆玩家被動的外圈底盤也是貼圖（只有內圓是 SVG 漸層），真正
-由 SVG `<rect fill>` 畫底盤的只有 41 顆骰子 ＋ 5 顆支援（`#453e60` 外層／`#423a5b` 內層）。
-換色會變成 46 顆跟著走、193 顆留在原色。站台底色因此**刻意不再跟原圖一致**，見 `tokens.css`。
-⚠️ **`render-nodes` 跨 Chromium 版本不是位元組可重現。** 零改動重跑，238 張裡有 5 張會變（正好是
-五個支援節點 `1114`／`2114`／`3114`／`4114`／`5114`），差異是純邊緣的次像素位移、肉眼看不出來；
-同一台機器連跑兩次則完全相同。`@playwright/test` 是 `^1.49.0` 的 caret 範圍，`npm install` 換到
-新的 Chromium 就會漂。**所以「重跑後 PNG 位元組不變」不可以拿來當驗收條件**，會無關改動地紅。
-
-⚠️ **瀏覽器不渲染這份 SVG，站台上沒有任何節點元素。** 正本只是資料來源：`build:data` 把幾何
-與文案壓成 `src/generated/tree.json`，`/tree` 與 `/sim` 由 `src/lib/canvas/` 這一層（`mountCanvasTree()`）
-用 **Canvas 2D** 畫進 `#canvas-host` 底下的兩張 `<canvas>`。節點、邊、標籤、前置鏈光暈、篩選淡出、
-中央樞紐、模擬器狀態色與等級牌**全部是像素**——`document.querySelector('.node')` 在站台上回 null，
-CSS 也碰不到它們（在 `canvas.css` 加 `.node` 規則不會有作用，也不會有任何錯誤訊息）。
-唯一的例外是每顆節點一顆的隱形 `<button>`（見「圖示」一節）。畫布內容的外觀寫在
-`src/lib/canvas/theme.ts`（顏色字級，從 token 讀）、`state.ts`（透明度與邊色）、`painter.ts`（怎麼畫）。
-
-核心功能：點一個節點 → 高亮它在 DAG 上的**所有祖先聯集**（去重、含自身、多重前置視為 AND）
-→ 算出解鎖成本。
+- 由社群發 PR 維護，**CI 是唯一防線**（維護者不可能逐行 review SVG 的 diff）。
+- ⚠️ **同一顆骰子在三條資產路徑的圖不一樣，不要互相接線**（節點圖／純骰子圖／3D 圖）。接錯時兩份檔案
+  各自合法、畫面只是「變回扁平」；規則 30 的測試要求兩份對應表不得指向同一個雜湊。
+- ⚠️ **只有 `rift-shop-icons` 允許多對一**（同一效果的三個檔位共用一張，規則 27 的 `sharedIconKey: 'name'`）；
+  戰術只有 `9`／`40` 一組共圖（規則 24(g) `sharedIconIds`）。
+- **文案不放 SVG**（含 `<text>`，標籤搬到 `label` 欄）：改一句描述＝JSON 一行 diff。正本用 Inkscape 打開是
+  無名圖示，`npm run preview` 把標籤與 id 注回；**正本 → preview → normalize 必須逐位元組回到正本**
+  （`tests/tools/build-preview-svg.test.ts`）。
+- **版面與節點外觀來自遊戲內的原圖**（座標取原圖 ×0.5，`render-nodes.ts` 的 `DRAWING_TO_SITE`；原圖不在版控內）。節點外觀是多層疊出來的，換圖示不能只複製檔案，要跑 `npm run render-nodes`（Chromium 渲染成
+  扁平 PNG 並寫回正本；不掛在建置流程上）。⚠️ `data/dice-tree.svg` 是它的**輸出**：正本裡寫死的 `fill`
+  站台讀不到。⚠️ **`render-nodes` 跨 Chromium 版本不是位元組可重現**——「重跑後 PNG 不變」不可當驗收條件。
+  ⚠️ 超越骰子 `1501`／`2503` 與它們的符文 `1601`／`2603`（`type` 是骰子符文）的圖**不是 `render-nodes` 產的**，重跑時會被蓋掉、validate 不擋，要另外處理（見 `data/CLAUDE.md`）。
+- **節點底盤色改不動**（大多數節點的底盤是遊戲貼圖）。站台底色因此刻意不跟原圖一致，見 `tokens.css` 的 `--bg` 註解。
+- ⚠️ **瀏覽器不渲染這份 SVG，站台上沒有節點元素**。`build:data` 把正本壓成 `src/generated/tree.json`，
+  `/tree` 與 `/sim` 由 `src/lib/canvas/`（`mountCanvasTree()`）用 **Canvas 2D** 畫。
+  `document.querySelector('.node')` 回 null、CSS 碰不到節點（在 `canvas.css` 加 `.node` 規則無效也不報錯）；
+  唯一例外是每顆節點一顆的隱形 `<button>`。外觀在 `theme.ts`（從 token 讀）、`state.ts`、`painter.ts`，
+  細節見 `src/lib/canvas/CLAUDE.md`。
+- 核心功能：點一個節點 → 高亮它在 DAG 上的**所有祖先聯集**（去重、含自身、多重前置視為 AND）→ 算出解鎖成本。
 
 ## 指令
 
 ```bash
-npm run validate    # 資料驗證（規則 0–30，CI 守門員）
+npm run validate    # 資料驗證（CI 守門員，規則表見下）
 npm run typecheck   # tsc --noEmit（含 noUnusedLocals）
 npm run normalize   # 攤平圖層/matrix/相對路徑、清掉 <text> 與註解（送 PR 前必跑）
 npm run preview     # 把標籤注回幾何，產出 data/dice-tree.preview.svg（不進版控）
-npm run add-icon    # 新增圖示，自動用內容雜湊命名（--board／--dice3／--tactic／--boss／--rift-shop 各指向另一條資產路徑）
+npm run add-icon    # 新增圖示，自動用內容雜湊命名（--board／--dice3／--tactic／--boss／--rift-shop 指向另一條資產路徑）
 npm run render-nodes -- <遊戲原圖路徑>  # 用 Chromium 重畫全部節點圖示（遊戲改版才跑）
 npm run split -- <遊戲原圖路徑>         # 從原圖切出正本與圖示（重建整份資料時才用）
-npm run build:data  # 產出 src/generated/tree.json + public/assets/
+npm run build:data  # 產出 src/generated/tree.json + public/assets/（會印效能預算的實測值）
 npm run build       # build:data + astro build
 npm test            # 有 pretest 自動跑 build:data
 npm run e2e         # 有 pree2e 自動跑 build
 npm run compare -- <beforeURL> <afterURL>  # computed-style 逐元素比對，兩個 port 各服務一份 dist
-                     # ⚠️ 不在 CI 上，純靠人記得跑；改動 CSS（尤其是拆檔／搬檔）送 PR 前必跑，見 tools/compare-computed.ts 檔頭
+                     # ⚠️ 不在 CI 上；改動 CSS（尤其拆檔／搬檔）送 PR 前必跑，見 tools/compare-computed.ts 檔頭
 ```
 
 ## 本機文字編輯器（dev only）
 
-`npm run dev` 後右下角有「✎ 編輯」：打開後點頁面上任何一段字，面板列出它在 `data/*.json` 的字串值
-與 `src/` 寫死的原始碼裡的候選，改完存檔直接寫回來源、Vite 自動重整。程式在 `tools/dev-editor/`
-（`core.ts` 純邏輯有單元測試、`integration.ts` 掛 dev server API、`client.ts` 是 overlay）。
-改完照常 `git diff` → 開 PR；面板的「驗證」＝`npm run validate`。
+`npm run dev` 後右下角「✎ 編輯」：點頁面上一段字，面板列出它在 `data/*.json` 的字串值與 `src/` 原始碼候選，
+存檔直接寫回來源。程式在 `tools/dev-editor/`（`core.ts` 純邏輯有單元測試、`integration.ts` 掛 dev server API、
+`client.ts` 是 overlay）。面板的「驗證」＝`npm run validate`。
 
-- **只在 `astro dev` 存在**：integration 在 `command !== 'dev'` 時什麼都不做，`dist/` 裡沒有 overlay 也沒有
-  寫檔 API。寫檔 API 只收 127.0.0.1／::1——**用 LAN 或 Tailscale 位址開 dev server 會 403**，要在本機瀏覽器開。
-- **存檔只換那一個字串／那一段原始碼**，不重新序列化整份 JSON（diff 永遠是一行）。存檔帶著點開時的舊值，
-  檔案在這之間被改過就回「衝突」不寫入。`data/` 存檔後自動重跑 `build:data`（`/tree`、`/sim` 讀的是產物）。
-- **原始碼候選是原文切片**：`{nodes.length}` 這種插值、縮排換行都會出現在文字框裡，**別把 `{…}` 刪掉**。
-  畫面上的數字能對上原始碼的 `{…}`（`queryRegex()`），所以畫面上的「N 顆骰子…」找得到 `{nodes.length} 顆骰子…`。
-- **排序靠 `data-astro-source-file`／`-loc`**：Astro 只在 dev toolbar 開著時標這兩個屬性（`annotateSourceFile`），
-  關掉 toolbar 仍然搜得到，只是點到的那個檔不會排最前面。
-- overlay 的樣式刻意寫死 px 與色碼、**不用站台 token**（token 規則不適用 `tools/`）：它是工具不是站台，跟 token
-  綁在一起的話站台改版會連帶改掉編輯器的長相。`tokens.test.ts` 也不掃 `tools/`。
-- 畫在 canvas 上的字（`/tree`、`/sim` 的節點標籤）點不到——用面板的搜尋框直接搜。
-- ⚠️ **改 `integration.ts`／`core.ts` 要重啟 dev server**（integration 在啟動時載入一次）；`client.ts` 會熱更新。
-- ⚠️ 存檔會觸發一到兩次整頁重整（寫檔一次、`build:data` 重產 `tree.json` 再一次），結果靠 sessionStorage
-  ＋ `/result` 在重整後取回，**不要改成只看 `/save` 的回應**——那個回應常常在頁面重整後才到。
+- **只在 `astro dev` 存在**；寫檔 API 只收 127.0.0.1／::1——用 LAN／Tailscale 位址開會 403。
+- **存檔只換那一個字串／那一段原始碼**（diff 永遠一行），帶舊值做衝突偵測。`data/` 存檔後自動重跑 `build:data`。
+- **原始碼候選是原文切片**：`{nodes.length}` 這種插值會出現在文字框裡，**別把 `{…}` 刪掉**。
+- 排序靠 `data-astro-source-file`／`-loc`：Astro 只在 dev toolbar 開著時標這兩個屬性。
+- overlay 刻意寫死 px 與色碼、**不用站台 token**（token 規則不適用 `tools/`，`tokens.test.ts` 也不掃）。
+- canvas 上的字（`/tree`、`/sim` 節點標籤）點不到，用面板搜尋框。
+- ⚠️ 改 `integration.ts`／`core.ts` 要重啟 dev server；`client.ts` 會熱更新。
+- ⚠️ 存檔結果靠 sessionStorage ＋ `/result` 在重整後取回，**不要改成只看 `/save` 的回應**（見 `client.ts`）。
 
 ## 不變量（改動後務必重驗）
 
-| 項目 | 值 | 備註 |
+計數（節點／邊／全樹成本）由 `tests/tools/build-data.test.ts`、`5201` 前置鏈成本由 `tests/lib/selection.test.ts` 斷言，改資料時
+**同一個 commit** 更新那裡的期望值並在註解寫明增減來源；不要把數字抄進這裡。
+
+| 項目 | 判準 | 守門 |
 |---|---|---|
-| 節點／邊／根／多重前置 | 243 ／ 254 ／ 5（`1001 2001 3001 4008 5002`）／ 16 | 2026-09-06 起含太陽骰子 `1501`（前置 `1201`＋`1301`＋`1401`）與它的符文 `1601`；2026-09-18 起含齒輪二階骰子 `2503`（前置 `2303`＋`2403`，另要求 `2203` Lv.50）與它的符文 `2603` |
-| 全樹解鎖成本 | 核心 1,842 ／ 金幣 7,206,000 ／ 太陽核心 2,100 ／ 齒輪二階核心 2,100 | 超越核心見「資料解析」；太陽核心只有 `1501`／`1601` 用到，齒輪二階核心只有 `2503`／`2603` |
-| `5201` 前置鏈 | 核心 42 ／ 金幣 20,000 | 2026-08-23 起 `5008` 可直接領，鏈上不再算 `5109` 的 3,000；核心不變是拿掉 `5007` 的 8 與加回 `5002` 的 8 剛好抵消 |
-| 覺醒 `awakening` | 43 顆骰子各一則，其餘 200 個節點不准有 | 規則 14 |
-| `gameId` | 243 個全有、全檔唯一 | 規則 16 |
-| `category` | 只掛在 70 個玩家被動上 | 規則 16 |
-| `dataIssue` | `placeholder` 0 ／ `no-growth` 0 | 規則 17 |
-| `unlockVia !== 'cost'` | 9 個，全是骰子 | `data/unlock-exceptions.json`，規則 18 |
-| `unlockPaid` ／ `bypassPrereq` | 1 個（`5002`）／ 2 個（`5006` `5008`） | 同上；`unlockVia` 只說「靠什麼開門」，這兩個才說「要不要付錢」「要不要解前置」 |
-| 可升級節點 | 86 ＝ 50 級符文 43 ＋ `4303` ＋ `1601`／`2603`（20 級、超越核心特例表）＋ 玩家被動／支援 40 | 其餘 157 個 `maxLevel` 是 1 |
-| 升級 tier ↔ 節點 | 6 個 tier 對 40 個節點，**雙向零殘餘** | `data/passive-upgrade-cost.json`，規則 22 |
-| 骰子數值 ↔ 節點 | 43 顆骰子雙向零殘餘；帶四個檔位的項目 **133 個**＝官方強化分頁 97 列＋太陽骰子 2 項－審判骰子攻擊速度（1.1.2 改「—」）＋齒輪二階骰子 5 項＋1.1.2 補齊的 30 項 | `data/dice-stats.json`，規則 23 ＋ `tests/data/dice-stats.test.ts` |
-| 戰術 | **58 條父戰術**＋`69` 底下 3 個子選項（巢狀在 `options`，不算獨立一條）；階段 前期 24／中期 24／後期 6／終盤 4；可用模式 對戰 57／合作一般 43／合作困難 43（`availability`，`1` 豐盛開局只開合作困難） | `data/tactics.json`，規則 24 |
-| 獎勵 | 6 個分類（討伐一般 31／討伐困難 50／競技場通行證 19／7日旅程 5／狩獵活動 14 階、成就 39 組）＋重複性獎勵 | `data/rewards.json`，`tests/data/rewards.test.ts`（**沒有 validate 規則**） |
-| Boss | **21 條**（一般 10 ＋ 困難 11，`difficulty` 欄），圖示雙向零殘餘 | `data/boss.json`，規則 25 |
-| 裂縫效果 | **55 條**（一般 13 ／稀有 23 ／傳說 19）；階級 ⟺ 權重（30／20／10）；圖示 **35 張對 55 筆**（同名三檔共用） | `data/rift-shop.json`，規則 27 |
-| 活動 | 目前 **1 場**（中秋賞月活動，1.1.2 客戶端）；內容是通用表格，列數從資料算 | `data/events.json`，規則 29 |
-| 初始就可解鎖的節點 | 11 個（前置只有起始骰子） | `/sim` 的測試挑節點時要從這裡挑 |
+| 覺醒 `awakening` | 每顆骰子一則，其餘節點不准有 | 規則 14 |
+| `gameId` | 全有、全檔唯一 | 規則 16 |
+| `category` | 只掛在玩家被動上 | 規則 16 |
+| `dataIssue` | `placeholder`／`no-growth` 都應為 0 | 規則 17 |
+| 解鎖例外 | `unlockVia` 只說「靠什麼開門」；`unlockPaid`（仍要付錢）、`bypassPrereq`（無視前置）另外說 | `data/unlock-exceptions.json`，規則 18 |
+| 升級 tier ↔ 節點 | **雙向零殘餘** | `data/passive-upgrade-cost.json`，規則 22 |
+| 骰子數值 ↔ 節點 | 雙向零殘餘 | `data/dice-stats.json`，規則 23 ＋ `tests/data/dice-stats.test.ts` |
+| 戰術／Boss／裂縫／活動 | 見各自規則 | 規則 24／25／27／29 |
+| 獎勵 | **沒有 validate 規則** | `tests/data/rewards.test.ts` |
 | 畫布 viewBox | `0 0 2000 1700` | |
-| 效能預算（硬斷言） | `tree.json` gzip ≤ 20KB（目前 17.5KB）／sprite ≤ 400KB（目前 126KB） | 數字每次 `build:data` 都會印，不要照抄這一格 |
+| 效能預算（硬斷言） | `tree.json` gzip ≤ 20KB／sprite ≤ 400KB（實測值 `build:data` 會印） | `tests/tools/build-data.test.ts`（CI 規則 12） |
 
-- **版本欄位有三個、意義不同**：`data-game-version`（玩家看得到的遊戲版本，1.1.2）、
-  `<metadata>` 的 `resource bundle`（資料抄自哪一版資源包；2026-09-06 起直接寫遊戲版本（現在是 1.1.2）——
-  資料改從客戶端解包表來，客戶端 `table-metadata` 自己的 `BundleVersion 0.0.4` 語意不同、不採用，Yuki 裁決）、`data-version`（正本自己的
-  schema 版本，1.1.0）。首頁顯示前兩個，不要合併。⚠️ `<metadata>` 開頭那句
-  `layout rebased on RD2骰子樹 v1.0.1` 講的是**版面**抄自哪一版，跟遊戲版本是兩件事，不要順手一起改。
-- **覺醒不是節點**：不用花錢解鎖、沒有前置、不進成本計算，所以是骰子身上的一個欄位。
-  做成節點會同時弄壞 239／248 與全樹解鎖成本。
-- **`gameId` 刻意不進 tree.json**（站台不顯示，239 個字串要吃 0.55KB gzip），所以規則 16 是它
-  唯一的防線——改壞了站台完全不受影響。
-- **`支援強化` 是本站的命名**：遊戲資料表把支援角色與它的冷卻縮減都標成「支援」，照抄會寫出
-  「支援 · 支援」與「玩家被動 · 支援」兩種都看不懂的組合。
-- ⚠️ **`meta.totalUnlockCost` 不受解鎖例外影響**——那是「SVG 成本總和」（spec §2.1），刻意不排除
-  非 cost 節點，站台一個地方都沒顯示它；會跟著變的是 `sumUnlockCost()` 的前置鏈計算。
-- **顯示尺寸逐節點寫在正本的 `<image width/height>`**（骰子 50×53、符文 26×26、被動 34×34 與
-  44×44、支援 51×47）。**不要再加「類型 → 尺寸」對照表**：同一種類型底下也會有不同尺寸，
-  舊的 `sizeOfType()` 就是為此拿掉的。改動後一定要回頭看 `src/lib/canvas/view.ts` 的兩個
-  `*_ICON_TARGET_PX`（照骰子寬度換算，曾因骰子從 56 縮到 50 沒跟著改，每個視角多放大 12%）
-  與 `SHADOW_ON/OFF_AT_ICON_PX`（`SHADOW_OFF` 必須高於那兩個，否則預設視角每次重畫靜態層都要
-  為 241 顆節點各設一次 `shadowBlur`，手機平移從 40 掉回 20 FPS）。
-  `tests/lib/canvas/view.test.ts` 有斷言。
-- ⚠️ **`tests/tools/build-data.test.ts` 的效能預算有兩條斷言**，不要合併：一條量測試自己組的
-  產物（`spriteIndex` 是全同值替身，壓得比真實座標好，**會低估約 0.5KB**），另一條量 `pretest`
-  用 CLI 寫出的 `src/generated/tree.json`。餘裕只剩 1KB，少了後面那條就會「本機全綠、CI 爆掉」。
-- **描述文字以「遊戲內實際顯示」為準，不是資源包裡的原始樣板。** 資源包有沒填值的 `{n}` 佔位符時，
-  遊戲**連同那一段一起不顯示**（2026-08-20 Yuki 逐個對照遊戲畫面）。目前正本刻意跟 xlsx 不一致的
-  有**兩類**，下次對新版資料表時都會顯示成差異，那是刻意的，**不要改回去**：
-
-  | id | 上游 | 正本（＝遊戲畫面） |
-  |---|---|---|
-  | 5403 | `傷害增加30（最多100疊加）`（全形） | `(最多100疊加)`（半形，全站一致） |
-
-  ⚠️ **第二類：以客戶端解包表為準的格子**（PR #61；Yuki 2026-09-02 裁決「客戶端解包 > 手填
-  xlsx」；2026-09-06 拿 1.1.0 客戶端表親驗過：22 格裡只有 `D200` 首領額外傷害在 1.1.0 變了，其餘全部相符；
-  1.1.2 又改了其中 `D302` 與 `D306` 的技能四檔，現在的值是 1.1.2 客戶端的）。xlsx v1.0.3-v2 在這些格子跟客戶端表
-  不一致：`nodes.json` 的 4307／4407／5304／5403／5404
-  解鎖成本與 2201 描述、`maxlevel-official.json` 的 D2000、`dice-stats.json` 的 15 項
-  （D206／D407 攻擊力；D004／D005／D104／D107／D200 首領額外傷害／D201／D202／D208×2／D302／
-  D306／D402／D406 的技能四檔）。下次對帳時這些格子要拿客戶端表（`DefenderTable`／
-  `DefenderSkillTable`／`ProjectileAbilityTable`／`DiceTreeNodeTable`／`RuneTable`）再對，
-  **不要因為 xlsx 還是舊值就改回去**。
-
-  ⚠️ **上游填得出值就用上游的**——「連同那一段一起不顯示」只適用於**上游自己也沒有值**的情形。
-  ⚠️ **`2403` 與 `5302` 曾經在這張表上，2026-08-23 移除**：v1.0.3 的上游那兩格現在跟正本
-  **逐字相同**（`連接齒輪骰子時，攻擊速度增加5%` ／ `#僵硬範圍增加30%`，v1 與 v2 都是）。
-  判準是**把兩邊字串直接比對**，不是「上游沒有大括號了」——後者只證明佔位符不在了，
-  不排除上游把值填進去而正本仍砍了整段的情形。**不要因為舊文件寫過就當成「還在不一致」，
-  也不要只靠大括號計數就下這個結論。**
-- ⚠️ **佔位符偵測機制留著，但真實資料已經沒有樣本了**（`parseGrowth` 的 `{n}` 判定、
-  `dataIssue: 'placeholder'`、規則 9、面板的「數值待補」）。上游隨時可能再冒出新的佔位符，
-  那是唯一會提醒我們的東西。對應測試因此**全部用合成樣本**（注入一段 `{1}` 再驗），
-  綁真實節點的話資料一改測試就跟著消失，而那段程式還活著卻沒人守。
-
-### 資料來源：1.1.0 起以客戶端解包表為正本（2026-09-06）
-
-- **資料正本的上游從 xlsx 換成遊戲客戶端的資料表**。做法：從 Android 客戶端（`split_base_assets.apk`）
-  用 UnityPy 讀 `assets/bin/Data` 裡的 `*Table` TextAsset——每張表有**兩份**（CSV 源檔＋編譯二進位），
-  取 CSV 那份；表頭三列＝註解列／欄名列／型別列，資料從第 4 列起。文字在 `localization_text`
-  TextAsset（`ko,en,ja,zh-tw` 四欄 CSV）。解包工具與解出來的 CSV **不進版控**（維護者本機），
-  這裡只記對照方式。
-- **對照鍵**：節點 id ＝ `DiceTreeNodeTable.Id`（`1501`／`1601` 就是上游自己的 id）；成本 ＝
-  `RankUpGoldArr[0]`／`RankUpGoodsArr[0]`（`RankUpGoodsType` 是貨幣：`NODE_STONE` 核心、`CORE_SOLAR`
-  太陽核心）；⚠️ **等級上限不是 `RankUpGoldArr` 的陣列長度**——上游一律把那兩個陣列補滿到 50 格，
-  骰子符文真正的上限在 `RuneTable.MaxRank`（`1601` 太陽強化就是這樣被讀成 50 級，實機只有 20，
-  2026-09-06 修正；124 顆 `DICE_RUNE` 重對過一次，只有這一顆錯）；
-  骰子 ＝ `DefenderTable` 第 KindId 列；符文 ＝ `RuneTable.Id`；
-  被動 ＝ `PlayerPassiveTable` 第 KindId 列；四檔 ＝ `base`／`base+6·LvAdd`／`base+14·UpAdd`／兩者疊加。
-  **SVG 座標 ＝ `(1000 + 0.2·x, 850 − 0.2·y)`**（`Position` 欄）。2026-09-06 依 Yuki 的實機截圖把火系
-  符文 `1201`／`1301`／`1401` 與秩序系 `4202`／`4302`／`4402` 從本站早年挪過的位置**放回表格座標**，
-  243 顆裡只剩 `1407`、`1601`、`2503`、`2603` 不吻合：`1407` 是刻意的版面調整，`1601` 比表格再往下 30（表格把符文
-  放在骰子正下方 50 處，本站的骰子標籤就在那裡）；`2503`／`2603` 比表格一起往上 20（見齒輪二階那條）。2026-09-18 依 1.1.2 表格搬了鐵甲系 `2201`／`2301`／`2401`
-  （搬到鐵甲骰子右側）與齒輪系 `2203`／`2303`／`2403`（騰出位置給齒輪二階骰子 `2503`），連同 6 條邊的端點
-  （Yuki 裁決照表格走）。
-- ⚠️ **客戶端的描述是樣板不是成品**：`{0}`／`{1}` 要用 `Value1`／`Value1_RankAdd` 填、`<tag>X</tag>`
-  要換成 `#關鍵字`、`<color>`／`<u>` 要剝掉。而且有三類差異**不是遊戲改了**：(a) 樣板沒放成長
-  佔位（`盛開`／`排序增幅`／`末日宣言`；`貪婪獎勵增加` 在 1.1.2 補上了佔位，產出已與正本逐字相同），
-  正本要保留 `(+每級)` 讓規則 17 算得出來；
-  (b) 負值成長印成 `-0.5秒(+-0.2秒)`，正本維持 `0.5秒(+0.2秒)`；(c) 值不在 RuneTable 而在別張表
-  （`蔑視弱者` 的 30／100）。判「真變動」要**三向比對**：xlsx 1.0.3 ≠ 客戶端才算，wiki ≠ 客戶端
-  但 xlsx ＝ wiki 的是本站自己的正規化。
-- **2026-09-06 依 1.1.0 客戶端更新的格子**：8 條描述（`1404`／`2406`／`2304`／`3402`／`3405`／
-  `5004`／`5005`／`5401`）、2 則覺醒（`1003` `#果實`、`5006` `#SP怪物`——同一個 tag 代碼的顯示名
-  統一，`播種`／`傳送` 仍是別名）、`藥水` 的說明、8 條戰術、`D200` 的首領額外傷害。**刻意沒改**：
-  `2009`／`5001` 描述末尾 xlsx 加註的數字（Yuki 2026-09-06 裁決保留）；PR #61 那 22 格除 `D200`
-  外全部與 1.1.0 客戶端相符（這次是親驗，不再只是裁決）。
-- **2026-09-18 依 1.1.2 客戶端更新的格子**（對帳用 1.1.0 客戶端 ≠ 1.1.2 客戶端當「真變動」判準）：3 條描述
-  （`1202` 尖刺+3、`2203` 齒輪子彈傷害增加、`3205` 連擊疊加傷害增加，`maxlevel-official.json` 同一個 commit）、
-  `dice-stats.json` 6 個四檔項目（毒／陰陽／齒輪／魔彈的攻擊力、魔彈傷害、共鳴攻擊速度增益量）與 3 個基礎值
-  （中毒傷害、極致和諧傷害、每次連擊傷害增加）。`D102` 審判骰子的攻擊速度改成「—」（Yuki 裁決；客戶端
-  `AttackInterval` 在 1.1.0 就已經是 0，站上的「1 秒/次」來源不明）。
-- **太陽骰子（`1501`）**：座標照表格 (860,680)，符文 `1601` 在 (860,760)。它的解鎖除了兩條入邊還要
-  `1201` 練到 Lv.50——這是「前置節點等級條件」，正本放在 `data/prereq-ranks.json`（上游 `NeedNode`／
-  `NeedNodeRank` 欄），不寫進描述。登場條件「3 骰點火骰子 3 個以上時超越」寫在 `dice-stats.json`
-  的 `note`。兩顆的圖示**不是 `render-nodes` 產的**：`1501` 是遊戲的超越節點底板
-  `DiceTree_Transcendence_on`（六角金框，Mythic 專用）疊上 `Dice_solar2` sprite（正面卡片版，跟其他骰子節點同一種視角；`_3` 是 3D 立體版，不要用）；`1601` 是
-  `Runenode_Sun_0` 等比縮到 104×104。⚠️ 正本裡 `1501` 仍是 `<rect>`（骰子形狀），六角只在圖裡——
-  `shapeOf()` 把 6 點 polygon 判成支援節點，規則 3 會擋。下次重跑 `render-nodes` 時要另外處理這顆。
-- **齒輪二階骰子（`2503`，1.1.2）**：照太陽骰子的模式落地——表格座標 (830,970)，本站放 (830,950)：
-  照表格放時骰子標籤會壓到正下方的 `2303`（/code-review 2026-09-18 抓到），所以骰子連同符文 `2603`
-  （表格 (870,930) → 本站 (870,910)，維持兩者相對位置）一起往上 20。騰位置的 6 顆符文照表格搬了，見上面座標那條。解鎖另要 `2203` 練到 Lv.50（`prereq-ranks.json`）；登場條件
-  「9 個齒輪骰子連結時超越」寫在 `dice-stats.json` 的 `note`（客戶端 `MythicTranscendTable`，1.1.2 起
-  `DefenderTable.Local_Appearance` 欄被拿掉、改由這張表提供）。貨幣是第二種超越核心 `gearSecond`
-  （`齒輪二階核心`，`CORE_GEAR_SECOND`），2603 的逐級費用在 `passive-upgrade-cost.json` 的 special，
-  金幣陣列與 1601 逐格相同。**圖示的配方跟 1501／1601 完全一樣**（2026-09-18 用像素比對反推出來、
-  拿 1501／1601 重算誤差 0）：節點 `DiceTree_Transcendence_on` 等比縮到高 210 放 (8,0)，疊
-  `Dice_GearSecond2` 以 132/172 的比例縮放、水平置中、y=9（LANCZOS）；符文 `Runenode_GearSecond_0` 等比縮到
-  94×104 放 (5,0)；貨幣圖 `item_stone_GearSecond` 裁掉透明邊後等比縮到高 64 水平置中；`/board` 純骰子圖直接用
-  `Dice_GearSecond2`（`Dice_GearSecond1` 是遊戲執行期才疊上齒輪的空框，不能用）。
-- 客戶端 `table-metadata.BundleVersion` 是 `0.0.4`（比 1.0.3 時期的 0.0.6 小，語意顯然不同），
-  所以 `resource bundle` 欄位改寫遊戲版本 1.1.0（Yuki 裁決）。
-
-### 下次拿新版資料表來對
-
-- ⚠️ **`maxlevel-official.json` 的滿級值一定要跟 `description` 同一個 commit 進來。**
-  只改一邊規則 17 就會擋下（`… 推算的 Lv.50 滿級值 314 與官方資料表的 108 不一致`），
-  那是規則 17 該做的事，不是誤報。
-- ⚠️ **上游只給 `nodes.json` 的話要自己對整份表。** 肉眼 diff 兩份 JSON 只會看到「這幾處有改」，
-  看不到「那幾處該改沒改」——把 xlsx 的「技能效果」欄整欄拉出來逐 `gameId` 比對。
-- ⚠️ **比對 xlsx 時「Lv.50：X」那一行要單獨剝掉再比。** 技能效果欄是多行的，第二行以後可能是
-  描述續行、也可能是滿級值；把「第一行＝描述」當通則會生出 40 幾筆假差異。
-- 描述裡出現裸數字（`300`／`225%`）時回頭確認 `parseGrowth` 沒有誤抓——它要的是 `基礎(+每級)` 的形狀。
-
-### 幾份沒有自動來源的資料
-
-- **`data/upgrade-cost.json`＝技能升級花費表（1–50 級）**。⚠️ **只適用骰子符文**：玩家被動的
-  等級上限有 10／15／20／50／100 五種、單價各不相同，套這張表會算出一個看起來很專業的錯數字，
-  `appliesTo` 與 `upgradeTableApplies()` 就是擋這件事。規則 15 把表格 1 級的金額與正本裡 43 個
-  50 級符文的解鎖金幣對起來——那是兩份資料唯一的交點，對不上就代表其中一份是舊的，
-  而兩邊各自看都完全合法。
-- **`data/maxlevel-official.json`＝官方標註的滿級數值**，鍵是 `gameId`。**不進 tree.json、站台
-  一個字都不顯示**——唯一用途是**規則 17 反向驗算 `maxLevelValue()` 的推導**。`growth` 是用正則
-  從中文描述挖出來的，挖錯不會有任何既有規則說話：少一個 `(+4%)` 讓 `growth` 變 null、多一個
-  負號算出「50 級 −10.3 秒」、括號打成全形整段配不到——三種都是合法 SVG、合法成本、合法關鍵字。
-  ⚠️ **鍵一定要用 `gameId`**：光「所有骰子傷害」就有 15 個同名節點。
-  ⚠️ 兩個容易改壞的地方：(1) **佔位符要略過不能報錯**（否則跟規則 9 的「不擋 PR」政策自相矛盾）；
-  (2) **有覆蓋率下限**——只走夾具裡有的項目等於「刪掉一個鍵就關掉那顆節點的檢查」。
-- **`data/passive-upgrade-cost.json`＝玩家被動與支援的升級費用**（6 個 tier A–F ＋ `4303`、`1601`、`2603` 三個特例；`special` 不限玩家被動，1601／2603 是 20 級骰子符文、逐級金幣與超越核心都不同），
-  由**規則 22** 守。⚠️ **它不進 tree.json**：tier 是 `(maxLevel, unlockCost.gold)` 的純函數，那兩個
-  欄位產物裡本來就有，複製一份 `costTier` 欄位進去只是拿 gzip 預算換一個推得出來的值。
-  代價是「表與節點對不上」在產物層面完全沒有痕跡——一顆節點對不到 tier，`/sim` 只會安靜地不讓它
-  升級（跟「這顆本來就不能升級」在畫面上一模一樣），一個多餘的 tier 則永遠不會被察覺。所以規則 22
-  是**雙向**的：40 個節點每一顆都要對得到 tier，6 個 tier 每一個也都要對得到節點。
-  ⚠️ `bands` 是官方表格自己的寫法（`from`~`to` 每級花 `gold`，`core` **只在 `from` 那一級收一次**），
-  展開成逐級表的是 `src/lib/upgrade-tiers.ts` 的 `expandTier()`，validate 與 `/sim` 共用同一份
-  ——連續性判斷寫兩份就會漂移。**符文的 1–50 級表仍在 `data/upgrade-cost.json`，兩份不要合併**
-  （適用型別、識別方式、資料來源都不同）。
-- **`data/dice-stats.json`＝41 顆骰子的官方基本能力值與強化數據**（`/dice` 的數值面板），
-  鍵是 **`gameId`**，由**規則 23** 守。來源是官方資料表 v1.0.3-v2 的兩個分頁（⚠️ 15 項自 PR #61 起
-  以客戶端解包表為準，清單見上方「刻意跟 xlsx 不一致」第二類）：`骰子基本能力值`
-  （基本面板 41 列）與 `骰子強化數據`（會隨骰點／SP 強化改變的項目 97 列），**兩張表在這裡併成
-  同一個形狀**。⚠️ **不進 tree.json**（同 `passive-upgrade-cost.json` 的理由：`/dice` 是靜態頁
-  直接讀 `data/`，而這份有 32KB），所以「表與節點對不上」在產物層面零痕跡，規則 23 因此是**雙向**的。
-  三件併表時做過的裁決，重新產生這份檔案時要照做：
-  1. **「目標」是 `stats` 的一員**（排在攻擊速度與能力1 之間，跟官方面板同順序），不是另一個欄位
-     ——渲染端才不必靠索引把它插進陣列中間。它沒有強化檔位，會被 `isFixed()` 判成固定項目。
-  2. **三組命名漂移視為同一項**（基礎值逐格相同驗過）：`D004` 攻擊速度增益＝攻擊速度增益量、
-     `D401` 吞噬範圍＝範圍、`D406` 攻擊週期＝技能冷卻時間。`D200` 首領傷害倍率則是強化分頁**獨有**
-     （基本面板上沒有），照樣要收。
-  3. **備註欄不可以整欄照抄。** 那一欄混了兩種東西：6 條在解釋遊戲機制（為什麼這顆的攻擊速度或
-     目標是「—」），1 條是資料表作者自己的校訂記錄——`D401` 吞噬骰子的「原始目標文本：範圍前」，
-     意思是官方原文寫「範圍前」而那一欄被正規化成「範圍內」（跟 `nodes.json` 的「擊殺**範圍內**
-     怪物時」一致，正規化是對的）。**校訂記錄是給維護者看的，印在卡片上對玩家只會像個錯字**
-     （Yuki 2026-08-24 回報）。判準是 `/^原始.*文本/`，由 `tests/data/dice-stats.test.ts` 釘住
-     那 7 個 gameId（含 1.1.0 太陽骰子 `D008` 的登場條件）。⚠️ **CI 擋不到這件事**——`note` 是自由文字，規則 23 只驗型別與長度。
-  4. **四檔的算法（2026-09-18 起全部改用客戶端表計算，不再抄 xlsx）**：`base`／`dice7 = base+6·LvAdd`／
-     `lv15 = base+14·UpAdd`／`lv15dice7` 兩者疊加；攻擊速度另算（`dice7 = base÷7`、`lv15 = base+14·UpAdd`）。
-     `_LvAdd` 是骰點成長、`_UpAdd` 是局內 SP 強化成長。來源欄：`DefenderTable`（Attack／AttackInterval／
-     BossAttackPer）、`DefenderSkillTable`（PowerConstant／Range／CastCount／Interval）、
-     `ProjectileAbilityTable`（Value／Duration／Range／StackMax），以 `Local_*` 的 zh-tw 名稱對到 `label`。
-     2026-09-18 拿 1.1.0 客戶端驗過既有 99 項四檔：98 項逐格吻合、1 項（`D102` 攻擊速度，客戶端 0）無法比、
-     0 差異；成長文字 62 項也 0 不符。1.1.0 時只寫了 base 的 **30 項**依這個公式補成四檔（1.1.2 客戶端值）。
-     ⚠️ **其中 6 項的來源欄位型別在那 99 項裡沒有樣本，是公式外推、未獨立驗證**：
-     `ProjectileAbilityTable.Duration`（`D002` 持續時間、`D003` 中毒持續時間、`D400` 僵硬時間）、
-     `.StackMax`（`D400` 需要攻擊次數）、`DefenderSkillTable.CastCount`（`D100` 直排傷害增加量、
-     `D302` 魔彈發射數量）；`D209` 的動力齒輪傷害增益量（CastCount）同理。有實機截圖時優先拿這幾格去對。
-     秒單位的成長文字一律帶 `s`（`每提升1骰點：-0.5s`），跟 `%` 帶 `%` 同一個慣例（2026-09-18 統一，
-     之前有 5 格沒帶）。
-  5. **官方自己空著的格子照原文寫 `待實測`**（目前 **0 格**：原本唯一的 `D208` 原子旋轉速度 Lv.15
-     兩檔，PR #61 依客戶端解包表補上 `7s`／`4.6s`，成長其實在骰點軸不在 SP 軸）。省略的話那一項
-     會被判成「固定值」，畫面上跟「它本來就不會變」一模一樣。
-     ⚠️ **這件事刻意不用 CI 警告記錄**——validate 的黃金樣本斷言 warnings 必須為零，一條永遠不會
-     消失的警告會讓那個基線失效。改用 `tests/data/dice-stats.test.ts` 逐格釘住（現在釘的是空清單），
-     上游再空一格就會紅；`tests/e2e/codex.spec.ts` 的 C7 反向守「待實測」不得回到畫面上。
-  6. **四檔必須反推得出成長參數**（規則 23(i)，2026-09-19）：`/board` 的數值卡片用
-     `src/lib/dice-calc.ts` 的 `deriveParams()` 從四檔還原「每骰點」「每級強化」兩個 Δ 算中間值——
-     線性項要求 `lv15dice7 = dice7 + lv15 − base`、攻擊間隔（`diceGrowth` 寫「基礎值 ÷ 骰點」）要求
-     `dice7 ≈ base÷7`、Δ 在 3 位小數內。validate 與 `board.astro` 共用同一支，不要複製第二份。
-     `待實測` 不觸發這條（卡片上 (1,1) 以外印「待實測」）。
-  7. **`spGrowth` 是 `/dice`「局內升級」按鈕的來源**（客戶端 `*_UpAdd` 原值，`levelStep()`；按住時 pill
-     右上角浮出 `+150` 小標（絕對定位、不佔版面）；按住判定在 `dice.astro` 的腳本掛 `data-holding`，手機觸控不可靠地套 `:active`，CSS `:active` 只當無 JS 後備）。它跟 6. 反推的每級強化必須相等、固定項目不准寫
-     「每強化1級」——規則 23(j) 守，否則 `/dice` 與 `/board` 會各說各話。攻擊間隔的 `_UpAdd` 加在
-     1 骰點的間隔上，7 骰點的檔位顯示 ÷7 後的值。
-- **`data/tactics.json`（58 條父戰術）與 `data/boss.json`（21 條）**＝`/tactic` 與 `/boss` 兩頁的全部
-  內容，由**規則 24／25** 守。戰術 2026-09-27（PR #83）起以 **1.1.2 客戶端的三個候選池**為準，
-  Boss 的來源見下面第 4 條。重新產生這兩份檔案時要照做的裁決：
-  1. **形狀（PR #83）**：每條戰術帶 `availability: { versus, coopNormal, coopHard }` 三個布林，
-     **是否可用只看它，不從「有沒有 `coop` 文本」推導**——合作一般與合作困難共用同一段 `coop` 文本、
-     候選池卻不同（`1` 豐盛開局只在合作困難）。`versus`／`coop` 是已格式化的全文，某模式可用就必須有
-     對應文本（規則 24(j)）；兩段相同也照樣各存一份。三模式都沒開的 15 個編號（2／3／4／5／8／13／15／
-     58／59／60／61／63／65／66／70）**整筆不落地**，規則 24(j) 指名擋。
-     `69` 選擇由我決定的三個子選項（`GainSP1000`／`StartWithBomb2`／`RandomDiceGain`）**巢狀在父戰術的
-     `options` 裡**，只有 `id`／`name`／`text`／`gameId`／`icon`，階段與模式都繼承父戰術；舊的「選項」階段
-     已拿掉。`add-icon --tactic` 與 `build:data` 都會掃 `options` 的圖。
-  2. **`62 炸彈狂` 照上游用 `UpgradeSPMinusPer.png`**——那是 `2 研究加速` 的圖，上游把「圖示檔名」
-     欄寫錯了（它自己的內部ID 是 `BombDiceSpawnOnMerge`），而素材裡沒有炸彈狂專屬圖。
-     資料檔標 `dataIssue: 'upstream-icon'` 讓它可被查詢，畫面上不標。⚠️ 這個檔名在官方表裡是
-     **撞號**的，只因為研究加速是未啟用才沒撞進站台——哪天那 16 條要收，規則 24(g) 會先擋下來。
-  3. **Boss `1 蛇王` 的 `召喚#一般怪物` 是關鍵字標記，不是上游漏填的佔位符**（2026-08-26 誤判過
-     一次）。`一般怪物` 就在 `data/keywords.json` 裡。⚠️ **全站的戰術與 Boss 文字裡只有這一個
-     `#` 標記**——所以 `/boss` 的就地展開刻意做成「把解釋插在同一段話下面」，沒有移植 `/dice` 那套
-     滑入式視圖堆疊：為一個詞把最容易寫壞的那段互動複製成第二份，只會多一份會漂移的複本。
-  4. **Boss 收進合作困難模式的 11 隻（Yuki 2026-09-06 裁決）**，來源改為 1.1.0 客戶端 `MinionTable`
-     ＋ zh-tw localization（不再是 xlsx sheet9）。難度靠 `difficulty` 欄，**不要靠 `gameId` 的 `_hard`
-     後綴推導**——那是 join key，上游改命名就整批分錯組而畫面上看起來完全正常。困難版多出「雷昂」，
-     它沒有一般版。順帶修掉 id 7 熔岩巨獸抄錯的 effect（原本寫成「使隨機減少骰點減少」）。
-     ⚠️ **8/11 隻困難 Boss 的客戶端圖與一般版是同一張圖**（byte 相同），只有疾風仙子／國王史萊姆／
-     雷昂三張不同——畫面上看起來「重複」是照實反映客戶端。目前沒撞規則 25(g)，只因為一般那 10 張
-     是更早一版素材包的重新編碼（同尺寸、不同位元組）；哪天把一般版的圖也換成解包版，那 8 對就會
-     撞號，屆時要決定的是「兩筆共用同一張圖是否允許」，不是隨便換掉其中一張。
-  5. **`9` 與 `40` 共用同一張圖**（官方同一個 SpawnAltar sprite）：規則 24(g) 只放行這一組
-     （`sharedIconIds`），並反向要求兩筆的 `icon` 必須相同；其他跨編號共圖照樣擋。
-  6. **1.1.2（2026-09-18）新增階段「終盤」**（客戶端 `TacticPhase` 的 `Final`；中文名是 Yuki 裁決的本站命名，
-     客戶端 localization 裡沒有任何階段名稱）。⚠️ 上游有兩列寫成 `'Final  '`（**帶兩個尾隨空白**），
-     對帳時一定要先 trim，否則會被當成第六種階段。`23` 蛇怪與 `27` 迅速從「後期」改到「終盤」；新增
-     `127` 腎上腺素、`128` 痛苦哀嚎（`Use=True`、`Coop=False`＝對戰專用，編號＝上游 `Index`，圖是同名 sprite）。
-     階段清單有三份要一起改：`src/lib/types.ts` 的 `TacticStage`、`src/lib/tactics.ts` 的 `TACTIC_STAGES`
-     （＝篩選鈕順序）、規則 24(e) 的 `stages`；E2E 是 `tests/e2e/battle.spec.ts` 的 T6。
-  ⚠️ 兩份都**不進 tree.json**（同 `dice-stats.json` 的理由），所以規則 24／25 是它們唯一的防線。
-
-- **`data/rift-shop.json`（55 條）＝裂縫商店**（`/rift-shop`），由**規則 27** 守。來源是 1.1.0 客戶端
-  `TacticsEffectTable` 裡 **`Store === True`** 的 55 列，圖是同表 `TacticsKind` 同名的 176×176 sprite。
-  ⚠️ **跟 `data/tactics.json` 是同一張表的兩批不重疊的列，不要合併**：
-  - `Use === True` 的 55 條＝每波輪替池 → `tactics.json`（`/tactic`，軸是階段／適用模式）
-  - `Store === True` 的 55 條＝商店池 → 這一份（`/rift-shop`，軸是階級／討伐硬幣）
-  - 兩者互斥：`CoopHardWaveTable.CoopTacticsIndex` 引用到的 44 個 index **沒有一個是 `Store`**。
-  - 口徑對得起來：全表 126 列 ＝ 55（Use）＋ 55（Store）＋ 16（xlsx 標「未啟用」那批）。
-  ⚠️ **2026-09-06 之前這批被誤判成「遊戲未開的新 kind」**（`Use === False` 讓人以為沒開），
-  Yuki 指出困難模式裡真的有這個商店才發現。`Use` 管的是輪替池、`Store` 管的是商店，兩個旗標各說各的。
-  三件匯入時做過的裁決：
-  1. **55 筆全列、按階級分組**（Yuki 2026-09-06），不把同名的三個檔位併成一筆——強化彈的三檔分屬
-     一般／稀有／傳說三個階級，併起來就橫跨三級，而階級正是遊戲自己的分類軸（`sort_type_grade`）。
-  2. **圖示 35 張對 55 筆**，見上面「五條資產路徑」那條。
-  3. **三種「意志」寫死在頁面上、不進資料檔**（客戶端 `common_ingame_hard_desc_03..05`）：
-     它們不是商品、沒有編號也沒有圖，進資料檔就得為三筆特例放寬規則 27 的每一條欄位檢查。
-  ⚠️ 同樣**不進 tree.json**，所以規則 27 是它唯一的防線。
-
-- **`data/events.json`＝期間限定活動**（`/events`），由**規則 29** 守。來源是該版客戶端的活動
-  資料表（中秋是 `ChuseokBoardTable`／`ChuseokMarketTable`／`ChuseokShopFreeTable`／
-  `ChoseokLapRewardTable`）＋ `GoodsTable`／`Profile*Table` 的 id 對照，名稱一律取
-  `localization.json` 的 zh-tw。整份由維護者本機的產生腳本重產（跟解包工具一樣不進版控）。
-  三件裁決：
-  1. **軸是活動不是版本**（Yuki 2026-09-21）。解包只有 1.1.0 與 1.1.2 兩版，用版本當軸整頁會
-     變成「1.1.2 多了這些表」的差異報告，而玩家要找的是「這場活動有什麼、怎麼換」。版本降成
-     卡片上的一個徽章。
-  2. **內容是通用表格**（`sections[].columns` ＋ `rows`），不是「盤面」「商店」這種具名欄位：
-     每場活動的玩法都不一樣，具名欄位等於每加一場就要改型別、規則與版面。代價是版面不知道
-     每一欄的語意（沒辦法排序或篩選）——這一頁是「看資料」不是「查資料」，可以接受。
-  3. **只收節日活動**（Yuki 2026-09-21）：賽季（`SeasonTable`，唯一帶 `Begin`／`Finish` 的）、
-     熱門時段（`HotTimeScheduleTable`，目前 `Use=False`）與限時課金包都不在這一頁。
-  ⚠️ **兩種資訊客戶端拿不到，只能靠實機**，所以產生腳本裡有一個「人工補充」區塊（重跑不會洗掉）：
-  **檔期**（活動表沒有日期欄位，中秋這一筆是 2026-09-21 在遊戲裡實測的，UTC+9）與
-  **遊戲內截圖**（`public/events/`，sprite 拆得出零件、拆不出「零件在畫面上長怎樣」）。
-  沒有實測來源時 `period` 一律 `null`。
-  ⚠️ **圖示不是新的資產路徑**：活動貨幣的圖直接進 `public/currency/`，種類登記在
-  `src/lib/cost-html.ts` 的 `CurrencyIconKind`（同討伐硬幣那條路）。⚠️ **2026-09-21 拿實機截圖
-  修正過一次**：滿月硬幣原本挑了 `ChuseokIcon_moon`（黃色滿月，名稱與譯名都吻合），實機的兌換所
-  價格圖是 `item_event1_ticket_2`（綠色玉佩）——**sprite 名稱與貨幣譯名對得起來不等於它就是那個
-  貨幣的圖**，拿不到 UI 綁定時要標成推測並找實機對。
-  ⚠️ 同樣**不進 tree.json**（靜態頁建置期直接讀 `data/`），規則 29 是它唯一的防線。
-
-- **`data/rewards.json`＝獎勵系統**（`/rewards`，PR #83，2026-09-27）。形狀是 `modes`（六個有里程碑的
-  分類）＋ `repeatable`（重複性獎勵，唯讀查閱、刻意不是 `RewardMode`）。`modes` 有兩種：`threshold`
-  （討伐一般／困難、競技場通行證、7日旅程、狩獵活動；`tiers[]` 的 `requirement` 是累計擊殺或積分，
-  旅程與狩獵另帶只讀的 `taskDays` 每日任務點數）與 `achievement`（`groups[].stages[]`）。
-  每一筆獎勵是 `type` 判別聯集：`currency`（只存 `kind`，名稱與圖一律走 `currencyIconDetails()`）／
-  `dice`（帶 `nodeId`，圖走 `dice3-icons`）／`emote`／`cosmetic`（`subtype` 決定總計裡的排序）／`collectible`。
-  收藏品的圖只在 `assetStatus: 'ready'` 且有 `icon` 時才用，否則畫面印文字 fallback——**沒有確認過的圖
-  不要拿截圖或單層 sprite 充數**。
-  由維護者本機的主表經 `tools/import-rewards.py`（openpyxl，唯讀開啟、不寫回）匯入，主表不進版控。
-  ⚠️ **沒有 validate 規則**，唯一的防線是 `tests/data/rewards.test.ts`（逐格釘住重複性獎勵、檢查每個
-  grant 解析得到名稱與圖）。
-  ⚠️ `public/rewards/` 的圖是固定檔名直接引用、**沒有轉檔也沒有內容雜湊**（跟 `public/events/` 同一類），
-  25 張 PNG 共 1.6 MB，畫面上只是小圖示——接進 webp 管線是待辦，加圖時別再放更大的原圖。
-
-- **`data/changelog.json`＝站台更新日誌**（首頁顯示最新 3 筆），由**規則 20** 守。它是全站唯一
-  沒有自動來源的內容，而「忘了寫」在畫面上跟「這次沒更新」長得一模一樣。規則 20 檢查的是
-  **最新一筆帶 `data` 區塊的條目**而不是 `entries[0]`——純站台功能的條目排在最前面卻沒有資料版本
-  可言，硬要求 `entries[0]` 帶 `data` 的話每次改前端都得假造一筆版本，規則就被繞過去了。
-  條目**由新到舊**排列，同一天可以有多筆（先後有意義）。
-  ⚠️ **首頁（`src/pages/index.astro`）的版本戳記要用 `changelog.entries.find(e => e.data)` 另外找**（跟規則 20 的 `checkChangelog()` 同一個 `find`），不要為了讓帶 `data` 的
-  條目「剛好留在前 3 筆」去調整排序——資料版本戳記能不能顯示，不該反過來決定日誌要怎麼排。
-  `tests/e2e/codex.spec.ts` 的 C5 驗「玩家真的看得到」。
-- **`data/prereq-ranks.json`＝前置節點的等級條件**（目前是 `1501` 太陽骰子要求 `1201`、`2503` 齒輪二階骰子要求 `2203` 練到 Lv.50），由**規則 26** 守。
-  它不改圖結構（1201 本來就是 1301／1401 的祖先），改的是三件事：`/tree` 詳情面板的前置鏈成本多一段
-  「前置練等」（用 `levelTableFor()`＋`upgradeExtraCost()` 算 Lv.1→rank 的追加費用，查不到表印「成本未確認」
-  而不是 0）；`/sim` 的「可取得」多一條「祖先等級 ≥ rank」、一鍵點亮會把祖先拉到 rank、取得後祖先不能降到
-  rank 以下（`maxSelectableLevel` 的下界）。同一個祖先被多顆節點要求時取最大的 rank。
-  ⚠️ **任何「這顆練滿要多少」的顯示一律走 `levelTableFor()`**（`/sim` 與 NodeDetail 同一個判準），
-  `upgradeTableApplies()` 只給通用符文表用——1601 太陽強化的費用在 `special`（只有金幣＋太陽核心）。
-  它 2026-09-06 從 50 級改成 20 級後不再撞到通用表的 `maxLevel === 50`，但判準不因此放寬：當時
-  用通用表印出過「核心 99 ＋ 金幣 465,700」這種差兩個數量級的錯數字，下一顆 special 節點照樣會踩。
-- **`data/offgame-effects.json`＝骰子樹符文／玩家被動對 `/board` 數值卡片的語意**，由**規則 28** 守。
-  以節點 id 為鍵；數字（`value`／`rankAdd`／`value2`／`rankAdd2`／`maxLevel`）取自客戶端 `RuneTable`／
-  `PlayerPassiveTable`，「改哪一列、怎麼疊」（`target`）是依客戶端逆向結果人工標的。整份由維護者本機的產生
-  腳本從客戶端表重產（腳本跟解包工具一樣不進版控）——**不要手改數字**，改版時重跑腳本、讓規則 28 對描述。
-  每一種 `target` 的語意與疊加順序寫在 `src/lib/offgame-calc.ts` 檔頭。⚠️ 兩種 target 刻意不顯示也不計算：
-  `conditional`（對冰凍／首領／菁英…，Yuki 2026-09-19 裁決不顯示）、`none`（開局 SP、合成機率、支援冷卻）。
-  `board`（光增益範圍、霓虹、齒輪連接、三重共鳴、排序疊加）要看骰盤擺位，由 `src/lib/board-buffs.ts` 消費、
-  不進單顆骰子的局外加成。⚠️ **施加者自己那一列的加值（1206／3202／4207／4208／4308）是 `statAdd` 不是 `board`**
-  ——盤面加成讀的就是施加者那一列在局外加成之後的值，標成 `board` 的話那個加值會從卡片與盤面兩邊一起消失。
-- **`data/unlock-exceptions.json`＝解鎖例外表**，由**規則 18** 守。它不是 SVG 的一部分，
-  `build-data` 讀它時只有一個 `as` 斷言＝執行期零檢查。三種寫壞法在規則 18 之前全部 CI 全綠：
-  key 打錯（那顆骰子安靜地變回要花核心買）、`unlockVia` 打錯（成本照樣排除，但面板印出字面的
-  `undefined`）、`note` 空字串、**`unlockPaid`／`bypassPrereq` 寫成非布林**（`build-data` 判斷的是
-  truthiness，`"false"` 這種字串一律為真，於是「我明明寫了 false」變成「已啟用」）。⚠️ **規則 18 擋型別與長度，擋不住內容**——`unlockNote` 是自由文字
-  而 `renderDetail()` 用 `innerHTML`，所以 `NodeDetail.ts` 一定要 `escapeHtml(formatUnlockVia(node))`。
-
-  ⚠️ **`unlockVia` 只說「靠什麼開門」，不等於「不用付錢」**（2026-08-23 拆開）。官方 v1.0.3 v2 把
-  三顆渾沌骰子的解鎖條件改寫成兩種語意，各自對應一個旗標：
-
-  | 旗標 | 節點 | 語意 | 誰在用 |
-  |---|---|---|---|
-  | `unlockPaid` | `5002` 恐懼 | 成就開門，**仍要付** `unlockCost`（「合作累積900擊殺後，使用8核心解鎖」） | `sumUnlockCost()`、`upgradeTableApplies()` |
-  | `bypassPrereq` | `5006` 貪婪／`5008` 空虛 | 從討伐獎勵／競技場通行證**直接領，無視骰子樹前置** | `prerequisiteChain()`、`canvas/painter.ts` |
-
-  **`bypassPrereq` 不改變圖結構**——邊照樣存在、239／248 不變，只有前置鏈遍歷走到它時停止往上追。
-  `/tree` 上指向它的入邊畫成虛線：旗標由 `scene.ts` 搬成 `SceneEdge.bypassable`，`painter.ts`
-  的邊迴圈**跑兩趟**（實線一趟、虛線一趟），把 `setLineDash([9, 7])` 設在迴圈外——canvas 的
-  `setLineDash` 是 context 狀態不是每條線的屬性，逐條切換會多出幾百次狀態變更。虛線只決定線型，
-  顏色與透明度仍走 `state.ts` 的 `edgeColor()`／`edgeAlpha()`，兩件事互不搶。
-  站台**沒有全站圖例**，虛線的意思由詳情面板那句「鏈上有 N 顆可直接領的骰子」承擔。
-
-  ⚠️ **那句要綁 `Selection.bypassNodes`（鏈上有幾顆），不可以綁 `bypassed`（省了幾個前置）**：
-  跳過的祖先常常從另一條路回到鏈上——`5005` 變異骰子的前置是 `5006` 與 `5103`，而 `5103` 的祖先鏈
-  就是 `5002` → `5007` → `5103`，所以 `bypassed = 0` 而 `bypassNodes = 1`，虛線邊仍在鏈上、仍被
-  高亮成金色。**全站有 18 個選取會讓虛線邊兩端都在鏈上，其中 11 個 `bypassed` 是 0**；綁錯的話
-  那 11 個會出現「一條金色虛線，畫面上零說明」。E2E 的 X2 三種狀態都守（鏈外淡出、鏈內金色、面板有話說）。
-  ⚠️ 面板上三句話講三件事，不要混：「已排除 N 個非成本解鎖節點」＝在鏈上但不用付錢、
-  「鏈上有 N 顆可直接領的骰子」＝虛線的說明、「因此已跳過 N 個前置」＝真的省掉的祖先數。
+- **版本欄位有三個、意義不同，首頁顯示前兩個，不要合併**：`data-game-version`（玩家看得到的遊戲版本）、
+  `<metadata>` 的 `resource bundle`（決策：直接寫遊戲版本，不採客戶端 `BundleVersion`，語意不同）、
+  `data-version`（正本 schema 版本）。⚠️ `<metadata>` 開頭 `layout rebased on RD2骰子樹 v1.0.1` 講的是**版面**來源，不要順手改。
+- **覺醒不是節點**（不花錢、沒有前置、不進成本），是骰子身上的欄位；做成節點會同時弄壞節點邊數與全樹成本。
+- **`gameId` 刻意不進 tree.json**，規則 16 是它唯一的防線（改壞了站台完全不受影響）。
+- **`支援強化` 是本站的命名**（遊戲表把支援角色與冷卻縮減都標「支援」），見 `src/lib/labels.ts`。
+- ⚠️ **`meta.totalUnlockCost` 不受解鎖例外影響**（是 SVG 成本總和，站台不顯示）；會跟著變的是 `sumUnlockCost()`。
+- **顯示尺寸逐節點寫在正本的 `<image width/height>`**。**不要再加「類型 → 尺寸」對照表**（同類型也有不同尺寸）。
+  改了尺寸要回頭看 `src/lib/canvas/view.ts` 的 `*_ICON_TARGET_PX` 與 `SHADOW_ON/OFF_AT_ICON_PX`
+  （`SHADOW_OFF` 必須高於前兩者），`tests/lib/canvas/view.test.ts` 有斷言。
+- ⚠️ **`tests/tools/build-data.test.ts` 的效能預算有兩條斷言，不要合併**：一條量測試自組產物（會低估），
+  一條量 `pretest` 寫出的 `src/generated/tree.json`。少了後者就會「本機全綠、CI 爆掉」。
+- **描述文字以「遊戲內實際顯示」為準**：上游樣板有沒填值的 `{n}` 時，遊戲連同那一段不顯示；**但上游填得出值就用上游的**。
+  正本刻意跟上游不一致的格子清單在 `data/CLAUDE.md`，對新版資料表時會顯示成差異，**不要改回去**。
+- ⚠️ **佔位符偵測機制留著但真實資料已無樣本**（`parseGrowth` 的 `{n}` 判定、`dataIssue: 'placeholder'`、
+  規則 9、面板「數值待補」）。對應測試**一律用合成樣本**，不要綁真實節點。
+- ⚠️ **沒有進 tree.json 的資料檔**（`dice-stats`、`passive-upgrade-cost`、`tactics`、`boss`、`rift-shop`、
+  `events`、`rewards`、`maxlevel-official`、`offgame-effects`）：「表與節點對不上」在產物層面零痕跡，
+  **validate 規則（或 rewards 的單元測試）是唯一防線**，而且對應規則必須是**雙向**的。
+- ⚠️ **任何「這顆練滿要多少」一律走 `levelTableFor()`**（`/sim` 與 NodeDetail 同一判準）；
+  `upgradeTableApplies()` 只給通用符文表用——special 節點套通用表會印出差兩個數量級的數字。
+- ⚠️ **`unlockNote` 是自由文字而 `renderDetail()` 用 `innerHTML`**：`NodeDetail.ts` 一定要 `escapeHtml(formatUnlockVia(node))`（規則 18 擋不住內容）。
+- **`bypassPrereq` 不改圖結構**：邊照樣存在，只有前置鏈遍歷在它停止往上追；`/tree` 把入邊畫成虛線
+  （旗標由 `scene.ts` 搬成 `SceneEdge.bypassable`；`painter.ts` 的邊迴圈跑兩趟、`setLineDash` 設在迴圈外——它是 context
+  狀態不是每條線的屬性；顏色透明度仍走 `state.ts` 的 `edgeColor()`／`edgeAlpha()`）。站台沒有全站圖例，虛線由詳情面板那句「鏈上有 N 顆可直接領的骰子」說明。
+  ⚠️ **那句綁 `Selection.bypassNodes`，不可以綁 `bypassed`**（理由見 `src/lib/selection.ts`；E2E X2 守）。
+  面板三句話講三件事不要混：「已排除 N 個非成本解鎖節點」／「鏈上有 N 顆可直接領的骰子」／「因此已跳過 N 個前置」。
+- **首頁（`src/pages/index.astro`）的資料版本戳記用 `changelog.entries.find(e => e.data)`**（跟規則 20 的 `checkChangelog()` 同一個 `find`），
+  不要為了讓帶 `data` 的條目留在前 3 筆去調排序；日誌由新到舊，同一天可多筆。`tests/e2e/codex.spec.ts` 的 C5 守。
 
 ## CI 規則（`tools/validate.ts`）
 
 **編號注意**：`規則 11`＝差異摘要留言、`規則 12`＝效能預算，都是 CI 步驟不是 validate 規則；
-`規則 13` 起才接回 validate。
+`規則 13` 起才接回 validate。每條的成因寫在 `tools/validate.ts` 該規則旁，這裡只列判準。
 
 | 規則 | 守什麼 |
 |---|---|
-| 0 | 邊必須是 `<svg>` 直屬子元素；節點與邊不可帶 `display`／`visibility`／`style`／`opacity="0"`；`marker-end` 必須指向正本定義過的箭頭且不可有 `marker-start`；座標與 viewBox 驗到是有限數 |
-| 1 | `nodes.json` 的**結構**：必填齊全、型別、長度 ≤ 500、無未知欄位；**選用欄位不用時要整個省略，不可寫成 `""`**（空字串是 falsy，會安靜通過「非骰子不該有覺醒」） |
-| 4 | 擋「等級行重新混進 `cost`」。⚠️ 改語意 tree.json 一個位元組都不會變，所以它需要自己的測試 |
-| 5 | 一個端點同時對上兩顆節點時直接報錯，不再靜靜取第一顆 |
-| 6 | 無環、根集合正確、所有節點從根可達（`data-wip="1"` 的節點豁免可達性，讓貢獻者先接資料再接線；6(c) 只警告） |
-| 6(d) | **`data-wip="1"` 的節點完全不准接線**。wip 讓節點豁免「非預期的根」與「從根不可達」，而那是圖結構唯一的守門員——豁免＋能接線＝可以把任意節點切到別的分支，validate 全綠、節點數邊數不變、四個不變量都對，而成本變了。豁免與接線能力二選一 |
-| 7 | 圖示：(a) 正本引用的檔案存在 (b) 檔名＝內容 sha256 前 12 碼 (c) PNG 結構與解析度 (d) 孤兒檔只警告 (e) 顯示尺寸×2 ≤ 圖檔解析度 |
-| 8(b) | 詞彙表欄位齊全、色碼格式、解釋文字裡的 `#` 也要查得到；`code` 就是 HTML id 與網址錨點（`/guide/keywords#FROZEN`），所以**不得撞號**、**必須是英文字母開頭的 ASCII 識別字** |
-| 9 | 成長值解析警告（**不擋 PR**） |
-| 10 | 中央樞紐：`<svg>` 直屬、不帶 transform、圖檔存在且解析度 ≥ 顯示尺寸兩倍、放射線終點落在 `data-links` 指定節點中心 |
-| 13 | viewBox 必須等於 `0 0 2000 1700`；節點與邊端點落在畫布內；任兩顆節點中心至少相距 5（疊在一起時邊接到誰只取決於檔案裡的先後順序） |
+| 0 | 邊是 `<svg>` 直屬；節點與邊不帶 `display`／`visibility`／`style`／`opacity="0"`；`marker-end` 指向正本定義過的箭頭、不得有 `marker-start`；座標與 viewBox 是有限數 |
+| 1 | `nodes.json` 結構：必填、型別、長度 ≤ 500、無未知欄位；**選用欄位不用時整個省略，不可寫 `""`** |
+| 2 | id 唯一且符合 `^[1-5][0-6]\d\d$`（首碼＝分支 1–5，次碼 0–6） |
+| 3 | `type` ↔ 外框 `stroke` 對應：支援節點的 stroke 必須是 support 色，反之亦然（看 stroke 不看形狀） |
+| 4 | `cost` 只寫錢，等級行不准混進去（改語意時 tree.json 不變，要有自己的測試） |
+| 5 | 一個端點同時對上兩顆節點 → 報錯 |
+| 6 | 無環、根集合正確、全部從根可達（`data-wip="1"` 豁免可達性；6(c) 只警告） |
+| 6(d) | **`data-wip="1"` 的節點完全不准接線**（豁免＋能接線＝可把節點切到別的分支而 validate 全綠） |
+| 7 | 圖示：(a) 檔案存在 (b) 檔名＝內容 sha256 前 12 碼 (c) PNG 結構與解析度 (d) 孤兒只警告 (e) 顯示尺寸×2 ≤ 解析度 |
+| 8(b) | 詞彙表欄位、色碼、解釋文字裡的 `#` 查得到；`code` 是 HTML id／錨點，**不得撞號、必須英文字母開頭的 ASCII** |
+| 9 | 成長值解析警告（不擋 PR） |
+| 10 | 中央樞紐：`<svg>` 直屬、無 transform、圖檔解析度 ≥ 顯示尺寸 2 倍、放射線終點落在 `data-links` 節點中心 |
+| 13 | viewBox ＝ `0 0 2000 1700`；節點與邊端點在畫布內；任兩節點中心相距 ≥ 5 |
 | 14 | 覺醒只掛在骰子上 |
-| 15 | 升級花費表 ↔ 正本解鎖金幣；**跳過 `passive-upgrade-cost.json` 的 `special` 節點**（`special` 的定義就是「套不進通用表」，`levelTableFor()` 執行期也是 special 優先——`1601` 太陽強化 20 級、解鎖金幣 50,000，不跳就永遠紅） |
+| 15 | 升級花費表 ↔ 解鎖金幣；**跳過 `passive-upgrade-cost.json` 的 `special` 節點** |
 | 16 | `gameId` 全有且唯一；`category` 只在玩家被動 |
-| 17 | 官方滿級值反向驗算 `growth` 的推導 |
-| 18 | 解鎖例外表的型別與長度（含 `unlockPaid`／`bypassPrereq` 必須是布林） |
-| 19 | SVG 的 `data-id` 集合 ≡ `nodes.json` 的鍵集合，雙射零殘餘，**兩種殘餘都要逐一列出 id**（239 個節點，只說「數量對不上」等於沒說） |
-| 20 | changelog 的結構，以及最新一筆資料條目與正本版本欄位一致。擋的不是「日誌寫錯」，是**「資料改了、日誌沒改」** |
-| 21 | `/board` 純骰子圖（`data/board-icons.json` ＋ `data/board-icons/`）：(a) 骰子漏一筆對應 (b)(c)(d) 目錄本身 (e) 值必須是 12 碼小寫 hex（擋路徑穿越與 `[object Object].png`） (f) 指向的檔不存在 (g) **兩筆指到同一張圖** (h) 對應表自己留著一筆不是（或已不是）骰子的 id。⚠️ **實作在 `checkDiceIconMap()`，跟規則 30 共用**，要加檢查就加在那裡 |
-| 30 | `/dice` 圖鑑的 3D 立體骰子圖（`data/dice3-icons.json` ＋ `data/dice3-icons/`）：**跟規則 21 同一支 `checkDiceIconMap()`，子規則字母一一對應**，差別只有對應表、目錄與訊息裡的稱呼。所以 `tests/tools/validate.test.ts` 的規則 30 那組**刻意不重抄規則 21 那十幾條**，只驗兩件規則 21 證明不了的事：(1) 第二條路徑真的接上了（少接就每一條子規則都是 no-op，而畫面上看不出來）／(2) 它讀的是自己那份對應表與目錄、而且跟 `board-icons` 沒有任何一顆指向同一張圖 |
-| 22 | 玩家被動升級費用表：6 個 tier 的形狀與區間連續性、`(maxLevel, unlockGold)` 不得撞號、**每個可升級的共通節點都對得到 tier、每個 tier 也都對得到節點**、`special` 的鍵是節點 id 且不與 tier 重疊、`special` 的 levels 可帶選填 `mythic`（`{kind: 正整數}`，kind 必須登記在 `MYTHIC_CORES`）、**未知欄位一律擋**（1.1.0 的舊寫法 `"solar": N` 會被指名：留著它不會有任何錯誤，那一列的超越核心只是安靜消失） |
-| 24 | `data/tactics.json`：(a) 最外層是非空陣列／(b)(c)(d) 圖示目錄本身（**子選項的圖一起掃**）／(e) 每筆欄位型別、未知欄位、`stage` 是四個階段之一、`dataIssue`／(f) 指向的圖不存在／(g) 兩筆指到同一張圖——**只放行 `9`＋`40`**（`sharedIconIds`），而且那兩筆反過來必須同圖／(h) 編號格式與撞號，**以及 `gameId` 撞號**（`id` 撞號畫面上看得出來，`gameId` 撞號完全正常——它是對上游資料表的 join key）／(i) **子選項**：`options` 是非空陣列、子選項的 id 是「母編號-序號」、只准 `id`／`name`／`text`／`gameId`／`icon`、`text` 非空；id 含 `-` 卻放在頂層也擋／(j) **`availability` 三個布林齊全、至少一個 true**，某模式可用就要有對應文本（對戰→`versus`、任一合作→`coop`），15 個未啟用編號指名擋／(k) `#標記` 要在白名單 |
-| 26 | `data/prereq-ranks.json`（前置節點的等級條件，客戶端 `NeedNode`／`NeedNodeRank`）：最外層只有 note／source／ranks；外層鍵與內層鍵都是節點 id，內層必須是外層那顆的**祖先**、不得是自己；rank 是整數且 2 ≤ rank ≤ 該前置的 `maxLevel`（rank 1 就是解鎖，邊已表達）。⚠️ `TreeNode.prereqRanks` **只在有值的節點上放欄位**——tree.json 餘裕不到 1 KB，241 顆各多一個空物件會爆 |
-| 25 | `data/boss.json`：通用檢查與規則 24／27 同一支 `checkIconedRecordList()`（含 (h) 的 `gameId` 撞號）。⚠️ **自己只寫一條**：`difficulty` 必須是「一般」或「困難」（同規則 24(e) 那一類的資料自身語意）。除此之外仍然一條都不要加——複製通用檢查的第二份出去就一定漂移 |
-| 27 | `data/rift-shop.json`（裂縫商店）：通用檢查與規則 24／25 同一支 `checkIconedRecordList()`，但**傳 `sharedIconKey: 'name'`**——同名的三個檔位共用一張圖是設計（客戶端只給 `*Low` 畫圖）。⚠️ **(g) 因此是雙向的**：跨不同名字共用是錯，**同名卻指向不同的圖也是錯**（2026-09-06 code review 抓到後補的反方向；少了它 `sharedIconKey` 就是個單向放行條款，`add-icon --rift-shop 73` 只換一筆、同名兄弟留在舊雜湊，實測零錯誤零警告而畫面上一個效果出現兩種圖）。自己只寫三條語意檢查：(e) `grade` 必須是三個合法值之一、`cost`／`weight` 必須是正整數（`requiredText` 只認非空字串，驗不到數字欄位）／(i) **同一階級的 `weight` 必須一致**（刻意不寫死 30／20／10：上游調價不該整片紅，真正會壞畫面的是階級與權重的對應崩掉）／(j) **同名的多筆階級必須互異**（那是 (g) 抓不到的：同名共用圖合法，複製一筆只改編號會全程沉默，畫面上是同一組出現兩張同名同圖的卡片） |
-| 28 | `data/offgame-effects.json`（骰子樹符文／玩家被動 → `/board` 數值卡片的語意）：最外層只有 note／source／effects；**雙向**——每一顆骰子符文／玩家被動都要有一筆（沒影響的寫 `target: "none"` 附 reason），表裡的孤兒 id 也擋；`target` 在 `src/lib/offgame.ts` 的詞彙內、`scope` 指得到骰子或分支（符文必須是 `dice:<id>`）、`maxLevel` 等於 nodes.json；等級會成長的那一筆，`value`／`rankAdd`（或 `value2`／`rankAdd2`）要跟描述的「基礎(+每級)」一致（`parseGrowth`，同規則 17；比絕對值）；`statAdd`／`statSet`／`statMul` 的 scope 必須是 `dice:<id>`、`label` 要是那顆骰子在 dice-stats.json 真的有的列；`none`／`conditional` 必填 reason、等級會成長的 `mechanic` 必填 template（只認 `{V}`／`{V2}`）；未知欄位一律擋。⚠️ 不進 tree.json（`/board` 建置期直接讀），規則 28 是它唯一的防線 |
-| 29 | `data/events.json`（期間限定活動，`/events`）：**不走 `checkIconedRecordList()`**（這份沒有 icon 檔、沒有 id ↔ 圖的對應，形狀是通用表格）。(a) 最外層是非空陣列／(b) 必填欄位與未知欄位（⚠️ **沒有 `notes` 欄位**：資料出處與上游矛盾的註記是維護者資訊，2026-09-21 從畫面與資料一起拿掉，未知欄位那條會擋下把它加回來）／(c) `id` 是小寫英數連字號（**它是頁面錨點**）且不撞號／(d) `version` 是 x.y.z（直接印在卡片徽章上）／(e) `period` 只能是 `null` 或 `{begin, finish}`（客戶端沒有日期欄位，猜來的檔期跟查證過的長得一模一樣）／(f) `currencies` 的 `kind` 要登記過圖／(g) 每一段的 `title`／`columns`／`rows` 形狀，`note` 是選填但只要出現就要非空／(h) **每一列的格數 ＝ 表頭欄數**（對不上時版面照畫，畫面上是一張欄位錯開、看起來很正常的表）／(i) 每一格是非空字串或 `{icon, text}`，`icon` 要登記過圖／(j) `screenshots` 指向的檔要真的在 `public/events/` 底下、`caption` 非空（它同時是 `alt`）、`width`／`height` 是正整數（由產生腳本從檔案讀，版面**不准寫死一組數字**）、檔名不得帶路徑，孤兒檔只警告。⚠️ **目錄整個讀不到是錯不是跳過**（/code-review 2026-09-21 抓到）：原本吞掉例外就讓整條 (j) 變成 no-op——目錄改名或漏提交時每張截圖都是破圖而 CI 全綠。只有「沒有任何活動宣告 `screenshots`」時才允許目錄不存在。⚠️ 合法的 `icon`／`kind` 只有一份清單（`src/lib/events.ts` 的 `EVENT_ICON_KINDS`），版面與這條規則共用 |
-| 23 | `data/dice-stats.json`：(a) 骰子漏一筆／(b) 表自己的孤兒 entry／(c) `name` 與正本節點不符／(d) entry 結構／(e) stat 欄位型別（含 `diceGrowth`／`spGrowth`，空字串不放行——`""` 會讓 pill 的 title 印成「骰點：」）／(f) 同一顆骰子的 `label` 撞號／(g) 四個檔位的值要嘛全有要嘛全無／(h) 未知欄位／(i) 四個檔位反推得出成長參數（`/board` 數值卡片用，`src/lib/dice-calc.ts`；形狀已壞的項目讓給 (e)(g) 說話）／(j) `spGrowth` 的數值等於 (i) 反推的每級強化，固定項目只能寫「無變化」或省略（`/dice` 直接印 spGrowth）。⚠️ 以 **gameId** 為鍵，規則 19 抓不到它的殘餘。⚠️ **(h) 是 (g) 的補完不是潔癖**：三個檔位鍵**全部**打錯時 (g) 完全沉默，那一項被判成固定值，畫面上跟「它本來就不會變」一模一樣。⚠️ (b) 的「找不到節點」那一半要先讓路給規則 19／規則 1，否則 `nodes.json` 漏一筆文案會多噴假錯誤 |
+| 17 | 官方滿級值反向驗算 `growth` |
+| 18 | 解鎖例外表型別與長度（`unlockPaid`／`bypassPrereq` 是布林） |
+| 19 | SVG `data-id` 集合 ≡ `nodes.json` 鍵集合，**兩種殘餘都逐一列出 id** |
+| 20 | changelog 結構＋最新資料條目與正本版本欄位一致（擋「資料改了、日誌沒改」） |
+| 21 | `/board` 純骰子圖對應表（`data/board-icons.json`＋目錄）(a)–(h)：漏骰子、目錄、12 碼小寫 hex、檔不存在、**兩筆同圖**、對應表裡的非骰子 id。實作在 `checkDiceIconMap()`，跟規則 30 共用 |
+| 30 | `/dice` 3D 骰子圖（`data/dice3-icons.json`＋目錄）：同一支 `checkDiceIconMap()`，子規則字母一一對應。`validate.test.ts` 的規則 30 組**刻意不重抄規則 21**，只驗第二條路徑真的接上、且不與 `board-icons` 同圖 |
+| 22 | 玩家被動升級費用表：tier 形狀與區間連續、`(maxLevel, unlockGold)` 不撞號、**節點 ↔ tier 雙向對得到**、`special` 鍵是節點 id 且不與 tier 重疊、`mythic` 的 kind 要在 `MYTHIC_CORES`、**未知欄位一律擋**（舊寫法 `"solar": N` 會被指名） |
+| 23 | `data/dice-stats.json`（以 **gameId** 為鍵，規則 19 抓不到）：(a) 漏骰子 (b) 孤兒 (c) `name` 不符 (d) 結構 (e) stat 型別（`""` 不放行） (f) `label` 撞號 (g) 四檔位全有或全無 (h) 未知欄位——**(h) 是 (g) 的補完**，鍵全拼錯時 (g) 沉默 (i) 四檔位反推得出成長參數 (j) `spGrowth` 等於 (i) 的每級強化。(b) 要先讓路給規則 19／1 |
+| 24 | `data/tactics.json`：(a) 非空陣列 (b)–(d) 圖示目錄（含子選項的圖）(e) 欄位型別、`stage` 合法 (f) 圖不存在 (g) 兩筆同圖——**只放行 `sharedIconIds`**，且那兩筆反過來必須同圖 (h) 編號與 **`gameId` 撞號** (i) 子選項形狀，id 是「母編號-序號」、含 `-` 卻在頂層也擋 (j) `availability` 三布林齊全且至少一 true、可用模式要有對應文本、未啟用編號指名擋 (k) `#標記` 在白名單 |
+| 25 | `data/boss.json`：通用檢查走 `checkIconedRecordList()`；**自己只寫一條** `difficulty` ∈ {一般, 困難}，其餘不准複製 |
+| 26 | `data/prereq-ranks.json`：外層只有 note／source／ranks；內層鍵必須是外層節點的**祖先**且非自己；2 ≤ rank ≤ 該前置 `maxLevel`。`TreeNode.prereqRanks` **只在有值的節點上放欄位**（tree.json 預算） |
+| 27 | `data/rift-shop.json`：走 `checkIconedRecordList()` 且傳 `sharedIconKey: 'name'`；**(g) 雙向**——跨名共用錯、同名不同圖也錯。自己的語意檢查：(e) `grade` 合法、`cost`／`weight` 正整數 (i) 同階級 `weight` 一致（刻意不寫死數值）(j) 同名多筆的階級互異 |
+| 28 | `data/offgame-effects.json`：**雙向**（每顆符文／被動都有一筆，`none` 附 reason；孤兒擋）、`target` 在 `src/lib/offgame.ts` 詞彙內、`scope` 合法、`maxLevel` 一致、成長值與描述一致（`parseGrowth`）、`stat*` 的 `label` 在 dice-stats 存在、`mechanic` 必填 template（`{V}`／`{V2}`）、未知欄位擋。不進 tree.json，這條是唯一防線 |
+| 29 | `data/events.json`：**不走 `checkIconedRecordList()`**。(a) 非空陣列 (b) 必填／未知欄位（**沒有 `notes` 欄位**，決策：維護者註記不進資料，不要加回）(c) `id` 小寫英數連字號、不撞號（頁面錨點）(d) `version` x.y.z (e) `period` 只能 `null` 或 `{begin, finish}` (f) `currencies` 的 `kind` 已登記 (g) 段落形狀 (h) **每列格數＝表頭欄數** (i) 格子是非空字串或 `{icon, text}` (j) `screenshots` 檔在 `public/events/`、`caption` 非空、寬高正整數、檔名無路徑；**目錄讀不到是錯不是跳過**。合法 `icon`／`kind` 只有 `src/lib/events.ts` 的 `EVENT_ICON_KINDS` 一份 |
 
-⚠️ **幾何規則吃 `nodes`，文案規則吃 `withText`**。`withText` 是「兩邊都在、結構又合法」的過濾集合；
-把它餵給幾何規則的話，`nodes.json` 漏一筆會被翻譯成幾十條指向 SVG 的假錯誤（實測：刪掉 `1001`
-一筆文案 → 55 條錯誤，54 條是規則 5／6／10／18 在說「從根不可達」，唯一說對的規則 19 被埋在裡面）。
-文案規則＝1／3／4／8／9／14／15／16／17，其餘全部走 `nodes`。
-
-⚠️ **(b)(c)(d)「掃一個雜湊命名的圖示目錄」規則 7／21／24／25／27／30 共用 `checkHashNamedIconDir()`，
-只有一份實作**（規則 21／30 再往上共用一層 `checkDiceIconMap()`，那層管的是「對應表是
-`{節點 id: hash}`」這種資產路徑的 (a)(e)(f)(g)(h)；規則 24／25／27 則共用 `checkIconedRecordList()`，
-那層管的是「一筆一個 id、雜湊寫在紀錄 `icon` 欄」這種資料檔的 (a)(e)(f)(g)(h)(k)）。要加檢查就加在那裡，不要為第二個目錄複製第二份出去——上一份複製品漂到
-「不驗 PNG、孤兒檔嚴重度相反、逐 entry 重複讀檔」才被抓到。孤兒檔一律只警告：那只是 repo
-裡多一個沒人引用的 PNG，擋下來會連「換圖忘了刪舊檔」一起擋。
-
-⚠️ **規則 21(h)／30(h) 必須先跳過規則 19 與規則 1 的地盤**：判斷「是不是骰子」要走 `withText`，
-不讓開的話 `nodes.json` 漏一筆文案就會多噴一條指向對應表的假錯誤。
-兩條規則都仍擋不到：**兩顆骰子的雜湊互換**（內容定址的本質限制，每一條檢查都照樣成立）。
-
-- **`parseCost` 只吃單行**：規則 4 拒絕的輸入 `build:data` 必須也拒絕，判斷寫在 `parseCost` 裡
-  而不是 validate，兩邊才不會對同一份輸入給不同答案。
-- **正本上唯一合法的 `<text>` 是樞紐的標籤**（在 `parseTree` 擋）。節點標籤的正本是 `nodes.json`
-  的 `label`；`nodeRef()` 的退路因此改用 `transform` 座標（「它在哪」而不是「它叫什麼」）。⚠️ **這條掃全檔，不是只掃
-  `g.node` 底下**：在 Inkscape 裡把節點解散群組，`<text>` 會落到圖層根，normalize 攤平圖層時
-  再把它搬到 `<svg>` 底下——只看 `g.node` 的話它會永遠留著，而且是 normalize 的定點
-  （CI 的 `git diff --exit-code` 全綠）、validate 也沒有規則看得到。
-- **`label` 有自己的長度上限 20**（`MAX_LABEL_LENGTH`），用碼點計字。搬走之後 review 幾何 PR
-  看不到標籤，「把 description 貼進 label」只剩規則 1 會說話。
-- **`npm run normalize`（`tools/normalize-svg.ts`）刪掉樞紐以外的所有 `<text>` 並比對 `nodes.json`**：相同＝預覽檔殘留只報
-  個數；不同＝有人在 GUI 裡改了字，逐筆列出並 exit 1。CI 的「正規化定點檢查」跑的就是這支。
-  ⚠️ **比對與中止排在 `writeFileSync` 之前，漂移時一個位元組都不寫。** 反過來寫的話那個錯誤是
-  **一次性**的：再跑一次就全綠，貢獻者改的字無聲消失。`tests/tools/normalize-cli.test.ts` 守。
-  ⚠️ **`nodes.json` 找的是 SVG 同目錄那份**，寫死路徑會在破壞性寫檔之後噴 ENOENT。
-- ⚠️ **`normalize` 會把不認得的 `<g>` 當成圖層攤平**（`tools/normalize-svg.ts` 最後一步，選擇器 `svg > g:not(.node):not(.tree-center)`）。
-  新增任何刻意保留的頂層 `<g>` 時記得加進排除清單，否則它會被安靜拆散、解析端當作「沒有那個東西」，
-  validate 也不會抱怨（規則只在該元素存在時才檢查）。中央樞紐第一次接上時就踩過。
+- ⚠️ **幾何規則吃 `nodes`，文案規則吃 `withText`**（文案規則＝1／3／4／8／9／14／15／16／17）。
+  餵錯的話 `nodes.json` 漏一筆會變成幾十條假錯誤。規則 21(h)／30(h) 判斷「是不是骰子」也走 `withText`。
+- ⚠️ **共用實作只有一份，新檢查加在那裡，不准複製**：掃雜湊命名圖示目錄＝`checkHashNamedIconDir()`
+  （規則 7／21／24／25／27／30）；對應表型＝`checkDiceIconMap()`（21／30）；一筆一 id 的資料檔型＝
+  `checkIconedRecordList()`（24／25／27）。孤兒檔一律只警告。已知擋不到：兩顆骰子的雜湊互換。
+- **`parseCost` 只吃單行**：規則 4 拒絕的輸入 `build:data` 也要拒絕，判斷寫在 `parseCost`（`src/lib/cost.ts`）。
+- **正本上唯一合法的 `<text>` 是樞紐標籤**，`parseTree` 掃**全檔**擋（`tools/lib/svg-parse.ts`）。
+  `label` 上限 20 碼點（`MAX_LABEL_LENGTH`，`tools/lib/node-text.ts`）。
+- **`npm run normalize`**（`tools/normalize-svg.ts`）刪樞紐以外的 `<text>` 並比對同目錄的 `nodes.json`，
+  不同就逐筆列出 exit 1；**比對與中止在 `writeFileSync` 之前**（`normalize-cli.test.ts` 守）。
+  ⚠️ 它把 `svg > g:not(.node):not(.tree-center)` 當圖層攤平——**新增刻意保留的頂層 `<g>` 要加進這個排除清單**，
+  否則被安靜拆散而 validate 不抱怨。
 
 ## 設計系統
 
-`:root` 有八組 token，全部定義在 **`src/styles/tokens.css`**，**新增樣式一律用它們**：
-⚠️ **token 定義只准留在 `tokens.css`，不要寫到別的檔**——`tests/styles/tokens.test.ts`「每個
-`var(--x)` 都真的定義得出來」那條拿 `tokens.css` 當唯一來源，正則是 `^\s{2}(--…)`（只認縮排
-兩格、不綁 `:root` 區塊，故意不合併九個檔一起掃），寫到別處會讓那條檢查對那個 token 失效。
+**token 全部定義在 `src/styles/tokens.css`，也只准定義在那裡**（`tests/styles/tokens.test.ts` 以它為唯一來源，
+正則只認縮排兩格的 `--x`）。新增樣式一律用 token；各 token 的理由與備援值寫在 `tokens.css`。
 
-⚠️ **`--surface-0` 比卡片還低一階**，只給「凹進去」的元素用（目前是 `/dice` 的數值 pill）。
-它**不是**「比 `--bg` 再深一階」：2026-09-23 骰桌色階下 `--surface-0` 比 `--bg` 淺
-（對比 1.07）。要看的一直都是 `--surface-0` → `--surface-1` 那一階，
-`.stat-pill` 只出現在卡片上、從不貼著 `--bg`。理由與備援值寫在 `tokens.css` 該處。
+| 組 | token |
+|---|---|
+| 間距 | `--space-h/1..7`（4px 網格，`--space-h` 是唯一半階） |
+| 圓角 | `--r-xs/sm/md/lg/btn/pill`（`--r-btn` 只給 `.btn`／`.seg`） |
+| 字級 | `--fs-xs/sm/md/base/lg/xl/2xl/3xl` |
+| 表面 | `--surface-0/1/2/3`、`--border-strong` |
+| 陰影 | `--shadow-1/2/3`、`--ring` |
+| 動效 | `--t-fast/press/med/slow`、`--e-out/in-out/spring`、`--p-lift/press/stagger/stagger-max/glow` |
+| 面的質感 | `--hair`、`--ink`、`--depth`、`--face`／`--face-lift`／`--face-float` |
+| 排印 | `--font`、`--font-num`、`--ls-label` |
+| 按鈕 | `--btn-pri-bg/fg/edge/line`、`--btn-alt-bg` |
 
-| 組 | token | 說明 |
-|---|---|---|
-| 間距 | `--space-h/1..7` | 4px 網格（`--space-h` 是唯一半階 2px） |
-| 圓角 | `--r-xs/sm/md/lg/btn/pill` | 4/6/8/12/10/999px（2026-09-23 骰桌放大一階；`--r-btn` 只給 `.btn`／`.seg`） |
-| 字級 | `--fs-xs/sm/md/base/lg/xl/2xl/3xl` | 0.75→2.4rem（2026-08-26 拉開對比，見下） |
-| 表面 | `--surface-1/2/3`、`--border-strong` | 見下 |
-| 陰影 | `--shadow-1/2/3`、`--ring` | `--shadow-3` 給浮在畫布上的東西 |
-| 動效 | `--t-fast/press/med/slow`、`--e-out/in-out/spring`、`--p-lift/press/stagger/stagger-max/glow` | 見下 |
-| 面的質感 | `--hair`、`--ink`、`--depth`、`--face`／`--face-lift`／`--face-float`、`--p-lift` | 見下 |
-| 排印 | `--font`、`--font-num`、`--ls-label` | 見下 |
-| 按鈕 | `--btn-pri-bg/fg/edge/line`、`--btn-alt-bg` | 實體鍵帽兩組，見共用元件的 `.btn` |
-
-- **表面分層**：靜態頁的面 → `--surface-1`；浮在畫布上的 chrome（`#toolbar`、`#detail`、
-  `#branch-chips`、下拉選單、`/dice` 的篩選列）→ `--surface-2`；hover／選中的填色 → `--surface-3`。
-  舊的 `--panel` 已刪除——一個東西兩個名字正是要收掉的漂移來源。
-  2026-09-23 起 `#toolbar`／`#sim-toolbar` 的陰影是 `--face-float`，`#detail`／`#sim-panel` 的面來自 `.panel`。
-- **面的質感用 `--face-*`，不要在元件裡自己疊 box-shadow**（2026-08-26 PR ④）。三個是同一個
-  配方的三個狀態：`--face` 靜止（上緣 `--hair` 高光 ＋ 下緣硬邊 ＋ `--shadow-2`；硬邊顏色是 `--ink`、厚度是
-  `--depth`（3px），不是黑色半透明）、`--face-lift`
-  hover（硬邊跟著 `--p-lift` 長）、`--face-float` 浮在畫布上的面（**不要下緣硬邊**——硬邊在講
-  「它坐在某個平面上」，而 `#detail`／下拉選單沒有坐在任何東西上）。抄散到元件檔就是四份會漂
-  的複本，跟 `--panel`、畫布金色的第二份定義同一族（畫布的顏色現在只有 `src/lib/canvas/theme.ts`
-  一份，開機時從 token 讀出來）。
-- **hover 抬升一律 `var(--p-lift)`**，不要再寫死 `translateY(-2px)`：`--face-lift` 的下緣硬邊
-  是用 `calc(var(--depth) + var(--p-lift))` 跟著它算的，寫死就對不上。
-- **字級級距 2026-08-26 拉到 3.2 倍**（0.75 / 0.84 / 0.92 / 1 / 1.2 / 1.45 / 1.85 / 2.4rem）。
-  舊的 0.78→1.9 只有 2.4 倍，八階擠在一起，標題與輔助文字得靠顏色和粗細去分。
-  ⚠️ `--fs-xs` 現在是 **12px**，那個尺寸的中文**一律不准再加 `font-weight: 600`**——橫筆畫會
-  連成一條線，看起來像被劃掉（`dice.css` 的 `.awakening-head` 記著這個實測）。粗體中文最小 `--fs-sm`。
-- **標題（`h1/h2/h3`）的個性來自 `font-weight: 700` ＋ `letter-spacing: 0.02em`**，規則在
-  `base.css`，⚠️ 不要用拉丁 display face 排標題（Baloo 2 只有拉丁 subset，只會讓標題裡的數字跳出來）。
-- **數字與代號用 `--font-num`（自架的 Baloo 2 拉丁 subset，17.9KB；2026-09-23 取代 Archivo）**：`.meta`／`.stat-v`／
-  `.game-id`／`.nav-updated`。字型檔在 `public/fonts/`，來源與重製指令在該處的 `README.md`。
-  ⚠️ 三個容易踩的點：(一) `--font-num` 後面**必須**原封不動接上 `--font` 的全部成員，Baloo 2
-  沒有中文字，只寫 `'Baloo 2', sans-serif` 會讓同一句話裡的中文掉到瀏覽器預設；(二) 路徑走
-  `/fonts/` 不是 `/assets/fonts/`——`public/assets/` 整個在 `.gitignore`（build:data 的產出
-  目錄），放進去 CI 與線上會 404；(三) `.game-id` 是 `<code>`，`base.css` 的 `code, pre` 會把它
-  搶去 `ui-monospace`，那個位置的 `font-family` **一定要明寫**。
-  ⚠️ wght 軸只保留 500–700，所以沒寫 `font-weight` 的位置會被字型匹配夾到 500。**刻意不補
-  `font-weight: 500`**：那會連帶把同一句話裡退回 `--font` 的中文也加粗，12px 的粗體中文會糊。
-  ⚠️ **重跑 subset 有兩個靜靜出錯的地方**（2026-08-26 都踩過）：`--unicodes` 加了上游沒有的
-  碼位不會報錯（`U+2192` 就是這樣進了 README 卻沒進字型），`--layout-features` 留空會把
-  `kern`／`tnum` 一起砍掉。守門：`tokens.test.ts` 驗體積 ≤30KB，E2E 的 **D15b** 用 CDP 的
-  `CSS.getPlatformFontsForNode` 驗純拉丁節點只用到一種字型。
-  ⚠️ **`tabular-nums` 不等於「數字等寬」**：Chromium 把字形前進寬度四捨五入到整數像素，
-  數字寬度在 16px 下不保證一致。不要拿「換一天寬度不變」寫註解或斷言。
-- **小標籤的字距走 `--ls-label`（0.1em）**，只給 `--fs-xs` 級的標籤用（`.dice-card .meta`、
-  `.stat-pill .stat-k`）。⚠️ 不要往內文或 1rem 的整句中文擴——中文加字距會把行內的詞界抹平，
-  整行變成等距字塊（`#detail .meta` 因此刻意只掛 `--font-num`、不掛字距）。
-- **焦點框全站只有一條** `:focus-visible { outline: var(--ring) }`。元件只在需要**額外**回饋時才補。
-- **每一條 `transition` 都要指名 token 曲線**（`--e-out` hover／按壓／光暈／進場；`--e-in-out`
-  兩端都要停穩的位移；`--e-spring` **只給狀態切換**——目前只有切換鈕被勾選與 `/tree` 篩選面板
-  開合兩處）。裸的 `ease` 由 `tokens.test.ts` 的「過場曲線」擋住。
-  ⚠️ `--t-med`／`--slide-ms` **不准動**：`tree-canvas.ts` 的 `cssMs()` 讀它們當
-  `CENTER_MS`／`FILTERS_MS`／`SLIDE_MS`。只換曲線不換長度是安全的。
-- **按下去要有回饋**：`transform: scale(var(--p-press))`，`transform` 的過場長度走 `--t-press`。
-  ⚠️ **不要在 `:active` 裡寫 `transition-duration: var(--t-press)`**——那是單值，會把同一份
-  清單裡每個屬性的長度一起覆寫掉（切換鈕的 spring 就是這樣被關掉的）。
-  ⚠️ 停用的按鈕要 `:not(:disabled)`。
-- **進場動畫**：`[data-enter] :is(.home-card, .guide-card, .dice-card, .event-card-link)` 掛 `rise`（`base.css`）。
-  `--i` 由 Astro 在建置時寫成 inline style，**夾上限的動作只在 CSS**
-  （`min(var(--i, 0), var(--p-stagger-max))`），模板不准自己 `Math.min`。
-  ⚠️ `data-enter` 由 `Base.astro` `<head>` 裡一支**同步的 `is:inline` script** 掛上、載入後由
-  頁尾那支 script 的 `setTimeout` 移除。兩端都不能省：不是 `is:inline` 就會被打包成 defer
-  （卡片先以定位狀態進 DOM）；不移除的話 `/dice` 用 `[hidden]` 篩選切回來時動畫會重播。
-  **不能改用 `animationend`**——`display: none` 的元素不派發那個事件。
-  ⚠️ **刻意不寫成伺服器端輸出的 `<html data-enter>`**：那樣沒有 JS 的環境會永遠留著它。
-  ⚠️ 那段期間 `animation-fill-mode: both` 的結束值會壓過 `:hover` 的 transform，載入後約一秒
-  內卡片 hover 不會抬起。已知且刻意接受。
-- **動畫長度一律用 `cssMs()` 從 CSS 讀**，JS 不寫第二份——實作只有一份，在
-  **`src/lib/css-ms.ts`**（`cssMs` 給時間值、`cssNumber` 給 `--p-stagger-max` 這種無單位的）。
-  ⚠️ **不可以用裸的 `parseFloat`**：Astro 的 CSS 壓縮會把 `440ms` 改寫成 `.44s`，`parseFloat`
-  拿到的是 **0.44**。而且**只在建置產物裡發生**，`astro dev` 不壓縮，本機完全看不出來。
-  2026-08-26 實際咬到：進場動畫的 `data-enter` 在 ~957ms 就被拿掉，41 張卡片裡 36 張還沒跑完。
-- **測試量卡片幾何前先呼叫 `settleEnter(page)`**（`tests/e2e/probe.ts`）。`[data-enter]` 期間
-  卡片掛著 transform，`boundingBox()` 會帶次像素誤差，而 `animation … both` 的結束值會**壓過
-  `:hover` 的 transform**——D14 的正向控制就是這樣變成「驗到動畫的填充值」而永遠通過的。
-- **減少動態的規則每個檔自帶一份**（`chrome.css`／`components.css`／`dice.css`／`detail.css`／
-  `board.css` 各一個 `@media (prefers-reduced-motion: reduce)`，`sim.astro` 也有一份；`/tree` 另有兩個區塊收在
-  `src/pages/tree.astro` 自己的 `<style is:global>` 裡——`#filters.animating`（篩選面板寬度
-  過場）與 `#filters-toggle`（三條）各一個），刻意不寫成
-  `*{transition-duration:0.01ms!important}`：那會連 opacity 一起關掉，而 `/tree` 的篩選淡出是靠
-  opacity 在**傳達資訊**，不是裝飾。
-  ⚠️ **reduce 的覆寫選擇器要跟被覆寫的那一條長得一模一樣**，`:is()` 的包法也要一樣：
-  `:is()` 的具體度等於它引數裡最高的那一個，攤開來寫會比包起來寫低一階而輸掉。
-  2026-08-26 實測踩過（`/board` 與 `/tree` 的按壓在 reduce 之下照樣縮，E2E 的 D18 抓到）。
-  ⚠️ **`tokens.css` 也有一個 reduce 區塊，而且它是唯一一個改 token 而不是改元件的**：
-  重新宣告 `--face-lift`，把下緣硬邊從 `calc(var(--depth) + var(--p-lift))` 壓回 `--depth`。理由與「為什麼
-  不能在元件的 reduce 區塊裡覆寫 `--p-lift`」寫在該處——**自訂屬性的 `var()` 代換是在宣告
-  它的那個元素上算完再繼承的**，在子元素上改來源變數影響不到已經算完的那一份。
-- ⚠️ **`:has()` 與 `color-mix()` 都要有退化路徑。** 切換鈕的「選中」完全靠 `:has(input:checked)`
-  ＋底色而真正的 checkbox 是 `opacity: 0`——不支援 `:has()` 的引擎或 `forced-colors: active` 下，
-  五顆鈕長得一模一樣、焦點也看不見。`color-mix()` 一律在前面補一行純色 fallback。
-- **守門**：`tests/styles/tokens.test.ts` 掃裸的 px／rem（例外寫在檔案裡的 `ALLOWED` 並附理由），
-  確認每個 `var(--x)` 都在 `:root` 定義得出來（打錯的名字不會報錯，只會安靜掉回預設值），
-  並確認**級距內沒有兩個 token 撞值**（`--r-*`／`--fs-*`／`--space-*`／`--shadow-*`）——
-  同一個值兩個名字時改哪一個都只有一半的地方會跟上，2026-08-26 收小圓角時 `--r-sm` 差點
-  撞上 `--r-xs`。
-  ⚠️ **掃描名單全部自動列舉**（2026-08-26 拆檔後）：`.css` 用 `readdirSync(src/styles)`；
-  `.astro` 用 `readdirSync({ recursive: true })` 掃 `src/pages`（含 `guide/` 子目錄）與
-  `src/components`，挑出內容含 `<style` 的檔案，不是寫死幾個檔名。並自帶一條**反例斷言**：
-  把 `readdirSync` 掃到的 `.css` 集合拿去跟一份**寫死**的 `EXPECTED_CSS`（九個檔名）比對——
-  少一個、多一個沒人知道的檔、或改名，三種壞法都會紅（2026-08-26 code review 抓到：舊版是
-  拿同一個 `readdirSync` 運算式跟自己比，恆真，已修正）。
+- **表面分層**：靜態頁的面 `--surface-1`；浮在畫布上的 chrome `--surface-2`；hover／選中 `--surface-3`；
+  `--surface-0` 只給凹進去的元素（比卡片低一階，**不是**比 `--bg` 深）。
+- **面的質感只用 `--face-*`，元件裡不准自己疊 box-shadow**：`--face` 靜止、`--face-lift` hover、
+  `--face-float` 浮層（不帶下緣硬邊）。hover 抬升一律 `var(--p-lift)`，不寫死 `translateY`。
+- ⚠️ **`--fs-xs`（12px）的中文不准加 `font-weight: 600`**；粗體中文最小 `--fs-sm`。
+- 標題個性＝`font-weight: 700`＋`letter-spacing: 0.02em`（`base.css`），**不用拉丁 display face 排標題**。
+- **`--font-num`**（自架 Baloo 2 拉丁 subset，只給 `.meta`／`.stat-v`／`.game-id`／`.nav-updated`）：
+  後面必須接上 `--font` 全部成員；字型路徑走 `/fonts/`（`public/assets/` 在 `.gitignore`）；`.game-id` 的
+  `font-family` 要明寫（會被 `code` 搶走）；刻意不補 `font-weight: 500`。重跑 subset 照 `public/fonts/README.md`
+  （`tokens.test.ts` 驗 ≤ 30KB，E2E D15b 驗純拉丁節點只用一種字型）。
+- **`--ls-label` 只給 `--fs-xs` 級標籤**，不准往內文或整句中文擴。
+- **焦點框全站只有一條** `:focus-visible { outline: var(--ring) }`。
+- **每一條 `transition` 都要指名 token 曲線**；`--e-spring` 只給狀態切換（`tokens.test.ts`「過場曲線」擋裸 `ease`）。
+  ⚠️ `--t-med`／`--slide-ms` **長度不准動**（`tree-canvas.ts` 用 `cssMs()` 讀成常數），只換曲線安全。
+- **按壓**＝`transform: scale(var(--p-press))`；⚠️ **不要在 `:active` 裡寫 `transition-duration`**（單值覆寫整份清單）；
+  停用的按鈕要 `:not(:disabled)`。
+- **進場動畫**：`[data-enter]` 由 `Base.astro` `<head>` 的同步 `is:inline` script 掛上、頁尾 `setTimeout` 移除
+  （兩端都不能省、**不能改用 `animationend`**、**不寫成伺服器輸出的 `<html data-enter>`**）；`--i` 的上限只在 CSS 夾，
+  模板不准 `Math.min`。載入後約一秒 hover 不抬起是已知且接受的。
+- **JS 讀 CSS 時間一律 `cssMs()`／`cssNumber()`**（`src/lib/css-ms.ts`），**不准裸 `parseFloat`**（建置會把 `440ms` 壓成 `.44s`）。
+- **E2E 量卡片幾何前先 `settleEnter(page)`**（`tests/e2e/probe.ts`）：`[data-enter]` 期間 `animation … both` 的結束值
+  會壓過 `:hover` 的 transform，hover 抬升的斷言會驗到動畫填充值而永遠通過（D14 的正向控制這樣假綠過）。
+- **減少動態的規則每個 CSS 檔自帶一個 `@media (prefers-reduced-motion: reduce)`**（`/tree` 的在 `tree.astro`），
+  不寫全域 `*{transition-duration:0.01ms}`（會關掉傳達資訊的 opacity）。⚠️ **覆寫選擇器要跟被覆寫那條一模一樣、
+  `:is()` 包法也一樣**，否則具體度低一階而輸掉（D18）。`tokens.css` 的 reduce 區塊是唯一改 token 的（`--face-lift`，理由在該處）。
+- ⚠️ **`:has()` 與 `color-mix()` 都要有退化路徑**：`forced-colors` 區塊、`color-mix()` 前一行純色 fallback。
+- **守門**：`tokens.test.ts` 掃裸 px／rem（例外在 `ALLOWED` 附理由）、驗每個 `var(--x)` 定義得出來、級距內不准撞值；
+  掃描名單自動列舉，另拿寫死的 `EXPECTED_CSS` 反驗——**新增或改名 CSS 檔要一起改 `EXPECTED_CSS`**。
   `tests/e2e/chrome.spec.ts` 的 D1–D12 守沾頂、`--nav-h`、`aria-current`、焦點框、footer 沉底、過場時間。
 
-### 共用元件（2026-09-23 骰桌 PR ②③④）
+### 共用元件（`components.css`）
 
-靜態頁的外觀一律來自 `components.css` 的共用 class，頁面專屬 class（`.home-card`、`.battle-item`…）
-仍然掛著（測試與 JS 抓它們），但只留那一頁才有的版面差異。**新頁面先套共用 class，不要再長一種。**
+頁面專屬 class（`.home-card`、`.battle-item`…）仍掛著供測試與 JS 抓，只留那一頁的版面差異。**新頁面先套共用 class，不要再長一種。**
 
-| class | 掛在哪 | 說明 |
+| class | 掛在哪 | 判準 |
 |---|---|---|
-| `.page-head` | 每頁唯一的 `<h1>` | 900 字重＋`--ink` 字影。掛在 h1 本身，不是容器 |
-| `.sec-title` | 段落 `<h2>` | 金色菱形 `::before`；附註沿用各頁 class（`.battle-group-note`） |
-| `.card` | `.home-card`／`.guide-card`／`.dice-card` | 頭部 `--branch`（無則 `--edge`）漸層；按壓縮放**只給 `a.card`** |
-| `.row-card` | `.event-card-link`／`.battle-item` | 同一個面、無卡片頭；抬升只給 `a.row-card` |
-| `.chip` ＋ `.filter-bar` | 篩選鈕與沾頂篩選列 | 選中＝金色面；「哪一系」由色點光暈承擔；`/tree` 的分支跳轉鈕也是 `.chip`（動作鈕、色點常亮，不套 `.filter-bar`） |
-| `.pill` | `.stat-pill` | 凹槽；框線是**透明**不是拿掉（寬度不准變，C8） |
-| `.btn` ＋ `.btn-pri`／`.btn-alt` | 動作按鈕（`/board` 工具列、`/tree` 篩選開關、`/sim` 工具列與詳情行動鈕） | 實體鍵帽：`--r-btn`、下緣 `--depth` 硬邊（box-shadow，不是 border——按下收掉時尺寸不能跳）；**一頁最多一顆 `.btn-pri`**；`[aria-pressed]` 開著＝金框 |
-| `.seg` | 分段切換（`/board` 三列） | 凹槽容器＋`<button aria-pressed>`；沒選中的框是**透明**不是 0（切換不跳寬度）；按鈕直向內距 `--space-h`，凹槽＋按鈕的外高＝一顆獨立按鈕（`/board` 320px 首屏，B52） |
-| `.step` | 「‹ 值 ›」步進 | 圖示是 `ICONS.prev`／`next`，名字在 `aria-label`；內距刻意小（`/board` 320px 的欄寬，B52） |
-| `.panel` | 側欄與浮在內容旁的面（`/board` 明細、`/tree` `#detail`、`/sim` `#sim-panel`） | `--surface-2`＋`--face-float`（不帶硬邊）；浮層（`#dice-picker`、`#dice-card`）不用它；`#sim-panel` 貼邊，只取面不取四邊框與圓角 |
+| `.page-head` | 每頁唯一的 `<h1>` | 掛在 h1 本身，不是容器 |
+| `.sec-title` | 段落 `<h2>` | 金色菱形 `::before` |
+| `.card` | `.home-card`／`.guide-card`／`.dice-card` | 按壓縮放**只給 `a.card`** |
+| `.row-card` | `.event-card-link`／`.battle-item` | 抬升只給 `a.row-card` |
+| `.chip` ＋ `.filter-bar` | 篩選鈕與沾頂篩選列 | `/tree` 的分支跳轉鈕也是 `.chip`（不套 `.filter-bar`） |
+| `.pill` | `.stat-pill` | 框線是**透明**不是拿掉（寬度不准變，C8） |
+| `.btn` ＋ `.btn-pri`／`.btn-alt` | 動作按鈕 | 硬邊是 box-shadow 不是 border；**一頁最多一顆 `.btn-pri`**；`[aria-pressed]`＝金框 |
+| `.seg` | 分段切換 | 沒選中的框是透明不是 0；外高＝一顆獨立按鈕（B52） |
+| `.step` | 「‹ 值 ›」步進 | 名字在 `aria-label`；內距刻意小（B52） |
+| `.panel` | 側欄與浮在內容旁的面 | 浮層（`#dice-picker`、`#dice-card`）不用它 |
 
-### 十二個 CSS 檔
+### CSS 檔的分工
 
-`src/styles/global.css`（2029 行）2026-08-26 拆成九個按作用域劃分的檔案（同日 `/tactic`
-與 `/boss` 上線時加上 `battle.css`，共十個；`/rift-shop` 2026-09-06 沿用同一個檔，
-`/events` 2026-09-21 加上 `events.css`，`/rewards` 2026-09-27 加上 `rewards.css`，共十二個），畫面零變化
-（`tools/compare-computed.ts` 驗過，見「指令」一節）。新樣式要放哪個檔，先查這張表：
+新樣式放哪個檔先查這張表（`tokens.css`、`base.css`、`chrome.css`、`content.css`、`components.css` 由 Base 載，其餘由頁面載）：
 
-| 檔 | 放什麼 | 誰載 |
-|---|---|---|
-| `tokens.css` | `:root` 的八組 token（間距／圓角／字級／表面／陰影／面的質感／排印／動效）——**唯一**允許定義 token 的地方 | Base |
-| `base.css` | 全站重置（`*`／`html`／`body`／`main`／`footer`／`a`／`pre`）＋ `.sr-only` | Base |
-| `chrome.css` | 全站導覽列 `#site-nav`（含「遊戲介紹」下拉） | Base |
-| `content.css` | 靜態內容頁共用 `.page`（首頁／圖鑑／遊戲介紹）＋首頁訪客計數器 `#hit-counter`＋詞彙頁 `.kw-*` | Base |
-| `components.css` | 跨頁共用元件：按鈕 `.btn`、分段切換 `.seg`、步進 `.step`、面板 `.panel`、篩選切換鈕 `.chip`、**沾頂篩選列 `.filter-bar`／`.filter-count`**、`--branch` 供應者（`:is(.dice-card, .chip)[data-branch=…]`）、分支色點 `.branch-dot`、首頁卡片、遊戲介紹索引卡 | Base |
-| `detail.css` | `/tree` 詳情面板 `#detail`（含視圖堆疊換頁動畫） | `/tree` |
-| `canvas.css` | 畫布**容器**：版面骨架（`body`／`main`／`#canvas-host`）、兩張 `<canvas>` 的定位、隱形節點按鈕清單 `.tree-a11y*`。⚠️ 畫布**內容**的外觀不在這裡（見 `src/lib/canvas/theme.ts`） | `/tree`、`/sim` |
-| `dice.css` | `/dice` 圖鑑：卡片網格 `.codex-grid`、`.dice-card` 本體、關鍵字卡片 `.card-term*`、數值面板 `.dice-stats` | `/dice` |
-| `board.css` | `/board` 骰盤編輯器：`.board-*`／`#board-*`、組合列 `#deck-row`／`.deck-*`、選骰面板 `#dice-picker`／`.picker-*` | `/board` |
-| `battle.css` | `/tactic`、`/boss` 與 `/rift-shop` 共用的橫列清單：`.battle-*` | `/tactic`、`/boss`、`/rift-shop` |
-| `events.css` | `/events` 活動：卡片 `.event-*`、**全站第一份 `<table>` 樣式**（其他頁要用表格時從這裡拿） | `/events` |
-| `rewards.css` | `/rewards` 獎勵系統：桌機分類側欄、手機 `<select>`、分類總計、兩欄階段列、成就群組、每日任務 | `/rewards` |
+| 檔 | 放什麼 |
+|---|---|
+| `tokens.css` | token（唯一允許定義 token 的地方） |
+| `base.css` | 全站重置＋`.sr-only` |
+| `chrome.css` | 導覽列 `#site-nav`（含下拉） |
+| `content.css` | 靜態內容頁 `.page`、`#hit-counter`、詞彙頁 `.kw-*` |
+| `components.css` | 共用元件、`.filter-bar`、`--branch` 供應者、`.branch-dot`、首頁與遊戲介紹卡片 |
+| `detail.css` | `/tree` 的 `#detail` |
+| `canvas.css` | 畫布**容器**（`/tree`、`/sim`）；畫布**內容**的外觀在 `src/lib/canvas/theme.ts` |
+| `dice.css` | `/dice` 圖鑑 |
+| `board.css` | `/board` |
+| `battle.css` | `/tactic`、`/boss`、`/rift-shop` 的橫列清單 |
+| `events.css` | `/events`，含全站第一份 `<table>` 樣式（其他頁要表格從這拿） |
+| `rewards.css` | `/rewards` |
 
-⚠️ **`#toolbar`／`#filters`／`#branch-nav`／`#branch-chips`（`/tree` 工具列與篩選面板）不在
-`canvas.css` 裡**，它們留在 `src/pages/tree.astro` 自己的 `<style is:global>` 區塊——那個區塊
-在這次拆檔之前就已經是頁面自己的樣式，不是 `global.css` 的一部分，所以拆檔沒有動它，找 `#filters`
-的樣式要去 `tree.astro`，不是九個 CSS 檔。
-
-⚠️ **只看「放什麼」與「誰載」，不要抄行號**——原始行號對應的是拆檔當下那個 commit 的
-`global.css`，檔案一改行號就過期，`docs/superpowers/plans/2026-08-26-css-split.md` 的完整版
-（含行號、不進版控）才是那次拆檔的第一手記錄。
-
-- **頁面級 import 順序＝層疊順序，見「版面的硬規則」那一節的第一條**（`import Base` 必須排在
-  頁面自己的 CSS import 之前）。
-- **兩個容易分錯的分派**：`--branch` 供應者留在 `components.css` 不進 `dice.css`——它是
-  `.chip[data-branch]` 的唯一來源，而 `.chip` 用在 `/tree` 的篩選面板；`.chip-xs` 同理留在
-  `components.css`，它跟 `.chip` 具體度相同 (0,1,0)，只靠檔案順序排在後面才贏。
-- ⚠️ **沾頂篩選列 `.filter-bar`（2026-09-23 前叫 `.filters`）在 `components.css`**（2026-08-26 從
-  `dice.css` 搬過來，`/tactic`、`/rift-shop` 也用它）。找它的樣式要去 `components.css`，不是 `dice.css`。搬動用 `npm run compare` 驗過：`/dice` 的
-  `<main>` 位元組完全相同，computed style 零差異（只剩進場動畫在飛行中的取樣雜訊）。
+- ⚠️ **`/tree` 的 `#toolbar`／`#filters`／`#branch-nav`／`#branch-chips` 在 `tree.astro` 的 `<style is:global>`**，不在 CSS 檔。
+- ⚠️ `--branch` 供應者與 `.chip-xs` 必須留在 `components.css`（理由在該處）。
 
 ### 版面的硬規則
 
-- ⚠️ **頁面級 `import '../styles/x.css'` 一定要寫在該頁 `import Base from …` 那一行之後。**
-  Astro 依 import 順序輸出 `<link>`，寫在 `import Base` 前面的話頁面級 `<link>` 會排到 Base
-  的五個 `<link>` 前面，頁面級規則需要蓋過 Base 級同具體度的規則時就會靜靜地輸掉層疊，而且是
-  **零錯誤零警告**——實測把 `board.astro` 的 `import '../styles/board.css'` 移到 `import Base`
-  之前重建，`/board` 的 `<style>` offset 1976 落在 Base `<link>` offset 5783 之前，build 完全
-  正常。`tests/styles/tokens.test.ts` 的「import 順序＝層疊順序」守著這條，也守 `Base.astro`
-  自己那五行 CSS import 的固定順序（同一族坑：那五行的順序本身就是層疊順序，調換一樣是靜默的）。
-- **導覽列是 `position: sticky` 的**，一換行就等於永久佔掉畫面：`#site-nav` 每一項都要
-  `white-space: nowrap`（中文沒有空白，瀏覽器會在任意兩字之間斷開），≤720px 時不顯示「上次更新」
-  （它比其他四項加起來還寬）。D9 守——實測只有隱藏那段拿掉才會紅，`nowrap` 是防更窄的裝置，
-  **不要因為「拿掉也是綠的」就刪**。
-- ⚠️ **窄螢幕塞不下時是「導覽列自己橫向捲動」**（≤720px，Yuki 2026-08-23 指定），不是換行、
-  不是縮字級、也不是拿掉入口。**捲的是內層 `.nav-links`（PR #83 起），「遊戲介紹」的 `<details>` 是它的
-  兄弟、留在捲動盒外面**——讓整份文件橫捲會踩到 `/board` 的 B13。⚠️ `overflow-x: auto` 會把同一個盒子的
-  `overflow-y: visible` 算成 `auto`，下拉放在捲動盒裡面一定會被裁掉，所以不能靠那一行解決；外層 sticky
-  `#site-nav` 保持 `overflow: visible`，下拉面板相對它絕對定位（`.nav-menu` 在手機是 `static`）。
-  ⚠️ **點外面關閉聽 `pointerdown` 也聽 `click`**：WebKit 觸控非互動區域不一定合成冒泡的 click。
-  D13、D19 與 `tests/e2e/navigation.spec.ts`（`webkit-nav` project 跑 iPhone 13，只有 CI 裝了 WebKit）守。
-- ⚠️ **≤720px 的品牌只留骰點圖示**（`.brand-text` 用 clip-path 視覺隱藏，不能 `display: none`——它是
-  連結唯一的無障礙名稱）。導覽列捲軸是藏起來的，**露出半截的最後一項是唯一的「還能往右滑」線索**；
-  圖示多出的 20px 曾把「遊戲介紹」整個推出 Pixel 7 的畫面。D21 守（最後一項要露出一截），
-  加寬導覽列任何一項之前先想這條。
-- **工具列的尺寸不准隨篩選狀態改變**（浮在畫布上的盒子，寬度一變整排東西跟著跳，而且是邊打字邊跳）。
-  「符合 N 個節點」那句話已整個拿掉。⚠️ 金點的 `::before` 要**一直存在**、平常 `background: transparent`
-  ——只在 `.active` 才長出 `content` 的話按鈕會寬 16px，問題原地復發。⚠️ `清除篩選` 用
-  `visibility: hidden` 佔位而不是 `display`／`hidden`（依規範就不可聚焦，不必另外 `inert`）。
-  O2 守寬度、O3 守收合。
-- **`display: none ↔ flex` 不能過場，`width: auto` 也不是可內插的值**——只能 JS 量出自然寬度、
-  暫時鎖成 px 再動。⚠️ **動完一定要把 inline width 拿掉**，否則面板卡在當初量到的寬度、視窗一縮
-  就不會再換行。收尾用 `setTimeout` 不用 `transitionend`（後者在 `display:none`、動畫被中斷、
-  分頁切到背景時不一定派發）。
-- ⚠️ **開關狀態不能從 class 讀**（`.open` 在收合過場結束前還掛著，過場中再按一次會算成「再關一次」）。
-  用模組變數 `filtersOpen`。⚠️ 連帶：**測試也不能假設「`aria-expanded` 翻了＝幾何已經開始變」**
-  ——`setFiltersOpen()` 先寫 aria，再把寬度鎖成當前值，真正的收縮要到兩層 rAF 之後，那段窗裡量到的
-  差值正好是 0（平行負載下咬過一次）。O3 現在用 `expect.poll`。
-- ⚠️ **面板收窄時裡面的東西不能被壓縮**（「清除篩選」四個字一被壓縮就折成四行，整條工具列在過場中
-  先長高一倍再收掉）。`flex: none` ＋ `white-space: nowrap`，`.animating` 期間 `flex-wrap: nowrap`
-  ——**只在動畫中**，平常仍要能換行否則手機抽屜會比視窗還寬。
-- ⚠️ **「Esc 關閉」與「點外面關閉」只在抽屜版面（≤720px）生效**：桌機的面板是工具列的一部分，
-  綁上去的話使用者每次平移畫布都會把自己的篩選面板關掉。
-- ⚠️ **跨版面斷點要重設狀態**（桌機開著面板縮到手機寬度，`.open` 會變成使用者從沒打開過的全寬抽屜）。
-  用 `matchMedia(...).addEventListener('change')`；⚠️ 掛之前要確認 `addEventListener` 存在，
-  單元測試的 linkedom 只給了 `matchMedia` 一個回傳 `{ matches }` 的替身。
-- **篩選器是共用的 `.chip` 切換鈕**，外觀是按鈕但骨子裡仍是 `<label>` 包真的 `checkbox`
-  （鍵盤、螢幕閱讀器的「已勾選」、沒有 JS 時仍可操作，全是瀏覽器免費給的）。checkbox 用
-  `position: absolute; inset: 0; opacity: 0` 攤平，**不要改成 `display: none`／`visibility: hidden`**
-  （會退出 Tab 順序，篩選器變成只有滑鼠能用）。C6 守。
-- **篩選分組不要用 `<fieldset><legend>`**：`<legend>` 一律排在版面**之外**的自己一列，要拉回同一列
-  只能 `float`，float 又得靠祖先 `overflow: hidden` 收住，而那會**裁掉切換鈕的焦點框**。
-  改用 `<div role="group" aria-label>` ＋ flex ＋ `gap`。D12 守。
-- **切換鈕不准用 `margin-bottom` 撐換行的列距**（它跟搜尋框排同一列，下邊界會把中心往上推，實測差
-  2.0px，P 直接紅）。列距改由 `line-height` 給。
-- **導覽列的偏移量只能有一個來源**：`html { scroll-padding-top }` 與 `.kw-entry { scroll-margin-top }`
-  一度帶著同一個算式，瀏覽器兩個都算，錨點跳過去停在導覽列下方 74px 而不是 12px。D10 守。
-- ⚠️ **`[aria-current='page']` 的金線一定要畫在 `::before`**：`summary::after` 已經拿 `::after`
-  畫下拉的 ▾，而它的具體度更高——用 `::after` 的話 `content` 仍是 ▾、卻吃到金線的絕對定位，
-  箭頭被拉成一條金色橫槓掉到導覽列外面。**兩條規則各贏一半，這種半套生效比整條失效難認得多。** D3 守。
-  同一族的第二次：`#site-nav [aria-current='page']` 的具體度 (1,1,0) 輸給 `#site-nav .nav-menu > summary`
-  的 (1,1,1)，下拉拿得到金線卻拿不到金字，選擇器要把 summary 一起列進去。D11 守。
-- ⚠️ **`.dice-card` 的分支色條是頂緣 `::after`（`z-index: 2`）**：`.card-term` 是 `inset: 0` 的絕對定位
-  覆蓋層，會蓋掉任何畫在內距框裡的東西——包括 `.card` 背景上的頭部漸層；開著詞彙層時分支識別只剩
-  頂緣那條（E2E C12）。
-- ⚠️ **`body` 變 flex column 之後，`main` 要寫 `width: 100%; margin-inline: auto`**，不能留
-  `margin: 0 auto`——水平方向的 auto 邊界會取消 stretch，main 縮到內容寬。這個坑踩過兩次。
-- ⚠️ **拿掉可見文字時不要把 live region 一起拿掉。** `.sr-only` 一律用 `clip-path` 視覺隱藏，
-  **不能**用 `display: none`／`visibility: hidden`／`hidden`——那三種會一併從無障礙樹消失，就不播報了。
-- ⚠️ **Playwright 的 `test.use({ reducedMotion: 'reduce' })` 在目前這版沒有傳進 page**
-  （實測 `matchMedia(...).matches` 仍是 `false`），測試會安靜地變成「在沒有減少動態的情況下驗減少動態」。
-  用 `page.emulateMedia({ reducedMotion: 'reduce' })`。
+- ⚠️ **頁面級 `import '../styles/x.css'` 一定寫在 `import Base` 之後**；`Base.astro` 那五行 CSS import 的順序也是層疊順序。
+  寫反是零錯誤零警告（`tokens.test.ts`「import 順序＝層疊順序」守）。
+- **導覽列 sticky，不准換行**：每項 `white-space: nowrap`、≤720px 隱藏「上次更新」（D9）；塞不下時是**內層
+  `.nav-links` 橫向捲動**，不換行、不縮字、不拿掉入口；「遊戲介紹」`<details>` 留在捲動盒外（D13、D19、
+  `tests/e2e/navigation.spec.ts`，`webkit-nav` project 只在 CI 有 WebKit）。點外面關閉聽 `pointerdown` 也聽 `click`。≤720px 品牌只留圖示（`.brand-text` 用 clip-path，
+  不能 `display:none`）；**露出半截的最後一項是唯一的「還能滑」線索**，加寬任何一項前先看 D21。
+- **`/tree` 工具列尺寸不准隨篩選狀態改變**：金點 `::before` 一直存在只是透明；`清除篩選` 用 `visibility: hidden` 佔位（O2、O3）。
+- **篩選面板開合**：寬度只能 JS 量、鎖 px 再動，**動完拿掉 inline width**，收尾用 `setTimeout` 不用 `transitionend`；
+  開關狀態讀模組變數 `filtersOpen` 不讀 class；測試不能假設 `aria-expanded` 翻了幾何就開始變（O3 用 `expect.poll`）；
+  `.animating` 期間才 `flex-wrap: nowrap`；Esc／點外面關閉只在 ≤720px；跨斷點用 `matchMedia` change 重設
+  （先確認 `addEventListener` 存在，linkedom 替身沒有）。細節在 `src/scripts/tree-canvas.ts` 與 `tree.astro`。
+- **篩選器是 `<label>` 包真的 checkbox**，checkbox 用 `position: absolute; inset: 0; opacity: 0`，
+  **不准 `display: none`／`visibility: hidden`**（C6）。分組用 `<div role="group" aria-label>`，**不用 `<fieldset><legend>`**（D12）。
+  切換鈕列距由 `line-height` 給，**不准 `margin-bottom`**（P）。
+- **導覽列偏移只能有一個來源**：`html { scroll-padding-top }`，元素不准再加 `scroll-margin-top`（D10）。
+- ⚠️ **`[aria-current='page']` 的金線畫在 `::before`**（`::after` 是下拉 ▾）；選擇器要把 `.nav-menu > summary` 一起列（D3、D11）。
+- ⚠️ `.dice-card` 的分支色條是頂緣 `::after`（`z-index: 2`，要贏過 `.card-term` 覆蓋層，C12）。
+- ⚠️ `body` 是 flex column 時 `main` 寫 `width: 100%; margin-inline: auto`，不寫 `margin: 0 auto`。
+- ⚠️ **`.sr-only` 一律 clip-path**；拿掉可見文字時不要把 live region 一起拿掉。
+- ⚠️ **E2E 驗減少動態用 `page.emulateMedia({ reducedMotion: 'reduce' })`**，`test.use({ reducedMotion })` 在目前版本沒傳進 page。
 
 ## 版面沒有固定偏移量
 
-寫死的偏移量咬過五次（`#branch-nav` 的 `top: 6rem`、`#tree-controls` 的 `top: 3rem`、
-手機抽屜的 `translateY(-110%)`、`#canvas-host` 的 `calc(100vh - 110px)`、手機 `#detail` 用
-`padding-bottom` 推警告）。**現在的做法是零偏移量**：
+**零偏移量**，動版面時不准引入新的寫死偏移（E2E 的 U 不該捲動、V 詳情卡片避開側欄、J 手機抽屜不蓋工具列、W footer 讓位）：
 
 - `body:has(#canvas-host)` 是 flex column，`<main>` 與 `#canvas-host` 都 `flex: 1`。
-- `--nav-h` 由 `src/lib/nav-height.ts` 量 nav 寫進 CSS 變數，量的是**視窗座標**（`rect.bottom`）
-  ——消費者都是 `fixed`／`sticky`，`top` 本來就相對視窗算。一度改成 `+ window.scrollY` 是錯的：
-  捲到 y=100 時會把它們放到 nav 下方 100px。由 `Base.astro` 的 `installNavHeight()` 全站安裝。
-- `--chips-h` 由 `tree-canvas.ts` 量 chip 列的實際高度寫入（**不要寫死 3.5rem**）；手機 footer
-  用它讓位，否則 `#branch-chips` 會永遠疊在「著作權屬 111 Percent Inc.」那句上面。W 守。
-- 手機 `#detail` 用 `inset: auto 0 var(--chips-h) 0` 讓**可視方框**停在 chip 列上方，
-  不是靠內距推——內距在捲動內容的**結尾**，使用者根本還沒捲到那裡。
-- ⚠️ **`#canvas-host > canvas` 必須是 `position: absolute; inset: 0`**，不能用 `width/height: 100%`：
-  `#canvas-host` 的高度是 flex 算出來的、不是「確定的」高度，`height: 100%` 會退回 auto，而
-  `<canvas>` 的預設內在尺寸是 300×150——版面會被縮成左上角一小塊。`inset: 0` 讓兩個偏移量都給定，
-  瀏覽器把 auto 的寬高撐滿容器，同時它抽離普通流程、對 `<main>` 的高度貢獻是 0。
-  繪圖解析度跟 CSS 尺寸是兩件事。
-  ⚠️ **兩張元素的 CSS 寬高與 `canvas.width/height` 由 controller 的 `measure()`
-  （`canvas-tree.ts`）用 inline style 明寫成「視口＋2×邊距」的尺寸並 `translate(−邊距)` 定位**，
-  比 host 大一圈；`inset: 0` 只是掛載到 `measure()` 跑之前那一瞬間的預設，撐出去的那一圈由
-  host 的 `overflow: hidden` 裁掉。設 `canvas.width/height` 的也是 `measure()`，不是 painter。
-  **不要把那個 inline width 當成多餘的東西「修正」掉。**
-
-**動版面時不要再引入新的固定偏移量。** E2E 的 U（不該捲動）、V（詳情卡片避開側欄）、
-J（手機抽屜不蓋住工具列）是這三條防線。
-
-## 頁面
-
-### `/tree` 詳情卡片的擺位（2026-08-23 改版）
-
-選節點時**畫布緩動平移把節點帶到畫面水平中央**，卡片貼在節點**正上方或正下方**——不是左右。
-左右兩側正是前置鏈延伸的方向；而擺上或擺下**必須是算出來的**（`sideLeastCovered()` 模擬兩種
-擺法各會蓋住幾個前置節點，取少的），因為五個分支生長方向不同：1 系往上、2／3 系往下、
-4 系往左、5 系往右，**寫死任何一邊都會有兩系的前置鏈被整條蓋掉**（實測固定放上方時 239 顆有
-155 顆仍被蓋）。手機維持底部抽屜，這一整段都不套用。
-
-- 高度上限用**卡片那一側到畫面邊緣還剩多少**算，不是整個視窗——用整窗算的話卡片一長高就會被
-  夾制推到節點身上（選好節點後在搜尋框打字就會長高一行）。低於 `MIN_PANEL_H` 才換邊。
-- 置中時多留 `CENTER_SLACK`（約一行），吸收上面那種長高，免得一打字就冒捲軸。
-- **置中平移期間卡片釘在終點不動**，只有畫布在走；`cancelCenterPan()` 只能掛在真的會動畫布的
-  路徑上（一度掛在 `window` keydown 的開頭 → 節點上按 Enter 完全不會置中）。
-- 節點卡片桌機是**橫式兩欄**（`.node-body > .col`／`.col.chain`，重置警告跨兩欄），手機單欄。
-- ⚠️ **節點在螢幕上的位置一律問 `tree.nodeScreenRect(id)`**（`TreeHandle`，回相對 viewport 的
-  `{left, top, width, height}`），不要去量 DOM——canvas 裡沒有節點元素。`positionPanel()` 與
-  `sideLeastCovered()` 的算法一個字都沒變，只是換了幾何的來源。畫布每動一幀 controller 會呼叫
-  `onViewChange()` 的回呼，卡片跟著重新定位。
-- 守它的 E2E：**N**（置中＋垂直緊鄰）、**N2**（不蓋前置鏈）、**N3**（平移期間卡片不動）、
-  **N4**（兩欄）、**N5**（Enter 也置中）、**N6**（打字與拖曳都不壓到節點）。
-
-### `/tree` 詳情面板＝視圖堆疊
-
-面板不是一張攤平的卡片，而是**同一張卡片裡換頁**：點 `#關鍵字` 或「骰子覺醒」會左滑推入下一頁。
-**為什麼不用浮動彈出層**：彈出層要自己算位置還要防超出畫面，而手機版 `#detail` 本來就是貼著螢幕底的
-抽屜，「貼著某個字彈出去」幾乎沒有可用空間；換頁則位置完全不變，巢狀關鍵字也順著同一個機制解決。
-
-渲染在 `NodeDetail.ts`，堆疊／動畫／歷史接線在 `tree-canvas.ts`。事件全部委派在 `#detail` 上
-（面板每次都整段重寫 innerHTML）。**系統上一頁＝卡片的返回鍵**：每推一層 `pushState`（網址不變）。
-
-踩過的坑（都有 E2E 的 Z／Z2／Z3／Z4 釘著，逐條弄壞都會紅）：
-
-1. **`history.go()` 是非同步的，而每筆紀錄記著推入時的網址**——先改網址再退，退回去那筆會把網址
-   還原。所以是 `afterHistoryUnwind(run)`：退完才做事，另配一條 300ms 保險絲。
-2. **上一段動畫的收尾必須在「決定哪張是 from、哪張是 to」之前跑**，晚一步就會把這一段剛要顯示的
-   那張反手藏起來。連按返回一次退兩層時必現。
-3. **舊視圖一 `display:none`，焦點就掉回 `<body>`**。換頁後要 `focusView()`。E2E 驗的是「焦點所在
-   那張視圖的**標題**」，不是「焦點有沒有在某張視圖裡」——後者會被剛按下、還沒被藏起來的那顆按鈕
-   矇混過去，永遠是綠的。
-4. **面板重繪也要退歷史，而且退完要再寫一次網址**（`resetViewStack()` 走 `afterHistoryUnwind(syncUrl, depth)`）。不退 → 使用者按上一頁什麼都不會發生；退了卻不
-   重寫 → 面板換成新節點、網址還停在舊的 `?node=`，重整回到錯的節點。⚠️ **驗這件事一定要驗網址**，
-   只驗 `history.state` 的深度完全看不出來。
-5. **換節點時要 `abortSlide()` 不是 `finishSlideNow()`**（`.stack` 馬上會被換掉，跑收尾等於對一批
-   即將丟棄的元素做清理）；但 `panel-sliding` 一定要拿掉，留著的話接下來 280ms 內每一幀都會變拖尾。
-   ⚠️ 驗它要用**當下讀一次**的 `getAttribute('class')`，`expect(locator).not.toHaveClass()` 是重試型
-   斷言，殘留的 class 會在計時器到期時自己消失，等一下就變綠。
-6. **`document` 上的 Esc 監聽器會互相踩到**：抽屜那個先跑而且會先移除 `.open`，後面的後備監聽器
-   再用 class 判斷已經來不及。抽屜那條要 `stopImmediatePropagation()`（`stopPropagation` 不夠）。
-
-換頁過渡的「抖」有四個獨立原因，**全部是量錯東西**（Z4 一條一條釘著）：
-(a) `slide()` 量**起始**高度時新視圖若還在正常流程裡，`.stack` 是兩張加起來 → 先暴衝再縮回；`.sliding`（絕對定位）必須
-在量之前掛上，而且 `slide()` 是**唯一**負責掛它的地方。(b) `overflow: hidden` **常駐在 `.stack`**，只掛在 `.animating` 上的話 class 一掛
-高度就自己跳 12.4px。(c) 只動 `height` 不動 `top` → **貼著節點的那一緣會漂**（卡片放上方時是下緣），動畫那一幀要
-同時 `positionPanel({ assumeHeight })`。(d) ⚠️ **`toH` 是 `.stack` 的高度，`positionPanel` 要的是
-整張卡片的高度**（多一層 padding 與框線、而且已被 `max-height` 夾過），餵錯 → 動畫途中往下漂 16.9px。
-(e) ⚠️ **量那個終點高度要用 `getBoundingClientRect().height`，不可以用 `offsetHeight`**——後者
-四捨五入成整數（實測 280 vs 實際 279.7），卡片會在最後一格越過落定位置再被拉回，那是一次真正的
-反向，Z4 的 0.3px 門檻會紅。
-
-⚠️ **驗這種事要在頁面內用 rAF 逐幀取樣**，不能一次 `page.evaluate` 量一格：往返一趟 10–20ms，
-這些 10–30px 的瞬間偏移根本落不進取樣點。高度斷言要同時驗「不越過頭尾範圍」與「逐格同方向」——
-只驗前者會漏掉先衝過頭再補回來，只驗後者會漏掉暴衝之後仍然單調的情形。
-`#detail` 的 `overflow-x` 一定要明確寫 `hidden`，而且兩軸都要非 visible（只設 `overflow-x` 的話
-`overflow-y` 會被算成 `auto`）。
-
-### `/dice` 圖鑑與 `/guide` 遊戲介紹
-
-在這之前全站幾乎沒有可索引的文字（`dist/tree/index.html` 只有 194 個字元）。
-
-- **`/dice` 只收骰子本體**（`type === 'dice'`）。⚠️ 符文／玩家被動／支援那批節點**刻意
-  不進圖鑑**（Yuki 指定）：它們是加在骰子或玩家身上的強化，混進同一個網格會讓真正的骰子被稀釋掉。
-- **卡片上的圖是遊戲的 3D 立體骰子圖（3 號素材），不是骰子樹的節點圖**（2026-09-21，Yuki 指定）。
-  它走自己的一條資產路徑（`data/dice3-icons/`＋`data/dice3-icons.json`，規則 30；見「核心概念」
-  那條「六條資產路徑」）。⚠️ **`<img width/height>` 寫的是 CSS 方框**
-  （`src/lib/dice-icon.ts` 的 `DICE_CARD_ICON_PX` ＝ 3rem ＝ 48），不是圖檔尺寸：那兩個屬性唯一的
-  用途是「CSS 生效前先佔位」，而 CSS 把寬高都釘死 ＋ `object-fit: contain`，圖檔的長寬比從頭到尾
-  沒有人會讀——寫來源尺寸（384–426 × 398–437）或送出去的 WebP 尺寸，都是在描述一個畫面上不存在的
-  大小（2026-09-21 /code-review）。那個常數跟 `dice.css` 的 `3rem` 是同一個數字的兩份，
-  `tests/styles/dice-icon.test.ts` 讀 CSS 比對擋漂移。
-  ⚠️ 這批來源尺寸不統一（384–426 × 398–437），是**唯一一批真的會被 `buildBoardIcon()` 縮到的**，
-  上限走自己的 `DICE3_ICON_TARGET_PX`（144 ＝ 48×3，涵蓋 DPR 3）——**不要沿用 `/board` 的 240**：
-  那是照 96px 格子抓的，套到 48px 方框上實測讓 43 張從 304 KB 漲到 581 KB，而這一頁**不在規則 12
-  的效能預算裡**（那條只量 `tree.json` 與 `sprite.webp`），漲上去沒有人會說話。
-- **`/guide/keywords`「遊戲名詞」＝全部詞彙在同一頁，上方按鈕切分類**（2026-09-27 Yuki 裁決，原本四頁
-  `/guide/{mechanics,summons,status,monsters}` 合併；舊網址由 `public/_redirects` 301 到 `?tab=<slug>`）。
-  全部詞條都在 HTML 裡、切換只改 `hidden`，沒有 JS 時四類攤開、切換鈕不出現。⚠️ 站內 `#關鍵字` 一律連
-  `/guide/keywords#<code>`，頁面腳本要從錨點反查分類（初次載入與 `hashchange` 都要），否則目標在隱藏的分類裡、
-  瀏覽器捲動會落空。⚠️ `serve dist` 不讀 `_redirects`，轉址只能在正式站驗（KW5 只驗產物內容）。
-- **分類的依據是官方色碼**（`keywords.json` 的 `color`）——同色＝同一類機制，
-  **分組不是本站的判斷，只有組名是**，頁面上要照實註明。清單在 `src/lib/glossary-groups.ts`。
-  ⚠️ **算條數不要用 `index.byTerm.size`**：那份表為了讓別名也查得到本尊會把別名指到同一筆上。
-- **色碼是分組的唯一依據，出現沒見過的顏色要當場失敗**（`buildGlossary()` 直接丟例外）。放行的話
-  那個詞會從每一頁消失，而 239 個節點描述裡引用它的 `#關鍵字` 全部連到不存在的錨點——兩件事在畫面上
-  都不報錯。
-- **`/dice` 的卡片裡點 `#關鍵字` 不跳頁**，就地換成解釋，過場與 `/tree` 的面板同一組
-  `--slide-ms`／`--slide-ease`。跟面板刻意不同的兩點：**卡片高度不動**（41 張卡片排在 CSS grid 裡，
-  任何一張改高度都會推動同一列的其他卡片），以及**不列出哪些節點用到**，只給一條 `/tree?q=<詞>` 入口。
-- 解釋文字在**建置期**渲染成 HTML 放進 `#codex-terms`，前端只負責塞與堆疊（斷詞器不必送到瀏覽器）。
-  ⚠️ 那份負載刻意放在 `<div hidden>` 的文字內容裡，**不是 `<script type="application/json">`**：
-  解釋 HTML 裡有 `</a>`，塞進腳本標籤會被 Astro 編譯器送去解析，實測 build 直接失敗。
-- ⚠️ **卡片本文包在 `.dice-card-main` 裡**（過場要能整塊 transform），所以 CSS **不可以用
-  `.dice-card > header` 這種子代選擇器**——就是這樣讓圖示與名稱從並排掉成上下堆疊的，而且沒有任何
-  測試會說話。裁切靠 `.dice-card` 與 `.card-term` **兩層** `overflow: hidden`（C3 用命中測試守）。
-- **同一時間只准開一張卡片的詞彙層**（`dice.astro` 的 `openCard`）。允許多張同時開的話 Esc 就沒有明確的對象——舊版抓「DOM 裡第一張
-  開著的」，於是在第二張按 Esc 關掉的是第一張。C3c 守。
-- ⚠️ **關鍵字的顏色要查 `index.byTerm` 不要查 `displayGlossary()`**（後者不含別名，`#播種`／`#傳送`
-  會變成全站唯二沒有官方色的標記）。同理 `usedBy` 要先把別名收斂成本尊再去重。
-- ⚠️ **量過場的斷言一定要在動畫進行中取樣**：收尾會把 `.slide-anim` 拿掉，事後再讀
-  `transitionDuration` 永遠是 `0s`。
-- **斷詞器只有一份**：`src/lib/markup.ts` 的 `renderTaggedText()`。`#關鍵字` 的白名單＋最長優先比對
-  是全站最容易寫壞的一段（naive 正則會把 `#` 後面整句吃掉），複製第二份出去就一定漂移。差別只在
-  「一個詞怎麼包」，由呼叫端傳 `renderTerm` 進去。
-- **卡片上的官方數值面板（2026-08-24）是純 CSS，不要改成 JS。** 四個檔位（基礎／7 骰點／Lv.15／
-  Lv.15＋7 骰點）的值**全部都是真的文字節點**，由 `.dice-stats:has(input[value='…']:checked)` ＋
-  radio 決定顯示哪一個。三個理由，改動前先看懂：
-  1. 用 JS 換 `textContent` 的話，另外三檔的數字**進不了 HTML**——而「文字進得了 HTML」正是這一頁
-     存在的理由。
-  2. 切換鈕不必等腳本載入才長出來，沒有 41 張卡片同時跳版的那一幀。
-  3. **radio group 是一個 Tab 停留點**（方向鍵在組內移動）。做成 41×4 顆 `<button>` 就是 164 個
-     Tab 停留點。
-  ⚠️ **radio 的 `name` 要帶節點 id**（`stat-mode-${node.id}`）。忘了的話 41 張卡片變成同一組，
-  切一張會把其他 40 張的選取清掉——而畫面上「數字沒變」跟「這顆本來就不會變」長得一模一樣。E2E 的 C10 守。
-  ⚠️ **`:has()` 有退化路徑**：不支援時四個值會同時顯示成「150 750 2250 2850」，所以
-  `@supports not (selector(:has(*)))` 裡只留基礎值並把切換鈕整個收掉。
-  ⚠️ **固定項目只印一份值**（`.stat-fixed`），不要複製四份；`isFixed()` 同時涵蓋「官方強化表沒收錄」
-  與「收錄了但四檔全等」（例如陰陽骰子的攻擊力，官方寫「骰點不變」＋「無變化」）。
-  ⚠️ **四個值疊在同一個 grid 格子裡**（`.stat-v { display: inline-grid }` ＋ 子元素 `grid-area: 1/1`
-  ＋ `visibility` 收放），所以 pill 的寬度永遠等於最長那個值。**這不是排版偏好，是尺寸穩定性的
-  唯一來源**：`.stat-pills` 會 wrap，pill 一變寬就可能多擠出一列，而卡片在 CSS grid 的同一列裡會把
-  鄰居一起撐高。⚠️ **不可以改回 `display: none`**——`display: none` 的元素不參與 grid 尺寸計算。
-  2026-08-24 的 `/code-review` 實測：尖刺骰子攻擊力 750 → 15750 讓 pill 區塊 68px → 106px，
-  火骰子與花骰子跟著從 424.6px 被撐到 462.7px，而使用者根本沒去動那兩張（手機 8 張受影響）。
-  ⚠️ **C8 因此要掃全部 41 張 × 四個檔位**：火骰子從來不會 reflow，只量它＝假通過。
-  同理，量卡片高度**不要用 `toBe`**（`boundingBox()` 的浮點尾數會差 3e-5，實測 424.625 vs
-  424.6249694824219），那會搶在全站掃描之前紅掉、把真正的成因蓋住。
-  ⚠️ **寫這一塊的 E2E 一定要加 `useInnerText: true`**：`toHaveText` 預設讀 `textContent`，會把
-  `display:none` 的另外三檔一起讀進來（實測拿到「攻擊力 15075022502850」），而它**仍然通過**
-  `/攻擊力\s*150/` 這種樣式——等於什麼都沒驗。
-- **`/tree` 的詳情面板沒有被改**。圖鑑卡片是另一個元件（`DiceCard.astro`），刻意不重用
-  `nodeViewHtml()`：面板的外殼是互動的，前置鏈區塊也只在畫布上才成立。
-- 這幾頁**不吃 `tree.json` 的 gzip 預算**（`getStaticPaths`／頁面直接讀 `data/`）。
-
-### `/board` 骰盤擺放編輯器
-
-內容**不可索引**（拖曳擺放，畫面上沒有可搜尋文字），價值全在互動。它容易被下一個人「順手補回」
-某些看起來像漏掉的功能，所以把裁決寫下來——**刻意不做**：戰鬥模擬（DPS、隊伍合計）、機率模擬、
-合成（骰子升級／融合）、網址編碼、**寫入** `localStorage`（Yuki 2026-08-22 指定，`src/pages/board.astro` 開頭有
-同一份注解）。重新整理會回到空骰盤、強化 Lv 回到 1，這是已知且刻意的行為，不是待補的持久化。局外加成**唯讀** `/sim` 的存檔（Yuki 2026-09-19 核可鬆綁讀取的那一半）。
-
-**數值卡片（2026-09-19）**：點骰盤上的骰子浮出單顆骰子的面板數值，依「該格骰點 × 同種骰子的局內
-強化 Lv」計算。三件讀程式碼不容易看出來的事：
-1. **計算參數是從 `dice-stats.json` 四檔反推的**（`src/lib/dice-calc.ts`），不另存一份；規則 23(i) 守
-   「四檔反推得出來」。
-2. **強化 Lv 以骰子種類為鍵**（`spLevels`），不是槽位：挑選網格沒擋重複、換槽不清骰盤上的舊骰子。
-   手機版強化列只顯示數字＋`#deck-legend` 圖例（320px 放不下「Lv.15」，Yuki 2026-09-19 裁決）。
-3. **開卡片不綁 click**，在 `endDrag()` 判斷「從格子起手、沒超過位移門檻」；鍵盤走 `focusin`＋
-   `:focus-visible`。卡片 `pointer-events: none`——它會蓋在格子與隊伍列上，接事件的話底下拖不動。
-4. **局外加成（二期 2a）**：`#offgame-mode` 三段切換「不含｜我的 /sim｜全滿」。「我的 /sim」走 `/sim` 同一支
-   `deserializeSim()`——它吃的是 `SaveContext`（`SimContext` 的子集），`/board` 建置期用
-   `src/lib/sim-save-lite.ts` 壓成索引編碼嵌進頁面（整份 tree.json 太大）。⚠️ `/sim` 的存檔一換鍵名，
-   `/board` 就讀不到、退回「不含」——那是預期行為。攻擊力照遊戲局內面板：`局內值 (+加成)`（被動同池只乘一次），
-   子彈%符文另起一行「子彈實際」；「不含」且那一格沒有盤面加成時，整張卡片跟一期逐字相同（單元測試對全部骰子釘住）。
-   存檔在頁面開著時被 `/sim` 改了（bfcache 回上一頁、兩個分頁）會跟上，但不會自動切到「我的 /sim」（B33）。
-5. **明細面板 `#dice-detail`**：卡片只放數值，來源拆解放面板（Yuki 2026-09-19：避免卡片過大）。寬桌機在骰盤
-   右側，手機在頁面最底。⚠️ `.board-stage` 在手機是 `display: contents`——包那一層 div 之後，骰盤與工具列仍要
-   參與 `.board-page` 的 flex `order`，拿掉這一行手機版面整個亂掉。⚠️ 寬桌機的面板 `contain: size`，否則它一
-   長高就撐開骰盤那幾列、工具列被往下推。寬桌機的 `.detail-box` 用 `max-height: min(100%, …)`，否則內容比
-   容器高時 sticky 失效（B32 守）。
-6. **盤面加成（二期 2b）**：`src/lib/board-buffs.ts` 依擺位算光／排序／共鳴／陰陽／齒輪／齒輪二階／霓虹給每一格的
-   加成，合進卡片同一個 `(+x)`（`bonusCardModel()` 的第 6 參數 `BoardBonus`）、來源列進明細面板「盤面」區塊、卡片開著時
-   來源格 `.buff-src`／目標格 `.buff-dst`。**不受局外加成「不含」影響**（擺位是局內），但盤面符文跟著模式。
-   ⚠️ **施加者的數值一律讀施加者自己那一列在局外加成之後的值**（`rowValue()`），不另寫成長式。
-   7 骰點以下的排序方向／齒輪二階種類在遊戲裡是隨機的：格子左上角的角標（`.cell-badge`，格子按鈕裡的 span、不是
-   按鈕）點一下或按 R 循環，判定跟開卡片同一條路（`endDrag()` 的 `onBadge`）；「?」＝不套用。⚠️ 切換角標走
-   `cycleAt()`（`renderCells()` ＋卡片原地重算），不可以走 `renderBoard()`——那會把卡片收掉。
-
-**合作模式（2026-09-22）**：⚠️ **跨盤排序的方向兩盤相反——會打到對方的是「箭頭指著對方那一盤」
-的那一顆**：隊友盤畫在上面所以是 ↓，我的盤畫在下面所以是 ↑（實機驗過）。客戶端只有一個方向有跨盤
-分支，方向索引由呼叫端傳（`BuffInput.partner.crossDir`，**沒有預設**），兩份寫成同一個值的話會有一盤
-靜靜地完全不生效。跨盤與施加者在哪一列無關（對同一欄無條件施加三格），跟盤內射線是兩條路。
-
-**骰子圖示是「純骰子圖」（不含底板），跟骰子樹節點圖是兩條平行的資產路徑。** 正本管線（規則 7）
-只處理 SVG 引用到的圖示，純骰子圖完全不在正本裡，所以另立一條：`data/board-icons/`（41 張來源
-PNG，檔名＝內容 sha256 前 12 碼，`addIcon()` 直接重用）＋ `data/board-icons.json`（`{節點 id: hash}`，
-兩邊由 `npm run add-icon -- --board <id> <png>` 一次更新），
-`build:data` 轉成 `public/assets/board-icons/<hash>.webp`（`tools/lib/icons.ts` 的 `buildBoardIcon()`），規則 21 守。
-⚠️ **刻意不套 `withGutter()`**：gutter 是為了骰子樹圖集在 canvas 上取樣時不吃到隔壁格而存在，
-`/board` 用的是普通 `<img>`，加了只會讓圖示在方框裡顯得更小。
-
-⚠️ **這批來源圖尺寸與長寬比都不統一**（跟節點圖示統一 200×210 不一樣），帶出兩個不變量：
-
-1. **四個顯示點**——`.board-cell img`／`.deck-dice img`／`.picker-dice img`／`.drag-ghost`——
-   一律 `object-fit: contain`（`cover` 會裁掉骰子的角）。改成 `cover` 會 CI 全綠而畫面上出事，
-   所以 `tests/lib/board-image.test.ts` 直接讀 `board.css` 釘住這四個選擇器。
-2. **分享圖（`src/scripts/board-export.ts` 用 canvas 畫的那張）不能把圖片拉伸貼滿格子**。
-   `src/lib/board-image.ts` 的 `iconRect(box, imgW, imgH, ratio)` 依
-   `min(內框寬/imgW, 內框高/imgH)` 等比縮放置中，跟畫面上的 contain 對齊。`imgW`／`imgH` 刻意做成
-   **必填**（不像 `ratio` 有預設值），呼叫端量不到真實尺寸時寧可在型別層面就過不了。
-   ⚠️ `ratio` 的預設 0.78 跟 `.board-cell img { width: 78% }` 是配套關係，兩邊各寫死同一個數字，
-   由一條讀 `board.css` 的測試比對兩邊沒有各自漂移。
-
-`src/scripts/board.ts` 的 `diceMeta` 是從 `#dice-picker` 的 `<img src>` 讀回來的，所以拖曳、骰盤格、
-分享圖三處畫面全部自動跟著換，不必維護第二份路徑。
-
-- **外觀全部來自共用元件**（2026-09-23 骰桌 PR ③）：工具列是 `.btn`、三列切換是 `.seg`、步進是 `.step`、
-  明細是 `.panel`。⚠️ `board.css` 的舊規則幾乎全是 id 選擇器（具體度 (1,x,x)），在這一頁加外觀規則時
-  **寫在共用元件上**，不要再寫回 `#board-tools button` 這種選擇器——它會安靜地壓過 (0,1,0) 的共用 class，
-  而 board.spec 只驗行為與尺寸、不驗長相（`tests/e2e/board-look.spec.ts` 驗長相）。
-
-### `/tactic` 戰術與 `/boss`
-
-戰術（58 條，1.1.2 客戶端三個候選池）與 Boss（一般 10 ＋ 困難 11）的內容。`/boss` 分成「一般」「困難」兩組，各一個 h2 ＋
-各自的 `.battle-list`，Boss 名稱因此是 **h3**（`/tactic` 仍是 h2；兩邊共用 `.battle-name` 這個 class，
-所以字級不隨標籤變）。**lede 的兩個數量從資料算**，不寫死。B1／B1b 守。**兩者都不是骰子樹的節點**
-（不花錢解鎖、沒有前置、不進成本計算），資料與圖示各走一條平行路徑，見上面「幾份沒有自動來源
-的資料」與規則 24／25。跟 `/dice` 一樣是靜態頁、建置期直接讀 `data/`，`tree.json` 一個位元組
-都不會變（2026-08-26 實測 sha256 與 main 相同）。
-
-- **兩頁的入口收在「遊戲介紹」下拉裡，不在導覽列頂層**（Yuki 2026-08-26 指定）：它們跟下拉裡
-  其他幾頁一樣是「遊戲有什麼」的說明，不是站台的互動工具（骰子樹／圖鑑／骰盤／模擬器）。
-  ⚠️ **`Base.astro` 的 `guideCurrent` 要涵蓋下拉裡的每一頁**，不能只看 `/guide`——下拉預設是
-  收起來的，站在 `/tactic` 時只有裡面那條 `aria-current`，導覽列上等於零提示。B6 兩邊都守。
-- **版面是橫列清單不是卡片網格**（Yuki 2026-08-26 指定）：效果文字最短 12 字、最長 55 字，
-  排進等寬網格會讓同一列的卡片高度參差；橫列讓長文字自己往下長，不影響鄰居。
-- ⚠️ **編號與內部ID 一律不顯示在畫面上**（Yuki 2026-08-26）：那兩個是拿本站對官方資料表用的，
-  玩家在遊戲裡看不到。**但資料檔要留著**——`id` 是錨點（`#t69-1`）與規則 24 的鍵，`gameId` 是
-  日後對新版資料表唯一可靠的 join key，兩個都不能因為畫面不印就刪掉。子選項的從屬關係由
-  「巢狀在父卡裡」承擔（見下）。E2E 的 **T1b** 量的是
-  `main` 的 `innerText`（不是原始 HTML——`id="t6"` 這種屬性留著是對的），反例驗過會紅。
-- **模式是三個原生 radio：合作一般／合作困難／對戰，預設合作一般，永遠單選**（PR #83 取代舊的
-  「對戰模式／合作模式」切換鈕）。可用與否只看 `availability`（`src/lib/tactics.ts` 的 `tacticMatches()`，
-  頁面與腳本共用），選中的模式寫進 `#tactic-page` 的 `data-mode`；卡片上只印階段、不印模式。
-  沒有 JS 時照伺服器輸出的預設（合作一般的池與文本）顯示。T4、T5 守。
-- **兩段文字都輸出進 HTML，切換只換顯示哪一段**（CSS 看 `data-mode`：對戰顯示 `[data-mode="versus"]`，
-  兩種合作都顯示 `[data-mode="coop"]`）。用 JS 換 `textContent` 的話另一段永遠進不了 HTML——而
-  「文字進得了 HTML」正是這兩頁存在的理由，跟 `/dice` 的數值面板做成純 CSS 是同一個判準。
-  ⚠️ **驗這一塊不要用 `toHaveText`**：`textContent` 會把 `display: none` 的另一段一起讀進來
-  （`dice.css` 的數值面板為此吃過虧）。E2E 的 T5 量的是**可見性**與**可見條數**。
-- **四個階段是獨立 checkbox，預設全選**；「全部」按鈕只在四個都勾時亮，按下去是「全選時清空、否則全開」
-  （`toggleAllTacticStages()`），**不是逐項反轉**。手動勾滿也會亮。T6 守。
-- ⚠️ **`.battle-item[hidden]` 那條 `display: none` 是必要的不是保險**：`.battle-item` 本身是
-  `display: grid`，會壓過 `[hidden]` 的預設值——少了它，篩選時「隱藏」的那幾條照樣在畫面上，
-  而計數已經扣掉它們（`.dice-card[hidden]` 為同一個理由存在）。
-- **`69` 的三個子選項收在父卡裡的原生 `<details>`（「查看 3 個選項」）**，可見性自然跟著父卡，
-  不另算筆數、也沒有自己的階段——舊版把它們攤在頂層、掛「選項」階段時，只勾「選項」會出現找不到
-  母條目的孤兒，巢狀之後這一族問題不存在了。計數與篩選只看 `#tactic-list` 的直屬子項。T7 守。
-- `#tactic-empty`（篩到零筆的提示）：「全部」在全選狀態下按一次就是 0 筆。
-- **兩頁的圖示來源長寬比不統一**（戰術 176×206 與 164×166 都有、Boss 約 128×128），所以
-  `.battle-icon` 一律 `object-fit: contain`——跟 `/board` 那四個顯示點是同一條不變量，
-  改成 `cover` 會 CI 全綠而畫面上圖被裁角。B5 守。
-- ⚠️ **驗「圖載得到」不要用 `naturalWidth`**：這些 `<img>` 是 `loading="lazy"`，畫面外的幾十張
-  本來就還沒開始載，量到的是捲軸位置不是圖存不存在（第一版就這樣紅在「29 張載不到」）。
-  B5 改成逐個網址發請求。
-
-### `/rewards` 獎勵系統
-
-**純瀏覽**（Yuki 2026-09-27 裁決）：不追蹤個人進度、沒有勾選或輸入框、不寫 localStorage。PR #83 原本的
-進度追蹤（`rd2-rewards-v2` 存檔、勾選連動、清除全部）在合併前整個拿掉，**不要補回來**。
-
-- **每個分類頂端印「全部領完可獲得」**：`src/lib/rewards.ts` 的 `modeRewardTotals()` 在建置時把該分類
-  每一階（成就是每一組每一階）加總，拆成固定貨幣與收藏型兩組。貨幣照 `gold／core／skinCoin／treeSeed／
-  coopTicket／arenaTicket` 排，收藏品照 type／subtype 排、類內保留首次出現的次序——**看類別不看數量**。
-  收藏品多件才印 `×N`。重複性獎勵沒有「領完」，不印總計。
-- **門檻由小到大**（`sortedRewardTiers()`，遊戲裡的領取順序；Yuki 裁決，原版是由大到小）。
-- **分類切換**：桌機左側按鈕、≤720px 原生 `<select>`，兩者切同一個面板（不是錨點捲動）。
-  ⚠️ **HTML 裡的面板全部不帶 `hidden`**：沒有 JS 時七個分類一路攤開、切換選單不出現（CSS 看
-  `.rewards-page[data-js]`，腳本接手才掛），跟 `/guide/keywords` 同一個做法。RW9 守。
-- ⚠️ **`RewardGrant.astro` 整段 `aria-hidden`**，唸給讀屏的數量靠外層：階段列由 `<li aria-label>` 給，
-  總計由 `<dd>` 裡另一段 `.sr-only` 給（/code-review 2026-09-27 抓到總計讀不到數字）。改版面時兩條路都要留。
-- 單件收藏品不印「1」（`rewardAmountVisible()`），貨幣一律印數量。
-- 7日旅程、狩獵活動與重複性獎勵的每日任務是原生 `<details>`，預設收起。
-- ⚠️ 成就群組的清單比表頭多一圈 `--space-2` 內距，表頭要用同寬的 `margin-inline` 對齊欄位（RW8 守）。
-
-### `/rift-shop` 裂縫商店
-
-合作困難模式的局內商店，55 條裂縫效果依**階級**（一般 13 ／稀有 23 ／傳說 19）分三組，
-版面共用 `battle.css`、分組方式抄 `/boss`。資料與圖示各走一條平行路徑，見上面規則 27。
-入口跟 `/tactic`／`/boss` 一樣收在「遊戲介紹」下拉裡（`guideCurrent` 要一起改，理由同 B6）。
-
-- **價格逐條印，不是只印在組標題上**：傳說階級有 100 與 200 兩種（奇蹟之石、女王寶座是 200），
-  只看組標題的人會把它們當成 100。組標題印的是該組所有價格的集合（`[...new Set()]`，不是取第一筆）。
-- ⚠️ **權重反過來只印在組標題上**（Yuki 2026-09-06 裁決）：它在同一階級內是固定值，逐條印等於
-  同一個數字重複 55 次。`weight` 仍留在資料檔——它是規則 27(i) 的鍵，也是組標題那句的來源。
-- ⚠️ **`.battle-group-head[hidden]`／`.battle-list[hidden]` 那兩條 `display: none` 是必要的不是保險**：
-  兩者本身是 `display: flex`，會壓過 `[hidden]` 的預設值——少了它，篩掉的那一組照樣留在畫面上，
-  而計數已經扣掉它們（`.battle-item[hidden]` 為同一個理由存在，這是同一族坑的第二次）。
-- ⚠️ **篩選的選擇器要指名 `.battle-group-head[data-grade], .battle-list[data-grade]`**，不能只寫
-  `[data-grade]`：每一條 `.battle-item` 也帶著自己的 `data-grade`，全抓進來會變成逐條開關 55 個 `<li>`，
-  行為看起來一樣、意圖卻讀不出來。
-- **這一頁沒有模式切換鈕**：55 條全是困難合作，沒有對戰版本。
-- 討伐硬幣的圖走 `currencyIcon('tacticcoin')`（見「資料解析」那節的 `CurrencyIconKind`），
-  不是另外寫一份 `<img>`。
-
-### `/events` 活動（索引 ＋ 一場一頁）
-
-`/events` 是索引（一場活動一張小卡：縮圖、名稱、版本徽章、檔期、摘要、貨幣、「N 項內容 →」），
-內容表在 `/events/<id>`（`src/pages/events/[id].astro`）。入口跟 `/tactic`／`/boss`／`/rift-shop`
-一樣收在「遊戲介紹」下拉裡（`guideCurrent` 要一起改，理由同 B6）。
-
-- ⚠️ **為什麼是分頁不是就地展開**（Yuki 2026-09-21）：活動只會越來越多，而 `<details>` 那種收合
-  只是視覺的——每一場的整份內容表仍然在索引的 HTML 裡，索引會跟著每場活動一起變重。分頁把重量
-  真的切開，也讓每場活動有可分享、可被索引的網址。**EV2 守著這條**：
-  索引頁的 HTML 裡不准出現 `<table>` 或任何一格內容。
-- ⚠️ **新增或移除一場活動要改 `tests/e2e/seo.spec.ts` 的 `PAGES`**：那份清單跟 sitemap 的 `<loc>`
-  是完全相等比對，而每場活動各是一頁。
-- **版面不知道每一欄的語意**（通用表格，見上面 `data/events.json` 那條），所以沒有篩選器，也沒有
-  任何「第幾欄是價格」這種假設。新活動只加資料。
-- ⚠️ **資料出處不上站**（Yuki 2026-09-21）：檔期只印日期，不印「誰在哪天實測的」；上游文案互相
-  矛盾那類註記留在產生腳本與這份檔案裡。
-- ⚠️ **`.event-table-wrap` 要有 `max-width`**：不設的話桌機上三欄會被拉到 1,200px 寬，「1」跟
-  「起點」之間隔著半個螢幕。表格的可讀性跟內文一樣是靠行寬撐的。
-- ⚠️ **窄螢幕上捲的是表格容器自己，不是整份文件**（`/board` 的 B13 是同一條）。那個容器要
-  `tabindex="0"`，否則只有滑鼠使用者捲得動——`overflow: auto` 最常見的無障礙漏洞。EV8 守，
-  而且它**自己撐寬一格再量**：現在這幾張表在 360px 下剛好放得下，直接驗「有沒有捲軸」等於沒驗。
-- ⚠️ **「同一欄裡有沒有圖」是建置期算的**（`iconCols` → `.pad-icon`），不是 `:has()`：CSS 選不到
-  「同一欄的其他列」，而 `td:not(:has(.currency-icon))` 會連整欄都沒有圖的欄位一起推。
-- ⚠️ **`<img width/height>` 要從資料讀**（`EventShot.width`／`height`，產生腳本從檔案量），不要
-  寫死一組數字：那兩個屬性的用途是讓瀏覽器先把位置空出來，寫錯比不寫更糟（先用錯的長寬比佔位、
-  載完再跳一次）。現在兩張剛好都是 554×1200，下一張橫式截圖就會踩到。
-- ⚠️ **同一張截圖在兩個地方的 `alt` 不一樣**：索引的縮圖是裝飾（`alt=""`，卡片上的名稱已經說完
-  它是什麼），內容頁的同一張是內容（`alt` ＝圖說）。縮圖也是唯一一處刻意用 `object-fit: cover`
-  的地方（跟 `/board` 那四個顯示點相反）——縮圖要的是「認得出是哪一場」，完整畫面點進去就有。
-
-### `/sim` 骰子樹模擬器
-
-在骰子樹上逐顆解鎖、調等級，即時算出這套規劃要花多少核心、金幣與超越核心，並對照玩家填的**持有資源**
-列出還差多少（輸入框是 `sim-limit-core`／`-gold` ＋ 每種超越核心一格 `sim-limit-<kind>`，由 `sim.astro` 依
-`MYTHIC_CORES` 產生；id 沿用 2026-09-23 以前「資源上限」時代的名字。`resourceGap()` 收 `SimHoldings`
-（`core`／`gold`／`mythic[kind]`，都是 `number | null`），側欄的 `#sim-gap` 只列有填的貨幣）。**刻意不做**：戰鬥／機率模擬、
-骰子強度評分、網址編碼分享、分支點數統計（Yuki 2026-08-23 指定）。⚠️ **進度存在 `localStorage`
-（鍵 `rd2-sim-v1`），這跟 `/board` 刻意不存是相反的裁決**——理由是模擬一棵 239 節點的樹是會做很久
-的事，而擺 5 顆骰子不是。版本號寫在鍵名裡，格式改了就換一個鍵，不寫遷移程式。
-
-- **算術全部在純函式層**：`src/lib/sim.ts`（狀態機）、`src/lib/sim-io.ts`（存檔與文字報告）、
-  `src/lib/upgrade-tiers.ts`（費用查表）。`src/scripts/sim.ts` 只做「把狀態畫成畫面、把事件翻成
-  狀態轉換」。**每個操作都回傳新狀態而不是就地改**——undo／redo 直接把整份狀態推進堆疊，不必為
-  每種操作各寫一次反向操作（而反向操作正是最容易漏掉連帶效果的地方）。
-- ⚠️ **`deserializeSim()` 吃的是 `SaveContext`（`SimContext` 的子集）**，`/board` 也用它讀同一份存檔
-  （見 `/board` 一節）。`maxSelectableLevel()` 只查 `ctx.caps`（`buildSimContext()` 預先用 `levelTableFor()`
-  算好）——要改「哪些節點能升級」改 `levelTableFor()`，兩頁會一起跟上。
-- **畫布跟 `/tree` 共用同一個 controller**：兩頁都是 `mountCanvasTree(host, data, { obscurers })`，**沒有
-  「這是 /sim」的參數**（`obscurers` 是兩頁各自量自己的浮層，量法共用 `src/lib/canvas/obscurers.ts` 的
-  `visibleRects()`：只算看得見的）。平移／縮放／命中測試／隱形按鈕清單／兩層 canvas 全部只有一份實作，
-  `/sim` 只多傳一個 `PaintState.sim`（`SimPaint`：owned／available／selected／linked／active／
-  ready／levels／maxLevels）進去，畫成什麼樣由 `state.ts` 與 `painter.ts` 決定。
-  ⚠️ **差異全部由 `setState({ sim })` 表達**——不要為了 `/sim` 在 `painter.ts` 裡開分支，
-  也不要在 `MountOptions` 上加旗標。`/tree` 專屬的詳情卡片置中平移與篩選器接線在
-  `src/scripts/tree-canvas.ts`，`/sim` 只是不載那支腳本（2026-09-06 拿掉的 `sim?: boolean`
-  是個死參數：controller 從頭到尾沒讀過它，而這裡曾經寫成「它只關掉 /tree 專屬行為」）。
-- **等級牌是畫的，不是元素**（`drawStatic` 最後一段：`owned` 且 `maxLevel > 1` 才畫）。
-  ⚠️ **牌子的透明度要吃 `nodeAlpha(state, id)`，不可以寫死 1**：舊版 `<g class="sim-badge">` 是
-  節點群組的子元素，父層一淡它就跟著淡；canvas 裡每一次 `fill`／`fillText` 都得自己設
-  `globalAlpha`，漏設的話搜尋淡出時牌子會浮在半透明的節點上。
-- **狀態色與三階邊都在 `state.ts`**（`nodeAlpha`／`edgeAlpha`／`edgeColor`），數值是從舊
-  `canvas.css`／`sim.astro` 的 opacity 規則逐條搬過來的。⚠️ **搬的時候要連 CSS 的優先順序一起搬**：
-  舊版 `#tree.sim .node.sim-dimmed` (1,3,0) 壓過 `.sim-selected`／`.sim-locked` (1,2,0)，所以
-  `nodeAlpha()` 裡搜尋淡出（0.08）要排在選取（1）與未取得（0.28）**前面**，順序寫反的話
-  「搜尋不符的節點被選取時仍是淡的」這個行為會安靜地反過來。
-- **可選初始骰子（陰陽／貪婪／空虛）只能用勾的，不能在樹上點。** 它們不花錢，讓玩家點一下就拿到
-  等於送。判準從資料推導（`unlockVia` 非 cost 非 default 且無 `unlockPaid`），不硬編碼 id。
-  ⚠️ **恐懼骰子（`5002`）不在這一組**：它是成就開門但仍要付 8 核心（`unlockPaid`），走一般解鎖流程。
-- **「一鍵點亮」遇到沒勾的初始骰子時一顆都不解**（`pathTo()` 回 `need: []`）。解一半的話玩家會花掉
-  資源、目標節點卻仍然點不開，而畫面上只會說「還缺前置」。
-- **能力彙總的分組判準是「這個名稱在整份資料裡跨不跨系」**，不是「玩家現在解了哪幾顆」——用後者的話
-  同一個效果會隨解鎖進度在分組之間跳來跳去（解第一顆時歸在該系、解第二顆時突然變成全域）。
-  沒有 `growth` 的節點**不硬湊數字**，照描述列出來並標次數；要解析「起始SP增加40」這種固定值得另寫
-  一組認得四種句型的正則，而那組正則挖錯不會有任何地方說話（同 `growth` 需要規則 17 反向驗算的理由）。
-- ⚠️ **持有資源只算、不擋**（2026-09-23 Yuki 拍板，取代舊的「資源上限」）。規劃超過手上的量是常態
-  ——玩家要看的就是還差多少——所以 `applyState()` 不看持有量，差額只由 `renderTotals()` 畫在
-  `#sim-gap`（`is-short`＝還差、`is-enough`＝剩餘，輸入框的 `.over-limit` 標「不夠」的那幾格）。
-  不要把擋操作加回來：舊版連「只擋會變貴的方向」都得特別處理，不然玩家會被鎖在超支的規劃裡。
-  S6（照樣取得＋還差）與 S16（只列有填的、全空收起）守。
-- ⚠️ **沒有取得時，畫面仍然要跟著 `selected` 走。** `activate()` 先改 `selected`，點的是還不能
-  取得的節點（或 `commit()` 失敗）就不會經過 `commit()` 的 render，得自己補一次；漏掉的話面板與
-  選取光暈會停在上一顆節點，而面板上那些按鈕讀的是 `selected`——按下去作用在畫面上看不到的那顆。
-  S20 守（點 1301；⚠️ 挑的節點要離 1001 夠近，手機版抽屜升起後離太遠的會被 tapNode 平移）。
-- ⚠️ **拖曳等級滑桿時不可以重建面板。** `renderDetailPanel()` 是 `innerHTML` 整段重寫，拖到一半
-  重寫會把玩家正按著的 `<input type="range">` 換成新元素，指標捕捉隨之失效——實測 100 級的節點
-  從最左端拖到最右端**只走到 Lv.6**。所以 `input` 走 `applyState()` ＋ `updateLevelReadout()`
-  （只改文字），`change`（放開）才推一步 undo 並完整重畫。整段拖曳算**一步**復原，不是 99 步。
-  ⚠️ **驗這件事一定要用真的滑鼠拖曳**：`fill()` ＋ `dispatchEvent('input')` 只送一次事件，完全
-  繞過這條路徑（S3 就是這樣一直綠著的）。S17 用真滑鼠、S17b 直接驗「元素沒被換掉」這個根因；
-  **手機的觸控拖曳 Playwright 驅動不了原生 range，只能真機驗**。
-- **焦點框畫在互動層，跟狀態色不搶**（`painter.ts` 的 `focusRingPath()`，依節點 `shape` 走
-  矩形／菱形／圓／六邊形的幾何路徑）。canvas 沒有層疊也沒有 `filter`，`/tree` 與 `/sim` 用同一段
-  程式，所以舊版「狀態色的具體度壓掉焦點框」那一族坑不再存在。⚠️ 代價是焦點框**不再貼著圖示的
-  alpha 輪廓**，是宣告形狀的近似框；圖示裁切品質因此不會再變成焦點框的形狀（見「圖示」一節）。
-  ⚠️ 焦點框的透明度走 `state.ts` 的 `focusAlpha()`，**不走 `nodeAlpha()`**：只有被篩選／搜尋淡出的
-  節點跟著淡，狀態造成的暗（`/sim` 沒到手 0.28、`/tree` 有選取時鏈外 0.25）不吃掉焦點框
-  （2026-09-23 Yuki 拍板，兩頁一起）。S15 ＋ `painter.test.ts` 守。
-- ⚠️ **`#sim-toast` 是這一頁唯一的 `role="status"`，不可以用 `hidden` 收放。** 收放靠清空
-  `textContent`，視覺由 CSS 的 `:empty` 收——`hidden`／`display:none`／`visibility:hidden` 三種
-  都會讓它從無障礙樹消失，於是「請先勾選初始骰子」這類唯一的失敗回饋對螢幕閱讀器完全不存在。S19 守。
-  ⚠️ 它是 `pointer-events: none`，手機版浮在抽屜上緣之上（`--sim-panel-h`）：「已取得 X」的 toast
-  原本正好蓋在抽屜的主按鈕上（S26 抓到）。
-- **鍵盤與讀屏**（2026-09-24 review P3）：節點按鈕的 `aria-description` 帶模擬器狀態（已取得 Lv／可取得／
-  未解鎖／不符合搜尋），選取是 `aria-current`——都寫在 `sim.ts` 的 `syncButtons()`，**不動 `a11y.ts` 與
-  aria-label**（/tree 共用、也是 E2E 選取器）。鍵盤 Enter 開節點 → 焦點移到 `#sim-detail h3`；側欄裡按 Esc
-  回到節點按鈕（選取不動），節點上再按 Esc 才取消選取。取得成功一律 toast。S35／S38 守。
-- **桌機側欄寬只有一份**：`sim.astro` 在 `body` 上設 `--sim-panel-w`，`#sim-panel` 的寬與 `#sim-toolbar` 的
-  `max-width` 都讀它——工具列自然寬約 849px，721–1200px 寬時原本壓在側欄上（S36）。初始視角 `fitAll()` 也扣掉
-  側欄（以可視區置中，S37）；1280 以下可讀性下限讓樹比可視區寬，側欄底下仍會有幾顆，那是必然的。
-- **存檔之外的兩份 localStorage**：`rd2-wiki:sim-holdings`（持有資源輸入框的原字串）、`rd2-wiki:sim-panel-h`
-  （抽屜偏好）。**不要塞進 `rd2-sim-v1`**：`/board` 讀那份。兩個分頁之間靠 `storage` 事件同步（被換掉的
-  那份推進 undo），bfcache 回來靠 `pageshow`。S44／S45 守。
-- ⚠️ **「可取得」的節點不發光、不變亮**（2026-09-23 Yuki：點亮一顆之後後面跟著亮起來會誤導成
-  已經拿到）。`nodeAlpha()` 對 `available` 回 0.28（跟鎖住的一樣），`drawOverlay` 不再替它畫金光；
-  「下一步在哪」**只由 `ready` 邊（0.7）表達**。`SimPaint.available` 留著是給 `state().sim` 與 E2E 問的。
-- ⚠️ **邊有三階，不是兩階**：沒到手＝暗（0.25）、**兩端都在手上＝正常亮度**（`edgeIsLinked`）、
-  **真的走過＝再加金色**（`edgeWasUsed`）。`1001` 火骰子連著 `1005` 風與 `1007` 冰，三顆都是遊戲
-  一開始就送的——那條路是通的，卻不是玩家走出來的。**只有兩階的話這兩條不是被畫成金線（看起來
-  像自己解過），就是跟「還沒走到的路」一樣暗；Yuki 先後回報了這條界線的兩邊。**
-  可選初始骰子同理（從討伐獎勵／通行證領的，指向它的邊沒被走過）。
-  ⚠️ `edgeWasUsed` 是 `edgeIsLinked` 的**子集**，`state.ts` 靠這個包含關係把兩件事拆成互不干涉的
-  兩個函式（`edgeAlpha()` 只回透明度、`edgeColor()` 只回顏色），不必去算誰壓過誰。
-  `src/lib/sim.ts` 有一條全邊掃描的測試守著那個包含關係，畫面三階由 S18 守。
-- **E2E 挑節點要挑「初始狀態就可解鎖」的那 11 顆**（前置只有起始骰子），否則每條測試都得先「一鍵
-  點亮」，測到的就不是自己要測的那件事。⚠️ **座標一律問 `window.__tree.nodeScreenRect(id)`**
-  （回傳的框只含圖示、不含標籤，正是要點的地方），再用真滑鼠點那個中心——canvas 裡沒有可以
-  `locator()` 的節點元素，隱形按鈕清單被 `clip-path` 裁成 1px，拿去量幾何只會得到左上角那 1px。
-  ⚠️ 安全點擊區**兩個方向都要算**：工具列與手機版抽屜擋上下，桌機側欄擋右邊——只算上下的話節點
-  會落在 `<aside>` 底下，症狀是「側欄一直停在空狀態」。而且**只准扣「現在真的看得見」的遮蔽物**
-  （見下面手機版那條）：手機的工具列是收起來的 sheet，它的 `getBoundingClientRect().bottom` 落在
-  視窗底下，照舊拿它當安全區上緣會讓整個安全區變成空的，症狀是「每顆節點都搬不進可點擊範圍」。
-- **外觀來自共用元件**（2026-09-23 骰桌 PR ④）：工具列按鈕與詳情行動鈕是 `.btn`（行動鈕＝這一頁唯一的
-  `.btn-pri`；破壞性的「取消…」是 `.btn-alt` ＋ `.danger` 的 `--nature` 框）、側欄是 `.panel`。
-  ⚠️ **不要寫回 `#sim-toolbar button`**：它會壓過 `.btn`，而且連手機 sheet 的把手 `#sim-sheet-close`
-  （不是 `.btn`）一起蓋到。長相由 `sim.spec.ts` 的 S30／S31 守。
-
-- **匯出圖片（2026-09-23）**：工具列「匯出圖片」→ 精簡版（依系別的已取得節點圖示牆，寬 1080）／
-  完整版（整棵樹 2×）。內容與版面在 `src/lib/sim-image.ts`（純函式），畫圖在
-  `src/scripts/sim-export-image.ts`。⚠️ 完整版直接呼叫 `drawStatic()`，狀態走 `simPaintFor()`
-  ＋ `exportPaintState()`（清掉選取／搜尋淡出／焦點）——**不要為匯出在 `painter.ts` 開分支**；
-  畫面與匯出共用 `src/lib/sim-paint.ts`，改「哪些邊算走過」只改那一份。⚠️ 出圖前用
-  `AssetStore.settled()` 等圖示全部結束（15 秒上限）：畫面那個 store 只預載視錐內的。
-  ⚠️ 完整版像素要 < 16,777,216（iOS Safari canvas 上限，超過畫出空白圖而不報錯），
-  `sim-image.test.ts` 守。S32–S34 守下載、尺寸、選單不溢出。
-
-#### 手機版（≤720px）的版面是另一套（2026-09-22 重排）
-
-改之前在 390×844 量到：nav 50.6 ＋ 工具列 87（兩列、fixed、蓋住畫布頂端）＋ footer 著作權 73
-＋ 抽屜 354 → **畫布只剩 44%**，而且被工具列蓋住的那 87px 裡的節點點不到。現在畫布 87%
-（360／390／414 三個視口實測 86.7／87.4／88.1%），由 E2E 的 **S24** 釘住。
-
-- **工具列＝從下緣升起的 sheet**，入口是畫布右下的兩顆浮動鍵：🔍 只升起搜尋那一列
-  （邊打字邊看節點淡出是這一頁搜尋唯一的回饋，蓋住畫布就沒了）、⋯ 升起整份。
-  **DOM 順序與桌機完全一樣**，換的只有定位與 `.sim-menu-body` 的展開方式。
-  ⚠️ 仍然**不准**改成 `overflow-x: auto` 的橫捲列（那是第一版踩過的坑，看不到的按鈕等於不存在）。
-  ⚠️ **過場只掛在 `.is-open` 那一側**（升起滑上來、收起直接收）：收起靠 `visibility: hidden`，
-  而 `visibility` 是離散屬性，放進 transition 就得寫 `step-end`，那過不了
-  `tests/styles/tokens.test.ts` 的「每一條 transition 都要指名 token 曲線」。
-- ⚠️ **`.sim-menu-body` 的 `max-width` 一定要夾到視口**（`min(22rem, calc(100vw - …))`）。
-  它只有 `left: 0`，390px 上實測「資源上限」右緣 547 > 390，五個數字輸入框整排在畫面外、
-  完全摸不到。手機版另外把它改成 `position: static` 就地展開，從結構上消掉這個形態。**S25** 守。
-- **側欄＝可拖曳高度的抽屜**，預設只露出把手那一列（總計與已取得仍在把手上，分項收在下面）。
-  高度走 `--sim-panel-user-h`，下限是把手的實際高度（**量它，不要在 JS 裡寫第二份 3.5rem**），
-  上限 80dvh。**S27** 守。
-  ⚠️ **偏好存的是兩個值**（`localStorage['rd2-wiki:sim-panel-h']` ＝ `{h, open}`）：
-  `h` 是**展開時**的高度、`open` 是上次離開時收合了沒。只存一個「目前高度」會把兩件事混在
-  一起——收合一次就把它覆寫成把手的 56，使用者拖出來的高度永久消失，再展開只回到 50% 的
-  預設值（2026-09-22 /code-review 實測：拖到 306 → 收合 → 再展開變 422）。
-  ⚠️ **記憶體裡的 `openPanelH` 與存進去的那一份要分別驗**：反例實測只改壞 `writePanelPref`、
-  留著記憶體那條時，「收合再展開回得到原高度」仍然全綠；S27 因此多一段「收合 → 重整 → 展開」。
-  ⚠️ **抽屜的直接子項要 `flex: none`**：它是 flex column，子項預設會 shrink，收到 3.5rem 時
-  把手被壓扁、「總計」那一列從它底下露出半行（實測約 30px）。
-  ⚠️ **下內距要放在最後一個孩子身上**，留在抽屜上的話 `border-box` 會從 3.5rem 裡扣掉，同一個症狀。
-- **選了節點會把抽屜撐到剛好露出詳情的主按鈕**（`revealDetail()`，算 `cta.offsetTop + offsetHeight`）。
-  只長不縮，而且**不寫回偏好**——那是系統為了這一次操作拉開的，不是使用者拖出來的高度。**S26** 守。
-  ⚠️ **底下只留 `CTA_BOTTOM_GAP`（24），不要加 `panelMinH()`**：把手是 sticky，`offsetTop`
-  本來就含它那一列，加上去等於每次選節點都白白多吃 56px 畫布（實測 243 顆全部中招）。
-  ⚠️ **光改高度不夠，夾到上限時要用捲動補**：`want` 會被 80dvh 夾住，矮螢幕 ＋ 多行
-  「缺少前置／需達 Lv.N」的節點高度湊不出來（實測 iPhone SE 375×568 的 `2503` 差 2px）。
-  **S26 因此在 375×568 掃全部 243 顆**，不寫死 id——只驗一顆剛好驗不到。
-  ⚠️ **上限不只 80dvh，還要留得下兩顆浮動鍵**（`panelMaxH()`）：手機橫放 640×360 撐到 80dvh 時浮動鍵
-  被推到導覽列底下。S40 守。
-  ⚠️ 撐高之後被選的節點可能落在抽屜底下 → `revealSelected()` 用 `tree.visibleShift()` ＋ 共用的
-  `src/lib/canvas/animate-pan.ts` 把畫布挪開（S39）。撐出來的高度收合時**不記成展開高度**（`systemOpened`，S42）。
-- ⚠️ **浮動鍵的 `bottom` 綁 `--sim-panel-h`**（抽屜量出來的實際高度），抽屜拖高時跟著上移。
-  寫死偏移量的話它們會被抽屜蓋住而真人點不到——「浮動 UI 被畫布外、z-index 更高的兄弟元素蓋掉」
-  在這個 repo 咬過兩次。**S27 用 `elementFromPoint` 驗**，不是 `.click()` 不 timeout：
-  2026-09-20 在 /sim 桌機版實測過「Playwright 點得成功、`elementFromPoint` 卻回 `ASIDE`」。
-- ⚠️ **`#sim-scrim` 的 `z-index` 必須低於 `#sim-fabs`**（5 < 6，仍高於抽屜的 4）。兩者同為 6
-  時由 DOM 順序決勝、而遮罩排在後面——**搜尋模式**下 sheet 只有一列高、兩顆浮動鍵明明露在它
-  上方，`elementFromPoint` 卻回 `#sim-scrim`，於是「⋯ 開著時按 🔍 換模式」那條路用指標永遠
-  走不到（2026-09-22 /code-review 抓到，同一族的第三次）。**S29** 守。
-  （**完整模式**下 sheet 本來就長到蓋住那兩顆，那是版面事實不是 bug。）
-- ⚠️ **著作權在 ≤720px 由 `syncCredit()` 搬進抽屜最底**（跨斷點會搬回去）。它原本留在頁面上，
-  光那兩行就吃掉 73px 畫布。**這推翻了 S12 舊版的斷言**（`footTop < panelTop`），S12 已改寫成
-  「在抽屜裡、捲到底讀得到」——那是刻意的，不是回歸。搬走之後 `body:has(#canvas-host) > footer`
-  那條讓位規則因為選擇器是 `>` 自動失效，只有沒 JS 時才作用。
-- ⚠️ **拖曳刻意不用 `setPointerCapture()`**，改在 window 上收 move／up：合成的 `PointerEvent`
-  沒有對應的真實 pointer id，`setPointerCapture()` 會丟 `NotFoundError` 並中斷後面的 handler。
-  **代價是收尾與比對要自己做，兩件都不能省**：
-  (a) **`pointercancel` 一定要接**。Android 的邊緣返回手勢、長按選單、旋轉螢幕之後**不會**
-  再有 `pointerup`，拖曳狀態就一直留著，而 `pointermove` 掛在 window 上——之後使用者在畫布上
-  平移都會變成在改抽屜高度（2026-09-22 /code-review 實測：cancel 之後隨便滑一下，56 → 673）。
-  **S28** 用合成事件守（真滑鼠派不出 `pointercancel`）。
-  (b) **`pointermove`／`pointerup` 要比對 `pointerId`**，否則另一根手指的移動會被算進這一次拖曳。
-- ⚠️ **E2E 碰工具列裡任何一顆控制項之前要先 `openTools(page)`**（桌機是 no-op），點畫布之前
-  `tapNode()` 會自己 `closeTools()`——sheet 的遮罩會把畫布上的點擊整片吃掉。
-  `chrome.spec.ts` 的 **D18** 也要：它的 `/sim` 取樣要排除 `#sim-sheet-close`（桌機 display:none，
-  量不到 transform）並先按 ⋯ 升起 sheet。
-- ⚠️ **`npm run compare` 在「有新增元素」的改動上給不出答案**：它逐索引走 DOM，插一個元素之後
-  整棵子樹都報「新增了」（這次 /sim 報了 533 個差異，其他八頁全是 0）。要驗「桌機零回歸」得自己
-  逐**選擇器**比同一批既有元素的 computed style（這次比了 40 個選擇器 × 1280／1920／900／721
-  四個寬度，全部 0 差異）。
-
-## 圖示與畫布怎麼畫（`src/lib/canvas/`）
-
-`/tree` 與 `/sim` 共用一個 controller：`mountCanvasTree(host, data, opts)` 回一個 `TreeHandle`
-（`setState`／`getState`／`nodeScreenRect`／`hitAt`／`fitAll`／`fitBounds`／`pan`／`requestRedraw`／
-`onSelect`／`onViewChange`／`destroy`）。⚠️ **`pan()` 是唯一帶陷阱的一支**：它跟拖曳收尾一樣會
-`cache.invalidate()` 把位圖邊距重新置中，動畫的中間幀誤用等於每幀重畫 241 顆——中間幀請用
-`view.pan()` ＋ `requestRedraw()`，只有收尾那一下才叫 `pan()`。
-一個檔一件事：`view.ts` 座標數學、`scene.ts` 由 tree.json 組出不變的幾何、`state.ts` 每一幀可能不同
-的互動狀態、`theme.ts` 從 token 讀出來的顏色字級、`assets.ts` 圖集與 2× 圖、`painter.ts` 怎麼畫、
-`cache.ts` 靜態層位圖快取、`hit.ts` 命中測試、`a11y.ts` 隱形按鈕、`debug-api.ts` 給 E2E 問的介面。
-
-**兩張 canvas，疊在 `#canvas-host` 裡**：`.tree-static`（節點、邊、常駐標籤、中央樞紐、`/sim` 等級牌）
-在下，`.tree-overlay`（前置鏈光暈、hover／focus 標籤、焦點框）在上。**pointer 事件全部掛在互動層**、
-`touch-action: none`。分兩層的理由是**滑過一顆節點不該讓 241 顆重畫**；靜態層再往下一層由
-`StaticCache` 存成離屏位圖，平移時只是把同一張位圖 blit 到新位置。
-
-- **快取 key＝`scale|dpr|視口尺寸|assetsVersion|stateSignature`**，`tx/ty`（平移量）**刻意不進 key**
-  ——那只是 blit 的位置，不是位圖的內容。位圖尺寸是**視口每邊外擴 `PAN_MARGIN`（0.25＝1.5×1.5 視口）**
-  ×dpr 而不是整棵樹（放大 8× 時整棵樹是 16000×13600，記憶體撐不住，畫面外的部分也沒人看）；
-  超過 `MAX_SIDE`／`MAX_AREA` 時邊距逐次減半（`marginPx()`）。⚠️ **連裸視口自己都超標時
-  `marginPx()` 回 `[0, 0]`，位圖照配那個尺寸**——元素至少要跟視口一樣大，那已經超出這一層
-  能處理的範圍（實務上要 5K／6K 螢幕才碰得到，Chromium 真實上限 268M px 撐得住）。代價是
-  邊距 0 之後平移捷徑幾乎全程失效（每一幀都真的重畫），是效能懸崖不是畫面錯誤。
-- **頁面上那兩張 canvas 元素也是同一個帶邊距的尺寸，用 `translate(−邊距)` 定位**（`measure()`／
-  `resetLayers()`）。拖曳中不重繪，只改兩張元素的 CSS `transform`；位移超出邊距（位圖或元素任一
-  蓋不滿視口，`covers()` AND `layersCover()`）就在**同一幀**重畫；拖曳結束、第二指落下、pointercancel、
-  lostpointercapture、程式化平移收尾全部走 `endDrag()` 補畫一次並把邊距重新置中。⚠️ 2026-09-06 使用者
-  實測抓到的 bug 就是「平移只 blit 舊位圖、放手不補畫 → 拖出去的區域永遠空白」，任何新的平移路徑都
-  要記得走 `endDrag()`。
-- **縮放中也不重繪，改對兩張元素設 `transform: translate(...) scale(k)`，停 150 ms 後才補畫一張
-  清晰的**。不這樣做的話滾輪一秒送幾十個事件、每個都重畫 241 顆（Pixel 7 4× 節流實測 22–47 fps →
-  53–54）。唯一例外：縮小到拉伸過的貼圖蓋不滿視口時當幀真的重畫（所以縮小仍是 44–47 fps，接受）。
-  ⚠️ **已知取捨：縮放中畫面會糊那 150 ms，光暈與焦點框跟著拉伸；縮放中的 hover／狀態變更要等 settle。**
-- ⚠️ **`shadowBlur`／`shadowOffsetY` 是 canvas 2D 唯二不吃 `setTransform` 的屬性**（它們是裝置像素）。
-  節點投影與鏈上光暈的半徑都是 world 單位常數，畫之前一定要自己乘上 `dpr * pxPerUnit`——不乘的話
-  dpr 2 的手機光暈只有一半，畫布放大 3 倍光暈也完全不會變大。
-- ⚠️ **標籤字級與線寬是 world 單位不是 CSS px**（畫在 `setTransform` 之後）。`theme.labelPx` 是
-  `--fs-xs` 換算出來的數字，套在 world 座標系上剛好對上舊 SVG 的使用者座標，**不要因為「單位看起來
-  像 px」就照 CSS 的直覺調它**。標籤先 `strokeText` 再 `fillText`（等價於舊版的 `paint-order: stroke`）。
-- **圖示走 `AssetStore`**：一張 sprite 圖集（1×）＋每顆節點各一張 2× WebP。放大到
-  `HIRES_UPGRADE_AT` 才升級、縮回 `HIRES_DOWNGRADE_AT` 才降級（兩個門檻不同＝遲滯，免得在臨界點
-  來回抖）。⚠️ **`updateLod()` 只對 `view.visibleWorldRect()`（純視口）內的節點呼叫 `wantHires()`**，
-  `painter` 則只呼叫**唯讀**的 `loadedHires()`——畫一幀就對每顆節點要一張 2× 圖等於整棵樹一次抓完，
-  視錐預載就白做了。載好的圖把 `assets.version` +1，快取 key 一變，靜態層自己重畫一次。
-  失敗的圖記住不重試（否則每次縮放都打一輪 404）。
-- ⚠️ **首屏 2× 圖示的張數與版面／初始縮放綁在一起**（實測 Pixel 7 首屏約 70 張／358.4 KB；
-  E2E 釘 **< 110 張／< 500 KB**）。改版面、改 `*_ICON_TARGET_PX`、改 `fitAll()` 的 pad 都會動到
-  這個數字，**改完要重新校那條斷言**，不要因為紅了就把上限往上調。
-  ⚠️ **視錐刻意不含位圖那一圈邊距**（Ruling X）：含進去雖然跟位圖畫的範圍一致，實測會變成
-  120 張／479.4 KB（離 500 KB 只剩 20 KB 餘裕）。邊距那一圈停在 1× 是可接受的——拖進視野、
-  手勢結束補畫那一幀就會升級。
-
-**canvas 對鍵盤與讀屏是黑洞**，所以每顆節點另外掛一顆隱形 `<button data-id>`（`a11y.ts`，
-`<ul class="tree-a11y">` 241 顆）。⚠️ **視覺隱藏只能用 `clip-path`**——`hidden`／`display: none`／
-`visibility: hidden` 會讓元素同時退出 Tab 順序與無障礙樹，等於把這份 DOM 存在的理由砍掉
-（跟 `.sr-only` 是同一條規則）。焦點框不畫在按鈕上，畫在互動層 canvas 上。
-⚠️ **`forced-colors: active` 下現形的只有「拿到焦點的那一顆」**（高對比模式不會把 canvas 上的
-金色描邊當成焦點色，所以焦點回饋要有個看得見的去處）：容器解除裁切但高度收 0，每個 `<li>` 各自
-接手那份 1px 裁切，只有 `:focus-within` 那一顆撐開成視窗左下角的一塊文字牌（系統色 `Canvas`／
-`CanvasText`）。⚠️ **不要改回「整份清單現形」**（2026-09-06 最終審查 I1）：241 個 `<li>` 每個都帶
-可見文字、總高約 3,800px，會被 host 裁成剛好蓋滿可視區的一整欄——而 canvas 的像素不會被 forced
-colors 重新著色，那張樹本來就看得見，等於用自己的無障礙備援把畫面蓋掉。現形的元素一律
-`pointer-events: none`，否則滑鼠點擊會被它整片吃掉、永遠到不了互動層。
-
-### 圖檔本身
-
-⚠️ **圖示的 alpha 輪廓＝陰影與光暈的形狀。** 節點投影與前置鏈的金色光暈是 canvas 的
-`shadowBlur`，它描的是**圖示自己的 alpha 輪廓**——所以圖裁得乾不乾淨會直接變成光暈的形狀。
-（焦點框不在此列：它走 `focusRingPath()` 的幾何路徑，跟圖檔無關。）真實案例：
-
-- **角色圖示被切平**（五個支援角色的底板下緣圓弧被切掉 2–3 列，一被選進前置鏈就變成一條橫的淡黃色
-  條）。修法是用最底 24 列擬合圓角補回去，再從頂端切掉同樣列數的全透明列，**畫布尺寸維持不變**
-  （長寬比一變，圖貼到節點的 w×h 上就會被拉扁）。守門是 `tests/data/icon-silhouette.test.ts`，判準是
-  圖檔本身的兩個數字（最底列寬比、最後一列的落差），⚠️ **不是截圖比對像素**——光暈是 6px 模糊、跟
-  深色底混完亮度很低，抓不到；放寬成「暖色」又會連角色自己的暖色像素一起抓進來。
-  ⚠️ 用截圖找這種細線也**抓不到**（角色自己就有大量金／橙色像素，前置鏈的連線也是金色）。有用的量法
-  是「相鄰兩列的平均色差」找突變列，以及**同一個視角開關前置鏈兩次相減**只留下光暈。
-
-- ⚠️ **`withGutter()` 的透明邊不可以拿掉**（`tools/lib/icons.ts`，把圖縮 2px 置中、四周留一圈全透明
-  像素）。現在的理由是**圖集相鄰格子互相滲色**：`drawImage` 從 sprite 取一格是帶雙線性取樣的，
-  格子邊界會吃到隔壁那格的像素，非整數縮放下最明顯。守門是 `tests/tools/icons.test.ts`（`GUTTER = 0`
-  會紅）。**這件事影響所有 241 個節點**，只是底部不透明、上半部細的圖最容易看見。
-- **透明邊要跟著輸出解析度縮放**：sprite 是 1×、高解析圖是 2×，兩者貼到畫面上**同一塊 w×h**；
-  兩邊都留 1px 的話圖佔的比例差 3.8 個百分點，放大到觸發切換的那一刻每顆符文突然大 4.2%。
-  `withGutter()` 收 gutter 參數，1× 傳 `GUTTER`、2× 傳 `GUTTER * 2`。
-- **日後加圖示要注意**：`tools/add-icon.ts` 只驗「是有效 PNG 且最長邊 ≥96px」，不看裁切品質。
-  角色類的圖進來時順手跑一次 `icon-silhouette.test.ts`。
-- ⚠️ **掃金邊的座標要換算裝置像素**：CSS px ≠ 截圖像素（Pixel 7 dpr 2.625），E2E 的 H 曾因此一直靠
-  光暈外暈擦邊過。
-
-### 中央樞紐 `<g class="tree-center">`
-
-正本裡唯一一個**不是節點**的圖形群組：遊戲內的「骰子樹」本體，五顆起手骰從它放射出去。沒有 id、
-沒有花費，不參與成本計算、祖先高亮與篩選。`data-links` 列出五條放射線接到的節點 id，圖在建置期轉成
-`public/assets/tree-center.webp`（不進 sprite——sprite 依節點類型的顯示尺寸分區打包，樞紐不屬於任何
-類型），瀏覽器端由 `painter.ts` 的 `drawStatic()` 畫在靜態層，圖走 `AssetStore.image(url)`。
-整組是**選用的**：沒有時 `meta.center` 是 null、站台不畫。規則 10 守。
-⚠️ **它的透明度自己一條**（`state.ts` 的 `centerAlpha()`：有選取時 0.12，否則看篩選有沒有全開），
-不要跟 `nodeAlpha()` 合併——樞紐不是節點，`filteredOut` 裡永遠沒有它。
+- `--nav-h` 由 `src/lib/nav-height.ts` 量**視窗座標**（`rect.bottom`，不加 `scrollY`），`Base.astro` 的 `installNavHeight()` 全站安裝。
+- `--chips-h` 由 `tree-canvas.ts` 量 chip 列寫入，**不寫死**；手機 footer 與 `#detail`（`inset: auto 0 var(--chips-h) 0`，不靠內距推）用它讓位。
+- ⚠️ `#canvas-host > canvas` 是 `position: absolute; inset: 0`，**不能用 `width/height: 100%`**（見 `canvas.css`）。
+  實際 CSS 寬高由 `canvas-tree.ts` 的 `measure()` 用 inline style 寫成「視口＋2×邊距」並 `translate(−邊距)`——
+  **那個 inline width 不是多餘的，不要「修正」掉**。
 
 ## 資料解析
 
-- **成本的畫面顯示走 `src/lib/cost-html.ts` 的 `costHtml()`／`simCostHtml()`**（2026-09-06，Yuki 指定貨幣旁要有
-  遊戲內的圖）：每種貨幣前一張 `.currency-icon`（`public/currency/{core,gold}.png` ＋ 每種超越核心一張 `<kind>.png`，64×64 正方置中，
-  `alt=""`＋`aria-hidden`），**文字跟 `formatCost()` 逐字相同**，所以 `toHaveText`／`textContent` 的斷言不用改。
-  純文字版 `formatCost()` 只給 aria-label、`simReport()`、PR 差異摘要用。圖高走 `1em`，跟著所在行的字級。
-  ⚠️ 用 `innerHTML` 塞的地方（`/sim` 三列合計原本是 `textContent`）數字全來自 `Cost` 的 number，不含自由文字。
-  ⚠️ `public/currency/` 在 `public/` 根目錄——不是 `public/assets/`（那個整個 gitignored、是 build:data 的產出）。
-  ⚠️ **`CurrencyIconKind` 比 `CurrencyKind` 多一個 `tacticcoin`（討伐硬幣，`/rift-shop` 計價）**，
-  而且刻意只擴圖示這一層：`Cost` 是骰子樹的花費（核心／金幣／超越核心），全站的成本加總、`/sim` 側欄、
-  規則 4 與差異摘要都建立在它之上，而討伐硬幣是**局內**貨幣（客戶端 `GoodsTable` 裡根本沒有它，跟 SP 一樣
-  一局結束就沒了）——加進 `Cost` 等於讓每一處運算都多背一個永遠是 0 的欄位。
-  `/events` 與 `/rewards` 的資源（`treeSeed`／`coopTicket`／`arenaTicket`／`skinCoin`／`luckyDiceTicket`）同理只擴
-  `CurrencyIconKind`；任何 kind 的名稱與圖一律走 `currencyIconDetails(kind)`（超越核心也在裡面），頁面不另抄對照表。
-  固定檔名的貨幣圖用 `npm run add-currency-icon -- <kind> <來源 PNG>` 產生（64×64 透明、等比置中），
-  **不要送進 `add-icon` 的雜湊管線**——`/currency/<kind>.png` 是寫死檔名引用的。
-- 成本字串的分隔符是**全形斜線 `／`**（U+FF0F），全檔 0 個半形 `/`。
-- **超越核心（2026-09-18 起泛化，Yuki 裁決）**：每顆神話骰子各帶一種專屬貨幣（1.1.0 太陽核心、1.1.2
-  齒輪二階核心……），全部登記在 **`src/lib/currency.ts` 的 `MYTHIC_CORES`**（`kind`／`label`／`goodsType`）。
-  ⚠️ **新增一顆神話骰子＝在那裡加一筆＋放一張 `public/currency/<kind>.png`，不改任何型別**：`Cost` 是
-  `{ core, gold, mythic? }`，`mythic` 是 `kind → 數量` 的表。解析、顯示、`/sim` 上限欄、規則 22 全部從
-  那份清單列舉；陣列順序＝多種同時出現時的顯示順序（新的往後接，已上線的顯示才會逐位元組不變）。
-  `tests/lib/cost.test.ts` 驗每一種都有圖、名稱以「核心」結尾、不撞號。
-  - **`mythic` 缺席＝沒有超越核心，有的話裡面的值都 > 0**（正規形）。選填是為了 tree.json：241 顆裡
-    只有神話骰子那幾顆用得到，1.1.0 那種每顆都帶 `"solar":0` 的寫法是白佔 gzip。代價是**不可以對
-    `mythic` 裡的數字直接加減**——一律走 `cost.ts` 的 `addCost()`／`subCost()`／`mythicAmount()`／
-    `mythicEntries()`（型別上 `c.mythic?.x` 是 `number | undefined`，直接相加編譯不過，正是要的效果）。
-    `core`／`gold` 仍是必填（每一顆都有，缺席當 0 會讓漏寫的那一處安靜地變 NaN）。
-  - `LevelCost.mythic` 同樣選填（`data/passive-upgrade-cost.json` 的 special 表寫 `"mythic": { "solar": 200 }`）；
-    `UpgradeBand` 刻意沒有（tier 制只服務玩家被動與支援）。
-  - CI 差異摘要讀 base 分支的 tree.json 時用 `costFromJson()`：它吃 1.1.0 的舊形狀 `{core, gold, solar}`，
-    而且**只印登記過的種類的名稱**——`mythic` 的鍵來自送 PR 的人，照印就是一條注入管道。
-  - 2026-09-18 泛化時驗過零回歸：main 與分支各 build 一次，15 頁 HTML（正規化 `/_astro/` 雜湊）逐位元組
-    相同；241 顆節點的詳情面板 HTML、逐級費用、`/sim` 報告與合計（含太陽骰子一鍵點亮＋1601 練滿）也逐字相同。
-- 成本字串：`parseCost` 收 `金幣 N`／`核心 N`／`金幣 N／核心 M`／`金幣 N／<超越核心> K`／
-  `金幣 N／核心 M／<超越核心> K`，順序固定**金幣→核心→超越核心**，禁反序禁重複（超越核心**全部加起來**
-  只准一次：遊戲一個節點只有一種 `RankUpGoodsType`）。金幣四位數以上一定要千分位逗號，**超越核心兩種都收**
-  （`2,000` 與 `2000`）；`核心 N／太陽核心 M`（沒有金幣）刻意不支援。上限 `MAX_MYTHIC = 100_000`。
-  ⚠️ 「核心 」是每一種超越核心名稱的後綴，重複計數要先扣掉超越核心（`cost.ts` 那段註解）。沒登記的
-  `X核心` 指名道姓地擋（「未登記的超越核心」），不讓它掉進「金幣金額格式錯誤」那句不相干的話。
-  **超越核心的顯示一律「有值才印」**（`formatCost`、`/sim` 三列合計、`simReport`、PR 差異摘要那行）；
-  `simReport` 的判準是總計不是逐行。
-- **等級上限一律在 `nodes.json` 的 `maxLevel`**（舊寫法「取 title 第二行」會在多行描述的節點上靜默算錯）。
-- `#關鍵字` 標記**沒有結束符**，中文無分詞 → 必須用 `data/keywords.json` 白名單最長優先比對，
-  不可用正則貪婪抓。
-- **`data/keywords.json` 一份檔案兩個角色**：規則 8 的白名單 ＋ 玩家看得到的詞彙解釋（含 `code`／
-  `color`／`desc`）。刻意不拆成兩份——拆開就會出現「白名單加了詞、但站上點開沒有解釋」而兩邊都不報錯。
-- `meta.glossary` 只放**用得到的**詞條（節點用到的＋覺醒用到的＋這些解釋自己再引用到的），不是整份，
-  而且**不含 `code`**（那是給貢獻者比對遊戲資源檔的）。key 進 tree.json 前有排序：傳遞閉包是用堆疊
-  展開的，不排序的話資料沒變 diff 也會整段翻掉。**這些數字別手寫進文件**，`build:data` 每次都會印出實際值。
-- **別名詞條 `{"aliasOf": "本尊"}`**：同一個遊戲代碼被官方翻成兩個顯示名時用它，不要抄第二份解釋。
-  規則 8(b) 禁止鏈狀別名。
-- ⚠️ **`node.keywords` 的語意是「描述裡用到的」，不含覺醒**。面板要列出覺醒的關鍵字時是拿
-  `meta.glossary` 的 key 當清單現算（`termsIn()`）——改 `node.keywords` 的語意會連帶動到搜尋與篩選。
-- `stroke` 不在固定元素上：骰子在 `<rect>`、符文/支援在 `<polygon>`、被動在 `<circle>`。
-- 成長值單位有 `%` / 秒 / 次 / 個 / **倍** / 無單位六種，且有負值加雙符號 `(+-0.2秒)`。
-  `src/lib/growth.ts` 的正則限定位數，不可寫回 `[\d.]+`——那會災難性回溯（實測 2 萬位輸入 2.5 秒），
-  而 validate 是 fork PR 也跑得到的工作。
-- ⚠️ **屬性值裡的字面換行是個地雷**：XML 規範要求 parser 正規化成空格，**Chromium 遵守、linkedom
-  不遵守**，同一份檔案兩邊會讀出不同的 `data-description`。目前正本上已經沒有多行文字屬性（隨文案
-  搬進 JSON 的 `\n`），但任何「在瀏覽器裡直接解析這份 SVG」的功能（例如線上編輯器）都會踩到，
-  修法是改編成 `&#10;`。
-- `tools/lib/dom.ts` 的 `attr()`：**linkedom 不解屬性裡的 `&amp;`／`&lt;`，卻會解 `<title>` 裡的**。
+### 成本
+
+- **型別**：`Cost` ＝ `{ core, gold, mythic? }`（`src/lib/cost.ts`）。`core`／`gold` 必填；`mythic` 是 `kind → 數量`，
+  **缺席＝沒有超越核心，有的話值都 > 0**（正規形）。**不可對 `mythic` 裡的數字直接加減**，一律走
+  `addCost()`／`subCost()`／`mythicAmount()`／`mythicEntries()`。`LevelCost.mythic` 同樣選填，`UpgradeBand` 沒有。
+- **新增一顆神話骰子＝在 `src/lib/currency.ts` 的 `MYTHIC_CORES` 加一筆＋放 `public/currency/<kind>.png`，不改任何型別**。
+  解析、顯示、`/sim` 上限欄、規則 22 都從這份清單列舉；陣列順序＝顯示順序，新的往後接（`tests/lib/cost.test.ts`）。
+- **成本字串格式（`parseCost`）**：順序固定 **金幣→核心→超越核心**，禁反序禁重複（超越核心全部合計只准一種）；
+  分隔符是全形 `／`（U+FF0F）；金幣 ≥ 4 位必須千分位逗號，超越核心兩種都收；`核心 N／太陽核心 M`（無金幣）刻意不支援。
+  沒登記的 `X核心` 要擋在「未登記的超越核心」那句錯誤。
+- **超越核心的顯示一律「有值才印」**（`formatCost`、`/sim` 三列合計、`simReport` 看總計、PR 差異摘要）。
+- CI 差異摘要讀 base 的 tree.json 走 `costFromJson()`：吃舊形狀，**只印登記過的種類名稱**（`mythic` 的鍵來自 PR 作者）。
+- **畫面顯示走 `src/lib/cost-html.ts` 的 `costHtml()`／`simCostHtml()`**，文字與 `formatCost()` 逐字相同；
+  純文字 `formatCost()` 只給 aria-label、`simReport()`、差異摘要。貨幣圖在 `public/currency/`（**不是** gitignored 的
+  `public/assets/`），用 `npm run add-currency-icon -- <kind> <PNG>` 產生，**不要走 `add-icon` 的雜湊管線**（檔名寫死引用）。
+- **`CurrencyIconKind` 可以比 `CurrencyKind` 多**（`tacticcoin`、`/events`／`/rewards` 的資源）：局內或非骰子樹貨幣
+  只擴圖示層，**不要加進 `Cost`**。名稱與圖一律走 `currencyIconDetails(kind)`，頁面不另抄對照表。
+
+### 節點文字與關鍵字
+
+- **等級上限一律讀 `nodes.json` 的 `maxLevel`**，不從 title 推。
+- `#關鍵字` 沒有結束符 → 用 `data/keywords.json` 白名單**最長優先**比對，不可用正則貪婪抓。
+- **`data/keywords.json` 同時是規則 8 的白名單與玩家看的詞彙解釋**，決策：不拆成兩份。別名用 `{"aliasOf": "本尊"}`，
+  規則 8(b) 禁鏈狀別名。
+- `meta.glossary` 只放用得到的詞條（傳遞閉包）、**不含 `code`**、key 要排序（否則資料沒變 diff 也翻）。
+- **`node.keywords` 只含描述裡用到的，不含覺醒**；覺醒的關鍵字由 `meta.glossary` 現算。改它的語意會動到搜尋與篩選。
+- 成長值單位六種（`%`／秒／次／個／倍／無）且有 `(+-0.2秒)`；`src/lib/growth.ts` 的正則限定位數，**不可寫回 `[\d.]+`**（回溯，validate 在 fork PR 上跑）。
+- `stroke` 不在固定元素上：骰子 `<rect>`、符文／支援 `<polygon>`、被動 `<circle>`。
+
+### SVG 解析
+
+- **屬性值裡不可有字面換行**：Chromium 會正規化成空格、linkedom 不會，兩邊讀出不同值。要換行寫 `&#10;`
+  （瀏覽器內解析正本的功能，如線上編輯器，一定會踩到）。
+- `tools/lib/dom.ts` 的 `attr()`：linkedom 不解屬性裡的 `&amp;`／`&lt;`，卻會解 `<title>` 裡的。
 
 ## 工具與 CLI
 
-- ⚠️ **CLI entry guard 一律用 `pathToFileURL`。** 舊寫法 `import.meta.url === \`file://${process.argv[1]}\``
-  在 Windows 上恆為 false（`argv[1]` 是反斜線路徑，`import.meta.url` 是 `file:///C:/...`），腳本印完
-  banner 就 exit 0 什麼都沒做——最貴的是 `npm run validate`：**它是閘門，卻在 Windows 上一直「通過」
-  而沒有驗任何東西**。POSIX 也不安全：`import.meta.url` 會 percent-encode，template literal 不會，
-  所以路徑含空白或非 ASCII 就踩到同一個空跑。`tests/tools/entry-guard.test.ts` 掃過 `tools/*.ts` 釘住：
-
-  ```ts
-  import { pathToFileURL } from 'node:url';
-  if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
-  ```
-
-  `?? ''` 是因為 `noUncheckedIndexedAccess`；`pathToFileURL('')` 解析成 cwd 的 URL 而不是丟例外，
-  guard 單純不成立，是安全的預設。（外部貢獻者在 PR #34 找到並修掉。）
-- ⚠️ **`String.replace` 比對不到會原樣回傳——「字串有沒有變」不是成功判準。** `render-nodes.ts` 靠一串
-  正則把渲染結果寫回正本：第一版用 `patched++` 數區塊（每個區塊必定 +1，等於什麼都沒驗），改成比對
-  前後字串又立刻誤報（重跑時值本來就一樣）。**正確做法是看正則有沒有真的比對到**（`replace` 的
-  callback 裡設旗標），`mustReplace()` 就是為此存在。同一個錯在這個檔案犯過兩次。
-  失敗長相：正本留著指向已被刪掉的舊圖示雜湊，validate 爆出 239 個規則 7(a) 錯誤，而完全看不出是
-  哪一步說了謊。
-- ⚠️ **Playwright 的 `omitBackground` 只拿掉「頁面」的背景**，對**內容自己畫的背景**無效。原圖有一張
-  `<rect width="100%" height="100%">`，沒把它一起 `display:none` 的話截出來的每張圖都夾帶實心底色。
-  後果會蔓延：節點變成不透明方塊蓋掉穿過它的線與鄰居的標籤，畫布上的投影與前置鏈光暈（描的是圖示的
-  alpha 輪廓）會去描那個方塊而不是圖示。**檢查方式是量 alpha 通道的分佈，不是看截圖。**
-- ⚠️ **Astro 的頁面 import 不到 `tools/` 底下的模組**（2026-09-21 實測）：`npm run build` 會過、
-  `npm run typecheck` 也不會說話，是**頁面渲染時**才炸 `<函式名> is not defined`。tools 與站台
-  都要用的純函式一律放 `src/lib/`（前例：`src/lib/upgrade-tiers.ts`），tools 反過來 import 它。
-- ⚠️ **`split-svg.ts` 與 `render-nodes.ts` 的來源檔一律由參數傳入、沒有預設值。** 以前預設指向維護者
-  本機的遊戲原圖，別人跑到只會得到一個看不懂的 ENOENT，而那條路徑也不該留在公開 repo 裡。
+- **CLI entry guard 一律 `import.meta.url === pathToFileURL(process.argv[1] ?? '').href`**（`tests/tools/entry-guard.test.ts` 掃 `tools/*.ts`）。
+- **`String.replace` 回傳值沒變不代表失敗、變了也不代表成功**：寫回正本要在 callback 設旗標，用 `render-nodes.ts` 的 `mustReplace()`。
+- Playwright 的 `omitBackground` 對內容自己畫的背景無效，截圖工具要把背景 `<rect>` 一併隱藏；驗收量 alpha 通道分佈。
+- **Astro 頁面 import 不到 `tools/` 的模組**（build 與 typecheck 都過，渲染時才 `is not defined`）→ 共用純函式放 `src/lib/`，tools 反過來 import。
+- `split-svg.ts`／`render-nodes.ts` 的來源檔一律由參數傳入，**不給預設路徑**。
+- `npm run compare` 逐索引走 DOM，**有新增元素的改動給不出答案**——驗零回歸要自己逐選擇器比 computed style。
 
 ## 測試環境
 
-- **`src/generated/tree.json` 是 gitignored 的建置產物**，多個測試會讀它 → `pretest`／`pree2e`
-  已補上，**不要拿掉**。
-- ⚠️ **tree.json 是「傳輸形狀」，不是 `TreeData`**（issue #63，gzip 19.6 → 17.5 KB）：`label` 只在
-  ≠ `name` 時才寫、`icon` 是 `meta.sprite.icons` 的索引。讀它一律經過 `decodeTree()`
-  （`src/lib/tree-wire.ts`）——站台 `import { treeData } from 'src/lib/tree-data'`，測試用
-  `tests/helpers/read-tree.ts` 的 `readTree()`。**直接 `JSON.parse(...) as TreeData` 型別擋不住**，
-  拿到的 `label` 是 undefined、`icon` 是數字。`decodeTree` 也吃舊形狀（CI diff-summary 的 base 端）。
-- ⚠️ **E2E 不量畫布內的 DOM 幾何，一律問 `window.__tree`。** canvas 裡什麼都不是元素，
-  `querySelector('.node')` 回 null、隱形按鈕清單被 `clip-path` 裁成 1px（拿去 `boundingBox()`
-  只會得到左上角那 1px，而且**不會報錯**）。渲染器自己包了一個查詢介面（`src/lib/canvas/debug-api.ts`）：
-  `count()`（節點／邊數）、`scale()`、`nodeScreenRect(id)`（相對 viewport 的 `{left,top,width,height}`，
-  只含圖示不含標籤）、`state()`（selected／chain／filteredOut／focus／bypassEdges／sim）、
-  `hitAt(x, y)`。它**永遠安裝、不判斷環境**——正式版與測試走同一份渲染路徑，不必為了「有沒有裝偵錯
-  介面」多維護一個 build flag。
-- ⚠️ **畫布的外觀改動只有截圖守得到。** `tests/e2e/tree.spec.ts-snapshots/` 有四張桌機快照
-  （預設視角／選取／篩選／放大），容差 `toHaveScreenshot.maxDiffPixelRatio: 0.001` 是量出來的
-  （在 1440×900 的 `#canvas-host` 上約 767 px，來源是字型與圖示解碼的次像素抖動）。
-  ⚠️ **盲區：整棵樹的視角裡單顆圖示只佔幾百 px，改壞一顆圖擋不下來**——守得到那個層級的只有放大的
-  那一張。畫面真的改了要 `npm run e2e:snapshots:update` 並**逐張人眼看過**，不要因為紅了就放寬容差。
-  ⚠️ **快照只在 Playwright 官方容器（`mcr.microsoft.com/playwright:v<lockfile 版本>-noble`）內比對**：
-  `npm run e2e:snapshots` 用 docker 跑同一個 image，CI 的 `e2e-shard` 也跑在那個容器裡；裸機上 F 一律
-  `test.skip`（沒有 `CI`／`E2E_SNAPSHOTS` 環境變數）。點陣圖比對吃字型——同一份 dist 在這台開發機與
-  ubuntu-latest 裸 runner 上，241 顆標籤全部不一樣（2026-09-06 PR #65 第一次 CI 10,973 px 紅）。
-  升 `@playwright/test` 時 ci.yml 的 `container:` tag 與 package.json 兩個 script 的 tag 要一起改。
-  ⚠️ **畫面改了、快照卻照樣綠是常態，不代表沒改到**：除了 `maxDiffPixelRatio`，每個像素還有一道色差門檻，
-  半透明區域的變化常整片落在門檻底下（2026-09-23 PR #77：兩張各變 7k／9k px，舊基準圖照樣過）。
-  而 `--update-snapshots` 預設只重寫**比對失敗**的圖，所以 `e2e:snapshots:update` 也不會寫進去——
-  要讓基準圖跟上新畫面得 `npm run e2e:snapshots -- --update-snapshots=all`，再拿 `git show HEAD:<png>`
-  逐像素比一次，確認變的只有該變的那幾張。
-  ⚠️ **worktree 的 `node_modules` 是 symlink 時**，容器只掛了 `$PWD`、解不到 `@playwright/test`：
-  手動 `docker run` 多掛一個 `-v <主 checkout>/node_modules:/work/node_modules:ro`，並先在宿主
-  `npm run build`（容器內 build 會撞唯讀的 node_modules）。
-- linkedom 沒有 canvas，也不會更新 `document.activeElement` → 這兩類行為只能靠 E2E 驗。
-  `painter.ts` 的單元測試因此用 Proxy 假造 `Ctx2D` 記錄呼叫（`tests/lib/canvas/painter.test.ts`），
-  驗的是「畫了幾次、用什麼 alpha／dash／shadowBlur 畫的」，**不是畫出來長什麼樣**。
-- 臨時的 Playwright 腳本要放在 **repo 目錄下**才 import 得到 `@playwright/test`。
-- ⚠️ **手機 project 截 `fullPage: true` 會把觸控版面換掉，而且回不來。** 2026-09-19 實測：Pixel 7 project 截一張
-  fullPage 之後，`matchMedia('(hover: none) and (pointer: coarse)')` 從 true 變 false 並一直維持，截到的圖與之後的
-  幾何全是非觸控版（`/board` 的組合列跑回骰盤上方）。看手機版面要截視窗（先捲到該區塊），截完不要在同一頁做幾何斷言。
-- ⚠️ **備份檔名要帶上路徑，不要只用 `basename`。** 這個 repo 有好幾組同名不同路徑的檔案
-  （`src/lib/sim.ts` 與 `src/scripts/sim.ts`、`src/lib/board.ts` 與 `src/scripts/board.ts`）。
-  2026-08-23 用 `for f in …; do cp "$f" "$SCRATCH/$(basename $f).bak"; done` 備份三個檔去跑反例，
-  後備份的 `src/lib/sim.ts` 覆蓋掉前一個同名備份，還原時把 lib 的內容寫進了 scripts——那一輪的
-  修改全部消失，靠 `git checkout` 取回上一個 commit 再重做才救回來。
-- ⚠️ **兩個工作區同時跑 E2E 會互相偷 server。** `playwright.config.ts` 的 `reuseExistingServer: true` 配上寫死的埠，意思是
-  **只要那個埠上有人在聽就拿它當受測站台**。2026-08-19 實際咬到人：worktree 那邊跑 E2E 時 Playwright
-  重用了主 checkout 殘留的 `serve dist`，測到別份產物，症狀是「element(s) not found」，看起來完全像
-  自己的程式沒輸出那個元素。破案靠 `curl localhost:<port> | grep -c <自己的東西>` 回 0。
-  平行開兩個工作區時其中一邊用 `E2E_PORT=4399 npm run e2e`；收工前確認 `pgrep -af "bin/serve"` 沒有殘留。
-  這跟上面「`npx playwright test` 不會重新建置」是同一族的坑——**都是「你以為在測自己的東西，其實不是」**。
+- `src/generated/tree.json` 是 gitignored 產物，`pretest`／`pree2e` 會先產生，**不要拿掉**。
+- **tree.json 是傳輸形狀不是 `TreeData`**：讀它一律經 `decodeTree()`（`src/lib/tree-wire.ts`）；站台用
+  `src/lib/tree-data` 的 `treeData`，測試用 `tests/helpers/read-tree.ts` 的 `readTree()`。**不可 `JSON.parse(...) as TreeData`**。
+- **E2E 不量畫布內的 DOM 幾何，一律問 `window.__tree`**（`src/lib/canvas/debug-api.ts`：`count()`／`scale()`／
+  `nodeScreenRect(id)`／`state()`／`hitAt(x, y)`）。隱形按鈕被 `clip-path` 裁成 1px，`boundingBox()` 不報錯只給錯值。
+  它永遠安裝，不加 build flag。
+- **畫布外觀只有截圖快照守得到**（`tests/e2e/tree.spec.ts-snapshots/`，容差見 `playwright.config.ts`）：
+  - 快照**只在 Playwright 官方容器內比對**：`npm run e2e:snapshots`（docker）；裸機上 F 一律 skip。升 `@playwright/test`
+    時 `ci.yml` 的 `container:` tag 與 `package.json` 兩個 script 的 tag 一起改。
+  - 盲區：全樹視角改壞單顆圖擋不下來；畫面改了快照照樣綠是常態（每像素另有色差門檻）。
+  - 更新基準圖要 `npm run e2e:snapshots -- --update-snapshots=all`（預設只重寫比對失敗的），再對 `git show HEAD:<png>`
+    逐張比，確認只有該變的變了。**不要放寬容差**。
+  - worktree 的 `node_modules` 是 symlink 時，手動 `docker run` 多掛 `-v <主 checkout>/node_modules:/work/node_modules:ro`，並先在宿主 build。
+- linkedom 沒有 canvas、不更新 `document.activeElement` → 這兩類只能 E2E 驗。`painter.test.ts` 用 Proxy 假 `Ctx2D`，驗呼叫不驗長相。
+- 臨時 Playwright 腳本要放在 repo 目錄下才 import 得到 `@playwright/test`。
+- **手機 project 截 `fullPage: true` 會把觸控版面永久換掉**（`(hover: none) and (pointer: coarse)` 變 false）：
+  看手機版面截視窗，截完不在同一頁做幾何斷言。
+- **兩個工作區同時跑 E2E 會互相偷 server**（`reuseExistingServer: true`＋固定埠）：一邊用 `E2E_PORT=4399`；
+  懷疑時 `curl localhost:<port> | grep -c <自己的東西>`；收工 `pgrep -af "bin/serve"` 確認無殘留。
 
 ## 部署
 
-- `ci.yml` 的 `deploy` job：`download-artifact` 拿 `verify` 驗過的 `dist/`（上線的位元組＝被驗過的位元組），
-  另外 **sparse checkout 只取 `functions/` 與 `deploy/`**（部署工具，見下）——Cloudflare Pages 看「執行指令的目錄底下有沒有 `functions/`」決定要不要
-  打包 Functions，不存在就整段跳過，**沒有 warning、部署照樣回成功**。
-  - ⚠️ **checkout 要放在 `download-artifact` 之前**（`actions/checkout` 預設 `clean: true` 會清空工作
-    目錄，順序反了會把下載好的 `dist/` 洗掉，然後部署一個空目錄——而且大概不會報錯）。
-  - ⚠️ **不要改回整個 repo checkout**：deploy 只該有 `functions/` 與 `deploy/`，網站的相依樹不該進到拿得到 token 的 job。sparse 要關 cone mode（cone 會帶上根目錄檔案）。
-    `functions/` 要 import 目錄外的東西時，sparse 清單要跟著加。
-  - ⚠️ action 要 pin 40 碼 SHA（repo 開了 `sha_pinning_required`）。
-  - **不用 wrangler-action**（它在 token 已放進環境之後才自己 `npm i` wrangler）：部署工具放在 `deploy/`
-    （自己的 `package.json`＋`package-lock.json`），在沒有 secret 的前一步 `npm ci --ignore-scripts --prefix deploy`，
-    部署那步從 repo 根目錄跑 `deploy/node_modules/.bin/wrangler pages deploy`，token 只出現在那一步的 env。
-    升級 wrangler：`cd deploy && npm i wrangler@<新版> --ignore-scripts`，lockfile 一起 commit（Dependabot 每月也會開 PR）。
-    deploy job 在 PR 上不跑，所以 `verify` 有一步用同一套安裝方式打包 `functions/`（不需要 token），升級壞了在 PR 上就紅。
-  - 部署後有一步 **smoke check**：先等 `https://rd2wiki.org/deploy-sha.txt`（verify 上傳 dist 前寫入）回這次的 SHA，
-    再驗 `/` 要 200、`POST /api/hits` 要回 `{"n":<數字>}`（每次部署計數 +1）。打正式網域是因為每次部署的專屬網址
-    （`<hash>.rd2-wiki.pages.dev`）前面有 Cloudflare Access，匿名一律 302。
-  - deploy **不會把正式站倒回舊版**：開頭讀線上 `deploy-sha.txt`，用 compare API 比，這次比線上舊（`behind`）就跳過並留 warning。
-    ⚠️ **要回滾用 Cloudflare Pages 儀表板的 Rollback**，重跑舊 run 不會部署。
-  - ⚠️ 正式網域寫死在很多地方（`astro.config.mjs` 的 `site`、`robots.txt`、`seo.spec.ts`、這個 smoke、README…）。
-    換網域用 `git grep rd2wiki.org` 全找。
-- ⚠️ **`public/_headers` 對 Pages Functions 的回應無效**（官方文件明載）。CSP 之類的標頭要兩邊都寫：
-  靜態頁走 `_headers`，Function 在程式碼裡自己放進 `Response`。驗收也要分開驗。
-- ⚠️ **`#hit-counter` 抓得到 HTML 不代表看得到。** 訪客計數器預設 `hidden`，前端拿到數字才顯示——
-  endpoint 掛掉時它會**安靜地不出現**，那是刻意的降級。`curl … | grep -c "位訪客"` 回 1 只證明標記在
-  HTML 裡。要驗顯示就用瀏覽器。
-  順帶：前端判斷 API 成功與否**不看 status code**，只看 payload 形狀（`typeof body.n === 'number'`）。
-  「`/api/hits` 沒部署時回什麼」完全取決於 `dist/` 裡有什麼，而那會變（補 404 頁之前是 200 ＋ 一份
-  首頁 HTML，之後是 404，POST 到存在的靜態路徑則是 405）——**不要因為現在有 404 了就改回去信 status code**。
+`ci.yml` 的 `deploy` job 上傳 `verify` 驗過的 `dist/`（上線位元組＝被驗過的位元組）。細節與成因在 `ci.yml` 各步的註解；改它前讀：
 
-### SEO 基礎欄位
+- **checkout 在 `download-artifact` 之前**（`clean: true` 會洗掉 `dist/`）；sparse checkout **只取 `functions/` 與 `deploy/`**、
+  關 cone mode，不要改回整個 repo（token 所在的 job 不裝網站相依樹）。少了 `functions/` Pages 會靜默跳過 Functions。
+- action 一律 pin 40 碼 SHA（repo 開了 `sha_pinning_required`）。
+- **不用 wrangler-action**：wrangler 裝在 `deploy/`（自己的 lockfile），無 secret 的步驟 `npm ci --ignore-scripts --prefix deploy`，
+  token 只出現在部署那一步。升級：`cd deploy && npm i wrangler@<新版> --ignore-scripts`，lockfile 一起 commit。
+- 部署後 smoke check 等 `deploy-sha.txt` 回本次 SHA，再驗 `/` 200、`POST /api/hits` 回 `{"n":<數字>}`；打正式網域（部署專屬網址有 Access）。
+- deploy 比線上舊（`behind`）會跳過；**回滾用 Cloudflare Pages 儀表板的 Rollback**，重跑舊 run 不會部署。
+- 正式網域寫死在多處，換網域 `git grep rd2wiki.org` 全找。
+- **`public/_headers` 對 Pages Functions 無效**：標頭兩邊都寫（Function 在 `functions/api/hits.ts` 自己放），驗收分開驗。
+- **`#hit-counter` 在 HTML 裡不代表看得到**（預設 `hidden`，拿到數字才顯示）；要驗顯示用瀏覽器。前端只看 payload 形狀、
+  **不信 status code**（`src/lib/hit-counter.ts`）。
 
-- **`public/robots.txt`**——`Sitemap:` 那行是絕對網址，換網域要跟 `site` 一起改。
-- **`@astrojs/sitemap`**——⚠️ **不要加 `filter` 排除 404**：實測不帶任何選項產出的 `<loc>` 就只有現有
-  頁面，404 是套件預設就排除的，自己寫的 filter 是死碼。⚠️ `tests/e2e/seo.spec.ts` 的 `PAGES` 用
-  **完全相等**比對 `<loc>` 清單，新增或移除頁面一定要同時改那份清單。
-- **`src/pages/404.astro`**（⚠️ 不是 `public/404.html`）——產物同樣是 `dist/404.html`、Pages 一樣認，
-  但走 Astro 才吃得到 `Base.astro` 的導覽列與樣式；寫成 public/ 底下的靜態 HTML 就得複製一份無人看守、
-  必然漂移的樣式副本。
-- **`Base.astro` 的 `<title>` 格式是 `Random Dice 2 wiki | 分頁名`**（站名在前），分隔符是半形 `|`，
-  **不帶破折號**（`tests/e2e/tree.spec.ts` 的 R 守）。`noIndex` prop 目前只有 404 頁用，開起來會
-  **省略 canonical 並加 `<meta name="robots" content="noindex">`**（404 頁的 canonical 只會固定指向
-  `/404/`，等於邀請搜尋引擎去索引那個網址）。
-- ⚠️ **`seo.spec.ts` 的「未知路徑回 404」在本機是假綠。** E2E 的 webServer 是 `serve dist`，它對找不到
-  的檔案本來就回 404——soft 404 是 **Cloudflare Pages 那端**的行為。那條守的是「本機沒退步」，真正的
-  驗收只能在部署後對正式站做：`curl -o /dev/null -w '%{http_code}\n' https://rd2wiki.org/no-such-page` 要回 404。
+### SEO
+
+- `public/robots.txt` 的 `Sitemap:` 是絕對網址，換網域跟 `site` 一起改。
+- `@astrojs/sitemap` **不加 `filter`**（`astro.config.mjs` 註解）；`tests/e2e/seo.spec.ts` 的 `PAGES` 完全相等比對 `<loc>`，增刪頁面要同步改。
+- 404 頁是 `src/pages/404.astro`，**不是 `public/404.html`**。`<title>` 格式 `Random Dice 2 wiki | 分頁名`（半形 `|`，R 守）；
+  `noIndex` 只給 404（省略 canonical＋`noindex`）。
+- `seo.spec.ts` 的「未知路徑回 404」本機是假綠；部署後驗：`curl -o /dev/null -w '%{http_code}\n' https://rd2wiki.org/no-such-page` 要 404。
 
 ## README 與門面素材
 
 README 是產品頁形式（banner ＋ 徽章 ＋ `> [!WARNING]` 免責 ＋ 分讀者章節）。
 
-- 素材在 **`.github/media/`**（含 banner 的原始碼 `banner.src.html`，重產指令寫在該檔開頭）。
-  **不要放進 `public/`**——那會被打包進站台，還要吃規則 12 的效能預算。
-- ⚠️ **banner 裡不要放節點數這類會隨資料改動的數字**（第一版烤了「239 節點／248 條連線」，資料 PR
-  一改數字圖就會說謊，而 CI 完全擋不住）。會變的事實只放文字。
-- banner 與 tagline 的文案**沿用 `Base.astro` 的 `OG_TITLE`／`DESCRIPTION`**，不維護第二份。
-- 已知限制與 `src/lib/flags.ts` 的暫停功能**刻意不寫進 README**——那是維護者資訊，留在這份檔案。
-- ⚠️ **不要用 `[/about](/about)` 這種 root-relative 連結**：GitHub 會把它連到 `github.com/about`。
-  README 與 `CONTRIBUTING.md`（會被 `about.astro` import）都要寫完整網址。
-- `LICENSE` 保持**逐字標準 MIT**（2026-09-29 起，讓 GitHub 判成 `license.key = "mit"`）。
-  「MIT 不涵蓋 `data/` 內遊戲素材」的範圍說明放 README〈授權〉與 `data/NOTICE.md`，**不要再加回 `LICENSE`**。
-- **推上去之前先在本機看渲染結果**（不是想像）：
-
-  ```bash
-  jq -Rs '{text:., mode:"gfm", context:"NatsuYukiowob/rd2-wiki"}' README.md > /tmp/md.json
-  gh api -X POST /markdown --input /tmp/md.json > /tmp/readme.html
-  # 套 github-markdown-css 後用 Playwright 截 fullPage，light/dark 各一張
-  ```
-
-  這樣抓到過上面那條 root-relative 連結與失效的 license 徽章——兩個都是純讀 Markdown 看不出來的。
+- 素材在 `.github/media/`（banner 原始碼 `banner.src.html`，重產指令在檔頭），**不要放 `public/`**（會進站台吃規則 12 預算）。
+- banner 裡不放節點數這類會隨資料變的數字；banner 與 tagline 文案沿用 `Base.astro` 的 `OG_TITLE`／`DESCRIPTION`。
+- 已知限制與 `src/lib/flags.ts` 的暫停功能不寫進 README。
+- 不用 root-relative 連結（`[/about](/about)` 會連到 `github.com/about`）；README 與 `CONTRIBUTING.md` 都寫完整網址。
+- `LICENSE` 保持**逐字標準 MIT**；「MIT 不涵蓋 `data/` 內遊戲素材」的範圍說明放 README〈授權〉與 `data/NOTICE.md`，**不要加回 `LICENSE`**。
+- 推之前先看渲染結果：`gh api -X POST /markdown`（`mode: gfm`、`context: NatsuYukiowob/rd2-wiki`）產 HTML，套 github-markdown-css 截圖。
 
 ## 不進版控
 
-`docs/`（規格書、實作計畫、部署步驟、已知問題）與 `.superpowers/`（SDD 工作區）**刻意移出版控**，
-只留維護者本機並另外備份。v1 開發歷程（39 commit）在本機 `feat/v1-dice-tree` 分支，未推遠端。
+`docs/`（規格書、實作計畫、已知問題）與 `.superpowers/` 刻意不進版控，只在維護者本機。
 
 ## 暫時停用的功能
 
-`src/lib/flags.ts` 的 `FEATURES` 目前只剩一項：導覽列的「貢獻」入口（`/about` 直接開網址仍打得開）。
-布林值一翻功能就回來；對應的測試斷言的是**現在**的行為，開回來時會紅，紅的那幾條會直接指出還要改哪裡。
-
-⚠️ 原本的 `keywordSearch`（`#關鍵字` 點下去自動搜尋）**已經移除**：那個手勢現在用來換頁，搜尋改成
-詞彙頁上一顆看得見的「搜尋 #X」按鈕，不再是隱藏行為。`.kw-clickable` 這個雙用途 class 也一併拿掉了。
+`src/lib/flags.ts` 的 `FEATURES`：布林值一翻功能就回來；對應測試斷言的是**現在**的行為，開回來時紅的那幾條會指出還要改哪裡。
 
 ## 已知待辦
 
-**待辦正本是 [GitHub Issues](https://github.com/NatsuYukiowob/rd2-wiki/issues)**，不要在這份文件裡
-另外維護一份清單。完整的歷史清單在未進版控的 `docs/` 裡。
+**待辦正本是 [GitHub Issues](https://github.com/NatsuYukiowob/rd2-wiki/issues)**，不在這裡另列。以下是不要退回去的結論：
 
-下面兩項留在這裡，是因為它們是「不要退回去」的結論，不是待辦：
-
-1. ~~節點標籤重疊~~ **已解**：畫面上恆常只留骰子（41）與支援（5）的標籤，符文（123）與被動（70）
-   改成滑過／鍵盤聚焦／被選進前置鏈時才單獨顯示（純 CSS）。量測依據：符文標籤平均寬 61 單位、最近鄰
-   距離只有 41，全顯示必然重疊（實測 27 對）；**縮字級沒用**（縮到 7px 仍有 15 對），只留骰子與支援
-   則是 0 對。E2E 的 M 守著。
-2. **自動化只在 Chromium 驗過**，而核心渲染是 Canvas 2D（`drawImage` 取 sprite 子矩形、`shadowBlur`
-   當光暈、離屏 canvas 當快取）。iOS Safari 沒有自動化覆蓋，2026-08-20 起 iOS 使用者回報 SVG 版沒有
-   問題，**canvas 版尚未收到 iOS 回報**；`shadowBlur` 與離屏 canvas 的效能在 Safari 上跟 Chromium
-   差距最大，改動那條路徑時要另外找人在實機上看一次。
+- **畫面上常駐標籤只有骰子與支援**，符文與被動只在 hover／聚焦／進前置鏈時顯示；縮字級解決不了重疊（E2E 的 M 守，量測在 `src/pages/tree.astro` 註解）。
+- **自動化只在 Chromium 驗過**，iOS Safari 沒有覆蓋；改 `shadowBlur`、離屏 canvas、sprite `drawImage` 這條路徑時要另找實機看。

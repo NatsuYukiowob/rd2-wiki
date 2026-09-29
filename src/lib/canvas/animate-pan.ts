@@ -1,6 +1,6 @@
 // 程式化的緩動平移（easeOutCubic）。/tree 的詳情卡片置中、手機版選節點後把節點挪出抽屜，
 // 與 /sim 手機版選節點後把節點挪出抽屜共用這一份——兩頁各寫一份的話，「中間幀不能呼叫
-// tree.pan()」這條陷阱就得記兩次（CLAUDE.md「pan() 是唯一帶陷阱的一支」）。
+// tree.pan()」這條陷阱就得記兩次（src/lib/canvas/CLAUDE.md「`pan()` 只給收尾用」）。
 import type { TreeHandle } from './canvas-tree.js';
 
 /**

@@ -541,12 +541,17 @@ a.row-card:active {
    ⚠️ 現在畫在 `.dice-card::after`（頂緣 3px 漸層），**不是 border-left**——左緣那條
    2026-08-26 拿掉了。`.card-term` 是 `inset: 0` 的絕對定位覆蓋層，會蓋掉任何畫在內距框裡
    的東西，所以 `::after` 靠 `z-index: 2` 贏過它（見 dice.css 該處，E2E C12 守）。 */
+/* ⚠️ 這組 `--branch` 供應者留在 components.css，不要搬進 dice.css：它同時是 `.chip[data-branch]`
+   的唯一來源，而 `.chip` 也用在 /tree 的篩選面板（該頁不載 dice.css），搬走之後 /tree 的分支色點
+   會安靜地失去顏色。 */
 :is(.dice-card, .chip)[data-branch='nature'] { --branch: var(--nature); }
 :is(.dice-card, .chip)[data-branch='engineering'] { --branch: var(--engineering); }
 :is(.dice-card, .chip)[data-branch='magic'] { --branch: var(--magic); }
 :is(.dice-card, .chip)[data-branch='order'] { --branch: var(--order); }
 :is(.dice-card, .chip)[data-branch='chaos'] { --branch: var(--chaos); }
-/* 卡片裡的切換鈕比篩選列的小一階：一張卡片上要塞四顆，而它是輔助控制項不是主角。 */
+/* 卡片裡的切換鈕比篩選列的小一階：一張卡片上要塞四顆，而它是輔助控制項不是主角。
+   ⚠️ `.chip-xs` 跟 `.chip` 具體度相同 (0,1,0)，只靠在檔案裡排在 `.chip` 之後才贏：不要搬到別的檔
+   或移到 `.chip` 之前，否則字級與內距會被 `.chip` 蓋回去，零錯誤零警告。 */
 .chip-xs {
   padding: 0 var(--space-2);
   font-size: var(--fs-xs);

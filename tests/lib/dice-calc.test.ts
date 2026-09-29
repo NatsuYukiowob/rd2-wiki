@@ -99,7 +99,7 @@ describe('守門：反推不成立就丟例外，訊息指得出是哪一項', (
 });
 
 describe('待實測', () => {
-  // CLAUDE.md 明文允許官方空著的格子寫「待實測」（目前 0 格）。它不能觸發守門把 CI 弄紅，
+  // data/CLAUDE.md〈`dice-stats.json`〉第 5 點明文允許官方空著的格子寫「待實測」（目前 0 格）。它不能觸發守門把 CI 弄紅，
   // 也不能退回 base 冒充「不會變」。
   it('任一檔是「待實測」：不丟例外，(1,1) 印 base，其餘一律「待實測」', () => {
     const p = deriveParams({ label: '原子旋轉速度', base: '10s', dice7: '7s', lv15: PENDING, lv15dice7: PENDING });

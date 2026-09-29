@@ -1421,7 +1421,7 @@ test('S47. 手機版：選節點的平移還在跑時 Tab 到別顆，新聚焦�
 
 // PR #90 review：拖等級滑桿時另一個分頁存檔 → 同步不准重建詳情（會把手上按著的滑桿換掉、拖曳斷掉）。
 test('S48. 拖等級滑桿途中另一個分頁改了存檔：滑桿不被換掉，照樣拖得到底', async ({ page, context, isMobile }) => {
-  test.skip(isMobile, '觸控拖曳原生 range 在 Playwright 驅動不了（CLAUDE.md S17 那條）');
+  test.skip(isMobile, '觸控拖曳原生 range 在 Playwright 驅動不了（src/CLAUDE.md S17 那條）');
   await openSim(page);
   await tapNode(page, READY);
   const range = page.locator('#sim-level-range');
