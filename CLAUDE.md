@@ -1659,8 +1659,8 @@ README 是產品頁形式（banner ＋ 徽章 ＋ `> [!WARNING]` 免責 ＋ 分�
 - 已知限制與 `src/lib/flags.ts` 的暫停功能**刻意不寫進 README**——那是維護者資訊，留在這份檔案。
 - ⚠️ **不要用 `[/about](/about)` 這種 root-relative 連結**：GitHub 會把它連到 `github.com/about`。
   README 與 `CONTRIBUTING.md`（會被 `about.astro` import）都要寫完整網址。
-- ⚠️ `LICENSE` 尾端有「MIT 只涵蓋程式碼」的附註 → GitHub 判成 `license.key = "other"`，動態 license
-  徽章顯示 *not identifiable by github*。徽章已改成靜態的，**不要為了讓徽章好看去刪那段附註**。
+- `LICENSE` 保持**逐字標準 MIT**（2026-09-29 起，讓 GitHub 判成 `license.key = "mit"`）。
+  「MIT 不涵蓋 `data/` 內遊戲素材」的範圍說明放 README〈授權〉與 `data/NOTICE.md`，**不要再加回 `LICENSE`**。
 - **推上去之前先在本機看渲染結果**（不是想像）：
 
   ```bash
