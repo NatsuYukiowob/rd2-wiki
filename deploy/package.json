@@ -3,6 +3,6 @@
   "private": true,
   "description": "ci.yml 的 deploy job 專用：鎖住 wrangler 與它整棵相依樹（部署那步拿得到 Cloudflare token）。",
   "dependencies": {
-    "wrangler": "4.142.0"
+    "wrangler": "4.143.0"
   }
 }
