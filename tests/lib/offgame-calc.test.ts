@@ -126,8 +126,8 @@ describe('專屬列：成長之後才加', () => {
     const floor = [synth({ target: 'statAdd', scope: 'dice:5002', label: '需要攻擊次數', value: -100, int: true, min: 1 })];
     expect(row(card('5002', 1, 1, floor), '需要攻擊次數').bonus).toBe('(−39)');
   });
-  it('乘倍率：執行劍傷害 Lv.1 ×1.5（200% → 300%）、恐懼範圍 ×1.3（1.1 → 1.43）', () => {
-    expect(row(card('4005', 1, 1, applied('4005', { '4205': 1 })), '執行劍傷害').bonus).toBe('(+100)');
+  it('乘倍率：執行劍傷害 Lv.1 ×1.8（1.1.3：200% → 360%）、恐懼範圍 ×1.3（1.1 → 1.43）', () => {
+    expect(row(card('4005', 1, 1, applied('4005', { '4205': 1 })), '執行劍傷害').bonus).toBe('(+160)');
     expect(row(card('5002', 1, 1, applied('5002', { '5302': 1 })), '僵硬範圍').bonus).toBe('(+0.33)');
   });
 });
