@@ -38,6 +38,7 @@
 - ⚠️ **上游只給 `nodes.json` 時要逐 `gameId` 對整份表**：肉眼 diff 只看得到「有改的」，看不到「該改沒改的」。
 - ⚠️ **比對 xlsx 時「Lv.50：X」那一行要單獨剝掉再比**（技能效果欄第二行以後可能是續行也可能是滿級值）。
 - 描述出現裸數字（`300`／`225%`）時確認 `parseGrowth` 沒有誤抓——它要 `基礎(+每級)` 的形狀。
+- 改版時 `changelog.json` 的文字**不能用 `→`／`←`**（e2e ST4b 擋靜態頁的文字箭頭），寫成「從 X 降為 Y」。
 - ⚠️ 戰術階段上游有兩列寫成 `'Final  '`（尾隨空白），**先 trim**，否則多出第六種階段。
 - 階段清單有三份要一起改：`src/lib/types.ts` 的 `TacticStage`、`src/lib/tactics.ts` 的 `TACTIC_STAGES`（＝篩選鈕順序）、
   規則 24(e) 的 `stages`；E2E 是 `tests/e2e/battle.spec.ts` 的 T6。
@@ -96,6 +97,5 @@
    （`Boss` → 首領，`Speed`／`Big`／`Hunt` → 一般怪物）、`difficulty` 照 `CollectionDifficulty`；**不要靠 `gameId` 的
    `_hard` 後綴推導難度**。一般怪物的 id 從 22 往後接，既有 `#b1`–`#b21` 錨點不動。
    圖一律用圖鑑立繪（256 級的 `Snake`…`Joker`、`<名>_Hard`、`Leon_Hard`、`SpeedMinion`、`BigMinion`、`SPgolem`），
-   不是舊的 128 扁平徽章。⚠️ 巨大有 `BigMinion`（1.1.3 新增，137×150）與 `Big_minion`（舊，226×241）兩張幾乎同圖，
-   選前者是比照 `SpeedMinion`／`SPgolem` 的命名推測，沒有 UI 綁定證據。`CollectionRewardStone`＝初次遇到該怪物時給的骰子核心數（Yuki 2026-10-04 確認），跟圖鑑內容無關，不上站。
+   不是舊的 128 扁平徽章。巨大用 `BigMinion`（1.1.3 新增，137×150；已對實機圖鑑確認），不是幾乎同圖的舊 `Big_minion`。`CollectionRewardStone`＝初次遇到該怪物時給的骰子核心數（Yuki 2026-10-04 確認），跟圖鑑內容無關，不上站。
 6. 「終盤」是本站命名（客戶端 `TacticPhase` 的 `Final`，localization 沒有階段名）。
