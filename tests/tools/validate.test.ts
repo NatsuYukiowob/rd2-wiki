@@ -1739,7 +1739,7 @@ describe('規則 25：Boss', () => {
   });
 
   it('difficulty 寫成兩個合法值以外的字串會被擋', () => {
-    // ⚠️ 這是規則 25 唯一一條「自己寫的」語意檢查（其餘全部走 checkIconedRecordList）。
+    // ⚠️ 這是規則 25 「自己寫的」兩條語意檢查之一（其餘全部走 checkIconedRecordList）。
     // 它擋的失敗是通用檢查完全看不見的那一種：`普通` 是非空字串、也不是未知欄位，
     // 每一條通用檢查都會放行，而 /boss 分成「一般」「困難」兩組渲染——這一隻兩組都不屬於，
     // 畫面上就是**整筆安靜消失**，跟「這隻本來就沒收進來」一模一樣。
@@ -1747,6 +1747,22 @@ describe('規則 25：Boss', () => {
     data[0]!.difficulty = '普通';
     const result = validate(svg, withBoss(data));
     expect(result.errors.some(e => /規則 25\(e\).*的 1 的 difficulty "普通" 不是「一般」或「困難」/.test(e))).toBe(true);
+  });
+
+  it('kind 寫成兩個合法值以外的字串會被擋（同 difficulty：打錯字的那一筆三組都不屬於）', () => {
+    const data = rows();
+    data[0]!.kind = 'Boss';
+    const result = validate(svg, withBoss(data));
+    expect(result.errors.some(e => /規則 25\(e\).*的 1 的 kind "Boss" 不是「一般怪物」或「首領」/.test(e))).toBe(true);
+  });
+
+  it('kind 與 difficulty 各自合法、組合卻不在 /boss 三組裡（一般怪物＋困難）會被擋', () => {
+    // 兩欄分開驗會四種組合全放行，而頁面只有三組：這一筆兩條枚舉都過、畫面上卻整筆消失。
+    const data = rows();
+    data[0]!.kind = '一般怪物';
+    data[0]!.difficulty = '困難';
+    const result = validate(svg, withBoss(data));
+    expect(result.errors.some(e => /規則 25\(e\).*的 1 的 kind「一般怪物」只能搭配 difficulty「一般」/.test(e))).toBe(true);
   });
 
   it('gameId 撞號會被擋', () => {

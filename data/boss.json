@@ -4,7 +4,8 @@
     "name": "蛇王",
     "effect": "使用技能時，召喚#一般怪物",
     "gameId": "snake",
-    "icon": "fc12695e816a",
+    "kind": "首領",
+    "icon": "b78cc06be616",
     "difficulty": "一般"
   },
   {
@@ -12,7 +13,8 @@
     "name": "騎士",
     "effect": "使用技能時，變更骰盤的3個骰子種類",
     "gameId": "royal",
-    "icon": "429ca04551d7",
+    "kind": "首領",
+    "icon": "a23c61a3ec90",
     "difficulty": "一般"
   },
   {
@@ -20,7 +22,8 @@
     "name": "軟泥怪",
     "effect": "3骰點以下的骰子傷害減少",
     "gameId": "bubble",
-    "icon": "2b226713515a",
+    "kind": "首領",
+    "icon": "c1eb5eb8c10f",
     "difficulty": "一般"
   },
   {
@@ -28,7 +31,8 @@
     "name": "極速狂影",
     "effect": "快速移動",
     "gameId": "quick",
-    "icon": "c79b68327c56",
+    "kind": "首領",
+    "icon": "9b17e79eb4ee",
     "difficulty": "一般"
   },
   {
@@ -36,7 +40,8 @@
     "name": "熵魔",
     "effect": "使用技能時，停留在原地恢復失去的生命值",
     "gameId": "recovery",
-    "icon": "59c5184019fd",
+    "kind": "首領",
+    "icon": "338976040a0c",
     "difficulty": "一般"
   },
   {
@@ -44,7 +49,8 @@
     "name": "掠奪者",
     "effect": "對隨機骰子發射植物；之後發動技能時，該骰子骰點減少",
     "gameId": "thief",
-    "icon": "c4ee5f172cc4",
+    "kind": "首領",
+    "icon": "548adcaae6ec",
     "difficulty": "一般"
   },
   {
@@ -52,7 +58,8 @@
     "name": "熔岩巨獸",
     "effect": "發射隕石技能，使隨機骰子骰點減少",
     "gameId": "assassin",
-    "icon": "fc5c447ff3c0",
+    "kind": "首領",
+    "icon": "9d75ef080041",
     "difficulty": "一般"
   },
   {
@@ -60,7 +67,8 @@
     "name": "時空魔靈",
     "effect": "被時空魔靈技能命中的骰子，該子彈攻擊可治療敵人",
     "gameId": "hacking",
-    "icon": "8314dd33b909",
+    "kind": "首領",
+    "icon": "c53fda01e682",
     "difficulty": "一般"
   },
   {
@@ -68,7 +76,8 @@
     "name": "史萊姆",
     "effect": "死亡時，分裂成2個小史萊姆",
     "gameId": "slime",
-    "icon": "ac98fadb438c",
+    "kind": "首領",
+    "icon": "5a2e48ce7c72",
     "difficulty": "一般"
   },
   {
@@ -76,7 +85,8 @@
     "name": "小丑",
     "effect": "使用技能時，隨機骰子變更為小丑骰子",
     "gameId": "joker",
-    "icon": "fe068051b7dc",
+    "kind": "首領",
+    "icon": "9571b56a7252",
     "difficulty": "一般"
   },
   {
@@ -84,7 +94,8 @@
     "name": "女王蛇",
     "effect": "使用技能時，召喚更多#一般怪物",
     "gameId": "snake_hard",
-    "icon": "6d546e758e14",
+    "kind": "首領",
+    "icon": "b777e3a06c61",
     "difficulty": "困難"
   },
   {
@@ -92,7 +103,8 @@
     "name": "皇家騎士",
     "effect": "使用技能時，變更骰盤上5個骰子種類",
     "gameId": "royal_hard",
-    "icon": "a12223033292",
+    "kind": "首領",
+    "icon": "027ee1f36406",
     "difficulty": "困難"
   },
   {
@@ -100,7 +112,8 @@
     "name": "深層軟泥怪",
     "effect": "3骰點以下的骰子傷害大幅減少",
     "gameId": "bubble_hard",
-    "icon": "7839b71b8bb8",
+    "kind": "首領",
+    "icon": "83bf685d0d62",
     "difficulty": "困難"
   },
   {
@@ -108,7 +121,8 @@
     "name": "疾風仙子",
     "effect": "以更快的速度移動",
     "gameId": "quick_hard",
-    "icon": "d9b55c0195c6",
+    "kind": "首領",
+    "icon": "060ab9f69993",
     "difficulty": "困難"
   },
   {
@@ -116,7 +130,8 @@
     "name": "雙重熵魔",
     "effect": "使用技能時，停留在原地立即恢復失去的生命值",
     "gameId": "recovery_hard",
-    "icon": "17eefda0b838",
+    "kind": "首領",
+    "icon": "f6d6e36367e4",
     "difficulty": "困難"
   },
   {
@@ -124,7 +139,8 @@
     "name": "幻影掠奪者",
     "effect": "對更多骰子發射植物，之後發動技能時，該骰子骰點減少",
     "gameId": "thief_hard",
-    "icon": "b89074abb369",
+    "kind": "首領",
+    "icon": "33f21a5b5070",
     "difficulty": "困難"
   },
   {
@@ -132,7 +148,8 @@
     "name": "炙熱熔岩巨獸",
     "effect": "發射更多隕石技能，使隨機骰子骰點減少",
     "gameId": "assassin_hard",
-    "icon": "4c3ce145b1d0",
+    "kind": "首領",
+    "icon": "7465f5eef485",
     "difficulty": "困難"
   },
   {
@@ -140,7 +157,8 @@
     "name": "狂野時空魔靈",
     "effect": "被時空魔靈技能命中的骰子，子彈攻擊可治療怪物",
     "gameId": "hacking_hard",
-    "icon": "269a5fc6c2a3",
+    "kind": "首領",
+    "icon": "e9b51d4884eb",
     "difficulty": "困難"
   },
   {
@@ -148,15 +166,17 @@
     "name": "國王史萊姆",
     "effect": "持有更多生命值。死亡時，分裂成2個小史萊姆",
     "gameId": "slime_hard",
-    "icon": "c4237e50c398",
+    "kind": "首領",
+    "icon": "2ad5759f537c",
     "difficulty": "困難"
   },
   {
     "id": "20",
     "name": "瘋狂小丑",
-    "effect": "使用技能時，將隨機骰子變更為小丑骰子",
+    "effect": "使用技能時，將更多隨機骰子變更為小丑骰子",
     "gameId": "joker_hard",
-    "icon": "11362c64056f",
+    "kind": "首領",
+    "icon": "42030889833a",
     "difficulty": "困難"
   },
   {
@@ -164,7 +184,35 @@
     "name": "雷昂",
     "effect": "使用技能時，3骰點以下骰子骰點減少1，之後衝鋒一段距離",
     "gameId": "leon_hard",
-    "icon": "bb0a1a1e09db",
+    "kind": "首領",
+    "icon": "5b765e8f6845",
     "difficulty": "困難"
+  },
+  {
+    "id": "22",
+    "name": "快速",
+    "effect": "比一般怪物敏捷的怪物",
+    "gameId": "speed",
+    "kind": "一般怪物",
+    "icon": "740425a4164c",
+    "difficulty": "一般"
+  },
+  {
+    "id": "23",
+    "name": "巨大",
+    "effect": "比一般怪物生命值更高的怪物，會破壞物體",
+    "gameId": "big",
+    "kind": "一般怪物",
+    "icon": "ec89e8824299",
+    "difficulty": "一般"
+  },
+  {
+    "id": "24",
+    "name": "SP魔像",
+    "effect": "儲存大量SP的魔像，隨時都想逃跑",
+    "gameId": "hunt",
+    "kind": "一般怪物",
+    "icon": "627c637e5b81",
+    "difficulty": "一般"
   }
 ]

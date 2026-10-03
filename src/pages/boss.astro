@@ -1,5 +1,6 @@
 ---
-// Boss 一覽。客戶端 `MinionTable` 的兩張表：一般模式與合作困難模式。
+// 怪物圖鑑。客戶端 `MinionTable` 裡 `CollectionUse === True` 的列（1.1.3 新增的遊戲內「怪物圖鑑」）：
+// 一般怪物、一般首領、困難首領三組。URL 沿用 1.1.3 以前只收首領時的 `/boss`，外部連結不斷。
 //
 // 跟 /tactic 是同一種東西（不是骰子樹的節點、自己一份資料檔 ＋ 一條平行的圖示資產路徑，
 // 規則 25 守），版面也共用 battle.css。分成兩頁而不是併成一頁：兩邊的欄位不一樣
@@ -16,7 +17,7 @@ import { treeData } from '../lib/tree-data';
 import { buildGlossary, displayGlossary } from '../lib/glossary-groups';
 import { renderStaticText } from '../lib/static-markup';
 import { extractKeywords } from '../lib/keywords';
-import type { Boss, BossDifficulty, GlossaryRecord, TreeData } from '../lib/types';
+import type { Boss, BossDifficulty, GlossaryRecord, MonsterKind, TreeData } from '../lib/types';
 
 const bosses = bossRaw as Boss[];
 const keywords = keywordsRaw as Record<string, GlossaryRecord>;
@@ -35,16 +36,17 @@ const whitelist = Object.keys(keywords);
  * 這一頁只做「把解釋插在同一段話下面」，沒有 JS 時 `.kw-link` 就是一條指向詞條頁的正常連結。
  */
 /**
- * 依難度分成兩組。⚠️ **順序寫死在這個常數裡、數量一律從資料算**——「一般 10 隻、困難 11 隻」
- * 是會隨改版漂移的數字，寫進 lede 就等著它哪天說謊而 CI 完全擋不住（README banner 犯過一次）。
- * 分組本身用 `difficulty` 欄而不是 `gameId.endsWith('_hard')`：後者是 join key 不是難度來源，
+ * 依種類與難度分成三組。⚠️ **順序寫死在這個常數裡、數量一律從資料算**——各組幾隻是會隨改版
+ * 漂移的數字，寫進 lede 就等著它哪天說謊而 CI 完全擋不住（README banner 犯過一次）。
+ * 分組本身用 `kind`／`difficulty` 欄而不是 `gameId.endsWith('_hard')`：後者是 join key 不是難度來源，
  * 上游哪天改命名就整批分錯組，而畫面上「這一組多幾隻」看起來完全正常。
  */
-const GROUPS: { difficulty: BossDifficulty; note: string }[] = [
-  { difficulty: '一般', note: '對戰與一般合作模式' },
-  { difficulty: '困難', note: '合作困難模式' },
+const GROUPS: { kind: MonsterKind; difficulty: BossDifficulty; title: string; note: string }[] = [
+  { kind: '一般怪物', difficulty: '一般', title: '一般怪物', note: '各模式都會出現' },
+  { kind: '首領', difficulty: '一般', title: '首領・一般', note: '對戰與一般合作模式' },
+  { kind: '首領', difficulty: '困難', title: '首領・困難', note: '合作困難模式' },
 ];
-const grouped = GROUPS.map(g => ({ ...g, items: bosses.filter(b => b.difficulty === g.difficulty) }));
+const grouped = GROUPS.map(g => ({ ...g, items: bosses.filter(b => b.kind === g.kind && b.difficulty === g.difficulty) }));
 
 const termsOf = (text: string) =>
   extractKeywords(text, whitelist).map(term => ({
@@ -56,14 +58,14 @@ const termsOf = (text: string) =>
   }));
 ---
 
-<Base title="Boss">
+<Base title="怪物圖鑑">
   <section class="page battle-page">
-    <h1 class="page-head">Boss</h1>
+    <h1 class="page-head">怪物圖鑑</h1>
     <p class="lede">
-      {/* ⚠️ 兩個數字都從資料算，不要寫死——收一批新 Boss 時忘了改這一句，畫面上跟「這次沒更新」
+      {/* ⚠️ 三個數字都從資料算，不要寫死——收一批新怪物時忘了改這一句，畫面上跟「這次沒更新」
           長得一模一樣，而 CI 一個字都不會說。 */}
-      對戰與合作模式中會出現的 Boss，以及各自的技能效果。
-      一般 {grouped[0]!.items.length} 隻、困難 {grouped[1]!.items.length} 隻。
+      對戰與合作模式中會出現的怪物與首領，以及各自的特性與技能效果。
+      一般怪物 {grouped[0]!.items.length} 種、一般首領 {grouped[1]!.items.length} 隻、困難首領 {grouped[2]!.items.length} 隻。
     </p>
 
     {grouped.map(g => (
@@ -72,7 +74,7 @@ const termsOf = (text: string) =>
             h1 底下直接跳到兩個平行的 h2 群組、每群裡面才是條目，少降一級就會變成
             「組標題與條目同級」，讀屏上整頁是一長串沒有分組的標題。 */}
         <h2 class="battle-group-head sec-title">
-          {g.difficulty}
+          {g.title}
           <span class="battle-group-note">{g.note}</span>
         </h2>
         <ul class="battle-list">

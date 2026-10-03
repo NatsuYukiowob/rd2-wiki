@@ -23,7 +23,7 @@ const PAGES = [
   { request: '/dice', canonical: `${SITE}/dice/`, name: '骰子圖鑑' },
   { request: '/board', canonical: `${SITE}/board/`, name: '骰盤' },
   { request: '/tactic', canonical: `${SITE}/tactic/`, name: '戰術' },
-  { request: '/boss', canonical: `${SITE}/boss/`, name: 'Boss' },
+  { request: '/boss', canonical: `${SITE}/boss/`, name: '怪物圖鑑' },
   { request: '/rift-shop', canonical: `${SITE}/rift-shop/`, name: '裂縫商店' },
   { request: '/events', canonical: `${SITE}/events/`, name: '活動' },
   { request: '/rewards', canonical: `${SITE}/rewards/`, name: '獎勵系統' },

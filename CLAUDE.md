@@ -180,7 +180,7 @@ npm run compare -- <beforeURL> <afterURL>  # computed-style 逐元素比對，�
 | 22 | 玩家被動升級費用表：tier 形狀與區間連續、`(maxLevel, unlockGold)` 不撞號、**節點 ↔ tier 雙向對得到**、`special` 鍵是節點 id 且不與 tier 重疊、`mythic` 的 kind 要在 `MYTHIC_CORES`、**未知欄位一律擋**（舊寫法 `"solar": N` 會被指名） |
 | 23 | `data/dice-stats.json`（以 **gameId** 為鍵，規則 19 抓不到）：(a) 漏骰子 (b) 孤兒 (c) `name` 不符 (d) 結構 (e) stat 型別（`""` 不放行） (f) `label` 撞號 (g) 四檔位全有或全無 (h) 未知欄位——**(h) 是 (g) 的補完**，鍵全拼錯時 (g) 沉默 (i) 四檔位反推得出成長參數 (j) `spGrowth` 等於 (i) 的每級強化。(b) 要先讓路給規則 19／1 |
 | 24 | `data/tactics.json`：(a) 非空陣列 (b)–(d) 圖示目錄（含子選項的圖）(e) 欄位型別、`stage` 合法 (f) 圖不存在 (g) 兩筆同圖——**只放行 `sharedIconIds`**，且那兩筆反過來必須同圖 (h) 編號與 **`gameId` 撞號** (i) 子選項形狀，id 是「母編號-序號」、含 `-` 卻在頂層也擋 (j) `availability` 三布林齊全且至少一 true、可用模式要有對應文本、未啟用編號指名擋 (k) `#標記` 在白名單 |
-| 25 | `data/boss.json`：通用檢查走 `checkIconedRecordList()`；**自己只寫一條** `difficulty` ∈ {一般, 困難}，其餘不准複製 |
+| 25 | `data/boss.json`（怪物圖鑑）：通用檢查走 `checkIconedRecordList()`；**自己只寫** `difficulty` ∈ {一般, 困難}、`kind` ∈ {一般怪物, 首領}、一般怪物只能配一般（＝`/boss` 的三組），其餘不准複製 |
 | 26 | `data/prereq-ranks.json`：外層只有 note／source／ranks；內層鍵必須是外層節點的**祖先**且非自己；2 ≤ rank ≤ 該前置 `maxLevel`。`TreeNode.prereqRanks` **只在有值的節點上放欄位**（tree.json 預算） |
 | 27 | `data/rift-shop.json`：走 `checkIconedRecordList()` 且傳 `sharedIconKey: 'name'`；**(g) 雙向**——跨名共用錯、同名不同圖也錯。自己的語意檢查：(e) `grade` 合法、`cost`／`weight` 正整數 (i) 同階級 `weight` 一致（刻意不寫死數值）(j) 同名多筆的階級互異 |
 | 28 | `data/offgame-effects.json`：**雙向**（每顆符文／被動都有一筆，`none` 附 reason；孤兒擋）、`target` 在 `src/lib/offgame.ts` 詞彙內、`scope` 合法、`maxLevel` 一致、成長值與描述一致（`parseGrowth`）、`stat*` 的 `label` 在 dice-stats 存在、`mechanic` 必填 template（`{V}`／`{V2}`）、未知欄位擋。不進 tree.json，這條是唯一防線 |

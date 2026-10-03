@@ -12,7 +12,7 @@ const PAGES: { path: string; secTitle: number; card?: string; rowCard?: boolean;
   { path: '/guide/keywords', secTitle: 1 },
   { path: '/events', secTitle: 0, rowCard: true },
   { path: '/tactic', secTitle: 0, rowCard: true, filterBar: true },
-  { path: '/boss', secTitle: 2, rowCard: true },
+  { path: '/boss', secTitle: 3, rowCard: true },
   { path: '/rift-shop', secTitle: 3, rowCard: true, filterBar: true },
 ];
 

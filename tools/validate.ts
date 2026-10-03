@@ -1601,7 +1601,8 @@ export function validate(svgText: string, opts: ValidateOpts): ValidateResult {
   // 的 (e) 階段／模式、(i) 子選項、(j) 模式⟺合作效果都在這一層，`difficulty` 是同一類東西。
   // 少了它，`difficulty: "普通"` 會通過每一條通用檢查（它是非空字串、不是未知欄位），然後
   // 那一隻 Boss 在畫面上**兩組都不屬於**、安靜地整筆消失（2026-09-06 加難度分組時的新語意）。
-  // 除了這一條之外仍然一條都不要加。
+  // `kind`（2026-10-04 改成怪物圖鑑、收進一般怪物時加的）是同一類東西、同一個理由：
+  // 打錯字的那一筆三組都不屬於。除了這兩條之外仍然一條都不要加。
   if (opts.boss === null) {
     warn('規則 25: 沒有提供 data/boss.json，Boss 未檢查');
   } else {
@@ -1610,8 +1611,8 @@ export function validate(svgText: string, opts: ValidateOpts): ValidateResult {
       file: 'data/boss.json',
       iconsDir: opts.bossIconsDir,
       idPattern: /^[1-9]\d*$/,
-      knownKeys: ['id', 'name', 'effect', 'gameId', 'icon', 'difficulty'],
-      requiredText: ['id', 'name', 'effect', 'gameId', 'difficulty'],
+      knownKeys: ['id', 'name', 'effect', 'gameId', 'kind', 'icon', 'difficulty'],
+      requiredText: ['id', 'name', 'effect', 'gameId', 'kind', 'difficulty'],
       markupKeys: ['effect'],
       whitelist,
     });
@@ -1621,10 +1622,21 @@ export function validate(svgText: string, opts: ValidateOpts): ValidateResult {
     // 寫法比照規則 24(e) 的 STAGES：訊息指名 id，這份檔案沒有鍵，只說「某一筆的難度不合法」
     // 等於要人自己在 21 筆裡數。
     const DIFFICULTIES = new Set(['一般', '困難']);
+    const MONSTER_KINDS = new Set(['一般怪物', '首領']);
     for (const rec of scan.records) {
       const difficulty = rec.difficulty as string;
       if (!DIFFICULTIES.has(difficulty)) {
         push(`規則 25(e): data/boss.json 的 ${rec.id as string} 的 difficulty ${JSON.stringify(difficulty)} 不是「一般」或「困難」`);
+      }
+      const kind = rec.kind as string;
+      if (!MONSTER_KINDS.has(kind)) {
+        push(`規則 25(e): data/boss.json 的 ${rec.id as string} 的 kind ${JSON.stringify(kind)} 不是「一般怪物」或「首領」`);
+      }
+      // 兩欄各自合法還不夠：/boss 只有三組（一般怪物／首領・一般／首領・困難），兩欄分開驗會放行
+      // 第四種組合「一般怪物＋困難」，那一筆三組都不屬於、畫面上整筆消失。新增組合時 boss.astro
+      // 的 GROUPS 與這裡要一起改。
+      if (kind === '一般怪物' && difficulty !== '一般') {
+        push(`規則 25(e): data/boss.json 的 ${rec.id as string} 的 kind「一般怪物」只能搭配 difficulty「一般」（/boss 沒有困難一般怪物這一組），目前是 ${JSON.stringify(difficulty)}`);
       }
     }
   }
