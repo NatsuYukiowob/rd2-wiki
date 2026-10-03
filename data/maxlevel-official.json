@@ -1,6 +1,6 @@
 {
   "note": "官方資料表「技能效果」欄標註的滿級數值，用來反向驗算站台從 data/nodes.json 的 description 推導出來的 growth。鍵是 nodes.json 的 gameId。",
-  "source": "1.1.0 客戶端解包資料表 RuneTable／PlayerPassiveTable（Value1 + (Lv−1)×RankAdd）；2026-09-06 逐筆對過，1.0.3 xlsx 時期的 44 筆全部未變動",
+  "source": "1.1.0 客戶端解包資料表 RuneTable／PlayerPassiveTable（Value1 + (Lv−1)×RankAdd）；2026-09-06 逐筆對過，1.0.3 xlsx 時期的 44 筆全部未變動；D1040 依 1.1.3 已驗證資料更新（80 + 49×12 = 668）",
   "values": {
     "D0000": {
       "level": 50,
@@ -79,7 +79,7 @@
     },
     "D1040": {
       "level": 50,
-      "value": 540.0,
+      "value": 668.0,
       "unit": "%"
     },
     "D1051": {
