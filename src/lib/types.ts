@@ -383,15 +383,22 @@ export interface Tactic {
 }
 
 /**
- * Boss 的難度（客戶端 `MinionTable` 的兩張表）。
+ * 怪物圖鑑的難度（客戶端 `MinionTable.CollectionDifficulty`）。
  *
- * ⚠️ **只有兩個值**：一般模式 10 隻、合作困難模式 11 隻（困難多出「雷昂」，它沒有一般版）。
- * 兩批在客戶端是同一張表的兩段，內部ID 靠 `_hard` 後綴區分——但那是 join key 不是難度來源，
- * 難度要自己一欄，否則「靠 gameId 結尾判斷」這種推導哪天上游改了命名就整批分錯組。
+ * ⚠️ **只有兩個值**。困難版首領在客戶端是同一張表的另一段，內部ID 靠 `_hard` 後綴區分——但那是
+ * join key 不是難度來源，難度要自己一欄，否則「靠 gameId 結尾判斷」這種推導哪天上游改了命名就整批分錯組。
  */
 export type BossDifficulty = '一般' | '困難';
 
-/** 一個 Boss（`data/boss.json` 的一筆）。同 `Tactic`，不是節點。 */
+/** 怪物圖鑑的種類（客戶端 `MinionTable.MinionType`：`Boss` → 首領，`Speed`／`Big`／`Hunt` → 一般怪物）。 */
+export type MonsterKind = '一般怪物' | '首領';
+
+/**
+ * 怪物圖鑑的一筆（`data/boss.json`）。同 `Tactic`，不是節點。
+ *
+ * 收錄範圍＝客戶端 `MinionTable.CollectionUse === True` 的列（1.1.3 起的遊戲內「怪物圖鑑」）。
+ * 檔名與型別名沿用 1.1.3 以前「只收首領」時的 `boss`——一般怪物靠 `kind` 區分，不另開一份檔。
+ */
 export interface Boss {
   id: string;
   name: string;
@@ -401,7 +408,9 @@ export interface Boss {
   gameId: string;
   /** `data/boss-icons/` 底下來源 PNG 的內容 sha256 前 12 碼。 */
   icon: string;
-  /** 出現在哪個難度；`/boss` 靠它分成兩組，規則 25 守它只有兩個合法值。 */
+  /** 一般怪物或首領；`/boss` 靠它與 `difficulty` 分成三組，規則 25 守它只有兩個合法值。 */
+  kind: MonsterKind;
+  /** 圖鑑難度；`/boss` 靠它與 `kind` 分組，規則 25 守它只有兩個合法值。 */
   difficulty: BossDifficulty;
 }
 

@@ -92,6 +92,10 @@
 2. `69` 的三個子選項**巢狀在父戰術的 `options`**，階段與模式繼承父戰術。
 3. `62 炸彈狂` 照上游用 `UpgradeSPMinusPer.png`（上游欄位寫錯、沒有專屬圖），標 `dataIssue: 'upstream-icon'`。
 4. Boss `1 蛇王` 的 `召喚#一般怪物` 是關鍵字標記，不是佔位符。
-5. Boss 難度靠 `difficulty` 欄，**不要靠 `gameId` 的 `_hard` 後綴推導**。困難版多數圖與一般版逐位元組相同是照實反映客戶端；
-   哪天一般版也換解包圖會撞規則 25(g)，屆時要決定的是「是否允許共圖」，不是換掉其中一張。
+5. `boss.json` 是**怪物圖鑑**（1.1.3 起）：收錄範圍＝`MinionTable.CollectionUse === True` 的列，`kind` 照 `MinionType`
+   （`Boss` → 首領，`Speed`／`Big`／`Hunt` → 一般怪物）、`difficulty` 照 `CollectionDifficulty`；**不要靠 `gameId` 的
+   `_hard` 後綴推導難度**。一般怪物的 id 從 22 往後接，既有 `#b1`–`#b21` 錨點不動。
+   圖一律用圖鑑立繪（256 級的 `Snake`…`Joker`、`<名>_Hard`、`Leon_Hard`、`SpeedMinion`、`BigMinion`、`SPgolem`），
+   不是舊的 128 扁平徽章。⚠️ 巨大有 `BigMinion`（1.1.3 新增，137×150）與 `Big_minion`（舊，226×241）兩張幾乎同圖，
+   選前者是比照 `SpeedMinion`／`SPgolem` 的命名推測，沒有 UI 綁定證據。`CollectionRewardStone`＝初次遇到該怪物時給的骰子核心數（Yuki 2026-10-04 確認），跟圖鑑內容無關，不上站。
 6. 「終盤」是本站命名（客戶端 `TacticPhase` 的 `Final`，localization 沒有階段名）。
