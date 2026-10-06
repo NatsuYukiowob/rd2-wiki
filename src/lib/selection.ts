@@ -4,7 +4,7 @@
 import { buildAdjacency, prerequisiteChain, requiredPrereqRanks, sumUnlockCost } from './graph.js';
 import { levelTableFor, upgradeExtraCost } from './upgrade-tiers.js';
 import { addCost, zeroCost } from './cost.js';
-import type { Cost, PassiveUpgradeCost, TreeData } from './types.js';
+import type { Cost, PassiveUpgradeCost, TreeData, TreeNode } from './types.js';
 
 /**
  * 前置鏈上一條「某個祖先要先練到某等級」的條件，以及達成它要多花的錢。
@@ -26,7 +26,10 @@ export interface PrereqRankCost {
 }
 
 export interface Selection {
-  /** 目標節點在 DAG 上所有祖先的聯集，含目標節點本身、去重（spec §6.4）。 */
+  /**
+   * 目標節點的前置鏈：DAG 上的祖先（走到可直接領的節點就不再往上），加上鏈上練等條件指名的祖先
+   * 與**它們自己的前置鏈**；含目標節點本身、去重（spec §6.4）。見 `chainWithRankTargets()`。
+   */
   chain: Set<string>;
   /** 前置鏈上各節點解鎖成本的加總（已排除玩家不必付錢的節點）。 */
   cost: Cost;
@@ -74,6 +77,29 @@ export interface Selection {
 }
 
 /**
+ * 前置鏈，再把鏈上練等條件指名的祖先連同它們的前置鏈併進來，反覆到沒有新節點為止。
+ *
+ * ⚠️ 練等目標**不一定在剪過 bypass 的鏈上**：規則 26 核可它用的是不含 bypass 的祖先集合，所以
+ * 「可直接領的節點底下有一顆要求某祖先練到 Lv.N，而那顆祖先只經由被跳過的那一段才是祖先」是合法資料。
+ * 不併進來的話面板只多算練等追加費，它自己的解鎖費與它那段前置全部漏掉，畫布也不高亮它；
+ * `/sim` 的 `pathTo()` 則會把它連同前置一起拉進計畫——同一份資料兩頁兩個總價。
+ * 要反覆展開，是因為併進來的那一段上可能又有別的練等條件。
+ */
+function chainWithRankTargets(
+  id: string,
+  parents: Map<string, string[]>,
+  bypass: ReadonlySet<string>,
+  byId: Map<string, TreeNode>,
+): Set<string> {
+  const chain = prerequisiteChain(id, parents, bypass);
+  for (;;) {
+    const missing = [...requiredPrereqRanks(chain, byId).keys()].filter(p => !chain.has(p));
+    if (missing.length === 0) return chain;
+    for (const p of missing) for (const x of prerequisiteChain(p, parents, bypass)) chain.add(x);
+  }
+}
+
+/**
  * 算出選取節點的前置鏈、成本合計與被排除的節點清單。
  *
  * @param tables 玩家被動／支援與特例節點的升級費用表（`data/passive-upgrade-cost.json`）。
@@ -85,11 +111,13 @@ export function computeSelection(id: string, data: TreeData, tables: PassiveUpgr
   const { parents } = buildAdjacency(data.edges);
   const byId = new Map(data.nodes.map(n => [n.id, n]));
   const bypass = new Set(data.nodes.filter(n => n.bypassPrereq).map(n => n.id));
-  const chain = prerequisiteChain(id, parents, bypass);
+  const chain = chainWithRankTargets(id, parents, bypass, byId);
   const { cost, skipped } = sumUnlockCost(chain, byId);
-  // 「被跳掉幾個」用兩次遍歷相減算，而不是在 prerequisiteChain 裡順便數：那條函式的祖先是
-  // 圖遍歷的結果，同一個祖先可能從兩條路徑走到，邊走邊數會重複計算。集合大小的差是去重後的。
-  const bypassed = bypass.size > 0 ? prerequisiteChain(id, parents).size - chain.size : 0;
+  // 「被跳掉幾個」用兩次遍歷的集合差算，而不是在遍歷裡順便數：同一個祖先可能從兩條路徑走到，
+  // 邊走邊數會重複計算。另一次遍歷也走 chainWithRankTargets()（只是不跳過任何節點），兩邊對
+  // 練等目標的展開才一致——否則併進來的那一段會被算成「已跳過」。
+  const full = bypass.size > 0 ? chainWithRankTargets(id, parents, new Set(), byId) : chain;
+  const bypassed = [...full].filter(x => !chain.has(x)).length;
   const bypassNodes = [...chain].filter(x => bypass.has(x)).length;
 
   // 必要練等。⚠️ 掃的是整條鏈而不是選到的那一顆，見 requiredPrereqRanks() 的說明。

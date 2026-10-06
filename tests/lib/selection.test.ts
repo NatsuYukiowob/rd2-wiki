@@ -2,6 +2,8 @@ import { addCost, zeroCost } from '../../src/lib/cost';
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { computeSelection } from '../../src/lib/selection';
+import { buildAdjacency, prerequisiteChain } from '../../src/lib/graph';
+import { buildSimContext, pathTo } from '../../src/lib/sim';
 import type { PassiveUpgradeCost, TreeData } from '../../src/lib/types';
 import { readTree } from '../helpers/read-tree';
 
@@ -126,6 +128,32 @@ describe('computeSelection', () => {
     expect(sel.totalCost.gold).toBe(sel.cost.gold + 463700);
   });
 
+  // 練等條件指的祖先**不一定在剪過 bypass 的鏈上**：規則 26 用不含 bypass 的祖先集合核可它。
+  // 合成樣本：可直接領的空虛骰子（5008）底下的 5105 要求 5109 練到 Lv.2——5109 只經由 5008 被跳過的
+  // 那一段才是 5105 的祖先。只加練等費的話，5109 自己的解鎖費與它那段前置全部漏算、/tree 也不高亮它。
+  it('練等目標不在剪過的鏈上時，連同它的前置鏈一起併進來', () => {
+    const injected = structuredClone(data);
+    injected.nodes.find(n => n.id === '5105')!.prereqRanks = { '5109': 2 };
+    const plain = computeSelection('5105', data, tables);
+    expect(plain.chain.has('5109')).toBe(false);   // 前提：5109 原本不在鏈上
+
+    const sel = computeSelection('5105', injected, tables);
+    const { parents } = buildAdjacency(data.edges);
+    const bypass = new Set(data.nodes.filter(n => n.bypassPrereq).map(n => n.id));
+    const added = [...prerequisiteChain('5109', parents, bypass)].filter(id => !plain.chain.has(id));
+    expect(added).toContain('5109');
+    expect([...sel.chain].sort()).toEqual([...plain.chain, ...added].sort());
+    // 多出來的成本＝那幾顆的解鎖費（逐顆從資料加，不經 sumUnlockCost）。
+    const byId = new Map(data.nodes.map(n => [n.id, n]));
+    const addedCost = added.map(id => byId.get(id)!).filter(n => n.unlockVia === 'cost' || n.unlockPaid)
+      .reduce((acc, n) => addCost(acc, n.unlockCost), zeroCost());
+    expect(sel.cost).toEqual(addCost(plain.cost, addedCost));
+    expect(sel.prereqRanks.map(r => [r.id, r.rank])).toEqual([['5109', 2]]);
+    // 「已跳過 N 個前置」＝完整祖先集合裡不在鏈上的那些；併進來的那段不能再算成被跳過。
+    const full = prerequisiteChain('5105', parents);
+    expect(sel.bypassed).toBe([...full].filter(id => !sel.chain.has(id)).length);
+  });
+
   // 查不到費用表時要回 null 讓面板寫「成本未確認」，**不可以安靜地當 0**
   //（同 cumulativeUpgradeCost() 回 null 的理由）。
   it('查不到升級費用表時該筆成本是 null，不是 0', () => {
@@ -134,5 +162,33 @@ describe('computeSelection', () => {
     expect(sel.prereqRanks).toEqual([{ id: '1201', name: '子彈傷害%增加', rank: 50, cost: null }]);
     expect(sel.prereqRankCost).toEqual({ core: 0, gold: 0 });
     expect(sel.totalCost).toEqual(sel.cost);
+  });
+});
+
+// `/tree` 面板的前置鏈與 `/sim` 的「一鍵點亮」是同一件事的兩種算法（`computeSelection()` 走前置鏈、
+// `pathTo()` 從目標往上走）。兩邊的差異只在起點：`/sim` 把起始骰子與勾選的初始骰子當成已持有，
+// `/tree` 把它們留在鏈上、只是不計費。把可選初始骰子全勾起來之後，扣掉那兩類就必須一模一樣——
+// 漂開的話同一份資料在兩頁給出兩個總價。
+describe('/tree 的前置鏈與 /sim 的一鍵點亮一致', () => {
+  const check = (tree: TreeData) => {
+    const ctx = buildSimContext(tree, tables);
+    const state = { unlocked: new Set<string>(), levels: new Map<string, number>(), initial: new Set(ctx.optional) };
+    const diffs: string[] = [];
+    for (const n of tree.nodes) {
+      const chain = [...computeSelection(n.id, tree, tables).chain].filter(id => !ctx.free.has(id) && !ctx.optional.has(id)).sort();
+      const need = [...pathTo(n.id, state, ctx).need].sort();
+      if (chain.join() !== need.join()) diffs.push(`${n.id}: /tree ${chain.join(',')} ≠ /sim ${need.join(',')}`);
+    }
+    return diffs;
+  };
+
+  it('真實資料的每一顆節點', () => {
+    expect(check(data)).toEqual([]);
+  });
+
+  it('練等目標只經由可直接領的節點才是祖先時（合成樣本）也一致', () => {
+    const injected = structuredClone(data);
+    injected.nodes.find(n => n.id === '5105')!.prereqRanks = { '5109': 2 };
+    expect(check(injected)).toEqual([]);
   });
 });

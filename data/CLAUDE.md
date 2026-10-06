@@ -59,17 +59,17 @@
 | 檔 | 守門 | 要照做的裁決 |
 |---|---|---|
 | `upgrade-cost.json` | 規則 15 | **只適用骰子符文**（`appliesTo`／`upgradeTableApplies()` 擋）；跟 `passive-upgrade-cost.json` **不要合併** |
-| `maxlevel-official.json` | 規則 17 | 鍵一定用 `gameId`（同名節點很多）；佔位符要略過不能報錯；有覆蓋率下限 |
+| `maxlevel-official.json` | 規則 17 | 鍵一定用 `gameId`（同名節點很多）；佔位符要略過不能報錯；有覆蓋率下限；`npm run validate` 必填（檔案不在就失敗） |
 | `passive-upgrade-cost.json` | 規則 22（雙向） | `bands` 照官方寫法（`core` 只在 `from` 那級收一次），展開只走 `src/lib/upgrade-tiers.ts` 的 `expandTier()`，validate 與 `/sim` 共用 |
 | `dice-stats.json` | 規則 23 | 見下 |
 | `tactics.json`／`boss.json` | 規則 24／25 | 見下 |
-| `rift-shop.json` | 規則 27 | 來源 `TacticsEffectTable` 的 `Store === True` 列；跟 `tactics.json`（`Use === True`）**不要合併**；每個檔位一筆、按階級分組；三種「意志」寫死在頁面、不進資料檔 |
+| `rift-shop.json` | 規則 27 | 換圖用 `add-icon --rift-shop`（同名的檔位一起換）；來源 `TacticsEffectTable` 的 `Store === True` 列；跟 `tactics.json`（`Use === True`）**不要合併**；每個檔位一筆、按階級分組；三種「意志」寫死在頁面、不進資料檔 |
 | `events.json` | 規則 29 | 軸是活動不是版本；內容是通用表格（`sections[].columns`＋`rows`）；只收節日活動；檔期與截圖客戶端拿不到，產生腳本的「人工補充」區塊保留，無實測來源時 `period` 為 `null`；活動貨幣圖進 `public/currency/`、種類登記在 `src/lib/cost-html.ts` 的 `CurrencyIconKind` |
 | `rewards.json` | `tests/data/rewards.test.ts`（**沒有 validate 規則**） | 由 `tools/import-rewards.py` 從本機主表匯入；收藏品圖只在 `assetStatus: 'ready'` 且有 `icon` 時用，**沒確認過的圖不要拿截圖或單層 sprite 充數**；`public/rewards/` 沒有轉檔管線，別放更大的原圖 |
 | `changelog.json` | 規則 20 | 規則 20 檢查**最新一筆帶 `data` 的條目**，不是 `entries[0]` |
 | `prereq-ranks.json` | 規則 26 | 同一祖先被多顆要求時取最大 rank |
 | `offgame-effects.json` | 規則 28 | 由本機產生腳本從客戶端表重產，**不要手改數字**；`target` 語意見 `src/lib/offgame-calc.ts` 檔頭；決策：`conditional` 不顯示；施加者自己那一列的加值（1206／3202／4207／4208／4308）是 `statAdd` 不是 `board`；`board` target 由 `src/lib/board-buffs.ts` 消費 |
-| `unlock-exceptions.json` | 規則 18 | 布林旗標必須是真布林（`build-data` 看 truthiness） |
+| `unlock-exceptions.json` | 規則 18 | 布林旗標必須是真布林（`build-data` 看 truthiness）；`note` 必須是字串（面板的 `escapeHtml()` 對非字串丟例外） |
 
 ### `dice-stats.json`
 

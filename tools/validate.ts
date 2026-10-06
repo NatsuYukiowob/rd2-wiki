@@ -1776,6 +1776,8 @@ export function validate(svgText: string, opts: ValidateOpts): ValidateResult {
   //
   // ⚠️ 祖先關係用既有的 `prerequisiteChain()` 判，不另外寫第二份圖遍歷：兩份實作對
   // 「多重前置」「環」的處理一旦漂開，validate 與站台就會對同一份資料給出不同的前置鏈。
+  // 刻意**不帶 bypass**：客戶端的 NeedNode 列得出只經由可直接領的節點才是祖先的那顆，擋掉它等於
+  // 讓 CI 否決正本資料。站台那邊（`computeSelection()`／`pathTo()`）因此會把練等目標連同它的前置一起併進鏈。
   const rawPrereqRanks = opts.prereqRanks;
   if (rawPrereqRanks === null) {
     warn('規則 26: 沒有提供 data/prereq-ranks.json，前置等級條件未檢查');
