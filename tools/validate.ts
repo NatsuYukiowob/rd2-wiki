@@ -49,7 +49,7 @@ const MIN_NODE_DISTANCE = 5;
  *
  * 不寫成一個寬鬆的 `/^[DS]\d{3,4}$/`：那樣把符文的 `D0000` 改成 `D123`、或把玩家被動的
  * `S0201` 改成 `D0201`，只要不撞號就照樣過關——而 `gameId` 刻意不進 tree.json，
- * 這條規則是它唯一的防線，寬鬆等於沒有。（實測 239 個節點完全符合這組對應。）
+ * 這條規則是它唯一的防線，寬鬆等於沒有。（實測全部節點都符合這組對應。）
  */
 const GAME_ID_BY_TYPE: Record<string, RegExp> = {
   '骰子': /^D\d{3}$/,
@@ -598,7 +598,7 @@ export interface ValidateOpts {
    */
   passiveUpgradeCost: unknown;
   /**
-   * `data/dice-stats.json`：41 顆骰子的基本能力值與強化數據（官方資料表的兩個分頁併成一份）。
+   * `data/dice-stats.json`：每顆骰子的基本能力值與強化數據（官方資料表的兩個分頁併成一份）。
    *
    * 型別刻意用 `unknown`（同 `boardIcons`／`passiveUpgradeCost`）：這份檔案是社群 PR 直接改的，
    * 宣告成已驗過的型別等於在型別層面假設它一定合法，而規則 23 要擋的正是不合法的那些。
@@ -718,7 +718,7 @@ export function validate(svgText: string, opts: ValidateOpts): ValidateResult {
   //
   // 文案與幾何拆成兩個檔之後，這是唯一會說「它們已經不同步」的地方。少了這條，SVG 少一個
   // 節點只會讓 JSON 多一筆沒人引用的孤兒（畫面上安靜地少一顆），JSON 少一筆則會讓合併時
-  // 丟出一個沒有規則編號、看不出該改哪個檔的例外。兩種殘餘都要**逐一列出 id**——239 個節點，
+  // 丟出一個沒有規則編號、看不出該改哪個檔的例外。兩種殘餘都要**逐一列出 id**——幾百個節點，
   // 只說「數量對不上」等於沒說。
   const textIds = new Set(Object.keys(nodeText));
   const geomIds = new Set(nodes.map(n => n.id));
@@ -1512,7 +1512,7 @@ export function validate(svgText: string, opts: ValidateOpts): ValidateResult {
   // 則永遠不會有人看到。所以這條規則是雙向的。
   //
   // ⚠️ 它以 **gameId** 為鍵，不是節點 id——這份資料是拿官方資料表對出來的，而任何跟官方表
-  // 的對帳一律用 gameId（239 筆雙射，用名稱會配錯）。規則 19 抓的是 SVG↔nodes 的殘餘，
+  // 的對帳一律用 gameId（逐筆雙射，用名稱會配錯）。規則 19 抓的是 SVG↔nodes 的殘餘，
   // 對這張表的殘餘視而不見。
   //
   // 子規則：(a) 骰子漏一筆／(b) 表自己的孤兒 entry／(c) name 與節點不符／(d) entry 結構／

@@ -279,8 +279,8 @@ test('D13. 窄螢幕：導覽列自己橫向捲動，不換行也不把整份文
     expect(r.rows, `寬度 ${w}px 時導覽列折成 ${r.rows} 列`).toBe(1);
   }
 
-  // ⚠️ `overflow-x` 一設，`overflow-y` 就會被算成 auto，而「遊戲介紹」的下拉是絕對定位
-  // 掛在 nav 底下的——不明確寫 `overflow-y: visible` 的話它會被整個裁掉。
+  // ⚠️ `overflow-x: auto` 會把同一個盒子的 `overflow-y: visible` 算成 auto，寫 visible 救不了下拉。
+  // 所以只有內層 `.nav-links` 捲動，「遊戲介紹」的 `<details>` 放在捲動盒外（chrome.css ≤720px 那段，D19 同理）。
   await page.setViewportSize({ width: 320, height: 900 });
   await page.locator('#site-nav .nav-menu > summary').click();
   const menu = (await page.locator('#site-nav .nav-menu-items').boundingBox())!;

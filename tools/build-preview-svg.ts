@@ -46,11 +46,12 @@ const escapeXml = (s: string) =>
 /**
  * 把 `data/nodes.json` 的 `label` 注回正本幾何，產出一份人眼可讀的預覽 SVG。
  *
- * 存在的理由：#21 PR2 把標籤搬進 JSON 之後，正本用瀏覽器或 Inkscape 打開就是 239 個無名圖示，
+ * 存在的理由：#21 PR2 把標籤搬進 JSON 之後，正本用瀏覽器或 Inkscape 打開就是一整片無名圖示，
  * 幾何 PR 無從 review。這支把名字（外加 `data-id`，那才是跟 JSON 對照的鍵）畫回去。
  *
- * 產物**不進版控**，也不該存回正本——`parseTree` 會擋下含 `<text>` 的正本，`npm run normalize`
- * 則會把它刪掉並比對內容。所以檔頭那行註解不是裝飾，它是唯一會在編輯器裡提醒人的東西。
+ * 產物**不進版控**。可以拿它進 Inkscape 移動節點、存回正本，但**存回之後一定要跑 `npm run normalize`**
+ * ——`parseTree` 會擋下含 `<text>` 的正本，normalize 把標籤、id 與這行檔頭註解刪掉並比對內容（CONTRIBUTING
+ * 推薦的就是這條動線）。檔頭那行註解是唯一會在編輯器裡提醒人的東西。
  *
  * 用純文字替換而不是 linkedom 序列化：序列化會重排整份檔案，預覽檔與正本逐行對不起來，
  * 「這次幾何改了什麼」就得靠猜。正本裡零個 `>` `<` `&` 出現在屬性值內，regex 是安全的。
@@ -80,8 +81,8 @@ export function buildPreviewSvg(svgText: string, nodeText: NodeTextMap): string 
   }
   return out.replace(
     /^(<\?xml[^>]*\?>\n)/,
-    '$1<!-- 產生檔：npm run preview。請勿編輯，也不要存回 data/dice-tree.svg——'
-      + '節點標籤的正本是 data/nodes.json 的 label 欄位。 -->\n',
+    '$1<!-- 產生檔：npm run preview。可以在這份上移動節點，存回 data/dice-tree.svg 之後務必跑 npm run normalize；'
+      + '標籤在這裡改不算數，正本是 data/nodes.json 的 label 欄位。 -->\n',
   );
 }
 

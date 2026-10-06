@@ -359,7 +359,8 @@ jobs:
           #（.git/config 用 includeIf 引用），帶著 Cloudflare token 執行的 wrangler 就讀不到它。
           persist-credentials: false
       - name: 取回 verify 驗過的建置產物
-        # 刻意不在這裡重建：要上線的就是通過 validate／效能預算／單元測試／E2E 的那一份 dist。
+        # 刻意不在這裡重建：要上線的就是通過 validate／效能預算／單元測試的那一份 dist
+        # （E2E 各分片是自己重建的，驗的是同一個 commit 的另一份產物）。
         if: steps.creds.outputs.ready == 'true'
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:

@@ -1,7 +1,9 @@
 import { createHash } from 'node:crypto';
-import { mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { chromium } from 'playwright';
 import { readPngSize } from './lib/png.js';
+import { KEEP_ICON_IDS, planRender } from './lib/render-plan.js';
 import type { Shape } from '../src/lib/types.js';
 
 /**
@@ -35,6 +37,11 @@ import type { Shape } from '../src/lib/types.js';
  *
  * 跑完 `data/icons/` 會被整個換掉、`data/dice-tree.svg` 的每個節點會指向新圖並帶上新的
  * 顯示尺寸。之後照常跑 `npm run validate`／`npm test`／`npm run build`。
+ *
+ * 先全部渲染到 `data/` 底下的暫存目錄、正本的替換也在記憶體裡做完，**全部成功才整批換進
+ * `data/icons`**（`data/tree-center.png` 同理）；原圖與正本的節點集合對不上會在開瀏覽器前就停，
+ * 中途任何一步丟例外（含最後換檔時某一樣換不過去），`data/` 都會維持原狀。`KEEP_ICON_IDS`（`tools/lib/render-plan.ts`）裡的
+ * 手工圖示不重渲染，沿用正本原本指向的檔。
  *
  * ⚠️ **輸出跨 Chromium 版本不是位元組可重現**：零改動重跑時，五個支援節點（1114／2114／3114／
  * 4114／5114）的 PNG 會出現純邊緣的次像素位移；同一台機器連跑兩次則完全相同。`@playwright/test`
@@ -102,10 +109,9 @@ function reshape(shape: Shape, w: number, h: number): { re: RegExp; to: string }
 }
 
 /**
- * ⚠️ 超越骰子 1501／2503 與符文 1601／2603 的圖示不是這支產的（遊戲的超越節點底板疊骰子 sprite，
- * 配方見 `data/CLAUDE.md`）。這支沒有排除清單：重跑會把這四顆的手工合成圖蓋成扁平渲染，validate 不擋，
- * 重跑前要自己排除或事後換回。正本裡 1501 刻意仍是 `<rect>`、六角只在圖裡——不要為了配合圖把它改成
- * 6 點 polygon（下面會判成 'hex'，那是支援節點的形狀）。
+ * 超越骰子 1501／2503 與符文 1601／2603 的圖示不是這支產的（遊戲的超越節點底板疊骰子 sprite，
+ * 配方見 `data/CLAUDE.md`），在 `KEEP_ICON_IDS` 裡、重跑時原樣保留。正本裡 1501 刻意仍是 `<rect>`、
+ * 六角只在圖裡——不要為了配合圖把它改成 6 點 polygon（下面會判成 'hex'，那是支援節點的形狀）。
  */
 function shapeOf(block: string): Shape {
   if (/<rect /.test(block)) return 'rect';
@@ -116,6 +122,14 @@ function shapeOf(block: string): Shape {
 }
 
 const svgText = readFileSync(SRC, 'utf8');
+let canonical = readFileSync(CANONICAL, 'utf8');
+const NODE_BLOCK = /<g class="node"[\s\S]*?<\/g>/g;
+const blockId = (block: string) => /data-id="(\d+)"/.exec(block)![1]!;
+const canonicalBlocks = (canonical.match(NODE_BLOCK) ?? []).map(block => ({ id: blockId(block), block }));
+// 原圖的節點 id 直接從原始碼取（跟下面 DOM 的 `[data-node-id]` 是同一組），開瀏覽器之前就能比對集合。
+const ids = [...svgText.matchAll(/data-node-id="(\d+)"/g)].map(m => m[1]!);
+if (ids.length === 0) throw new Error(`${SRC} 裡找不到任何 data-node-id 節點`);
+const toRender = planRender(ids, canonicalBlocks.map(b => b.id));
 
 const browser = await chromium.launch();
 const page = await browser.newPage({ deviceScaleFactor: SCALE });
@@ -124,7 +138,7 @@ await page.setContent(`<!doctype html><html><body style="margin:0;background:tra
 });
 
 // 一次只讓一個節點可見。邊與中央樞紐整組關掉——它們會穿過節點底下，留著就會被一起截進去。
-// 用切換 class 而不是逐一改 inline style：一次 DOM 寫入，239 輪下來差很多。
+// 用切換 class 而不是逐一改 inline style：一次 DOM 寫入，每顆節點一輪下來差很多。
 // `.tree-center .tree-center-link` 另外處理：樞紐自己被渲染時，那五條放射線不能一起入鏡
 // （站台是拿節點座標自己重畫這五條線的，圖裡再帶一份會變成兩層）。
 // `svg > rect` 是原圖自己那張 `<rect width="100%" height="100%" fill="#2f2942"/>` 背景矩形，
@@ -148,13 +162,20 @@ await page.addStyleTag({
     '.tree-center.solo{display:inline}.tree-center.solo .tree-center-link{display:none}',
 });
 
-const ids: string[] = await page.$$eval('[data-node-id]', els =>
-  els.map(e => e.getAttribute('data-node-id')!),
-);
-if (ids.length === 0) throw new Error(`${SRC} 裡找不到任何 [data-node-id] 節點`);
+// 暫存目錄放在 data/ 底下：最後用 rename 整批換進去，跨檔案系統（/tmp）會 EXDEV。
+// 'exit' 在例外結束時也會觸發（經 tsx 跑時 Ctrl+C／SIGTERM 也會，實測不留目錄）；成功時裡面只剩換下來的舊檔。
+const STAGE = mkdtempSync(join('data', '.render-'));
+process.on('exit', () => rmSync(STAGE, { recursive: true, force: true }));
+const STAGE_ICONS = join(STAGE, 'icons');
+mkdirSync(STAGE_ICONS);
 
-rmSync(OUT_DIR, { recursive: true, force: true });
-mkdirSync(OUT_DIR, { recursive: true });
+// 保留的手工圖示先從現有的 data/icons 抄進暫存目錄，否則整批換掉時正好刪掉它們。
+for (const { id, block } of canonicalBlocks) {
+  if (!KEEP_ICON_IDS.has(id)) continue;
+  const href = /<image href="icons\/([0-9a-f]{12}\.png)"/.exec(block);
+  if (!href) throw new Error(`保留節點 ${id} 在正本裡沒有圖示引用`);
+  copyFileSync(join(OUT_DIR, href[1]!), join(STAGE_ICONS, href[1]!));
+}
 
 /** 節點 id → { 圖示雜湊, 站台顯示尺寸 }。尺寸一律回頭讀 PNG 的實際像素再換算，不用瀏覽器
  *  回報的 bounding box：截圖時的裁切框會被取整成整數像素，兩者會差到零點幾，長寬比對不上
@@ -162,7 +183,7 @@ mkdirSync(OUT_DIR, { recursive: true });
  *  drawNodeImage()，用 scene 的 cell（sx,sy,sw,sh）從 sprite 切格子、貼進節點自己的 w×h。 */
 const info = new Map<string, { hash: string; size: [number, number] }>();
 
-for (const id of ids) {
+for (const id of toRender) {
   await page.evaluate(x => {
     document.querySelector('.node.solo')?.classList.remove('solo');
     document.querySelector(`[data-node-id="${x}"]`)!.classList.add('solo');
@@ -170,7 +191,7 @@ for (const id of ids) {
 
   const buf = await page.locator(`[data-node-id="${id}"]`).screenshot({ omitBackground: true });
   const hash = createHash('sha256').update(buf).digest('hex').slice(0, 12);
-  writeFileSync(`${OUT_DIR}/${hash}.png`, buf);
+  writeFileSync(join(STAGE_ICONS, `${hash}.png`), buf);
 
   const px = readPngSize(buf);
   if (!px) throw new Error(`節點 ${id} 截出來的不是有效 PNG`);
@@ -192,7 +213,7 @@ await page.evaluate(() => {
   document.querySelector('.tree-center')!.classList.add('solo');
 });
 const hubBuf = await page.locator('.tree-center').screenshot({ omitBackground: true });
-writeFileSync('data/tree-center.png', hubBuf);
+writeFileSync(join(STAGE, 'tree-center.png'), hubBuf);
 const hubPx = readPngSize(hubBuf);
 if (!hubPx) throw new Error('樞紐截出來的不是有效 PNG');
 const hubSize: [number, number] = [
@@ -202,8 +223,7 @@ const hubSize: [number, number] = [
 
 await browser.close();
 
-// --- 把結果寫回資料正本 ---
-let canonical = readFileSync(CANONICAL, 'utf8');
+// --- 把結果寫回資料正本（先在記憶體裡做完，最後才落地） ---
 let patched = 0;
 /**
  * 做一次替換，並確認它真的發生了。
@@ -211,7 +231,7 @@ let patched = 0;
  * `String.replace` 比對不到時會**原樣回傳**，不會報錯——所以「跑完沒爆」跟「改好了」是兩件事。
  * 這裡的正則都依賴屬性順序與元素形狀（例如 `href x y width height`），
  * 日後任何一次 normalize 調整屬性順序都會讓它們默默失效：
- * 圖示雜湊留在正本裡指向 `rmSync(OUT_DIR)` 已經刪掉的檔案，validate 才會爆出 239 個規則
+ * 圖示雜湊留在正本裡指向整批換掉後已經不存在的檔案，validate 才會爆出一整片規則
  * 7(a) 錯誤，而且完全看不出是哪一步說了謊。下面的樞紐改寫已經用旗標確認過，節點這邊當時
  * 只數了區塊數（每個區塊必定 +1，等於什麼都沒驗），code review 抓到後改成一致的做法。
  */
@@ -225,8 +245,9 @@ function mustReplace(text: string, re: RegExp, to: string, what: string, id: str
   return out;
 }
 
-canonical = canonical.replace(/<g class="node"[\s\S]*?<\/g>/g, block => {
-  const id = /data-id="(\d+)"/.exec(block)![1]!;
+canonical = canonical.replace(NODE_BLOCK, block => {
+  const id = blockId(block);
+  if (KEEP_ICON_IDS.has(id)) return block;
   const it = info.get(id);
   if (!it) throw new Error(`原圖沒有節點 ${id}，正本與原圖的節點集合對不上`);
   const [w, h] = it.size;
@@ -244,7 +265,7 @@ canonical = canonical.replace(/<g class="node"[\s\S]*?<\/g>/g, block => {
   patched++;
   return b;
 });
-if (patched !== info.size) throw new Error(`正本只改到 ${patched} 個節點，原圖有 ${info.size} 個`);
+if (patched !== info.size) throw new Error(`正本只改到 ${patched} 個節點，渲染了 ${info.size} 個`);
 
 // 樞紐的圖必須以樞紐中心對齊（tools/lib/svg-parse.ts 的 parseCenter 會強制檢查），
 // 所以這裡從放射線的共同起點回推 x/y，不是沿用舊值。
@@ -262,10 +283,37 @@ canonical = canonical.replace(
   },
 );
 if (!hubPatched) throw new Error('正本的樞紐 <image> 沒有被改到');
-writeFileSync(CANONICAL, canonical);
+
+// 到這裡全部成功才落地：三樣東西逐一「舊的搬進暫存目錄、新的搬到原位」，任何一步失敗（Windows 上
+// 編輯器或 dev server 佔著檔案就會 EPERM／EBUSY）就把已經換掉的換回去，`data/` 回到原狀。
+writeFileSync(join(STAGE, 'dice-tree.svg'), canonical);
+const swapped: { to: string; old: string }[] = [];
+try {
+  for (const [from, to] of [
+    [STAGE_ICONS, OUT_DIR],
+    [join(STAGE, 'tree-center.png'), 'data/tree-center.png'],
+    [join(STAGE, 'dice-tree.svg'), CANONICAL],
+  ] as const) {
+    const old = join(STAGE, `old-${swapped.length}`);
+    renameSync(to, old);
+    try {
+      renameSync(from, to);
+    } catch (e) {
+      renameSync(old, to);
+      throw e;
+    }
+    swapped.push({ to, old });
+  }
+} catch (e) {
+  for (const { to, old } of swapped.reverse()) {
+    rmSync(to, { recursive: true, force: true });
+    renameSync(old, to);
+  }
+  throw e;
+}
 
 const files = readdirSync(OUT_DIR).filter(f => f.endsWith('.png'));
-console.log(`渲染 ${info.size} 個節點 → ${files.length} 張不重複圖示（同圖自動去重），正本已更新`);
+console.log(`渲染 ${info.size} 個節點、保留 ${canonicalBlocks.length - info.size} 個手工圖示 → ${files.length} 張不重複圖示（同圖自動去重），正本已更新`);
 console.log(`中央樞紐 ${hubSize[0]}x${hubSize[1]}（含五個分支符號）`);
 const bySize = new Map<string, number>();
 for (const { size } of info.values()) {

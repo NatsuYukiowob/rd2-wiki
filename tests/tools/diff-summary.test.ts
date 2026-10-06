@@ -91,8 +91,18 @@ describe('escapeMarkdown（PR 留言的注入防護）', () => {
     expect(escapeMarkdown('&lt;')).toBe('&amp;lt;');
   });
 
-  it('@ 轉成 &#64;：顯示仍是 @，但不會提及到無關的人', () => {
-    expect(escapeMarkdown('@NatsuYukiowob')).toBe('&#64;NatsuYukiowob');
+  it('# 與 GH- 參照中間插 word joiner：不會在別的 issue／PR 留下 cross-reference', () => {
+    const out = escapeMarkdown('see #1 and GH-2 and NatsuYukiowob/rd2-wiki#3');
+    expect(out).toBe('see #&#8288;1 and GH&#8288;-2 and NatsuYukiowob/rd2-wiki#&#8288;3');
+  });
+
+  it('截長不會切在實體中間（`@&#82` 會被解成 `@R`，提及防護就沒了）', () => {
+    const out = escapeMarkdown('#'.repeat(49) + '   @');
+    expect(out).not.toMatch(/&[#\w]*$/);
+  });
+
+  it('@ 後面插 word joiner：顯示仍是 @，但不會提及到無關的人（換成 &#64; 擋不住，GitHub 先解實體）', () => {
+    expect(escapeMarkdown('@NatsuYukiowob')).toBe('@&#8288;NatsuYukiowob');
   });
 
   it('Markdown 行內語法字元被反斜線逃逸，連結與程式碼區塊不會成形', () => {
@@ -138,7 +148,7 @@ describe('buildDiffSummary 的留言標記與逃逸', () => {
 
     const summary = buildDiffSummary(base, head);
 
-    expect(summary).toContain('&lt;img src=x onerror=alert(1)&gt; &#64;yuki');
+    expect(summary).toContain('&lt;img src=x onerror=alert(1)&gt; @&#8288;yuki');
     expect(summary).not.toContain('<img src=x');
   });
 

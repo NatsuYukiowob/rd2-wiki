@@ -61,8 +61,8 @@ describe('buildPreviewSvg（真實資料）', () => {
     }
   });
 
-  it('檔頭有「勿存回正本」的註解——預覽檔唯一會在編輯器裡提醒人的地方', () => {
-    expect(preview.split('\n')[1]).toContain('請勿編輯');
+  it('檔頭提醒「存回正本後要 normalize」——預覽檔唯一會在編輯器裡提醒人的地方', () => {
+    expect(preview.split('\n')[1]).toContain('npm run normalize');
     expect(preview.split('\n')[1]).toContain('data/nodes.json');
   });
 });
