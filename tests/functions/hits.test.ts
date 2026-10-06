@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { onRequestGet, onRequestPost } from '../../functions/api/hits';
+import { onRequestGet, onRequestHead, onRequestPost } from '../../functions/api/hits';
 import type { D1Like } from '../../functions/lib/counter';
 
 /**
@@ -48,6 +48,19 @@ describe('onRequestPost', () => {
     expect(res.headers.get('Cache-Control')).toBe('no-store');
   });
 
+  it('成功與錯誤回應都帶 X-Content-Type-Options: nosniff', async () => {
+    // 靜態頁的 nosniff 是 Pages 自己加的，Function 的回應沒有——200、403、500 三條路徑各自驗。
+    const { db } = fakeDb();
+    const broken: D1Like = { prepare: () => { throw new Error('boom'); } };
+    const responses = [
+      await onRequestPost(ctx('POST', db, { 'Sec-Fetch-Site': 'same-origin' })),
+      await onRequestPost(ctx('POST', db, { 'Sec-Fetch-Site': 'cross-site' })),
+      await onRequestPost(ctx('POST', broken, { 'Sec-Fetch-Site': 'same-origin' })),
+    ];
+    expect(responses.map(r => r.status)).toEqual([200, 403, 500]);
+    for (const res of responses) expect(res.headers.get('X-Content-Type-Options')).toBe('nosniff');
+  });
+
   it('跨站來的 POST 一律拒絕，而且不會寫進資料庫', async () => {
     // 這個 endpoint 不需要 CORS 就能被別的網站用 mode:'no-cors' 驅動——
     // 那是分散在真實 IP 上的流量，IP 節流完全擋不住。
@@ -93,6 +106,19 @@ describe('onRequestGet', () => {
     const res = await onRequestGet(ctx('GET', db));
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ n: 99 });
+    expect(sqls.join()).toContain('SELECT');
+    expect(sqls.join()).not.toContain('UPDATE');
+  });
+});
+
+describe('onRequestHead', () => {
+  it('跟 GET 一樣回 200 與目前的值，只讀不寫', async () => {
+    // 沒匯出 onRequestHead 時 HEAD 會掉到靜態資產、回 404 頁的 HTML——用 HEAD 探活的監控會誤判端點掛了。
+    // body 由 runtime 對 HEAD 自動丟掉，這裡驗的是分派：走 SELECT、不 +1。
+    const { db, sqls } = fakeDb(5);
+    const res = await onRequestHead(ctx('HEAD', db));
+    expect(res.status).toBe(200);
+    expect(res.headers.get('Content-Type')).toBe('application/json');
     expect(sqls.join()).toContain('SELECT');
     expect(sqls.join()).not.toContain('UPDATE');
   });

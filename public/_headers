@@ -1,0 +1,8 @@
+# Cloudflare Pages 的回應標頭（只套靜態檔；Pages Functions 的回應不吃這份，/api/hits 在 functions/api/hits.ts 自己放）。
+# 本機 `serve dist` 不讀這份，tests/deploy/headers.test.ts 守內容，生效與否只能部署後對正式站 curl。
+#
+# HSTS 不帶 includeSubDomains／preload：preload 進了瀏覽器內建清單幾乎撤不回來；includeSubDomains 會綁住日後所有子網域，現在用不到。
+# 決策：先不上 CSP——Astro 與 Base.astro 有 inline script／style，`script-src 'self'` 會直接擋掉，要上得先算 hash 或用 Report-Only 觀察。
+/*
+  Strict-Transport-Security: max-age=31536000
+  X-Frame-Options: DENY

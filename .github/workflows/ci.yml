@@ -6,8 +6,8 @@
 # 在「目標 repo 情境」下執行、擁有寫入權限的 pr-comment.yml，見該檔開頭註解。
 #
 # verify／e2e 預設平行跑、彼此不 `needs`：資料驗證與單元測試通常幾秒到幾十秒就有結果，不應該被
-# 「安裝瀏覽器＋起站台」拖慢到好幾分鐘後才回報——想快速看到「資料本身有沒有問題」的人不需要等
-# E2E 裝完瀏覽器。deploy 則相反，必須等兩者都綠（`needs`），因為它的存在意義就是「CI 綠才上線」。
+# 「拉容器＋建置＋起站台＋跑瀏覽器」拖慢到好幾分鐘後才回報——想快速看到「資料本身有沒有問題」的人
+# 不需要等 E2E。deploy 則相反，必須等兩者都綠（`needs`），因為它的存在意義就是「CI 綠才上線」。
 #
 # E2E 實際上跑在 `e2e-shard` 這個 matrix 上（分成 3 片、各自一台 runner），`e2e` 只是把三片的結果
 # 收成一個檢查——為什麼要分片、為什麼不是多開 worker、為什麼停在 3 片，見該 job 上方的註解。
@@ -20,6 +20,11 @@
 # 「Require actions to be pinned to a full-length commit SHA」，寫成 `@v4` 會被 GitHub 直接拒跑。
 # 升級時把 SHA 與註解一起換掉（`gh api repos/<owner>/<repo>/commits/<tag> --jq .sha`——
 # 用 commits 不用 git/ref：annotated tag 的 git/ref 拿到的是 tag 物件、不是 commit）。
+# ⚠️ Actions 設定另外只放行 GitHub 官方的 action（`allowed_actions=selected`、`github_owned_allowed`，
+# 白名單 pattern 是空的）：SHA pin 只保證內容不被換掉，擋不住引進一個沒審過的新 action。
+# 要用 `actions/`、`github/` 以外的 action，先在 repo 設定的白名單加上它（tests/deploy/workflows.test.ts 鏡像這條，一起改），
+# 不然那個 job 會被拒跑。
+# 這條只約束 `uses:`，管不到 `run:`——它是衛生，不是隔離。
 #
 # ⚠️ runner 寫死 `ubuntu-26.04` 而不是 `ubuntu-latest`：latest 在 2026-10-19～11-19 間會分批
 # 從 24.04 換成 26.04，同一個 commit 前後兩次 run 可能落在不同 image。寫死版本，換 image 就是一個看得到的 PR。
@@ -43,7 +48,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         # fetch-depth 0：下面「產生差異摘要」步驟要用 git worktree 簽出 PR 的 base commit
         # 來跑一次 base 版本的 build:data，沒有完整歷史會找不到那個 commit。
-        with: { fetch-depth: 0 }
+        # persist-credentials false：之後只有本機的 git 操作（worktree、diff），不需要憑證；
+        # 預設會把 GITHUB_TOKEN 寫進 $RUNNER_TEMP 的憑證檔（.git/config 用 includeIf 引用），
+        # 而這個 job 跑的是 PR 端的程式碼。
+        with: { fetch-depth: 0, persist-credentials: false }
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with: { node-version: '24', cache: npm }
       # --ignore-scripts：fork PR 改得動 package.json 的 lifecycle script，而 `npm ci` 會在
@@ -143,6 +151,9 @@ jobs:
         with:
           name: dist
           path: dist/
+          # ⚠️ upload-artifact 預設丟掉點開頭的檔案（include-hidden-files 預設 false），而且不報錯。
+          # 日後在 public/ 放 `.well-known/` 之類的檔，本機 build 與 E2E 都看得到、正式站卻 404。
+          include-hidden-files: true
           retention-days: 1
 
   e2e-shard:
@@ -173,9 +184,10 @@ jobs:
     # 分片是乾淨的軸：每個 shard 是**自己的一台 runner**，worker 數維持 2、爭用不變，
     # 只是測試變少。同一天實測 `--shard=i/3` 為 60／83／89 秒，最長的那片決定牆鐘。
     #
-    # 為什麼停在 3 片：每片都要重跑 set up job 5 秒＋checkout 1 秒＋setup-node 3 秒＋
-    # `npm ci` 6 秒＋裝瀏覽器 11 秒＋`pree2e` 建置 8 秒 ≒ 43 秒固定成本。3 片時 89+43 ≒ 2 分 12 秒，
-    # 4 片只再省十幾秒，固定成本已經佔掉一半。
+    # 為什麼停在 3 片：每片都有一筆不隨測試數變的固定成本（起 job、checkout、setup-node、`npm ci`、
+    # `pree2e` 建置）。2026-08-25 還在裸 runner 上裝瀏覽器時約 43 秒，3 片時 89+43 ≒ 2 分 12 秒，
+    # 4 片只再省十幾秒，固定成本已經佔掉一半。改用容器後光拉 image（Initialize containers）就 21–30 秒
+    #（2026-10-06 run 37428783852），固定成本只多不少，結論不變。
     #
     # 分片數只寫在 `matrix.shard` 這一個地方，分母用 `strategy.job-total`（＝這個 matrix 展開出來的
     # job 數）帶進去。⚠️ 兩邊各寫一次的話，其中一個漂移方向是**安靜的**：只把分母改成 `/4`、
@@ -189,33 +201,16 @@ jobs:
         shard: [1, 2, 3]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        # 之後沒有 git 操作，不把 GITHUB_TOKEN 留在磁碟上（理由同 verify）。
+        with: { persist-credentials: false }
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with: { node-version: '24', cache: npm }
       - run: npm ci --ignore-scripts
-      # E2E 驗證的是「建置後、真實瀏覽器裡」的行為（見 playwright.config.ts 開頭註解），
-      # 所以要先把 Chromium 抓下來。
-      #
-      # ⚠️ **刻意不加 `--with-deps`，也不要加 actions/cache 快取 ~/.cache/ms-playwright。**
-      # 2026-08-19 這一天在同一份 workflow、同一個指令上量到的四個點：
-      #
-      #   03:43Z  install --with-deps chromium   23 秒        run 32213164990
-      #   07:31Z  install-deps chromium          3 分 13 秒    run 32228165427（cache hit 路徑）
-      #   08:00Z  install-deps chromium          掛住 19 分撞 timeout   run 32230510120（main）
-      #   08:22Z  install --with-deps chromium   掛住 6 分以上          run 32232296660
-      #
-      # 一開始我歸因成「install-deps 比 install --with-deps 慢」，那是錯的：把時間排開來看，
-      # 兩個指令都在變慢，而它們的共通點是**都會跑 apt-get**。真正的變因是 GitHub runner 的
-      # apt 來源，不是指令選擇，也不是快取。快取反而讓情況更糟——它只存得下瀏覽器本體，
-      # 命中時仍得補跑 install-deps，等於把「唯一會慢的那件事」變成唯一還在做的事。
-      #
-      # 既然 apt 是我們控制不了的外部變因，作法是**完全不碰它**：只抓瀏覽器，不裝系統套件。
-      # 前提是 GitHub 的 runner image 本來就內建 Chromium 需要的共用函式庫——
-      # 這是**假設，不是已知**（本機環境跟 runner image 不同，驗不準）。若 Chromium 起不來，
-      # 會在「端對端測試」那步立刻噴 launch 失敗，是幾秒內就看得到的紅燈，不是 20 分鐘的卡死。
-      # 那時的下一手是改用官方容器（`container: mcr.microsoft.com/playwright:v1.62.1-noble`，
-      # tag 要 pin 具體版本），image 內建瀏覽器與函式庫，整個問題類別消失。
-      # ⚠️ 以上是歷史：2026-09-06 起這個 job 已經跑在上面的容器裡，host runner image 的函式庫不再相關。
-      # 不再 `npx playwright install chromium`：容器 image 已內建對應版本的瀏覽器與系統函式庫。
+      # 瀏覽器與系統函式庫由上面的容器 image 提供，這裡**不** `npx playwright install`。
+      # ⚠️ 不要改回裸 runner 上的 `install --with-deps`／`install-deps`，也不要快取 ~/.cache/ms-playwright：
+      # 兩個指令都會跑 apt-get，而 runner 的 apt 來源是控制不了的外部變因——2026-08-19 同一個指令一天內從
+      # 23 秒（run 32213164990）變成掛住 19 分撞 timeout（run 32230510120）。快取只存得下瀏覽器本體，
+      # 命中時仍得補跑 install-deps，等於只留下會慢的那一半。
       - name: 端對端測試（含建置）
         # 這裡刻意沒有獨立的「建置站台」步驟：package.json 的 `pree2e` 已經會跑一次
         # `npm run build`，多加一步等於整包資料與站台建兩次（多花 5–7 秒且兩份產物可能不同步）。
@@ -360,8 +355,8 @@ jobs:
             /deploy/
             /.gitignore
           sparse-checkout-cone-mode: false
-          # 這個 job 之後不做任何 git 操作；不把 GITHUB_TOKEN 寫進 .git/config，
-          # 帶著 Cloudflare token 執行的 wrangler 就讀不到它。
+          # 這個 job 之後不做任何 git 操作；不把 GITHUB_TOKEN 寫進 $RUNNER_TEMP 的憑證檔
+          #（.git/config 用 includeIf 引用），帶著 Cloudflare token 執行的 wrangler 就讀不到它。
           persist-credentials: false
       - name: 取回 verify 驗過的建置產物
         # 刻意不在這裡重建：要上線的就是通過 validate／效能預算／單元測試／E2E 的那一份 dist。
