@@ -10,13 +10,18 @@
 import { CURRENCY_ICON_KINDS, currencyIconDetails } from './cost-html.js';
 import { MYTHIC_CORES } from './currency.js';
 import { escapeHtml } from './markup.js';
-import type { EventCell } from './types.js';
+import type { EventCell, GameEvent } from './types.js';
 
 /** 資料檔的 `icon` 欄允許的值：登記過的貨幣圖 ＋ 每一種超越核心。 */
 export const EVENT_ICON_KINDS: readonly string[] = [
   ...CURRENCY_ICON_KINDS,
   ...MYTHIC_CORES.map(d => d.kind),
 ];
+
+/** 檔期的顯示字串，時區跟著印（索引頁與內容頁共用）。 */
+export function periodText(period: NonNullable<GameEvent['period']>): string {
+  return `${period.begin} ～ ${period.finish}（${period.tz}）`;
+}
 
 /**
  * 一種貨幣的 `<img>`。未登記的 kind 直接丟——這個函式只在建置期跑（Astro 的靜態渲染），

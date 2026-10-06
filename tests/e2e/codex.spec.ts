@@ -136,6 +136,8 @@ test('C3. 卡片裡的 #關鍵字 就地換頁：左右滑動過場、卡片高�
   await expect(stage).toBeVisible();
   await expect(top.locator('.card-term-title')).toHaveText(`#${term}`);
   expect(page.url(), '就地換頁不該離開 /dice').toContain('/dice');
+  // 這個詞就出現在這張卡片上，一定有搜尋入口；它是腳本組的連結，SEO-8 掃 HTML 看不到，在這裡守尾斜線。
+  await expect(top.locator('.card-term-search')).toHaveAttribute('href', /^\/tree\/\?q=/);
 
   // 進場的那一層與退場的卡片本文都要跑 transform 過場（跟 /tree 的面板同一種左右切換）。
   await expect
@@ -180,7 +182,7 @@ test('C3b. 沒有 JS 時 #關鍵字 仍然是一條連得到詞條頁的連結',
   const links = kwLinks(html);
   expect(links.length).toBeGreaterThan(0);
   for (const { href } of links) {
-    expect(href).toMatch(/^\/guide\/keywords#[A-Za-z][A-Za-z0-9_-]*$/);
+    expect(href).toMatch(/^\/guide\/keywords\/#[A-Za-z][A-Za-z0-9_-]*$/);
   }
   // 每一個標記都要有官方色。別名（播種／傳送）曾經是全站唯二沒有顏色的標記——
   // renderTaggedText 給的詞彙表不含別名，查不到就不上色，看起來像另一種東西。
@@ -242,7 +244,7 @@ test('C4. 導覽列的「遊戲介紹」選單能用鍵盤開、Esc 關，且焦
   await summary.focus();
   await page.keyboard.press('Enter');
   await expect(menu).toHaveAttribute('open', '');
-  await expect(menu.locator('a[href="/guide/keywords"]')).toBeVisible();
+  await expect(menu.locator('a[href="/guide/keywords/"]')).toBeVisible();
 
   await page.keyboard.press('Escape');
   await expect(menu).not.toHaveAttribute('open', '');

@@ -139,7 +139,11 @@ export type Edge = [string, string];
 export interface GlossaryEntry {
   /** 遊戲資源包裡的代碼（例如 FROZEN）。給貢獻者對照原始資料用，站台不顯示。 */
   code: string;
-  /** 遊戲內這個標記的底色；同色代表同一類機制（橘＝骰子機制、紫＝減益、藍＝召喚物…）。 */
+  /**
+   * 遊戲內這個標記的底色；同色代表同一類機制（橘＝骰子機制、紫＝減益、藍＝召喚物…）。
+   * ⚠️ 進到 `GlossaryDisplay`（tree.json 的 `meta.glossary`、`displayGlossary()`）之後是**字色**
+   * （`textColor()` 換過），不是官方色碼——不要拿那份去 `groupOfColor()`。
+   */
   color: string;
   desc: string;
 }
@@ -493,13 +497,15 @@ export interface GameEvent {
   version: string;
   /**
    * 活動檔期。⚠️ **不是從客戶端表讀出來的**：活動表裡沒有日期欄位（只有 `SeasonTable`
-   * 這種賽季表帶 `Begin`／`Finish`），檔期由伺服器控。中秋這一筆是玩家 2026-09-21 在遊戲裡
-   * 實測的（UTC+9），來源寫在同一筆的 `notes` 裡。
+   * 這種賽季表帶 `Begin`／`Finish`），檔期由伺服器控，要靠玩家在遊戲裡實測。
+   *
+   * `tz` 必填（`UTC+9` 這種寫法），畫面上跟著時間一起印：讀者大多在 UTC+8，沒標時區的
+   * 「23:59」會被讀成自己的 23:59，最後一小時要換的東西就換不到了。
    *
    * ⚠️ **沒有實測來源就寫 `null`**，不要為了填滿它去猜一個日期——猜來的跟查證過的在畫面上
    * 長得一模一樣。產生器把這一格放在「人工補充」區塊，重跑不會把它洗掉。
    */
-  period: { begin: string; finish: string } | null;
+  period: { begin: string; finish: string; tz: string } | null;
   /**
    * 遊戲內實機畫面（`public/events/` 底下的檔名）。客戶端的 sprite 拆得出零件，拆不出
    * 「這些零件在畫面上長怎樣」——那只能靠玩家拍。選填：沒有截圖的活動就整個欄位省略。

@@ -186,7 +186,7 @@ npm run compare -- <beforeURL> <afterURL>  # computed-style 逐元素比對，�
 | 26 | `data/prereq-ranks.json`：外層只有 note／source／ranks；內層鍵必須是外層節點的**祖先**且非自己；2 ≤ rank ≤ 該前置 `maxLevel`。`TreeNode.prereqRanks` **只在有值的節點上放欄位**（tree.json 預算） |
 | 27 | `data/rift-shop.json`：走 `checkIconedRecordList()` 且傳 `sharedIconKey: 'name'`；**(g) 雙向**——跨名共用錯、同名不同圖也錯。自己的語意檢查：(e) `grade` 合法、`cost`／`weight` 正整數 (i) 同階級 `weight` 一致（刻意不寫死數值）(j) 同名多筆的階級互異 |
 | 28 | `data/offgame-effects.json`：**雙向**（每顆符文／被動都有一筆，`none` 附 reason；孤兒擋）、`target` 在 `src/lib/offgame.ts` 詞彙內、`scope` 合法（**符文的 `dice:<id>` 必須是它最近的骰子祖先**，只要求「是祖先」的話指到同鏈上游的骰子照樣過；**玩家被動只能 `all`／`faction:`**）、`maxLevel` 一致、成長值與描述一致（`parseGrowth`）、`stat*` 的 `label` 在 dice-stats 存在、`mechanic` 必填 template（`{V}`／`{V2}`）、未知欄位擋。不進 tree.json，這條是唯一防線 |
-| 29 | `data/events.json`：**不走 `checkIconedRecordList()`**。(a) 非空陣列 (b) 必填／未知欄位（**沒有 `notes` 欄位**，決策：維護者註記不進資料，不要加回）(c) `id` 小寫英數連字號、不撞號（頁面錨點）(d) `version` x.y.z (e) `period` 只能 `null` 或 `{begin, finish}`，兩端是真實日期 `YYYY-MM-DD`（可帶 ` HH:MM`）且開始不晚於結束（只寫日期的一端算整天） (f) `currencies` 的 `kind` 已登記 (g) 段落形狀 (h) **每列格數＝表頭欄數** (i) 格子是非空字串或 `{icon, text}` (j) `screenshots` 檔在 `public/events/`、`caption` 非空、寬高正整數、檔名無路徑；**目錄讀不到是錯不是跳過**。合法 `icon`／`kind` 只有 `src/lib/events.ts` 的 `EVENT_ICON_KINDS` 一份 |
+| 29 | `data/events.json`：**不走 `checkIconedRecordList()`**。(a) 非空陣列 (b) 必填／未知欄位（**沒有 `notes` 欄位**，決策：維護者註記不進資料，不要加回）(c) `id` 小寫英數連字號、不撞號（頁面錨點）(d) `version` x.y.z (e) `period` 只能 `null` 或 `{begin, finish, tz}`，兩端是真實日期 `YYYY-MM-DD`（可帶 ` HH:MM`）且開始不晚於結束（只寫日期的一端算整天），`tz` 必填 `UTC±N`（畫面跟時間一起印） (f) `currencies` 的 `kind` 已登記 (g) 段落形狀 (h) **每列格數＝表頭欄數** (i) 格子是非空字串或 `{icon, text}` (j) `screenshots` 檔在 `public/events/`、`caption` 非空、寬高正整數、檔名無路徑、WebP 不帶 EXIF／XMP（ICC 要留）；**目錄讀不到是錯不是跳過**。合法 `icon`／`kind` 只有 `src/lib/events.ts` 的 `EVENT_ICON_KINDS` 一份 |
 | 31 | 可升級（`maxLevel > 1`）的節點：(a) `levelTableFor()` 查得到逐級費用表（否則 `/sim` 只讓它停在 Lv.1）(b) `growthIssue()` 不是 `no-growth`。判準是站台與 `build-data` 自己用的那兩支；**讓路**：(a) 不看 `special` 與付費解鎖的玩家被動／支援（規則 22）、升級花費表缺席時不看符文（規則 15），(b) 不看符文（規則 17） |
 
 - ⚠️ **幾何規則吃 `nodes`，文案規則吃 `withText`**（文案規則＝1／3／4／8／9／14／15／16／17／31）。
@@ -309,6 +309,9 @@ npm run compare -- <beforeURL> <afterURL>  # computed-style 逐元素比對，�
 - ⚠️ `.dice-card` 的分支色條是頂緣 `::after`（`z-index: 2`，要贏過 `.card-term` 覆蓋層，C12）。
 - ⚠️ `body` 是 flex column 時 `main` 寫 `width: 100%; margin-inline: auto`，不寫 `margin: 0 auto`。
 - ⚠️ **`.sr-only` 一律 clip-path**；拿掉可見文字時不要把 live region 一起拿掉。
+- **`.astro` 模板裡的註解一律 `{/* */}`**：`<!-- -->` 會原樣輸出到正式 HTML，寫在 `.map()` 裡還會每張卡片重複一次（`tests/components/template-comments.test.ts` 擋）。
+- **站內連結一律帶尾斜線**（`/dice/`、`/tree/?node=…`）：跟 canonical／sitemap 同一種寫法，不帶的話正式站每次先 308（`seo.spec.ts` SEO-8）。
+- **網格的 `minmax()` 下限寫 `min(Xrem, 100%)`**：下限比內容寬大時 320px／280px 會撐出橫捲（`static.spec.ts` ST8）。
 - ⚠️ **E2E 驗減少動態用 `page.emulateMedia({ reducedMotion: 'reduce' })`**，`test.use({ reducedMotion })` 在目前版本沒傳進 page。
 
 ## 版面沒有固定偏移量

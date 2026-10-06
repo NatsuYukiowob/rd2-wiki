@@ -228,7 +228,7 @@ test('B2. 蛇王的 #一般怪物 是關鍵字標記，不是裸的 #', async ({
   await page.goto('/boss');
   const link = page.locator('#b1 .kw-link[data-term="一般怪物"]');
   await expect(link).toHaveText('#一般怪物');
-  await expect(link).toHaveAttribute('href', /\/guide\/keywords#[A-Z_]+/);
+  await expect(link).toHaveAttribute('href', /\/guide\/keywords\/#[A-Z_]+/);
   // 顏色要是官方色，不是掉回內文色——別名／查不到的詞才會沒有顏色。
   await expect(link).toHaveCSS('color', 'rgb(160, 167, 184)');
 });
@@ -238,14 +238,20 @@ test('B3. 點 #關鍵字 就地展開解釋，不跳頁', async ({ page }) => {
   const panel = page.locator('#b1 .battle-term[data-term="一般怪物"]');
   // 有 JS 時預設收起（沒有 JS 時它一直顯示著——見 B4）。
   await expect(panel).toBeHidden();
-  await page.locator('#b1 .kw-link[data-term="一般怪物"]').click();
+  // 連結被接手成開關：讀屏要聽得到開合狀態，而且指得到它控制的那一段。
+  const link = page.locator('#b1 .kw-link[data-term="一般怪物"]');
+  await expect(link).toHaveAttribute('aria-expanded', 'false');
+  expect(await link.getAttribute('aria-controls')).toBe(await panel.getAttribute('id'));
+  await link.click();
   await expect(panel).toBeVisible();
+  await expect(link).toHaveAttribute('aria-expanded', 'true');
   await expect(panel).toContainText('最基本的怪物');
   // 就地展開＝網址不變。跳頁的話這條會紅。
   expect(new URL(page.url()).pathname.replace(/\/+$/, '')).toBe('/boss');
   // 再點一次收回去。
-  await page.locator('#b1 .kw-link[data-term="一般怪物"]').click();
+  await link.click();
   await expect(panel).toBeHidden();
+  await expect(link).toHaveAttribute('aria-expanded', 'false');
 });
 
 test('B4. 沒有 JS 時解釋直接顯示，而且 #關鍵字 是一條通的連結', async ({ browser }) => {

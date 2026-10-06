@@ -208,6 +208,10 @@
   display: flex;
   flex-direction: column;
   min-width: 12rem;
+  /* 選單掛在 sticky 導覽列上，捲頁面帶不動它：矮視窗（手機橫放、或瀏覽器字級調大）裝不下時
+     要能在選單裡自己捲。寬螢幕也要——915×412 的橫放手機走的是這一條，不是下面的窄螢幕段。 */
+  max-height: calc(100dvh - var(--nav-h, 3rem) - var(--space-5));
+  overflow-y: auto;
   padding: var(--space-1);
   background: var(--surface-2);
   border: 1px solid var(--border-strong);
@@ -219,6 +223,11 @@
   padding: var(--space-2) var(--space-3);
   border-radius: var(--r-sm);
   font-weight: 500;
+}
+/* 選單是捲動容器（overflow-y: auto），會裁掉畫在內距外的東西；焦點框的外擴（--ring-offset）跟內距
+   一樣寬，根字級小於 16px 時左右兩邊就被切掉。這裡把焦點框畫進連結自己裡面。 */
+#site-nav .nav-menu-items a:focus-visible {
+  outline-offset: calc(var(--ring-offset) * -1);
 }
 #site-nav .nav-menu-items a:hover,
 #site-nav .nav-menu-items a:focus-visible {
@@ -247,8 +256,6 @@
     top: calc(100% + var(--space-2));
     right: var(--space-4);
     left: var(--space-4);
-    max-height: calc(100dvh - var(--nav-h, 3rem) - var(--space-5));
-    overflow-y: auto;
   }
 }
 

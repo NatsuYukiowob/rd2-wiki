@@ -121,7 +121,7 @@ test('B0b. 決策 2／5：骰盤只放組合內的骰子，格子上不提供等
 
 test('B0c. 導覽列有「骰盤」入口且在本頁標成目前分頁', async ({ page }) => {
   await page.goto('/board');
-  const link = page.locator('#site-nav a[href="/board"]');
+  const link = page.locator('#site-nav a[href="/board/"]');
   await expect(link).toHaveText('骰盤');
   await expect(link).toHaveAttribute('aria-current', 'page');
 });
@@ -1644,7 +1644,7 @@ test('B25. 沒有 /sim 存檔：預設「不含」、「我的 /sim」停用並�
   await expect(modeBtn(page, 'none')).toHaveAttribute('aria-pressed', 'true');
   await expect(modeBtn(page, 'sim')).toHaveAttribute('aria-disabled', 'true');
   await expect(page.locator('#offgame-nosave')).toBeVisible();
-  await expect(page.locator('#offgame-nosave a')).toHaveAttribute('href', '/sim');
+  await expect(page.locator('#offgame-nosave a')).toHaveAttribute('href', '/sim/');
   await expect(cardValue(page, '攻擊力')).toHaveText('750');
   await expect(page.locator('#dice-card .bonus')).toHaveCount(0);
   await expect(page.locator('#dice-card dt.bullet')).toHaveCount(0);

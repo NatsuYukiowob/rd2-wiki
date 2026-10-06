@@ -53,9 +53,9 @@ const modeName = `stat-mode-${node.id}`;
 ---
 
 <article class="dice-card card" id={`n${node.id}`} data-branch={node.branch} data-type={node.type} style={`--i:${enterIndex}`}>
-  <!-- 卡片本文是「第 0 層」。關鍵字的就地視圖會蓋在它上面，換頁時它跟著往左退、淡出，
+  {/* 卡片本文是「第 0 層」。關鍵字的就地視圖會蓋在它上面，換頁時它跟著往左退、淡出，
        跟 /tree 詳情面板的過場同一種動作——所以它必須是一個可以整塊 transform 的元素，
-       不能是一堆散落在 .dice-card 底下的兄弟節點。 -->
+       不能是一堆散落在 .dice-card 底下的兄弟節點。 */}
   <div class="dice-card-main">
     <header>
       <img
@@ -68,7 +68,7 @@ const modeName = `stat-mode-${node.id}`;
       />
       <div class="dice-card-title">
         <h3>{node.name}</h3>
-        <!-- 刻意不印類型：圖鑑只收骰子本體，41 張卡片全寫「骰子」等於沒寫。 -->
+        {/* 刻意不印類型：圖鑑只收骰子本體，41 張卡片全寫「骰子」等於沒寫。 */}
         <p class="meta">
           <span class={`branch-dot branch-${node.branch}`} aria-hidden="true"></span>
           {BRANCH_ZH[node.branch]}
@@ -77,7 +77,7 @@ const modeName = `stat-mode-${node.id}`;
       </div>
     </header>
 
-    <!--
+    {/*
       官方基本面板。四個檔位的值**全部都是真的文字節點**，靠 `:has()` ＋ radio 決定顯示哪一個
       ——沒有一行 JS。三個理由：
       (1) 這一頁存在的意義就是「文字進得了 HTML」，用 JS 換 textContent 的話另外三檔搜尋引擎
@@ -86,7 +86,7 @@ const modeName = `stat-mode-${node.id}`;
       (3) radio group 是**一個** Tab 停留點（方向鍵在組內移動），41 張卡片才不會變成 164 個
           Tab 停留點。
       固定項目（官方強化表沒收錄，或收錄了但四檔全等）只印一個值，不用複製四份。
-    -->
+    */}
     {
       stats && (
         <div class="dice-stats">
@@ -106,8 +106,8 @@ const modeName = `stat-mode-${node.id}`;
             ))}
           </ul>
           {stats.note && <p class="stat-note">{stats.note}</p>}
-          <!-- 切換鈕排在數值下面（Yuki 指定）。`:has()` 是往上找的，所以 DOM 順序不受選擇器
-               牽制，視覺順序＝DOM 順序＝焦點順序，三者一致。 -->
+          {/* 切換鈕排在數值下面（Yuki 指定）。`:has()` 是往上找的，所以 DOM 順序不受選擇器
+               牽制，視覺順序＝DOM 順序＝焦點順序，三者一致。 */}
           <div class="stat-modes" role="group" aria-label={`${node.name} 的數值模式`}>
             {STAT_MODES.map((m, i) => (
               <label class="chip chip-xs">
@@ -115,16 +115,16 @@ const modeName = `stat-mode-${node.id}`;
                 {m.label}
               </label>
             ))}
-            <!-- 按住才顯示：pill 的數值後面接上局內強化再升 1 級的增減（客戶端 *_UpAdd）。放開就收，
-                 不留狀態。按住的判定在 dice.astro 的腳本（data-holding），CSS `:active` 是沒有 JS 時的後備。 -->
+            {/* 按住才顯示：pill 的數值後面接上局內強化再升 1 級的增減（客戶端 *_UpAdd）。放開就收，
+                 不留狀態。按住的判定在 dice.astro 的腳本（data-holding），CSS `:active` 是沒有 JS 時的後備。 */}
             <button type="button" class="chip chip-xs stat-up-btn">局內升級</button>
           </div>
         </div>
       )
     }
 
-    <!-- 花錢買得到的才加「解鎖」前綴：formatUnlockVia 對其餘 9 顆回的是「初始解鎖」或官方寫的
-         取得條件原文，前面再加一個「解鎖」會變成「解鎖 初始解鎖」。 -->
+    {/* 花錢買得到的才加「解鎖」前綴：formatUnlockVia 對其餘 9 顆回的是「初始解鎖」或官方寫的
+         取得條件原文，前面再加一個「解鎖」會變成「解鎖 初始解鎖」。 */}
     <p class="meta">{node.unlockVia === 'cost' ? `解鎖 ${formatUnlockVia(node)}` : formatUnlockVia(node)}</p>
     {node.maxLevel > 1 && <p class="meta">等級上限 {node.maxLevel}</p>}
     {growth && <p class="growth">{growth}</p>}
@@ -142,16 +142,16 @@ const modeName = `stat-mode-${node.id}`;
       )
     }
 
-    <a class="card-link" href={`/tree?node=${node.id}`}>在骰子樹查看前置鏈<Fragment set:html={ICONS.arrow} /></a>
+    <a class="card-link" href={`/tree/?node=${node.id}`}>在骰子樹查看前置鏈<Fragment set:html={ICONS.arrow} /></a>
   </div>
 
-  <!--
+  {/*
     關鍵字解釋的就地視圖舞台。點卡片裡任何一個 `#關鍵字`，dice.astro 的腳本會在這裡建一層
     視圖，從右側滑進來蓋住卡片本文——跟 /tree 的詳情面板同一種過場。跟面板刻意不同的兩點：
     (1) **卡片高度不動**——視圖是 `position:absolute; inset:0`，撐不下就自己捲，
         不做面板那種高度過場；41 張卡片排在網格裡，任何一張改高度都會推動整列。
     (2) **不列出哪些節點用到**——那是骰子樹的事，這裡只給一個入口把玩家帶過去。
     內容由腳本建，所以這裡是空的舞台；沒有 JS 時它永遠 hidden，`#關鍵字` 就是一條正常的連結。
-  -->
+  */}
   <div class="card-term" hidden></div>
 </article>

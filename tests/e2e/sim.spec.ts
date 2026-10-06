@@ -231,7 +231,7 @@ test('S0. 骨架：初始只有起始骰子、資源 0，工具列每一項都�
 
 test('S0b. 導覽列有「模擬器」入口且在本頁標成目前分頁', async ({ page }) => {
   await page.goto('/sim');
-  const link = page.locator('#site-nav a[href="/sim"]');
+  const link = page.locator('#site-nav a[href="/sim/"]');
   await expect(link).toHaveText('骰子樹-模擬器(beta)');
   await expect(link).toHaveAttribute('aria-current', 'page');
 });

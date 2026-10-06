@@ -4,6 +4,7 @@ import { gzipSync } from 'node:zlib';
 import { buildTreeData } from '../../tools/build-data';
 import { decodeTree, encodeTree } from '../../src/lib/tree-wire';
 import { mythicAmount } from '../../src/lib/cost';
+import { textColor } from '../../src/lib/glossary-groups';
 import { buildSprite, type IconEntry } from '../../tools/lib/icons';
 import { parseTree } from '../../tools/lib/svg-parse';
 import type { NodeTextMap } from '../../tools/lib/node-text';
@@ -117,6 +118,13 @@ describe('buildTreeData', () => {
       // code 只給貢獻者比對遊戲資源檔用，站台一個字都不顯示，不該佔 gzip 預算
       expect(entry).not.toHaveProperty('code');
     }
+    // 送給 /tree、/sim 的是字色不是官方色碼（對比不足的那一組換過，見 textColor()）。
+    for (const [term, entry] of Object.entries(data.meta.glossary)) {
+      const rec = opts.keywords[term]!;
+      const official = 'aliasOf' in rec ? opts.keywords[(rec as unknown as { aliasOf: string }).aliasOf]!.color : rec.color;
+      expect(entry.color, term).toBe(textColor(official));
+    }
+    expect(Object.values(data.meta.glossary).some(e => e.color === '#A987FF'), '真實資料裡要有換過色的詞，否則上面那圈沒驗到東西').toBe(true);
   });
 
   it('meta.glossary 含解釋文字自己引用到的詞（傳遞閉包），且 key 已排序', () => {

@@ -72,18 +72,18 @@ const offgamePayload = {
 };
 ---
 
-<Base title="骰盤">
+<Base title="骰盤" description="Random Dice 2 骰盤模擬工具：選擇骰子拖進骰盤，對戰與合作模式都能排。">
   <section class="page board-page">
     <h1 class="page-head">骰盤</h1>
     <p class="lede">
       骰盤模擬工具，選擇骰子後將骰子直接拖入骰盤。
     </p>
 
-    <!-- 模式切換：對戰／合作。預設對戰，切換由 src/scripts/board.ts 接（它同時搬 DOM：合作模式下
+    {/* 模式切換：對戰／合作。預設對戰，切換由 src/scripts/board.ts 接（它同時搬 DOM：合作模式下
          「我的隊伍」那一組會搬到骰盤下方，見 applyCoopLayout()）。
          文字固定不隨狀態改變（工具列尺寸不准隨狀態跳動，同 #board-tools）。
          ⚠️ 兩顆鈕的 aria-pressed 就是「現在是哪個模式」的初始值，跟腳本裡 `coop = false` 是
-         同一件事的兩份宣告——改預設值要兩邊一起改，否則開頁時畫面與狀態對不起來。 -->
+         同一件事的兩份宣告——改預設值要兩邊一起改，否則開頁時畫面與狀態對不起來。 */}
     <div id="board-coop-mode" role="group" aria-label="對戰或合作">
       <span class="seg">
         <button type="button" data-coop="off" aria-pressed="true">對戰</button>
@@ -91,8 +91,8 @@ const offgamePayload = {
       </span>
     </div>
 
-    <!-- 隊友的隊伍列與局外加成切換。預設 hidden；結構與「我的隊伍」逐項相同。
-         隊友的符文等級我們永遠拿不到，所以這一組的預設是「全滿」＝上界，不是「不含」。 -->
+    {/* 隊友的隊伍列與局外加成切換。預設 hidden；結構與「我的隊伍」逐項相同。
+         隊友的符文等級我們永遠拿不到，所以這一組的預設是「全滿」＝上界，不是「不含」。 */}
     <h2 class="board-h2 sec-title" id="partner-deck-h" hidden>隊友的隊伍</h2>
     <div id="partner-offgame-mode" role="group" aria-label="隊友的局外加成" hidden>
       <span class="offgame-label" aria-hidden="true">局外加成</span>
@@ -101,7 +101,7 @@ const offgamePayload = {
         <button type="button" data-mode="sim" aria-pressed="false">我的 /sim</button>
         <button type="button" data-mode="max" aria-pressed="true">全滿</button>
       </span>
-      <span id="partner-offgame-nosave" hidden>沒有找到 <a href="/sim">/sim</a> 的存檔</span>
+      <span id="partner-offgame-nosave" hidden>沒有找到 <a href="/sim/">/sim</a> 的存檔</span>
     </div>
     <div id="partner-deck-row" role="group" aria-label="隊友的隊伍" hidden>
       {slots.map(slot => (
@@ -125,17 +125,17 @@ const offgamePayload = {
     </div>
     <p id="partner-deck-legend" aria-hidden="true" hidden>上排：骰點　下排：強化 Lv</p>
 
-    <!-- 組合列。每一槽自帶等級選擇器：等級是「這一槽」的屬性，拖進骰盤時直接沿用，
-         格子上不再改（設計決策 5）。要改單一格就重拖一次。 -->
-    <!-- ⚠️ id 是給腳本抓的：合作模式下這個標題要跟 #offgame-mode／#deck-row／#deck-legend
+    {/* 組合列。每一槽自帶等級選擇器：等級是「這一槽」的屬性，拖進骰盤時直接沿用，
+         格子上不再改（設計決策 5）。要改單一格就重拖一次。 */}
+    {/* ⚠️ id 是給腳本抓的：合作模式下這個標題要跟 #offgame-mode／#deck-row／#deck-legend
          整組搬到骰盤下方（board.ts 的 myDeckBlock()）。沒有 id 就只能靠「#offgame-mode 的前
-         一個元素」這種位置推論，而那正是搬家會動到的東西。 -->
+         一個元素」這種位置推論，而那正是搬家會動到的東西。 */}
     <h2 class="board-h2 sec-title" id="deck-h">我的隊伍</h2>
-    <!-- 局外加成切換：卡片數值要不要疊上骰子樹的符文／玩家被動。「我的 /sim」唯讀 /sim 的存檔，
+    {/* 局外加成切換：卡片數值要不要疊上骰子樹的符文／玩家被動。「我的 /sim」唯讀 /sim 的存檔，
          這一頁仍然不寫任何東西。預設值由 src/scripts/board.ts 依「讀不讀得到存檔」決定。
          三顆按鈕永遠都在、文字固定（寬度不跳），沒有存檔時「我的 /sim」只是 aria-disabled——
          不用 disabled：那會讓它退出 Tab 順序，鍵盤使用者看不到它為什麼不能按。
-         沒有存檔的提示是這一列的最後一個子元素，跟按鈕同一行（放不下時換行，見 board.css）。 -->
+         沒有存檔的提示是這一列的最後一個子元素，跟按鈕同一行（放不下時換行，見 board.css）。 */}
     <div id="offgame-mode" role="group" aria-label="局外加成">
       <span class="offgame-label" aria-hidden="true">局外加成</span>
       <span class="seg">
@@ -143,7 +143,7 @@ const offgamePayload = {
         <button type="button" data-mode="sim" aria-pressed="false">我的 /sim</button>
         <button type="button" data-mode="max" aria-pressed="false">全滿</button>
       </span>
-      <span id="offgame-nosave" hidden>沒有找到 <a href="/sim">/sim</a> 的存檔</span>
+      <span id="offgame-nosave" hidden>沒有找到 <a href="/sim/">/sim</a> 的存檔</span>
     </div>
     <div id="deck-row" role="group" aria-label="我的隊伍">
       {slots.map(slot => (
@@ -156,18 +156,18 @@ const offgamePayload = {
           >
             <span class="deck-dice-empty" aria-hidden="true">＋</span>
           </button>
-          <!-- 等級列：⚠️ 三個元素永遠都在，沒有骰子時只是 disabled。
+          {/* 等級列：⚠️ 三個元素永遠都在，沒有骰子時只是 disabled。
                用 display 收放會讓整條組合列的寬度隨狀態跳動（CLAUDE.md
-               「工具列的尺寸不准隨篩選狀態改變」那一段記過同一個問題）。 -->
+               「工具列的尺寸不准隨篩選狀態改變」那一段記過同一個問題）。 */}
           <div class="pips-row step">
             <button type="button" class="pips-dec" data-slot={slot} disabled aria-label={`第 ${slot + 1} 槽降低骰面點數`}><Fragment set:html={ICONS.prev} /></button>
             <span class="pips-value" data-slot={slot}>1</span>
             <button type="button" class="pips-inc" data-slot={slot} disabled aria-label={`第 ${slot + 1} 槽提高骰面點數`}><Fragment set:html={ICONS.next} /></button>
           </div>
-          <!-- 強化列：局內 SP 強化 Lv（1–15），以骰子種類為單位共用——同一種骰子放在兩槽時兩槽同步，
+          {/* 強化列：局內 SP 強化 Lv（1–15），以骰子種類為單位共用——同一種骰子放在兩槽時兩槽同步，
                換掉槽裡的骰子後，骰盤上留下的舊骰子保留它最後的 Lv（src/scripts/board.ts 的 spLevels）。
                三個元素永遠都在、沒有骰子時只是 disabled，理由同上面的等級列。
-               手機版只顯示數字（.sp-prefix 隱藏），哪一排是什麼交給下方的 #deck-legend。 -->
+               手機版只顯示數字（.sp-prefix 隱藏），哪一排是什麼交給下方的 #deck-legend。 */}
           <div class="sp-row step">
             <button type="button" class="sp-dec" data-slot={slot} disabled aria-label={`第 ${slot + 1} 槽降低強化等級`}><Fragment set:html={ICONS.prev} /></button>
             <span class="sp-value" data-slot={slot}><span class="sp-prefix">Lv.</span><span class="sp-num">1</span></span>
@@ -177,12 +177,12 @@ const offgamePayload = {
       ))}
     </div>
 
-    <!-- 手機版的強化列只顯示數字（放不下「Lv.15」），靠這一行說明哪一排是什麼。桌機不顯示：
-         桌機的強化值帶「Lv.」前綴，自己說得清楚。aria-hidden：按鈕的 aria-label 已經講完整。 -->
+    {/* 手機版的強化列只顯示數字（放不下「Lv.15」），靠這一行說明哪一排是什麼。桌機不顯示：
+         桌機的強化值帶「Lv.」前綴，自己說得清楚。aria-hidden：按鈕的 aria-label 已經講完整。 */}
     <p id="deck-legend" aria-hidden="true">上排：骰點　下排：強化 Lv</p>
 
-    <!-- 挑選網格。預設收起來（hidden），點組合列的槽才展開。
-         41 顆全部輸出在 HTML 裡，不是點下去才抓——這一頁沒有任何資料請求。 -->
+    {/* 挑選網格。預設收起來（hidden），點組合列的槽才展開。
+         41 顆全部輸出在 HTML 裡，不是點下去才抓——這一頁沒有任何資料請求。 */}
     <div id="dice-picker" hidden role="dialog" aria-label="選擇骰子">
       <div class="picker-head">
         <span>選擇骰子</span>
@@ -204,12 +204,12 @@ const offgamePayload = {
       </div>
     </div>
 
-    <!-- 骰盤這一段：寬桌機排成三欄（1fr｜骰盤｜1fr），明細面板在右欄；手機是 display: contents，
-         裡面四個元素直接參與 .board-page 的 flex order（見 board.css）。 -->
+    {/* 骰盤這一段：寬桌機排成三欄（1fr｜骰盤｜1fr），明細面板在右欄；手機是 display: contents，
+         裡面四個元素直接參與 .board-page 的 flex order（見 board.css）。 */}
     <div class="board-stage">
     <h2 class="board-h2 sec-title">骰盤</h2>
-    <!-- 隊友盤。欄定義與 #board-grid 完全相同——兩個 grid 用同一組欄寬就會逐欄對齊，
-         視覺上是一個 5×6 的連續網格（分隔線只是視覺，不進無障礙樹）。 -->
+    {/* 隊友盤。欄定義與 #board-grid 完全相同——兩個 grid 用同一組欄寬就會逐欄對齊，
+         視覺上是一個 5×6 的連續網格（分隔線只是視覺，不進無障礙樹）。 */}
     <div id="partner-grid" role="group" aria-label="隊友的骰盤，5 欄 3 列" hidden>
       {cells.map(i => (
         <button type="button" class="board-cell" data-index={i} data-side="partner"
@@ -217,25 +217,25 @@ const offgamePayload = {
       ))}
     </div>
     <div class="board-divider" aria-hidden="true" hidden></div>
-    <!-- 5 欄 3 列。每一格是 button：它要能 Tab、能按 Enter，鍵盤路徑是這一頁的硬需求
-         （設計時就是因為 canvas 方案給不了這個才選 DOM）。 -->
+    {/* 5 欄 3 列。每一格是 button：它要能 Tab、能按 Enter，鍵盤路徑是這一頁的硬需求
+         （設計時就是因為 canvas 方案給不了這個才選 DOM）。 */}
     <div id="board-grid" role="group" aria-label="骰盤，5 欄 3 列">
       {cells.map(i => (
         <button type="button" class="board-cell" data-index={i} aria-label={`第 ${Math.floor(i / 5) + 1} 列第 ${(i % 5) + 1} 格，空`}></button>
       ))}
     </div>
 
-    <!-- 工具列：按鈕文字固定不隨狀態改變，避免整條列的寬度跳動。
+    {/* 工具列：按鈕文字固定不隨狀態改變，避免整條列的寬度跳動。
          「隱藏星數」用 aria-pressed 表達開關狀態，視覺上只換底色（跟 hover 共用同一色階），
-         不加會撐寬按鈕的圖示或文字——理由同一段見 board.css 的骰盤區塊。 -->
+         不加會撐寬按鈕的圖示或文字——理由同一段見 board.css 的骰盤區塊。 */}
     <div id="board-tools">
       <button type="button" id="board-clear" class="btn btn-alt">清空骰盤</button>
       <button type="button" id="board-export" class="btn btn-pri">產生分享圖</button>
       <button type="button" id="board-hide-pips" class="btn btn-alt" aria-pressed="false">隱藏星數</button>
     </div>
 
-      <!-- 明細面板：卡片只放數值，來源拆解放這裡（Yuki 2026-09-19：避免卡片過大）。內容由
-           src/scripts/board.ts 填；卡片收起後保留最後那顆骰子的明細。 -->
+      {/* 明細面板：卡片只放數值，來源拆解放這裡（Yuki 2026-09-19：避免卡片過大）。內容由
+           src/scripts/board.ts 填；卡片收起後保留最後那顆骰子的明細。 */}
       <section id="dice-detail" aria-label="加成明細">
         <div class="detail-box panel">
           <h2 class="detail-h">加成明細</h2>
@@ -254,25 +254,25 @@ const offgamePayload = {
       </section>
     </div>
 
-    <!-- 數值卡片：點骰盤上的骰子（或鍵盤焦點停在上面）才出現，內容由 src/scripts/board.ts 填。
+    {/* 數值卡片：點骰盤上的骰子（或鍵盤焦點停在上面）才出現，內容由 src/scripts/board.ts 填。
          position: fixed 的浮層，開合不推動版面（同 #dice-picker）；pointer-events: none，
-         不擋底下的格子與隊伍列（見 board.css）。 -->
+         不擋底下的格子與隊伍列（見 board.css）。 */}
     <div id="dice-card" hidden role="region" aria-label="骰子數值">
       <p class="dice-card-title"></p>
       <dl class="dice-card-rows"></dl>
       <p class="dice-card-note">未含骰子樹（符文／被動）加成</p>
     </div>
 
-    <!-- 卡片的計算參數。⚠️ 用 div 的文字內容而不是 application/json 腳本標籤，理由同 /dice 的
-         #codex-terms：Astro 會自動逃逸，textContent 讀回來就是原本的 JSON。 -->
+    {/* 卡片的計算參數。⚠️ 用 div 的文字內容而不是 application/json 腳本標籤，理由同 /dice 的
+         #codex-terms：Astro 會自動逃逸，textContent 讀回來就是原本的 JSON。 */}
     <div id="board-stats" hidden>{JSON.stringify(statPayload)}</div>
 
-    <!-- 局外加成的語意表與讀存檔用的精簡 context（理由同上面的 #board-stats）。 -->
+    {/* 局外加成的語意表與讀存檔用的精簡 context（理由同上面的 #board-stats）。 */}
     <div id="board-offgame" hidden>{JSON.stringify(offgamePayload)}</div>
 
     <p id="board-live" class="sr-only" role="status" aria-live="polite"></p>
 
-    <!-- 分享圖的輸出區塊放在整頁最後：它出現時只會把 footer 往下推，不會動到骰盤或工具列。 -->
+    {/* 分享圖的輸出區塊放在整頁最後：它出現時只會把 footer 往下推，不會動到骰盤或工具列。 */}
     <div id="board-export-out" hidden>
       <p class="board-hint">手機上如果下載沒有反應，長按下圖即可存檔。</p>
       <img id="board-export-img" alt="骰盤分享圖" />

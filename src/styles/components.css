@@ -302,7 +302,7 @@ a.row-card:active {
    auto-fill 而不是 auto-fit，理由同 `.guide-cards.is-content` 的註解。 */
 .home-links {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(16rem, 100%), 1fr));
   gap: var(--space-3);
   margin: var(--space-5) 0;
 }
@@ -561,7 +561,7 @@ a.row-card:active {
 /* --- 遊戲介紹索引 --- */
 .guide-cards {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(17rem, 100%), 1fr));
   gap: var(--space-3);
   margin-top: var(--space-5);
 }
@@ -569,7 +569,7 @@ a.row-card:active {
    ⚠️ 差別只在 auto-fit ↔ auto-fill：前者會把空軌道**收掉**，兩張卡片於是撐滿整列，
    比正上方那排寬一截；後者保留空軌道，兩邊同寬。四張以上的網格兩者結果相同。 */
 .guide-cards.is-content {
-  grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(17rem, 100%), 1fr));
 }
 .guide-card :is(h2, h3) {
   margin: var(--space-2) 0 var(--space-2);

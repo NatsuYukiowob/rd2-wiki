@@ -29,33 +29,33 @@ const TYPES: Array<[string, string]> = [
 ---
 
 <Base title="骰子樹">
-  <!-- 整頁的主標題。畫面上的「標題」是畫布本身，所以視覺隱藏；少了它讀屏的標題導覽在這一頁
+  {/* 整頁的主標題。畫面上的「標題」是畫布本身，所以視覺隱藏；少了它讀屏的標題導覽在這一頁
        一個標題都找不到（2026-09-24 review）。.sr-only 是 absolute ＋ clip-path，不佔版面，
-       不影響 body:has(#canvas-host) 的零偏移量排版。 -->
+       不影響 body:has(#canvas-host) 的零偏移量排版。 */}
   <h1 class="sr-only">骰子樹</h1>
-  <!-- #tree-controls：把 #toolbar 與 #branch-nav 包進同一個 position:fixed 的直向
+  {/* #tree-controls：把 #toolbar 與 #branch-nav 包進同一個 position:fixed 的直向
        flex 容器（修 bug：舊版兩者各自用寫死的 top 值疊放，#branch-nav 的 top:6rem
        假設 #toolbar 永遠只有 3rem 高，但 #toolbar 有 flex-wrap，視窗變窄換行變高後
        #branch-nav 就會壓上去）。改成同一個 flex column 容器後，#branch-nav 永遠緊接
        在 #toolbar 實際渲染高度之後，不論 #toolbar 換幾行都不會重疊。#tree-controls
        本身不是既有 DOM 契約的一部分，純粹是版面用的包裝元素，tree-canvas.ts／E2E
-       完全不吃這個 id，只吃裡面兩個原本就有的 id。 -->
+       完全不吃這個 id，只吃裡面兩個原本就有的 id。 */}
   <div id="tree-controls">
     <div id="toolbar">
-      <!-- 手機版才顯示（見下面 CSS）：篩選收進頂部抽屜，預設收起，點這顆按鈕展開/收起
+      {/* 手機版才顯示（見下面 CSS）：篩選收進頂部抽屜，預設收起，點這顆按鈕展開/收起
            #filters（切 .open class，接線見 tree-canvas.ts）。桌機版 #filters 本來就常駐
-           顯示，不需要這顆按鈕，靠 CSS 媒體查詢隱藏。 -->
+           顯示，不需要這顆按鈕，靠 CSS 媒體查詢隱藏。 */}
       <button id="filters-toggle" class="btn btn-alt" type="button" aria-label="展開篩選" aria-controls="filters">篩選</button>
       <input id="search" type="search" placeholder="搜尋節點名稱、效果、關鍵字…" aria-label="搜尋節點" />
-      <!--
+      {/*
         篩選結果的播報。看不見，但仍在無障礙樹裡（.sr-only 用 clip-path，不是 display:none）。
         2026-08-22 把工具列上那句「符合 N 個節點」拿掉之後，篩選結果就完全沒有東西告訴螢幕
         閱讀器使用者了——原本那個 <p role="status"> 是這一頁唯一的 live region。畫面上不顯示
         是 Yuki 指定的，播報則不該跟著消失，所以留一個純給輔助技術的版本。
-      -->
+      */}
       <p id="filter-live" class="sr-only" role="status" aria-live="polite"></p>
       <div id="filters">
-        <!-- 用 <div role="group"> 而不是 <fieldset><legend>，理由見 dice.astro 的說明。 -->
+        {/* 用 <div role="group"> 而不是 <fieldset><legend>，理由見 dice.astro 的說明。 */}
         <div class="filter-group" role="group" aria-label="分支">
           <span class="filter-group-label" aria-hidden="true">分支</span>
           {BRANCHES.map(([value, label]) => (
@@ -71,15 +71,15 @@ const TYPES: Array<[string, string]> = [
             <label class="chip"><input type="checkbox" data-type={value} />{label}</label>
           ))}
         </div>
-        <!-- 「清除篩選」住在面板裡，不在工具列上：它一出現就會改變工具列寬度，而工具列是
+        {/* 「清除篩選」住在面板裡，不在工具列上：它一出現就會改變工具列寬度，而工具列是
              浮在畫布上的，寬度一變整排東西跟著跳（2026-08-22 Yuki 回報）。面板收起時看不到
-             它也沒關係——切換鈕上的金點會說現在有篩選在生效。 -->
+             它也沒關係——切換鈕上的金點會說現在有篩選在生效。 */}
         <button id="filter-clear" type="button" data-idle>清除篩選</button>
       </div>
     </div>
-    <!-- 桌機側欄的分支快速跳轉（spec §6.2.6）：跟下面手機版 #branch-chips 是同一組分支、
+    {/* 桌機側欄的分支快速跳轉（spec §6.2.6）：跟下面手機版 #branch-chips 是同一組分支、
          同一個按鈕點擊 handler（見 tree-canvas.ts 的 jumpToBranch()，不寫兩份跳轉邏輯），
-         只是版面位置與顯示時機不同（CSS 媒體查詢互斥顯示）。 -->
+         只是版面位置與顯示時機不同（CSS 媒體查詢互斥顯示）。 */}
     <nav id="branch-nav" aria-label="分支快速跳轉">
       {BRANCHES.map(([value, label]) => (
         <button type="button" class="chip" data-branch={value}><span class={`branch-dot branch-${value}`} aria-hidden="true"></span>{label}</button>
@@ -92,8 +92,8 @@ const TYPES: Array<[string, string]> = [
     </script>
   </div>
   <aside id="detail" class="panel" aria-label="節點詳情" hidden></aside>
-  <!-- 手機版底部的分支切換列（DOM 契約，見 task-17 brief：#branch-chips 內含 5 個
-       button[data-branch]，第 18 個任務的 E2E 已經寫死這個結構）。 -->
+  {/* 手機版底部的分支切換列（DOM 契約，見 task-17 brief：#branch-chips 內含 5 個
+       button[data-branch]，第 18 個任務的 E2E 已經寫死這個結構）。 */}
   <div id="branch-chips">
     {BRANCHES.map(([value, label]) => (
       <button type="button" class="chip" data-branch={value}><span class={`branch-dot branch-${value}`} aria-hidden="true"></span>{label}</button>

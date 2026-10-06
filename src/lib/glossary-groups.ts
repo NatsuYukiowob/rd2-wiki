@@ -18,7 +18,10 @@ export interface GlossaryGroup {
   title: string;
   /** 一句話說明這一組是什麼，印在該組標題底下。 */
   blurb: string;
+  /** 官方色碼＝分組鍵（`groupOfColor()`），必須等於 data/keywords.json 的值，不能為了畫面去改它。 */
   color: string;
+  /** 畫面上的字色，只在官方色當字色對比不到 WCAG AA 時才寫，見 `textColor()`。 */
+  text?: string;
 }
 
 /**
@@ -32,7 +35,7 @@ export const GROUPS: readonly GlossaryGroup[] = [
     blurb: '骰子自己的機制：合成、堆疊、觸發時機。骰子描述裡最常出現的一組。' },
   { slug: 'summons', color: '#4DA3FF', title: '召喚物與投射物',
     blurb: '骰子打出去的東西：投射物、召喚物、場上的實體。' },
-  { slug: 'status', color: '#9B6BFF', title: '施加於怪物的效果',
+  { slug: 'status', color: '#9B6BFF', text: '#A987FF', title: '施加於怪物的效果',
     blurb: '掛在怪物身上的效果：減速、持續傷害、控制。' },
   { slug: 'buffs', color: '#4CD964', title: '增益與減益',
     blurb: '直接加減數值的增減益標記。' },
@@ -46,10 +49,22 @@ export function groupOfColor(color: string): GlossaryGroup | undefined {
   return GROUPS.find(g => g.color === color);
 }
 
+/**
+ * 官方色碼 → 關鍵字在畫面上的字色。#9B6BFF 疊在卡片面上只有 4.31（--surface-1）／3.68（--surface-2），
+ * 小字的 AA 門檻是 4.5，所以那一組改印提亮的版本；其他組原樣。
+ * ⚠️ 在**產生**渲染資料的地方換（`buildGlossary()`、`displayGlossary()`、build-data 的 `meta.glossary`），
+ * 不在各頁渲染時換——渲染點有七處，漏一處就是那一頁對比不足而畫面看不出來。
+ * 對比由 tests/lib/glossary-groups.test.ts 對每一組在兩種卡片面上驗。
+ */
+export function textColor(official: string): string {
+  return groupOfColor(official)?.text ?? official;
+}
+
 /** 一個詞在頁面上的完整資料。`anchor` 是官方 code——ASCII，網址與錨點都安全。 */
 export interface GlossaryItem {
   term: string;
   anchor: string;
+  /** 字色（`textColor()` 換過），不是官方色碼；分組看 `group`。 */
   color: string;
   desc: string;
   group: GlossaryGroup;
@@ -113,7 +128,7 @@ export function buildGlossary(
       );
     }
     const item: GlossaryItem = {
-      term, anchor: rec.code, color: rec.color, desc: rec.desc, group, aliases: [], usedBy: [],
+      term, anchor: rec.code, color: textColor(rec.color), desc: rec.desc, group, aliases: [], usedBy: [],
     };
     byTerm.set(term, item);
     byGroup[group.slug].push(item);
@@ -154,7 +169,7 @@ export function buildGlossary(
  * ⚠️ `slug` 是 `?tab=` 的值，也是舊網址 `/guide/<slug>` 301 過來時帶的參數（`public/_redirects`），
  * 改名要連那份一起改。
  */
-export const KEYWORDS_PATH = '/guide/keywords';
+export const KEYWORDS_PATH = '/guide/keywords/';
 
 export const GUIDE_TABS: readonly { slug: string; title: string; groups: GroupSlug[]; intro: string }[] = [
   { slug: 'mechanics', title: '骰子機制與觸發', groups: ['mechanics'],
@@ -188,7 +203,7 @@ export function termHref(index: GlossaryIndex, term: string): string | null {
 export function displayGlossary(keywords: Record<string, GlossaryRecord>): Record<string, { color: string; desc: string }> {
   const out: Record<string, { color: string; desc: string }> = {};
   for (const [term, rec] of Object.entries(keywords)) {
-    if (!isGlossaryAlias(rec)) out[term] = { color: rec.color, desc: rec.desc };
+    if (!isGlossaryAlias(rec)) out[term] = { color: textColor(rec.color), desc: rec.desc };
   }
   return out;
 }

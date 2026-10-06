@@ -1,10 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { deflateSync } from 'node:zlib';
 import { join } from 'node:path';
 import { tmpDir } from '../helpers/tmp';
-import { validate } from '../../tools/validate';
+import { validate, webpMetadataChunks } from '../../tools/validate';
 import type { GlossaryEntry, MaxLevelOfficial, UpgradeCostTable } from '../../src/lib/types';
 
 const svg = readFileSync('data/dice-tree.svg', 'utf8');
@@ -2121,13 +2121,26 @@ describe('規則 29：期間限定活動', () => {
   it('period 寫成字串會被擋（客戶端根本沒有日期欄位，猜一個跟查證過的長得一樣）', () => {
     const data = rows();
     data[0]!['period'] = '2026-09-15 ~ 2026-10-01';
-    expect(only29(data).some(e => /規則 29\(e\).*必須是 null 或 \{ begin, finish \}/.test(e))).toBe(true);
+    expect(only29(data).some(e => /規則 29\(e\).*必須是 null 或 \{ begin, finish, tz \}/.test(e))).toBe(true);
   });
 
   it('period 是合法的起訖時放行（下一場活動真的有檔期時不必改規則）', () => {
     const data = rows();
-    data[0]!['period'] = { begin: '2026-09-15', finish: '2026-10-01' };
+    data[0]!['period'] = { begin: '2026-09-15', finish: '2026-10-01', tz: 'UTC+9' };
     expect(only29(data)).toEqual([]);
+  });
+
+  it('period 沒寫時區或寫錯形狀會被擋（畫面把時區跟時間印在一起，少了它讀者用自己的時區讀）', () => {
+    const withPeriod = (period: unknown) => { const data = rows(); data[0]!['period'] = period; return only29(data); };
+    // 不存在的時區也擋：UTC-13／-14 沒有、UTC-0 是 UTC+0 的錯寫、分鐘只有 :30／:45。
+    for (const tz of [undefined, '', '+9', 'UTC+15', 'UTC-13', 'UTC-0', 'UTC+9:15', 'KST', 9]) {
+      const errs = withPeriod({ begin: '2026-09-15', finish: '2026-10-01', ...(tz === undefined ? {} : { tz }) });
+      expect(errs.some(e => /規則 29\(e\).*period\.tz .* 必須是 UTC\+9／UTC\+5:30 這種寫法/.test(e)), `tz=${JSON.stringify(tz)}`).toBe(true);
+    }
+    for (const tz of ['UTC-3', 'UTC+0', 'UTC+14', 'UTC-12', 'UTC+5:30', 'UTC+9:30', 'UTC+5:45']) {
+      expect(withPeriod({ begin: '2026-09-15', finish: '2026-10-01', tz }), tz).toEqual([]);
+    }
+    expect(withPeriod({ begin: '2026-09-15', finish: '2026-10-01', tz: 'UTC+9', note: 'x' }).some(e => /period 有未知欄位 "note"/.test(e))).toBe(true);
   });
 
   it('period 寫成「未知」、不存在的日期、或開始晚於結束都會被擋', () => {
@@ -2137,8 +2150,8 @@ describe('規則 29：期間限定活動', () => {
     expect(withPeriod({ begin: '2026-09-21', finish: '2026-09-30 24:00' }).some(e => /period\.finish "2026-09-30 24:00"/.test(e))).toBe(true);
     expect(withPeriod({ begin: '2026-09-30', finish: '2020-01-01' }).some(e => /規則 29\(e\).*開始 "2026-09-30" 晚於結束 "2020-01-01"/.test(e))).toBe(true);
     // 只寫日期的一端算整天：當天開始、當天結束都不算顛倒。
-    expect(withPeriod({ begin: '2026-09-30 10:00', finish: '2026-09-30' })).toEqual([]);
-    expect(withPeriod({ begin: '2026-09-30', finish: '2026-09-30 10:00' })).toEqual([]);
+    expect(withPeriod({ begin: '2026-09-30 10:00', finish: '2026-09-30', tz: 'UTC+9' })).toEqual([]);
+    expect(withPeriod({ begin: '2026-09-30', finish: '2026-09-30 10:00', tz: 'UTC+9' })).toEqual([]);
   });
 
   it('某一列少一格會被擋', () => {
@@ -2231,6 +2244,45 @@ describe('規則 29：期間限定活動', () => {
     const result = validate(svg, { ...opts, eventShotsDir: dir });
     expect(result.errors.filter(e => /規則 29/.test(e))).toEqual([]);
     expect(result.warnings.some(w => /規則 29\(j\).*orphan\.webp 沒有任何活動引用到/.test(w))).toBe(true);
+  });
+
+  it('截圖帶 EXIF／XMP chunk 會被擋（手機截圖的系統建置號與拍攝時間不該上公開站），ICC 不算', () => {
+    /** 在 WebP 尾端接一個 chunk，並更新 RIFF 長度。奇數長度要補一個 0（RIFF 的對齊規則）。 */
+    const withChunk = (buf: Buffer, tag: string, payload: Buffer) => {
+      const head = Buffer.alloc(8); head.write(tag, 0, 'latin1'); head.writeUInt32LE(payload.length, 4);
+      const out = Buffer.concat([buf, head, payload, payload.length % 2 ? Buffer.alloc(1) : Buffer.alloc(0)]);
+      out.writeUInt32LE(out.length - 8, 4);
+      return out;
+    };
+    const shot = (rows()[0]!['screenshots'] as { file: string }[])[0]!.file;
+    const clean = readFileSync(join(eventShotsDir, shot));
+    expect(webpMetadataChunks(clean), '提交的截圖本身就要是乾淨的').toEqual([]);
+    expect(webpMetadataChunks(Buffer.from('not a webp at all')), '不是 WebP 回空').toEqual([]);
+
+    for (const [tag, name] of [['EXIF', 'EXIF'], ['XMP ', 'XMP']] as const) {
+      const dir = tmpDir('rd2-event-shots-');
+      for (const f of readdirSync(eventShotsDir)) writeFileSync(join(dir, f), readFileSync(join(eventShotsDir, f)));
+      // 中繼資料 chunk 前面先放一個奇數長度的 chunk：走 chunk 時沒處理補位就會錯位而漏抓。
+      writeFileSync(join(dir, shot), withChunk(withChunk(clean, 'ZZZZ', Buffer.from('abc')), tag, Buffer.from('Android 2026:09:21')));
+      const result = validate(svg, { ...opts, eventShotsDir: dir });
+      expect(result.errors.some(e => new RegExp(`規則 29\\(j\\).*${shot.replace('.', '\\.')} 帶著 ${name} 中繼資料`).test(e)), name).toBe(true);
+    }
+  });
+
+  it('截圖只收 .webp（中繼資料檢查只認得 WebP，JPEG／PNG 的 EXIF 會從這裡漏過去）', () => {
+    const data = rows();
+    (data[0]!['screenshots'] as { file: string }[])[0]!.file = 'phone-shot.jpg';
+    expect(only29(data).some(e => /規則 29\(j\).*"phone-shot\.jpg" 不合法.*副檔名 \.webp/.test(e))).toBe(true);
+  });
+
+  it('截圖讀不到（例如同名的是目錄）報成 29(j) 的錯，不是讓 validate 整個崩掉', () => {
+    const dir = tmpDir('rd2-event-shots-');
+    for (const f of readdirSync(eventShotsDir)) writeFileSync(join(dir, f), readFileSync(join(eventShotsDir, f)));
+    const shot = (rows()[0]!['screenshots'] as { file: string }[])[0]!.file;
+    rmSync(join(dir, shot));
+    mkdirSync(join(dir, shot));
+    const result = validate(svg, { ...opts, eventShotsDir: dir });
+    expect(result.errors.some(e => new RegExp(`規則 29\\(j\\).*${shot.replace('.', '\\.')} 讀不到`).test(e))).toBe(true);
   });
 
   it('sections 是空陣列會被擋', () => {
