@@ -42,6 +42,25 @@ describe('parseCost', () => {
   it('重複金幣欄位', () => {
     expect(() => parseCost('金幣 100,000／金幣 200,000')).toThrow(/重複|多次|無法解析/);
   });
+  it('金幣寫對、後面寫壞時不報成金幣格式錯，並附上原字串', () => {
+    // 報成「金幣金額格式錯誤」的話，貢獻者會去改那個本來就對的金幣，真正的錯還在。
+    for (const raw of ['金幣 12,000／核心3', '金幣 1,000／核心 -5', '金幣 1,000／核心 5.5', '金幣 1,000／核心 5／', '金幣 1,000 ／核心 5', '金幣 1,000／核心 5／齒輪二階核心 1,00']) {
+      expect(() => parseCost(raw), raw).toThrow(/金幣之後的部分無法解析/);
+      expect(() => parseCost(raw), raw).toThrow(raw);
+    }
+  });
+  it('金幣本身寫壞時仍是金幣格式錯（金幣那段要比到分隔符為止，8000 不能被當成 800）', () => {
+    for (const raw of ['金幣 8000', '金幣 1,00', '金幣 8000／核心 3']) {
+      expect(() => parseCost(raw), raw).toThrow(/金幣金額格式錯誤/);
+    }
+  });
+  it('三種數字都不收前導零', () => {
+    expect(() => parseCost('金幣 01,000')).toThrow(/金幣金額格式錯誤/);
+    expect(() => parseCost('金幣 1,000／核心 007')).toThrow(/金幣之後的部分無法解析/);
+    expect(() => parseCost('核心 007')).toThrow(/無法解析/);
+    expect(() => parseCost('金幣 1,000／太陽核心 0200')).toThrow(/金幣之後的部分無法解析/);
+    expect(parseCost('金幣 0').cost).toEqual({ core: 0, gold: 0 });
+  });
 });
 
 // 太陽核心（遊戲 GoodsType `CORE_SOLAR`）是 v1.1.0 太陽骰子帶進來的第三種貨幣。

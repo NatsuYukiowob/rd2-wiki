@@ -26,6 +26,17 @@ export interface Changelog {
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 /**
+ * `YYYY-MM-DD`，而且是日曆上真的有的那一天。只驗形狀的話 `2026-99-99`、`2026-02-30` 都會過，
+ * 前者照樣印在首頁上（還剛好滿足「由新到舊」的字串排序）。規則 29 的活動檔期也用這一支。
+ */
+export function isCalendarDate(s: string): boolean {
+  if (!DATE_RE.test(s)) return false;
+  const d = new Date(`${s}T00:00:00Z`);
+  // V8 會把 2 月 30 日進位成 3 月 2 日而不是回 Invalid Date，所以要反過來比對字面。
+  return !Number.isNaN(d.getTime()) && d.toISOString().startsWith(s);
+}
+
+/**
  * 驗證更新日誌本身的結構，以及「最新一筆帶 `data` 的條目」與資料正本的版本欄位一致。
  *
  * 檢查的是**最新一筆帶 data 的條目**而不是 entries[0]：純站台功能的更新（例如這一頁本身）
@@ -47,7 +58,7 @@ export function checkChangelog(
 
   entries.forEach((e, i) => {
     const at = `第 ${i + 1} 筆`;
-    if (typeof e?.date !== 'string' || !DATE_RE.test(e.date)) errors.push(`${at} 的 date 必須是 YYYY-MM-DD 絕對日期`);
+    if (typeof e?.date !== 'string' || !isCalendarDate(e.date)) errors.push(`${at} 的 date 必須是 YYYY-MM-DD 絕對日期（而且是真的有的日期）`);
     if (typeof e?.title !== 'string' || e.title.trim() === '') errors.push(`${at} 缺少 title`);
     if (!Array.isArray(e?.items) || e.items.length === 0 || e.items.some(s => typeof s !== 'string' || s.trim() === '')) {
       errors.push(`${at}（${e?.title ?? '?'}）的 items 必須是非空字串陣列`);
