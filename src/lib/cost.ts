@@ -24,13 +24,23 @@ function checkAmount(kind: string, n: number, max: number): number {
 // 第三組的名稱只收 `MYTHIC_CORES` 登記過的（沒登記的貨幣名整串配不到，落到「無法解析」）。
 // ⚠️ 超越核心的數字兩種寫法都收（`2,000` 與 `2000`）：官方資料表兩種都出現過，而它跟金幣
 // 不同——金幣是四位數起跳、逗號是唯一讀得懂的寫法，超越核心現實值只有三、四位數。
+// 三種數字都不收前導零（`01,000`、`007`）：千分位的首段本來就是 1–3 位的非零開頭，放行的話
+// 同一個數字有好幾種寫法，而 diff 摘要與畫面會把它們正規化成同一個值、看不出原檔寫了什麼。
 const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const MYTHIC_ALT = MYTHIC_CORES.map(d => escapeRe(d.label)).join('|');
+const GOLD_NUM = '(?:[1-9]\\d{0,2}(?:,\\d{3})*|0)';
+const PLAIN_NUM = '(?:[1-9]\\d*|0)';
 const GOLD_PATTERN = new RegExp(
-  `^金幣 (\\d{1,3}(?:,\\d{3})*)(?:／核心 (\\d+))?(?:／(${MYTHIC_ALT}) (\\d{1,3}(?:,\\d{3})+|\\d+))?$`,
+  `^金幣 (${GOLD_NUM})(?:／核心 (${PLAIN_NUM}))?(?:／(${MYTHIC_ALT}) ([1-9]\\d{0,2}(?:,\\d{3})+|${PLAIN_NUM}))?$`,
 );
+/**
+ * 只認金幣那一段，而且數字要完整比完（後面不能再接數字或逗號）：沒有這個邊界的話 `金幣 8000` 會先比到
+ * `金幣 800`、被判成「金幣寫對了、後面壞了」，真正寫錯的金幣反而拿到錯的訊息。數字之後接什麼都算
+ * 「金幣之後的部分」——多一個空白、漏了 `／`（`金幣 1,000核心 5`）、分隔符打成 `、`，壞的都不是金幣。
+ */
+const GOLD_HEAD = new RegExp(`^金幣 ${GOLD_NUM}(?![\\d,])`);
 // 核心開頭：核心 <N>（不允許搭配其他）
-const CORE_PATTERN = /^核心 (\d+)$/;
+const CORE_PATTERN = new RegExp(`^核心 (${PLAIN_NUM})$`);
 
 /**
  * 解析解鎖成本字串。**只吃單行**——2026-08-22（#21）之前骰子符文的成本第二行寫著
@@ -93,11 +103,7 @@ export function parseCost(raw: string): ParsedCost {
   // 優先嘗試金幣開頭格式（強制金幣在核心之前）
   const goldMatch = GOLD_PATTERN.exec(head);
   if (goldMatch) {
-    const goldStr = goldMatch[1]!;
-    // 檢查金幣格式：無逗號時最多 3 位；有逗號時須符合千分位規則（正則已保證）
-    if (!goldStr.includes(',') && goldStr.length > 3) {
-      throw new Error(`金幣金額格式錯誤：須為 1-3 位或使用千分位逗號: ${goldStr}`);
-    }
+    const goldStr = goldMatch[1]!;   // 無逗號最多 3 位、有逗號須符合千分位，都由 GOLD_NUM 保證
     gold = checkAmount('金幣', Number(goldStr.replaceAll(',', '')), MAX_GOLD);
 
     // 如果有搭配的核心，取其值
@@ -111,13 +117,13 @@ export function parseCost(raw: string): ParsedCost {
       if (n > 0) mythic = { [def.kind]: n };
     }
   } else {
-    // 檢查是否是金幣開頭但格式錯誤（數字格式不符）
+    // 金幣開頭卻整串比不到：先分清楚壞的是金幣本身，還是金幣之後的部分。混成同一句的話，
+    // `金幣 12,000／核心3`（少一個空白）會被報成金幣格式錯，貢獻者去改那個本來就對的金幣。
     if (head.startsWith('金幣 ')) {
-      const badGoldMatch = /^金幣 (\d+)/.exec(head);
-      if (badGoldMatch) {
-        // 是金幣開頭但數字格式不符合規則
-        throw new Error(`金幣金額格式錯誤：須為 1-3 位或使用千分位逗號`);
+      if (!GOLD_HEAD.test(head)) {
+        throw new Error(`金幣金額格式錯誤：須為 1-3 位或使用千分位逗號、不可有前導零: ${JSON.stringify(head)}`);
       }
+      throw new Error(`金幣之後的部分無法解析（核心／超越核心寫成「／核心 N」，數字不可有前導零、前後不可多空白）: ${JSON.stringify(head)}`);
     }
 
     // 再嘗試核心單獨格式

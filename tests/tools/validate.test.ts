@@ -131,6 +131,17 @@ describe('validate', () => {
     expect(validate(broken, opts).errors.some(e => /重複.*id/.test(e))).toBe(true);
   });
 
+  it('規則 3：支援節點換成分支色、或節點畫成別的分支的顏色，都會被擋', () => {
+    // 支援節點的 stroke 換成自然色：type 說支援、stroke 說不是。
+    const support = svg.replace(/(data-id="1114"><polygon [^>]*stroke=")#f3c5ff/, '$1#ef625e');
+    expect(support).not.toBe(svg);
+    expect(validate(support, opts).errors.some(e => /規則 3: 節點 1114 的 stroke 與 type 不對應/.test(e))).toBe(true);
+    // 自然系（1xxx）的骰子畫成工程色：type 與 stroke 都不是支援，前一條放得過它，畫面上卻是錯色。
+    const branch = svg.replace(/(data-id="1002"><rect [^>]*stroke=")#ef625e/, '$1#50b7d8');
+    expect(branch).not.toBe(svg);
+    expect(validate(branch, opts).errors.some(e => /規則 3: 節點 1002 的 stroke #50b7d8 是 engineering 分支的顏色，與 id 的分支 nature 不符/.test(e))).toBe(true);
+  });
+
   it('規則 4：不合文法的成本會被擋', () => {
     expect(validate(svg, patch({ '1001': { ...nodeText['1001'], cost: '免費' } }))
       .errors.some(e => /成本/.test(e))).toBe(true);
@@ -203,9 +214,34 @@ describe('validate', () => {
     expect(validate(broken, opts).errors.some(e => /規則 7\(e\)/.test(e))).toBe(true);
   });
 
+  it('規則 7(f)：同一張圖被不同顯示尺寸的節點共用會被擋，同尺寸共用則放行', () => {
+    // sprite 的格子是按引用者的顯示尺寸打包的，一圖兩種尺寸時有一顆拿到錯的格子、被縮放過去畫。
+    // 1115（被動，34×34）改指 1002（骰子，50×53）的圖。
+    const icon1002 = /data-id="1002">[^]*?<image href="icons\/([0-9a-f]{12})\.png"/.exec(svg)![1]!;
+    const broken = svg.replace(/(data-id="1115">[^]*?<image href="icons\/)[0-9a-f]{12}(\.png")/, `$1${icon1002}$2`);
+    expect(broken).not.toBe(svg);
+    expect(validate(broken, opts).errors.some(e => /規則 7\(f\): 圖示 [0-9a-f]{12} 被不同顯示尺寸的節點共用（.*1115 是 34x34/.test(e))).toBe(true);
+    // 真實資料裡就有同尺寸共用的一組（黃金樣本零錯誤），不需要另造。
+    expect(validate(svg, opts).errors.filter(e => /規則 7\(f\)/.test(e))).toEqual([]);
+    // href 寫壞的節點 icon 是空字串：那是 7(a) 的事，不能擠進同一個空名字的桶多報一條尺寸衝突。
+    const badHref = svg
+      .replace(/(data-id="1002">[^]*?<image href=")icons\//, '$1img/')
+      .replace(/(data-id="1115">[^]*?<image href=")icons\//, '$1img/');
+    const r = validate(badHref, opts).errors;
+    expect(r.filter(e => /規則 7\(a\)/.test(e))).toHaveLength(2);
+    expect(r.filter(e => /規則 7\(f\)/.test(e))).toEqual([]);
+  });
+
   it('規則 5：邊少了 marker-end 會被擋', () => {
     const broken = svg.replace('<path class="edge" marker-end="url(#arrow)"', '<path class="edge"');
     expect(validate(broken, opts).errors.some(e => /marker-end/.test(e))).toBe(true);
+  });
+
+  it('規則 5：同一條邊寫兩次會被擋，而且指得出是哪一條', () => {
+    // 寫死邊數的測試擋得到這件事，但說不出是哪一條；而貢獻者可能以為自己加了一條邊，順手把數字也改了。
+    const edge = svg.match(/<path class="edge"[^>]*\/>/)![0];
+    const broken = svg.replace('</svg>', `${edge}\n</svg>`);
+    expect(validate(broken, opts).errors.some(e => /規則 5: 邊 \d{4} → \d{4} 重複出現/.test(e))).toBe(true);
   });
 
   it('規則 6：從根不可達的節點會被擋', () => {
@@ -221,6 +257,22 @@ describe('validate', () => {
     const broken = svg.replace(new RegExp(`<path class="edge"[^>]*d="${soleParentEdge.replace(/[.]/g, '\\.')}"\\s*/>`), '');
     expect(broken).not.toBe(svg);
     expect(validate(broken, opts).errors.some(e => /不可達/.test(e))).toBe(true);
+  });
+
+  it('規則 6：加一條反向邊造出環會被擋', () => {
+    const [from, to] = edgeDs[0]!.slice(2).split(' L ');
+    const broken = svg.replace('</svg>', `<path class="edge" marker-end="url(#arrow)" d="M ${to} L ${from}" />\n</svg>`);
+    expect(validate(broken, opts).errors.some(e => /規則 6: 偵測到環/.test(e))).toBe(true);
+  });
+
+  it('規則 6：預期的根被接上一條入邊（不再是根）會被擋', () => {
+    // 刪掉根節點會連帶觸發規則 19 與一長串「從根不可達」；讓它多一條入邊才是只動這一件事。
+    const centerOf = (id: string) => {
+      const m = new RegExp(`transform="translate\\(([\\d.]+),([\\d.]+)\\)" data-id="${id}"`).exec(svg)!;
+      return `${m[1]} ${m[2]}`;
+    };
+    const broken = svg.replace('</svg>', `<path class="edge" marker-end="url(#arrow)" d="M ${centerOf('2001')} L ${centerOf('1001')}" />\n</svg>`);
+    expect(validate(broken, opts).errors.some(e => /規則 6: 缺少預期的根 1001/.test(e))).toBe(true);
   });
 
   it('規則 6：帶 data-wip 的新節點不會被誤擋（偽陽性測試），且會被列入 warnings', () => {
@@ -337,6 +389,15 @@ describe('validate', () => {
     expect(withLog(changelog)).toEqual([]);
   });
 
+  it('規則 20：日期形狀對、但日曆上沒有的那一天會被擋', () => {
+    const withLog = (c: unknown) => validate(svg, { ...opts, changelog: c }).errors.filter(e => /規則 20/.test(e));
+    for (const date of ['2026-99-99', '2026-02-30']) {
+      const log = structuredClone(changelog) as { entries: Record<string, unknown>[] };
+      log.entries[log.entries.length - 1]!.date = date;
+      expect(withLog(log).some(e => /date 必須是 YYYY-MM-DD 絕對日期/.test(e))).toBe(true);
+    }
+  });
+
   it('規則 15：升級花費表的等級不連續、或 1 級金額與正本的解鎖金幣對不起來，都會被擋', () => {
     const withTable = (t: unknown) => validate(svg, { ...opts, upgradeCostTable: t as UpgradeCostTable }).errors;
 
@@ -370,6 +431,18 @@ describe('validate', () => {
   // 「套不進通用表的節點」——對一顆官方單獨列表的骰子符文問這件事，答案本來就會不一致。
   // v1.1.0 的太陽強化正是這種節點（20 級、解鎖 金幣 50,000／太陽核心 100、費用逐級不同），
   // 不讓開的話它一進正本就會讓規則 15 誤報。這裡拿 1201 當替身模擬那個形狀。
+  it('規則 15：表格某一列不是物件、或 levels 不是陣列時報出列號，不丟例外', () => {
+    // 直接讀 r.level 的話會丟 TypeError，前面累積的錯誤一起不見，CLI 只剩一段 stack trace。
+    const run = (t: unknown) => validate(svg, { ...opts, upgradeCostTable: t });
+    const nullRow = structuredClone(upgradeCostTable) as unknown as { levels: unknown[] };
+    nullRow.levels[3] = null;
+    expect(run(nullRow).errors.some(e => /規則 15: data\/upgrade-cost\.json 的第 4 列必須是物件，實際是 null/.test(e))).toBe(true);
+    expect(run({ ...upgradeCostTable, levels: {} }).errors.some(e => /規則 15: .*levels 必須是陣列/.test(e))).toBe(true);
+    expect(run([]).errors.some(e => /規則 15: .*最外層必須是物件/.test(e))).toBe(true);
+    // 沒有這份資料時跟規則 20–29 一樣說一聲，不是零警告。
+    expect(run(null).warnings.some(w => /規則 15: 沒有提供 data\/upgrade-cost\.json/.test(w))).toBe(true);
+  });
+
   it('規則 15：出現在 special 裡的節點跳過通用表比對', () => {
     const withCost = patch({ '1201': { ...nodeText['1201'], cost: '金幣 50,000／太陽核心 100' } });
     const rule15of = (o: unknown) =>
@@ -457,6 +530,62 @@ describe('validate', () => {
     expect(validate(svg, opts).errors.filter(e => /規則 17/.test(e))).toEqual([]);
   });
 
+  it('規則 17：官方滿級值某一筆不是 { level, value, unit } 時報出 gameId，不丟例外；沒提供時警告', () => {
+    const run = (o: unknown) => validate(svg, { ...opts, maxLevelOfficial: o });
+    const official = structuredClone(maxLevelOfficial) as unknown as { values: Record<string, unknown> };
+    official.values['D0060'] = null;
+    expect(run(official).errors.some(e => /規則 17: maxlevel-official\.json 的 D0060 必須是/.test(e))).toBe(true);
+    official.values['D0060'] = { level: '50', value: 1, unit: '%' };
+    expect(run(official).errors.some(e => /規則 17: maxlevel-official\.json 的 D0060 必須是/.test(e))).toBe(true);
+    expect(run({ ...maxLevelOfficial, values: [] }).errors.some(e => /規則 17: .*values 必須是以 gameId 為鍵的物件/.test(e))).toBe(true);
+    expect(run(null).warnings.some(w => /規則 17: 沒有提供 data\/maxlevel-official\.json/.test(w))).toBe(true);
+  });
+
+  describe('規則 31：可升級的節點要查得到費用表、解析得出成長值', () => {
+    const only31 = (o: Parameters<typeof validate>[1]) => validate(svg, o).errors.filter(e => /規則 31/.test(e));
+
+    it('真實資料零錯誤', () => {
+      expect(only31(opts)).toEqual([]);
+    });
+
+    it('骰子的等級上限手誤成 5：兩件事都會說', () => {
+      // 面板會印「等級上限 5」、/sim 卻因為查不到表只讓它停在 Lv.1；在這條規則之前 CI 全綠。
+      const errs = only31(patch({ '1003': { ...nodeText['1003'], maxLevel: 5 } }));
+      expect(errs).toHaveLength(1);
+      expect(errs[0]).toMatch(/規則 31: 節點 1003（.*，骰子）的等級上限是 5，但查不到逐級升級費用表.*而且描述解析不出每級成長值/);
+    });
+
+    it('可升級的玩家被動描述漏了「(+每級增量)」會被擋', () => {
+      const [id, rec] = Object.entries(nodeText).find(([, r]) => r['type'] === '玩家被動' && (r['maxLevel'] as number) > 1 && /\(\+/.test(String(r['description'])))!;
+      const errs = only31(patch({ [id]: { ...rec, description: String(rec['description']).replace(/\(\+[^)]*\)/, '') } }));
+      expect(errs.some(e => new RegExp(`規則 31: 節點 ${id}（.*描述解析不出每級成長值`).test(e))).toBe(true);
+    });
+
+    it('預設解鎖卻可升級的玩家被動查不到表會被擋（規則 22 不看沒付過解鎖費的節點）', () => {
+      const [id] = Object.entries(nodeText).find(([, r]) => r['type'] === '玩家被動' && (r['maxLevel'] as number) > 1)!;
+      const errs = only31({ ...opts, unlockExceptions: { ...unlockExceptions, [id]: { unlockVia: 'default', note: '初始解鎖' } } });
+      expect(errs.some(e => new RegExp(`規則 31: 節點 ${id}（.*查不到逐級升級費用表`).test(e))).toBe(true);
+    });
+
+    it('type 寫錯（規則 3 的地盤）時不丟例外；成本寫壞（規則 4 的地盤）時成長值照查', () => {
+      // 以前 typeOfZh() 的例外直接丟出規則 31，整個驗證器只剩一段 stack trace。
+      for (const [id, type] of [['1101', '被動'], ['1201', '符文']] as const) {
+        const run = () => validate(svg, patch({ [id]: { ...nodeText[id], type } }));
+        expect(run).not.toThrow();
+        expect(run().errors.some(e => new RegExp(`規則 3: 節點 ${id} 未知的 type`).test(e))).toBe(true);
+      }
+      // 成本壞掉以前會讓整顆節點跳過，(b) 要等下一輪 CI 才說。
+      const errs = only31(patch({ '1003': { ...nodeText['1003'], maxLevel: 5, cost: '免費' } }));
+      expect(errs.some(e => /規則 31: 節點 1003（.*描述解析不出每級成長值/.test(e))).toBe(true);
+    });
+
+    it('讓路：升級花費表缺席時不替每顆符文再報一次（規則 15 已經警告），符文的成長值是規則 17 的事', () => {
+      expect(only31({ ...opts, upgradeCostTable: null })).toEqual([]);
+      const rune = Object.entries(nodeText).find(([, r]) => r['type'] === '骰子符文' && (r['maxLevel'] as number) > 1 && /\(\+/.test(String(r['description'])))!;
+      expect(only31(patch({ [rune[0]]: { ...rune[1], description: String(rune[1]['description']).replace(/\(\+[^)]*\)/, '') } }))).toEqual([]);
+    });
+  });
+
   it('規則 18：解鎖例外表的 key／unlockVia／note 寫壞都會被擋', () => {
     const withExc = (e: unknown) =>
       validate(svg, { ...opts, unlockExceptions: e as typeof unlockExceptions }).errors.filter(x => /規則 18/.test(x));
@@ -497,6 +626,16 @@ describe('validate', () => {
 
     expect(withExc(null)).toEqual([]);
     expect(validate(svg, opts).errors.filter(e => /規則 18/.test(e))).toEqual([]);
+  });
+
+  it('規則 18：note 寫成非字串會被擋（面板的 escapeHtml 會對它丟例外）；沒提供時警告', () => {
+    const run = (e: unknown) => validate(svg, { ...opts, unlockExceptions: e as typeof unlockExceptions });
+    // `.length` 對陣列照樣有值，只驗長度的話 ["x"] 會過。
+    for (const note of [123, ['x'], {}]) {
+      expect(run({ ...unlockExceptions, '5006': { unlockVia: 'achievement', note } })
+        .errors.some(e => /規則 18: 節點 5006 的 note .* 必須是字串/.test(e))).toBe(true);
+    }
+    expect(run(null).warnings.some(w => /規則 18: 沒有提供 data\/unlock-exceptions\.json/.test(w))).toBe(true);
   });
 
   it('規則 26：前置等級條件的形狀、id、祖先關係與 rank 範圍寫壞都會被擋', () => {
@@ -620,6 +759,26 @@ describe('validate', () => {
     expect(validate(svg, { ...opts, offgameEffects: null }).warnings.some(w => /規則 28/.test(w))).toBe(true);
     expect(validate(svg, opts).errors.filter(e => /規則 28/.test(e))).toEqual([]);
     expect(validate(svg, opts).warnings.filter(w => /規則 28/.test(w))).toEqual([]);
+  });
+
+  it('規則 28：符文的 scope 必須是它最近的骰子祖先，指到別顆合法骰子會被擋', () => {
+    // 只驗「是骰子」的話兩種錯法都會過；只驗「是祖先」的話第二種（同一條鏈上更上游的骰子）會過。
+    const run = (scope: string) => {
+      const o = structuredClone(offgameEffects) as { effects: Record<string, Record<string, unknown>> };
+      o.effects['1203']!['scope'] = scope;
+      return validate(svg, { ...opts, offgameEffects: o }).errors.filter(e => /規則 28/.test(e));
+    };
+    expect(run('dice:1003')).toEqual([]);   // 真實資料的值
+    expect(run('dice:2001').some(e => /1203 的 scope "dice:2001" 不是這顆符文最近的骰子祖先（dice:1003）/.test(e))).toBe(true);
+    expect(run('dice:1001').some(e => /1203 的 scope "dice:1001" 不是這顆符文最近的骰子祖先（dice:1003）/.test(e))).toBe(true);
+  });
+
+  it('規則 28：玩家被動的 scope 寫成 dice:<id> 會被擋（反方向：單顆骰子的加成只有符文有）', () => {
+    const o = structuredClone(offgameEffects) as { effects: Record<string, Record<string, unknown>> };
+    const pid = Object.keys(o.effects).find(id => nodeText[id]!['type'] === '玩家被動')!;
+    o.effects[pid]!['scope'] = 'dice:3001';
+    expect(validate(svg, { ...opts, offgameEffects: o }).errors
+      .some(e => new RegExp(`規則 28: .*${pid} 是玩家被動，scope 只能是 all 或 faction`).test(e))).toBe(true);
   });
 
   it('規則 16：管理 ID 重複／格式錯／漏填，與細分類放錯位置，都會被擋', () => {
@@ -1814,10 +1973,10 @@ describe('規則 27：裂縫商店', () => {
 
   it('同名的兩筆指向不同的圖會被擋（sharedIconKey 的反方向）', () => {
     // ⚠️ 這是 2026-09-06 code review 抓到的漏洞：sharedIconKey 原本只做了「放行同名共用」
-    // 這一半，反方向沒人守，實測**零錯誤零警告**。失敗長相是
-    // `npm run add-icon -- --rift-shop 73 new.png`——只更新被指名的那一筆，同名的兄弟
-    // 仍指著舊雜湊，而 (d)(f)(g) 三條全部沉默（舊圖還被兄弟引用著、兩張圖都在、
-    // 新雜湊只有一筆），畫面上是同一個效果的三個檔位出現兩種圖。
+    // 這一半，反方向沒人守，實測**零錯誤零警告**。失敗長相是手改 JSON 只換了其中一筆的 icon
+    // （`add-icon --rift-shop` 現在會把同名的兄弟一起換），同名的兄弟仍指著舊雜湊，而
+    // (d)(f)(g) 三條全部沉默（舊圖還被兄弟引用著、兩張圖都在、新雜湊只有一筆），畫面上是
+    // 同一個效果的三個檔位出現兩種圖。
     const dir = tmpDir('rd2-rift-sibling-');
     for (const f of readdirSync(riftShopIconsDir)) writeFileSync(join(dir, f), readFileSync(join(riftShopIconsDir, f)));
     // 拿另一條資產路徑的真 PNG 當「新加進來的那張」：內容不同 → 雜湊不同，而且是有效 PNG。
@@ -1969,6 +2128,17 @@ describe('規則 29：期間限定活動', () => {
     const data = rows();
     data[0]!['period'] = { begin: '2026-09-15', finish: '2026-10-01' };
     expect(only29(data)).toEqual([]);
+  });
+
+  it('period 寫成「未知」、不存在的日期、或開始晚於結束都會被擋', () => {
+    const withPeriod = (period: unknown) => { const data = rows(); data[0]!['period'] = period; return only29(data); };
+    expect(withPeriod({ begin: '未知', finish: '?' }).some(e => /規則 29\(e\).*period\.begin "未知" 必須是 YYYY-MM-DD/.test(e))).toBe(true);
+    expect(withPeriod({ begin: '2026-02-30', finish: '2026-03-01' }).some(e => /period\.begin "2026-02-30"/.test(e))).toBe(true);
+    expect(withPeriod({ begin: '2026-09-21', finish: '2026-09-30 24:00' }).some(e => /period\.finish "2026-09-30 24:00"/.test(e))).toBe(true);
+    expect(withPeriod({ begin: '2026-09-30', finish: '2020-01-01' }).some(e => /規則 29\(e\).*開始 "2026-09-30" 晚於結束 "2020-01-01"/.test(e))).toBe(true);
+    // 只寫日期的一端算整天：當天開始、當天結束都不算顛倒。
+    expect(withPeriod({ begin: '2026-09-30 10:00', finish: '2026-09-30' })).toEqual([]);
+    expect(withPeriod({ begin: '2026-09-30', finish: '2026-09-30 10:00' })).toEqual([]);
   });
 
   it('某一列少一格會被擋', () => {

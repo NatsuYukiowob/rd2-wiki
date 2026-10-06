@@ -62,6 +62,18 @@ export function parseGrowth(description: string): { growth: Growth | null; dataI
   };
 }
 
+/**
+ * 節點的 `dataIssue`：`no-growth`＝可升級（maxLevel > 1）卻解析不出每級成長值，面板那行
+ * 「1 級 X → N 級 Y」整條不見。`build-data` 寫進 tree.json 與 validate 規則 31 擋它共用這一支，
+ * 兩邊對同一份描述給同一個答案。
+ */
+export function growthIssue(
+  parsed: { growth: Growth | null; dataIssue: 'placeholder' | null },
+  maxLevel: number,
+): 'placeholder' | 'no-growth' | null {
+  return parsed.dataIssue ?? (maxLevel > 1 && !parsed.growth ? 'no-growth' : null);
+}
+
 export function maxLevelValue(growth: Growth, maxLevel: number): number {
   return round2(growth.base + growth.perLevel * (maxLevel - 1));
 }

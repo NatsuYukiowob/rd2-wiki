@@ -100,6 +100,13 @@ describe('buildTreeData', () => {
     const rebuilt = buildTreeData(svg, { ...opts, nodeText });
     expect(rebuilt.nodes.filter(n => n.dataIssue === 'placeholder').map(n => n.id)).toEqual(['2403']);
   });
+  it('可升級卻解析不出成長值的節點標成 no-growth（真實資料零筆，規則 31 擋；機制用合成樣本驗）', () => {
+    expect(data.nodes.filter(n => n.dataIssue === 'no-growth')).toHaveLength(0);
+    // 合成樣本：一顆沒有成長值的節點把等級上限調成 10（等級上限 1 的節點本來就不該有成長值）。
+    const nodeText = { ...opts.nodeText, '2403': { ...opts.nodeText['2403']!, maxLevel: 10, description: '連接齒輪骰子時，攻擊速度增加5%' } };
+    const rebuilt = buildTreeData(svg, { ...opts, nodeText });
+    expect(rebuilt.nodes.filter(n => n.dataIssue === 'no-growth').map(n => n.id)).toEqual(['2403']);
+  });
   it('meta.glossary 涵蓋所有節點用到的關鍵字，且不含站台用不到的 code', () => {
     const used = new Set(data.nodes.flatMap(n => n.keywords));
     expect(used.size).toBeGreaterThan(0);

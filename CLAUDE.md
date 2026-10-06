@@ -64,7 +64,9 @@
   `document.querySelector('.node')` 回 null、CSS 碰不到節點（在 `canvas.css` 加 `.node` 規則無效也不報錯）；
   唯一例外是每顆節點一顆的隱形 `<button>`。外觀在 `theme.ts`（從 token 讀）、`state.ts`、`painter.ts`，
   細節見 `src/lib/canvas/CLAUDE.md`。
-- 核心功能：點一個節點 → 高亮它在 DAG 上的**所有祖先聯集**（去重、含自身、多重前置視為 AND）→ 算出解鎖成本。
+- 核心功能：點一個節點 → 高亮它在 DAG 上的**所有祖先聯集**（去重、含自身、多重前置視為 AND；走到 `bypassPrereq` 停止往上追，
+  鏈上練等條件指名的祖先**連同它的前置鏈**併進來）→ 算出解鎖成本。`computeSelection()` 與 `/sim` 的 `pathTo()` 必須同一個語意
+  （`tests/lib/selection.test.ts` 逐顆比對）。
 
 ## 指令
 
@@ -109,7 +111,7 @@ npm run compare -- <beforeURL> <afterURL>  # computed-style 逐元素比對，�
 | 覺醒 `awakening` | 每顆骰子一則，其餘節點不准有 | 規則 14 |
 | `gameId` | 全有、全檔唯一 | 規則 16 |
 | `category` | 只掛在玩家被動上 | 規則 16 |
-| `dataIssue` | `placeholder`／`no-growth` 都應為 0 | 規則 17 |
+| `dataIssue` | `placeholder`／`no-growth` 都應為 0 | `placeholder`：規則 9 警告；`no-growth`：規則 31（符文由規則 17） |
 | 解鎖例外 | `unlockVia` 只說「靠什麼開門」；`unlockPaid`（仍要付錢）、`bypassPrereq`（無視前置）另外說 | `data/unlock-exceptions.json`，規則 18 |
 | 升級 tier ↔ 節點 | **雙向零殘餘** | `data/passive-upgrade-cost.json`，規則 22 |
 | 骰子數值 ↔ 節點 | 雙向零殘餘 | `data/dice-stats.json`，規則 23 ＋ `tests/data/dice-stats.test.ts` |
@@ -158,23 +160,23 @@ npm run compare -- <beforeURL> <afterURL>  # computed-style 逐元素比對，�
 | 0 | 邊是 `<svg>` 直屬；節點與邊不帶 `display`／`visibility`／`style`／`opacity="0"`；`marker-end` 指向正本定義過的箭頭、不得有 `marker-start`；座標與 viewBox 是有限數 |
 | 1 | `nodes.json` 結構：必填、型別、長度 ≤ 500、無未知欄位；**選用欄位不用時整個省略，不可寫 `""`** |
 | 2 | id 唯一且符合 `^[1-5][0-6]\d\d$`（首碼＝分支 1–5，次碼 0–6） |
-| 3 | `type` ↔ 外框 `stroke` 對應：支援節點的 stroke 必須是 support 色，反之亦然（看 stroke 不看形狀） |
+| 3 | `type` ↔ 外框 `stroke` 對應：支援節點的 stroke 必須是 support 色，反之亦然（看 stroke 不看形狀）；其餘節點的 stroke 必須是 id 首碼那個分支的色 |
 | 4 | `cost` 只寫錢，等級行不准混進去（改語意時 tree.json 不變，要有自己的測試） |
-| 5 | 一個端點同時對上兩顆節點 → 報錯 |
+| 5 | 一個端點同時對上兩顆節點 → 報錯；同一條邊（同起訖節點）不准出現兩次 |
 | 6 | 無環、根集合正確、全部從根可達（`data-wip="1"` 豁免可達性；6(c) 只警告） |
 | 6(d) | **`data-wip="1"` 的節點完全不准接線**（豁免＋能接線＝可把節點切到別的分支而 validate 全綠） |
-| 7 | 圖示：(a) 檔案存在 (b) 檔名＝內容 sha256 前 12 碼 (c) PNG 結構與解析度 (d) 孤兒只警告 (e) 顯示尺寸×2 ≤ 解析度 |
+| 7 | 圖示：(a) 檔案存在 (b) 檔名＝內容 sha256 前 12 碼 (c) PNG 結構與解析度 (d) 孤兒只警告 (e) 顯示尺寸×2 ≤ 解析度 (f) 同一張圖被幾顆節點共用時顯示尺寸一致（sprite 按尺寸打包） |
 | 8(b) | 詞彙表欄位、色碼、解釋文字裡的 `#` 查得到；`code` 是 HTML id／錨點，**不得撞號、必須英文字母開頭的 ASCII** |
 | 9 | 成長值解析警告（不擋 PR） |
 | 10 | 中央樞紐：`<svg>` 直屬、無 transform、圖檔解析度 ≥ 顯示尺寸 2 倍、放射線終點落在 `data-links` 節點中心 |
 | 13 | viewBox ＝ `0 0 2000 1700`；節點與邊端點在畫布內；任兩節點中心相距 ≥ 5 |
 | 14 | 覺醒只掛在骰子上 |
-| 15 | 升級花費表 ↔ 解鎖金幣；**跳過 `passive-upgrade-cost.json` 的 `special` 節點** |
+| 15 | 升級花費表 ↔ 解鎖金幣；**跳過 `passive-upgrade-cost.json` 的 `special` 節點**；形狀先驗再讀（某列寫成 `null` 報列號、不丟例外） |
 | 16 | `gameId` 全有且唯一；`category` 只在玩家被動 |
-| 17 | 官方滿級值反向驗算 `growth` |
-| 18 | 解鎖例外表型別與長度（`unlockPaid`／`bypassPrereq` 是布林） |
+| 17 | 官方滿級值反向驗算 `growth`；每筆形狀先驗。**CLI 必填**（不進建置，刪檔沒有別處會發現） |
+| 18 | 解鎖例外表型別與長度（`unlockPaid`／`bypassPrereq` 是布林、`note` 是字串） |
 | 19 | SVG `data-id` 集合 ≡ `nodes.json` 鍵集合，**兩種殘餘都逐一列出 id** |
-| 20 | changelog 結構＋最新資料條目與正本版本欄位一致（擋「資料改了、日誌沒改」） |
+| 20 | changelog 結構（`date` 是日曆上真的有的日子）＋最新資料條目與正本版本欄位一致（擋「**正本版本欄位**改了、日誌沒改」；只改 `data/*.json` 內容而沒動版本欄位時不會觸發） |
 | 21 | `/board` 純骰子圖對應表（`data/board-icons.json`＋目錄）(a)–(h)：漏骰子、目錄、12 碼小寫 hex、檔不存在、**兩筆同圖**、對應表裡的非骰子 id。實作在 `checkDiceIconMap()`，跟規則 30 共用 |
 | 30 | `/dice` 3D 骰子圖（`data/dice3-icons.json`＋目錄）：同一支 `checkDiceIconMap()`，子規則字母一一對應。`validate.test.ts` 的規則 30 組**刻意不重抄規則 21**，只驗第二條路徑真的接上、且不與 `board-icons` 同圖 |
 | 22 | 玩家被動升級費用表：tier 形狀與區間連續、`(maxLevel, unlockGold)` 不撞號、**節點 ↔ tier 雙向對得到**、`special` 鍵是節點 id 且不與 tier 重疊、`mythic` 的 kind 要在 `MYTHIC_CORES`、**未知欄位一律擋**（舊寫法 `"solar": N` 會被指名） |
@@ -183,10 +185,11 @@ npm run compare -- <beforeURL> <afterURL>  # computed-style 逐元素比對，�
 | 25 | `data/boss.json`（怪物圖鑑）：通用檢查走 `checkIconedRecordList()`；**自己只寫** `difficulty` ∈ {一般, 困難}、`kind` ∈ {一般怪物, 首領}、一般怪物只能配一般（＝`/boss` 的三組），其餘不准複製 |
 | 26 | `data/prereq-ranks.json`：外層只有 note／source／ranks；內層鍵必須是外層節點的**祖先**且非自己；2 ≤ rank ≤ 該前置 `maxLevel`。`TreeNode.prereqRanks` **只在有值的節點上放欄位**（tree.json 預算） |
 | 27 | `data/rift-shop.json`：走 `checkIconedRecordList()` 且傳 `sharedIconKey: 'name'`；**(g) 雙向**——跨名共用錯、同名不同圖也錯。自己的語意檢查：(e) `grade` 合法、`cost`／`weight` 正整數 (i) 同階級 `weight` 一致（刻意不寫死數值）(j) 同名多筆的階級互異 |
-| 28 | `data/offgame-effects.json`：**雙向**（每顆符文／被動都有一筆，`none` 附 reason；孤兒擋）、`target` 在 `src/lib/offgame.ts` 詞彙內、`scope` 合法、`maxLevel` 一致、成長值與描述一致（`parseGrowth`）、`stat*` 的 `label` 在 dice-stats 存在、`mechanic` 必填 template（`{V}`／`{V2}`）、未知欄位擋。不進 tree.json，這條是唯一防線 |
-| 29 | `data/events.json`：**不走 `checkIconedRecordList()`**。(a) 非空陣列 (b) 必填／未知欄位（**沒有 `notes` 欄位**，決策：維護者註記不進資料，不要加回）(c) `id` 小寫英數連字號、不撞號（頁面錨點）(d) `version` x.y.z (e) `period` 只能 `null` 或 `{begin, finish}` (f) `currencies` 的 `kind` 已登記 (g) 段落形狀 (h) **每列格數＝表頭欄數** (i) 格子是非空字串或 `{icon, text}` (j) `screenshots` 檔在 `public/events/`、`caption` 非空、寬高正整數、檔名無路徑；**目錄讀不到是錯不是跳過**。合法 `icon`／`kind` 只有 `src/lib/events.ts` 的 `EVENT_ICON_KINDS` 一份 |
+| 28 | `data/offgame-effects.json`：**雙向**（每顆符文／被動都有一筆，`none` 附 reason；孤兒擋）、`target` 在 `src/lib/offgame.ts` 詞彙內、`scope` 合法（**符文的 `dice:<id>` 必須是它最近的骰子祖先**，只要求「是祖先」的話指到同鏈上游的骰子照樣過；**玩家被動只能 `all`／`faction:`**）、`maxLevel` 一致、成長值與描述一致（`parseGrowth`）、`stat*` 的 `label` 在 dice-stats 存在、`mechanic` 必填 template（`{V}`／`{V2}`）、未知欄位擋。不進 tree.json，這條是唯一防線 |
+| 29 | `data/events.json`：**不走 `checkIconedRecordList()`**。(a) 非空陣列 (b) 必填／未知欄位（**沒有 `notes` 欄位**，決策：維護者註記不進資料，不要加回）(c) `id` 小寫英數連字號、不撞號（頁面錨點）(d) `version` x.y.z (e) `period` 只能 `null` 或 `{begin, finish}`，兩端是真實日期 `YYYY-MM-DD`（可帶 ` HH:MM`）且開始不晚於結束（只寫日期的一端算整天） (f) `currencies` 的 `kind` 已登記 (g) 段落形狀 (h) **每列格數＝表頭欄數** (i) 格子是非空字串或 `{icon, text}` (j) `screenshots` 檔在 `public/events/`、`caption` 非空、寬高正整數、檔名無路徑；**目錄讀不到是錯不是跳過**。合法 `icon`／`kind` 只有 `src/lib/events.ts` 的 `EVENT_ICON_KINDS` 一份 |
+| 31 | 可升級（`maxLevel > 1`）的節點：(a) `levelTableFor()` 查得到逐級費用表（否則 `/sim` 只讓它停在 Lv.1）(b) `growthIssue()` 不是 `no-growth`。判準是站台與 `build-data` 自己用的那兩支；**讓路**：(a) 不看 `special` 與付費解鎖的玩家被動／支援（規則 22）、升級花費表缺席時不看符文（規則 15），(b) 不看符文（規則 17） |
 
-- ⚠️ **幾何規則吃 `nodes`，文案規則吃 `withText`**（文案規則＝1／3／4／8／9／14／15／16／17）。
+- ⚠️ **幾何規則吃 `nodes`，文案規則吃 `withText`**（文案規則＝1／3／4／8／9／14／15／16／17／31）。
   餵錯的話 `nodes.json` 漏一筆會變成幾十條假錯誤。規則 21(h)／30(h) 判斷「是不是骰子」也走 `withText`。
 - ⚠️ **共用實作只有一份，新檢查加在那裡，不准複製**：掃雜湊命名圖示目錄＝`checkHashNamedIconDir()`
   （規則 7／21／24／25／27／30）；對應表型＝`checkDiceIconMap()`（21／30）；一筆一 id 的資料檔型＝
@@ -329,8 +332,8 @@ npm run compare -- <beforeURL> <afterURL>  # computed-style 逐元素比對，�
 - **新增一顆神話骰子＝在 `src/lib/currency.ts` 的 `MYTHIC_CORES` 加一筆＋放 `public/currency/<kind>.png`，不改任何型別**。
   解析、顯示、`/sim` 上限欄、規則 22 都從這份清單列舉；陣列順序＝顯示順序，新的往後接（`tests/lib/cost.test.ts`）。
 - **成本字串格式（`parseCost`）**：順序固定 **金幣→核心→超越核心**，禁反序禁重複（超越核心全部合計只准一種）；
-  分隔符是全形 `／`（U+FF0F）；金幣 ≥ 4 位必須千分位逗號，超越核心兩種都收；`核心 N／太陽核心 M`（無金幣）刻意不支援。
-  沒登記的 `X核心` 要擋在「未登記的超越核心」那句錯誤。
+  分隔符是全形 `／`（U+FF0F）；金幣 ≥ 4 位必須千分位逗號，超越核心兩種都收；三種數字都不收前導零；`核心 N／太陽核心 M`（無金幣）刻意不支援。
+  沒登記的 `X核心` 要擋在「未登記的超越核心」那句錯誤；金幣寫對、後面壞掉時報「金幣之後的部分」而不是金幣格式錯。
 - **超越核心的顯示一律「有值才印」**（`formatCost`、`/sim` 三列合計、`simReport` 看總計、PR 差異摘要）。
 - CI 差異摘要讀 base 的 tree.json 走 `costFromJson()`：吃舊形狀，**只印登記過的種類名稱**（`mythic` 的鍵來自 PR 作者）。
 - **畫面顯示走 `src/lib/cost-html.ts` 的 `costHtml()`／`simCostHtml()`**，文字與 `formatCost()` 逐字相同；

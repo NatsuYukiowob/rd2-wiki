@@ -6,7 +6,7 @@ import { parseTree, COORD_TOLERANCE } from './lib/svg-parse.js';
 import { MAX_TEXT_LENGTH, loadNodeText, mergeNodes, type NodeTextMap } from './lib/node-text.js';
 import { buildSprite, buildHiRes, buildBoardIcon, DICE3_ICON_TARGET_PX, type IconEntry } from './lib/icons.js';
 import { addCost, parseCost, zeroCost } from '../src/lib/cost.js';
-import { parseGrowth } from '../src/lib/growth.js';
+import { growthIssue, parseGrowth } from '../src/lib/growth.js';
 import { extractKeywords } from '../src/lib/keywords.js';
 import { branchOfId, categoryOfZh, elementOfStroke, typeOfZh } from '../src/lib/taxonomy.js';
 import { buildAdjacency, findRoots } from '../src/lib/graph.js';
@@ -87,7 +87,7 @@ export function buildTreeData(svgText: string, opts: BuildOpts): TreeData {
       // 需要查管理 ID 的人看的是正本，不是這份建置產物。
       keywords: extractKeywords(r.description, whitelist),
       growth,
-      dataIssue: dataIssue ?? (level > 1 && !growth ? 'no-growth' : null),
+      dataIssue: growthIssue({ growth, dataIssue }, level),
       icon: r.icon,
       // 只在為真時才放欄位：現況 0 個 wip 節點，等於完全不佔 tree.json 的 gzip 預算。
       ...(r.wip ? { wip: true as const } : {}),
@@ -199,12 +199,11 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
 
   const { meta: rawMeta, nodes: rawGeom } = parseTree(svgText);
   const rawNodes = mergeNodes(rawGeom, nodeText);
-  // 圖示的打包格子尺寸＝引用它的節點的顯示尺寸。同一張圖被多個節點共用時，尺寸必然相同
-  // （圖是逐節點渲染出來的，位元組一樣就代表像素尺寸一樣），所以取第一個引用者即可；
-  // ⚠️ 舊的 SVG 渲染器（src/lib/render.ts）另有一道「一圖多尺寸就當場丟錯」的主動檢查，
-  // 2026-09-06 換成 Canvas 2D 時隨那個檔一起移除——canvas 是依**每顆節點自己的 w/h** 畫
-  // （painter.ts 的 drawNodeImage()），一圖多尺寸只會被縮放到各自的尺寸，不會悄悄裁錯。
-  const sizeByHash = new Map(rawNodes.map(n => [n.icon, n.size]));
+  // 圖示的打包格子尺寸＝引用它的節點的顯示尺寸。同一張圖被多個節點共用時尺寸必須相同——
+  // 規則 7(f) 擋（舊的 SVG 渲染器原本當場丟錯，換成 Canvas 2D 時隨那個檔一起移除，那條規則是補回來的）。
+  // 所以這裡取第一個引用者即可；`has()` 先問，是因為 Map 建構子遇到重複鍵留下的是**最後**一筆。
+  const sizeByHash = new Map<string, [number, number]>();
+  for (const n of rawNodes) if (!sizeByHash.has(n.icon)) sizeByHash.set(n.icon, n.size);
   // 沒有任何節點引用的圖示直接不打包。規則 7(d) 只警告不擋，所以這種檔案是可以合法存在的，
   // 但為它挑一個「誰都沒用到的尺寸」當 fallback 只會讓 buildSprite 憑空多開一個 16 欄的分區，
   // 換來一張沒有人會顯示的圖（code review 指出；先前的 fallback 是 [48, 52]，那個尺寸現在

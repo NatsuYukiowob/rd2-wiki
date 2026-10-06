@@ -6,21 +6,21 @@ import { parseTree, COORD_TOLERANCE } from './lib/svg-parse.js';
 import { MAX_TEXT_LENGTH, checkNodeTextRecord, mergeNodes, type NodeTextMap, type RawNode } from './lib/node-text.js';
 import { parseCost } from '../src/lib/cost.js';
 import { mythicCoreByKind } from '../src/lib/currency.js';
-import { maxLevelValue, parseGrowth, round2 } from '../src/lib/growth.js';
+import { growthIssue, maxLevelValue, parseGrowth, round2 } from '../src/lib/growth.js';
 import { extractKeywords } from '../src/lib/keywords.js';
-import { checkChangelog } from '../src/lib/changelog.js';
+import { checkChangelog, isCalendarDate } from '../src/lib/changelog.js';
 import { groupOfColor } from '../src/lib/glossary-groups.js';
 import { branchOfId, categoryOfZh, elementOfStroke, typeOfZh } from '../src/lib/taxonomy.js';
 import { buildAdjacency, detectCycle, findRoots, prerequisiteChain, unreachableFrom } from '../src/lib/graph.js';
 import { readPngSize } from './lib/png.js';
 import { isGlossaryAlias } from '../src/lib/types.js';
-import { expandTier } from '../src/lib/upgrade-tiers.js';
+import { expandTier, levelTableFor } from '../src/lib/upgrade-tiers.js';
 import { deriveParams, parseNumber, type StatParams } from '../src/lib/dice-calc.js';
 import { SP_STEP } from '../src/lib/dice-stats.js';
 import { BRANCH_ZH } from '../src/lib/labels.js';
 import { OFFGAME_TARGETS, ROW_TARGETS } from '../src/lib/offgame.js';
 import { EVENT_ICON_KINDS } from '../src/lib/events.js';
-import type { DiceStat, Edge, GlossaryRecord, Growth, MaxLevelOfficial, UpgradeCostTable, UpgradeTier } from '../src/lib/types.js';
+import type { DiceStat, Edge, GlossaryRecord, Growth, UnlockVia, UpgradeCostTable, UpgradeTier } from '../src/lib/types.js';
 
 /**
  * 資料樹的預期根節點（各分支的第一個骰子）。
@@ -517,26 +517,28 @@ export interface ValidateOpts {
    */
   nodeText: unknown;
   /**
-   * `data/upgrade-cost.json`；沒有這份資料時傳 `null`。
+   * `data/upgrade-cost.json`；沒有這份資料時傳 `null`（規則 15 只警告）。
    *
    * 刻意做成必填而不是可選：可選的話，哪天有人重構掉這個參數，規則 15 會安靜地不再執行，
    * 而所有測試照樣全綠。要跳過就得自己寫一個 `null` 出來，那是看得見的決定。
+   * 型別刻意用 `unknown`（同 `nodeText`）：規則 15 要先驗形狀，宣告成已驗過的型別等於假設它一定合法。
    */
-  upgradeCostTable: UpgradeCostTable | null;
+  upgradeCostTable: unknown;
   /**
-   * `data/maxlevel-official.json`；沒有這份資料時傳 `null`。
+   * `data/maxlevel-official.json`；沒有這份資料時傳 `null`（規則 17 只警告）。型別用 `unknown`，理由同上。
    *
    * 跟 `upgradeCostTable` 一樣刻意必填：規則 17 是描述文字被解析錯時唯一會說話的東西，
-   * 讓它變成可選就等於讓它可以被安靜地關掉。
+   * 讓它變成可選就等於讓它可以被安靜地關掉。⚠️ CLI 讀這份檔案時**不走「不存在＝null」那條路**：
+   * 它不進建置，`build:data` 不讀它，檔案被刪的話除了這條規則沒有任何地方會發現。
    */
-  maxLevelOfficial: MaxLevelOfficial | null;
+  maxLevelOfficial: unknown;
   /**
    * `data/unlock-exceptions.json`；沒有這份資料時傳 `null`。
    *
    * 一樣刻意必填。這個檔案在 2026-08-21 之前只有 2 筆、沒有任何顯示用途，所以沒人守它；
    * 現在它有 9 筆而且 `note` 會直接印在面板上，規則 18 就是它唯一的防線（見那條的說明）。
    */
-  unlockExceptions: Record<string, { unlockVia: string; note?: string; unlockPaid?: unknown; bypassPrereq?: unknown }> | null;
+  unlockExceptions: Record<string, { unlockVia: string; note?: unknown; unlockPaid?: unknown; bypassPrereq?: unknown }> | null;
   /**
    * `data/changelog.json`；沒有這份資料時傳 `null`。
    *
@@ -744,12 +746,15 @@ export function validate(svgText: string, opts: ValidateOpts): ValidateResult {
   }
 
   for (const n of withText) {
-    // 規則 3: type 與 stroke（元素）對應——支援節點的 stroke 必須是 support 色，反之亦然
+    // 規則 3: type 與 stroke（元素）對應——支援節點的 stroke 必須是 support 色，反之亦然；
+    // 其餘節點的 stroke 必須是它自己那個分支（id 首碼）的顏色。站台的顏色看 stroke、分支看 id，
+    // 兩者不符時畫面上就是一顆火焰色的自然系節點，而前兩種寫法都放得過它。
     try {
       const t = typeOfZh(n.typeZh);
       const el = elementOfStroke(n.stroke);
-      branchOfId(n.id);
+      const branch = branchOfId(n.id);
       if ((el === 'support') !== (t === 'support')) push(`規則 3: 節點 ${n.id} 的 stroke 與 type 不對應`);
+      else if (el !== 'support' && el !== branch) push(`規則 3: 節點 ${n.id} 的 stroke ${n.stroke} 是 ${el} 分支的顏色，與 id 的分支 ${branch} 不符`);
     } catch (e) { push(`規則 3: 節點 ${n.id} ${(e as Error).message}`); }
 
     // 規則 4: 成本文法。`cost` 只寫錢，等級上限一律走 `maxLevel` 欄位。
@@ -841,21 +846,39 @@ export function validate(svgText: string, opts: ValidateOpts): ValidateResult {
   // 規則 15: 技能升級花費表。等級必須是 1..N 連續整數、金額非負，而且——最要緊的——
   // 第 1 級的金幣必須等於它所適用的節點在正本裡寫的解鎖金幣。那是兩份資料唯一的交點：
   // 對不起來就代表其中一份是舊的，而兩邊各自看都完全合法。
-  const table = opts.upgradeCostTable;
-  if (table) {
-    const levels = table.levels ?? [];
-    if (!typeOfZhSafe(table.appliesTo?.type)) push(`規則 15: appliesTo.type ${JSON.stringify(table.appliesTo?.type)} 不是合法的節點型別`);
+  //
+  // 形狀先驗再讀：這份 JSON 是社群改得到的，某一列寫成 `null` 或 `levels` 寫成物件時，直接讀
+  // `r.level` 會丟例外——前面累積的錯誤跟著一起不見，CLI 只剩一段 stack trace（同
+  // `checkHashNamedIconDir()` 那段「驗證器不拋例外」的理由）。
+  const rawTable = opts.upgradeCostTable;
+  if (rawTable === null) {
+    warn('規則 15: 沒有提供 data/upgrade-cost.json，骰子符文的升級花費表未檢查');
+  } else if (!isPlainObject(rawTable)) {
+    push('規則 15: data/upgrade-cost.json 的最外層必須是物件（含 appliesTo 與 levels 兩個欄位）');
+  } else {
+    const appliesTo = isPlainObject(rawTable['appliesTo']) ? rawTable['appliesTo'] : {};
+    const appliesType = typeof appliesTo['type'] === 'string' ? appliesTo['type'] : undefined;
+    const rawLevels = rawTable['levels'] ?? [];
+    if (!Array.isArray(rawLevels)) push(`規則 15: data/upgrade-cost.json 的 levels 必須是陣列，實際是 ${JSON.stringify(rawLevels)}`);
+    const levels: unknown[] = Array.isArray(rawLevels) ? rawLevels : [];
+    if (!typeOfZhSafe(appliesType)) push(`規則 15: appliesTo.type ${JSON.stringify(appliesTo['type'])} 不是合法的節點型別`);
     if (levels.length === 0) push('規則 15: 升級花費表是空的');
     levels.forEach((r, i) => {
-      if (r.level !== i + 1) push(`規則 15: 第 ${i + 1} 列的 level 是 ${r.level}，等級必須是 1..N 連續`);
-      if (!Number.isInteger(r.gold) || r.gold < 0) push(`規則 15: ${r.level} 級的 gold 不是非負整數：${r.gold}`);
-      if (!Number.isInteger(r.core) || r.core < 0) push(`規則 15: ${r.level} 級的 core 不是非負整數：${r.core}`);
+      if (!isPlainObject(r)) {
+        push(`規則 15: data/upgrade-cost.json 的第 ${i + 1} 列必須是物件，實際是 ${JSON.stringify(r)}`);
+        return;
+      }
+      const { level, gold, core } = r;
+      if (level !== i + 1) push(`規則 15: 第 ${i + 1} 列的 level 是 ${level}，等級必須是 1..N 連續`);
+      if (!Number.isInteger(gold) || (gold as number) < 0) push(`規則 15: ${level} 級的 gold 不是非負整數：${gold}`);
+      if (!Number.isInteger(core) || (core as number) < 0) push(`規則 15: ${level} 級的 core 不是非負整數：${core}`);
     });
-    if (table.appliesTo?.maxLevel !== levels.length) {
-      push(`規則 15: appliesTo.maxLevel（${table.appliesTo?.maxLevel}）與表格長度（${levels.length}）不一致`);
+    if (appliesTo['maxLevel'] !== levels.length) {
+      push(`規則 15: appliesTo.maxLevel（${appliesTo['maxLevel']}）與表格長度（${levels.length}）不一致`);
     }
-    const firstGold = levels[0]?.gold;
-    const firstCore = levels[0]?.core;
+    const first = isPlainObject(levels[0]) ? levels[0] : {};
+    const firstGold = first['gold'];
+    const firstCore = first['core'];
     // ⚠️ 出現在 `passive-upgrade-cost.json` 的 `special` 裡的節點要跳過。`special` 的定義就是
     // 「套不進通用表的節點」，而這條規則做的正是「拿通用表的第 1 級去對節點的解鎖成本」——
     // 對一顆官方單獨列表的節點問這件事，答案本來就會不一致，報出來是誤判。`levelTableFor()`
@@ -868,7 +891,7 @@ export function validate(svgText: string, opts: ValidateOpts): ValidateResult {
         : [],
     );
     for (const n of withText) {
-      if (n.typeZh !== zhOfType(table.appliesTo?.type)) continue;
+      if (n.typeZh !== zhOfType(appliesType)) continue;
       if (rule15Special.has(n.id)) continue;
       let unlockGold: number | null = null;
       let unlockCore: number | null = null;
@@ -879,7 +902,7 @@ export function validate(svgText: string, opts: ValidateOpts): ValidateResult {
       } catch { continue; }   // 成本格式本身壞掉是規則 4 的事，這裡不重複報
       // 等級上限以前是從 `data-cost` 第二行剖出來的；2026-08-22 起改讀 data/nodes.json 的
       // `maxLevel` 欄位。這一行漏改的話條件永遠不成立、整條規則 15 對所有節點靜默跳過。
-      if (n.maxLevel !== table.appliesTo?.maxLevel) continue;
+      if (n.maxLevel !== appliesTo['maxLevel']) continue;
       if (unlockGold !== firstGold) {
         push(`規則 15: 節點 ${n.id} 的解鎖金幣 ${unlockGold} 與升級花費表 1 級的 ${firstGold} 不一致`);
       }
@@ -902,8 +925,15 @@ export function validate(svgText: string, opts: ValidateOpts): ValidateResult {
   // 成別的意思」的東西。⚠️ 因此它必須**用 data-game-id 當鍵**，不能用節點 id：管理 ID 是
   // 正本與官方資料表唯一對得起來的鍵（規則 16），拿座標或名稱配對會在同名節點上配錯
   // （光是「所有骰子傷害」就有 15 個）。
-  const official = opts.maxLevelOfficial;
-  if (official) {
+  //
+  // 形狀先驗再讀，理由同規則 15：`values` 裡某一筆寫成 `null` 時直接讀 `expect.level` 會丟例外。
+  const rawOfficial = opts.maxLevelOfficial;
+  if (rawOfficial === null) {
+    warn('規則 17: 沒有提供 data/maxlevel-official.json，官方滿級值反向驗算未檢查');
+  } else if (!isPlainObject(rawOfficial) || !isPlainObject(rawOfficial['values'] ?? {})) {
+    push('規則 17: data/maxlevel-official.json 的最外層必須是物件，values 必須是以 gameId 為鍵的物件');
+  } else {
+    const values = (rawOfficial['values'] ?? {}) as Record<string, unknown>;
     const byGameId = new Map(withText.map(n => [n.gameId, n]));
 
     // ⚠️ 覆蓋率下限。這個迴圈只走 `official.values` 裡有的項目，所以「把某個節點從夾具裡
@@ -916,17 +946,21 @@ export function validate(svgText: string, opts: ValidateOpts): ValidateResult {
       return n.maxLevel > 1;
     });
     for (const n of needsOfficial) {
-      if (!(n.gameId in (official.values ?? {}))) {
+      if (!(n.gameId in values)) {
         push(`規則 17: 骰子符文 ${n.id}（${n.gameId}）等級上限大於 1，但 maxlevel-official.json 沒有它的官方滿級值——夾具漏了一項就等於單獨關掉這顆節點的檢查`);
       }
     }
 
-    for (const [gameId, expect] of Object.entries(official.values ?? {})) {
+    for (const [gameId, expect] of Object.entries(values)) {
+      if (!isPlainObject(expect) || !Number.isInteger(expect['level']) || typeof expect['value'] !== 'number' || typeof expect['unit'] !== 'string') {
+        push(`規則 17: maxlevel-official.json 的 ${gameId} 必須是 { level: 整數, value: 數字, unit: 字串 }，實際是 ${JSON.stringify(expect)}`);
+        continue;
+      }
       const n = byGameId.get(gameId);
       if (!n) { push(`規則 17: 官方滿級值指向不存在的 gameId ${gameId}`); continue; }
       const level = n.maxLevel;
-      if (level !== expect.level) {
-        push(`規則 17: 節點 ${n.id}（${gameId}）的等級上限 ${level} 與官方資料表的 ${expect.level} 不一致`);
+      if (level !== expect['level']) {
+        push(`規則 17: 節點 ${n.id}（${gameId}）的等級上限 ${level} 與官方資料表的 ${expect['level']} 不一致`);
         continue;
       }
       let parsedGrowth;
@@ -940,14 +974,14 @@ export function validate(svgText: string, opts: ValidateOpts): ValidateResult {
       if (parsedGrowth.dataIssue === 'placeholder') continue;
       const growth = parsedGrowth.growth;
       if (!growth) {
-        push(`規則 17: 節點 ${n.id}（${gameId}）解析不出成長值，但官方資料表寫得出 Lv.${expect.level} 的滿級值 ${expect.value}${expect.unit}——描述八成漏了「(+每級增量)」那一段`);
+        push(`規則 17: 節點 ${n.id}（${gameId}）解析不出成長值，但官方資料表寫得出 Lv.${expect['level']} 的滿級值 ${expect['value']}${expect['unit']}——描述八成漏了「(+每級增量)」那一段`);
         continue;
       }
       const actual = maxLevelValue(growth, level);
-      if (actual !== expect.value) {
-        push(`規則 17: 節點 ${n.id}（${gameId}）推算的 Lv.${level} 滿級值 ${actual} 與官方資料表的 ${expect.value} 不一致（growth: 基礎 ${growth.base}／每級 ${growth.perLevel}）`);
-      } else if (growth.unit !== expect.unit) {
-        push(`規則 17: 節點 ${n.id}（${gameId}）的成長值單位 ${JSON.stringify(growth.unit)} 與官方資料表的 ${JSON.stringify(expect.unit)} 不一致`);
+      if (actual !== expect['value']) {
+        push(`規則 17: 節點 ${n.id}（${gameId}）推算的 Lv.${level} 滿級值 ${actual} 與官方資料表的 ${expect['value']} 不一致（growth: 基礎 ${growth.base}／每級 ${growth.perLevel}）`);
+      } else if (growth.unit !== expect['unit']) {
+        push(`規則 17: 節點 ${n.id}（${gameId}）的成長值單位 ${JSON.stringify(growth.unit)} 與官方資料表的 ${JSON.stringify(expect['unit'])} 不一致`);
       }
     }
   }
@@ -962,9 +996,13 @@ export function validate(svgText: string, opts: ValidateOpts): ValidateResult {
   //    整條前置鏈的成本跟著變，而 diff 摘要看不出有動到資料檔。
   // 2. **`unlockVia` 打錯**（`"quests"`）→ 它仍然 `!== 'cost'`，所以成本照樣被排除，
   //    但 `formatUnlockVia` 查不到對應中文，面板會印出字面的 `undefined`。
-  // 3. **`note` 空字串或超長** → 面板顯示一段空白或被撐爆的 meta 列。
+  // 3. **`note` 空字串或超長** → 面板顯示一段空白或被撐爆的 meta 列；寫成數字或陣列的話
+  //    `escapeHtml()` 對它呼叫 `.replace` 而丟例外，詳情面板整個打不開（`.length` 對陣列照樣有值，
+  //    只驗長度擋不到）。
   const exceptions = opts.unlockExceptions;
-  if (exceptions) {
+  if (exceptions === null) {
+    warn('規則 18: 沒有提供 data/unlock-exceptions.json，解鎖例外表未檢查');
+  } else {
     const nodeIds = new Set(nodes.map(n => n.id));
     const VALID_VIA = ['quest', 'default', 'achievement'];
     const VALID_KEYS = ['unlockVia', 'note', 'unlockPaid', 'bypassPrereq'];
@@ -974,8 +1012,11 @@ export function validate(svgText: string, opts: ValidateOpts): ValidateResult {
       if (!VALID_VIA.includes(entry?.unlockVia ?? '')) {
         push(`規則 18: 節點 ${id} 的 unlockVia ${JSON.stringify(entry?.unlockVia)} 不合法，必須是 ${VALID_VIA.join('／')}`);
       }
-      if (entry?.note !== undefined && (entry.note.length === 0 || entry.note.length > MAX_TEXT_LENGTH)) {
-        push(`規則 18: 節點 ${id} 的 note 長度 ${entry.note.length} 不合法（1..${MAX_TEXT_LENGTH}）`);
+      const note = entry?.note;
+      if (note !== undefined && typeof note !== 'string') {
+        push(`規則 18: 節點 ${id} 的 note ${JSON.stringify(note)} 必須是字串`);
+      } else if (note !== undefined && (note.length === 0 || note.length > MAX_TEXT_LENGTH)) {
+        push(`規則 18: 節點 ${id} 的 note 長度 ${note.length} 不合法（1..${MAX_TEXT_LENGTH}）`);
       }
       // 4. **`unlockPaid`／`bypassPrereq` 寫成非布林**（`"false"`）→ `build-data` 判斷的是
       //    truthiness，非空字串一律為真，於是「我明明寫了 false」變成「已啟用」。
@@ -1025,6 +1066,25 @@ export function validate(svgText: string, opts: ValidateOpts): ValidateResult {
       );
     }
   }
+  // 規則 7(f): 同一張圖被幾顆節點共用時，顯示尺寸必須一致。sprite 的格子尺寸是按引用者的顯示尺寸
+  // 打包的（`build-data` 的 `sizeByHash`），一圖兩種尺寸的話只有一種拿得到對的格子，另一顆會被
+  // 從別的尺寸縮放過去畫——高 DPI 下糊掉或過度縮小，而且沒有任何訊息。
+  const sizesByIcon = new Map<string, Map<string, string[]>>();
+  for (const n of nodes) {
+    // 圖不存在（含 href 寫壞、`icon` 被解析成空字串）是 7(a) 的事：不跳過的話所有壞 href 的節點會擠進
+    // 同一個空名字的桶，多報一條指著不存在的圖的尺寸衝突。
+    if (!iconScan.hashes.has(n.icon)) continue;
+    const bySize = sizesByIcon.get(n.icon) ?? new Map<string, string[]>();
+    const key = `${n.size[0]}x${n.size[1]}`;
+    bySize.set(key, [...(bySize.get(key) ?? []), n.id]);
+    sizesByIcon.set(n.icon, bySize);
+  }
+  for (const [icon, bySize] of sizesByIcon) {
+    if (bySize.size > 1) {
+      const detail = [...bySize].map(([size, ids]) => `${ids.join('、')} 是 ${size}`).join('；');
+      push(`規則 7(f): 圖示 ${icon} 被不同顯示尺寸的節點共用（${detail}），同一張圖只能有一種顯示尺寸`);
+    }
+  }
 
   // 規則 10: 中央樞紐。整組是選用的（正本沒有 g.tree-center 時 parseTree 回傳 null），但只要有，
   // 就必須真的畫得出來：圖檔存在且是有效 PNG、放射線接到真實存在的節點。少了任何一項，站台端
@@ -1059,7 +1119,7 @@ export function validate(svgText: string, opts: ValidateOpts): ValidateResult {
       // 這邊畫歪了或把 data-links 順序調換了，站台完全看不出來：正本與線上版會安靜地長得
       // 不一樣，而這份 SVG 正是貢獻者用來確認自己改了什麼的東西。
       const [ex, ey] = center.linkEnds[i]!;
-      if (Math.abs(ex - n.x) >= 0.5 || Math.abs(ey - n.y) >= 0.5) {
+      if (Math.abs(ex - n.x) >= COORD_TOLERANCE || Math.abs(ey - n.y) >= COORD_TOLERANCE) {
         push(`規則 10: 中央樞紐第 ${i + 1} 條放射線的終點 (${ex}, ${ey}) 沒對上 data-links 指定的節點 ${id} 的中心 (${n.x}, ${n.y})`);
       }
     }
@@ -1080,6 +1140,10 @@ export function validate(svgText: string, opts: ValidateOpts): ValidateResult {
   const at = (x: number, y: number) =>
     nodes.filter(n => Math.abs(n.x - x) < COORD_TOLERANCE && Math.abs(n.y - y) < COORD_TOLERANCE);
   const idEdges: Edge[] = [];
+  // 同一條邊寫兩次（Inkscape 複製貼上沒刪乾淨）每一條各自都對得上，下游也不會壞得很明顯：
+  // `buildAdjacency` 把同一個父節點推兩次，`/sim` 的「缺少前置」就列兩次同一顆，畫布上同一條線
+  // 疊兩次。寫死邊數的測試擋得到，但說不出是哪一條，而且一起改掉數字就過了。
+  const edgeSeen = new Set<string>();
   for (const e of edges) {
     const [a, b] = [at(e.from[0], e.from[1]), at(e.to[0], e.to[1])];
     let ambiguous = false;
@@ -1091,6 +1155,9 @@ export function validate(svgText: string, opts: ValidateOpts): ValidateResult {
     }
     if (ambiguous) continue;
     if (a.length === 0 || b.length === 0) { push(`規則 5: 邊端點未對齊任何節點中心 ${JSON.stringify(e)}`); continue; }
+    const key = `${a[0]!.id}>${b[0]!.id}`;
+    if (edgeSeen.has(key)) { push(`規則 5: 邊 ${a[0]!.id} → ${b[0]!.id} 重複出現`); continue; }
+    edgeSeen.add(key);
     idEdges.push([a[0]!.id, b[0]!.id]);
   }
 
@@ -1359,6 +1426,62 @@ export function validate(svgText: string, opts: ValidateOpts): ValidateResult {
       const clash = unlockGold === null ? undefined : byKeyPair.get(`${node.maxLevel}:${unlockGold}`);
       if (clash !== undefined) {
         warn(`規則 22: 節點 ${id} 同時對得到升級類型 ${clash} 與 special 表；執行期會用 special，但其中一張可能已經過時`);
+      }
+    }
+  }
+
+  // 規則 31：可升級的節點（maxLevel > 1）必須 (a) 查得到逐級升級費用表 (b) 描述解析得出每級成長值。
+  //
+  // 管 maxLevel 的規則原本各有範圍（15 只管 50 級符文、17 只管符文、22 只管付費解鎖的玩家被動／支援），
+  // 剩下的節點——骰子、等級上限不是 50 又不在 special 的符文、預設解鎖卻可升級的被動——把 maxLevel
+  // 寫錯時沒有任何規則說話：面板印「等級上限 5」、`/sim` 卻因為查不到表只讓它停在 Lv.1，兩處說法矛盾。
+  // (a) 用 `levelTableFor()`、(b) 用 `growthIssue()`，都是站台與 build-data 自己用的那一支，不另寫判準。
+  //
+  // ⚠️ 讓路：(a) 不看 special 裡的節點（規則 22 驗它的 maxLevel 與逐級表）與付費解鎖的玩家被動／支援
+  // （規則 22 的 tier 涵蓋率）；升級花費表本身缺席或形狀壞掉時不看符文（規則 15 已經說了）。
+  // (b) 不看符文：規則 17 要求每顆可升級符文都有官方滿級值，解析不出成長值時它的訊息更準。
+  {
+    const rawRuneTable = opts.upgradeCostTable;
+    const runeTable = isPlainObject(rawRuneTable) && isPlainObject(rawRuneTable['appliesTo'])
+      && Array.isArray(rawRuneTable['levels']) && rawRuneTable['levels'].every(isPlainObject)
+      ? rawRuneTable as unknown as UpgradeCostTable
+      : null;
+    const rawSpecial31 = isPlainObject(opts.passiveUpgradeCost) ? opts.passiveUpgradeCost['special'] : undefined;
+    const special31 = new Set(Object.keys(isPlainObject(rawSpecial31) ? rawSpecial31 : {}));
+    for (const n of withText) {
+      if (n.maxLevel <= 1) continue;
+      const problems: string[] = [];
+      const exc = opts.unlockExceptions?.[n.id];
+      const paid = !exc || exc.unlockVia === 'cost' || exc.unlockPaid === true;
+      const shared = n.typeZh === '玩家被動' || n.typeZh === '支援';
+      const tableIsOthers = special31.has(n.id) || (shared && paid) || (n.typeZh === '骰子符文' && runeTable === null);
+      if (!tableIsOthers) {
+        // type 不合法是規則 3、成本寫壞是規則 4 的地盤：兩者都只跳過 (a)，(b) 照查——不然同一顆節點
+        // 的成長值問題要等貢獻者修完前一個錯、下一輪 CI 才說。也不能讓 typeOfZh() 的例外丟出去：
+        // 驗證器丟例外的話前面累積的錯誤全部不見。
+        let costNode = null;
+        try {
+          costNode = {
+            id: n.id, type: typeOfZh(n.typeZh), maxLevel: n.maxLevel, unlockCost: parseCost(n.costRaw).cost,
+            ...(exc ? { unlockVia: exc.unlockVia as UnlockVia } : {}),
+            ...(exc?.unlockPaid === true ? { unlockPaid: true as const } : {}),
+          };
+        } catch { /* 見上 */ }
+        // tiers／special 傳空的：走到這裡的節點不在 special 裡，也不是 tierKeyOf() 收的付費玩家被動／支援，
+        // 兩張表本來就查不到它——查得到的只剩符文表。
+        if (costNode && !levelTableFor(costNode, { note: '', source: '', tiers: {}, special: {} }, runeTable)) {
+          problems.push('查不到逐級升級費用表（`/sim` 只讓它停在 Lv.1）');
+        }
+      }
+      if (n.typeZh !== '骰子符文') {
+        let parsed;
+        try { parsed = parseGrowth(n.description); } catch { parsed = null; }   // 規則 9 的地盤
+        if (parsed && growthIssue(parsed, n.maxLevel) === 'no-growth') {
+          problems.push('描述解析不出每級成長值（少了「(+每級增量)」，面板那行成長值整條不見）');
+        }
+      }
+      if (problems.length > 0) {
+        push(`規則 31: 節點 ${n.id}（${n.name}，${n.typeZh}）的等級上限是 ${n.maxLevel}，但${problems.join('、而且')}——等級上限寫錯的話改回 1`);
       }
     }
   }
@@ -1660,6 +1783,8 @@ export function validate(svgText: string, opts: ValidateOpts): ValidateResult {
   //
   // ⚠️ 祖先關係用既有的 `prerequisiteChain()` 判，不另外寫第二份圖遍歷：兩份實作對
   // 「多重前置」「環」的處理一旦漂開，validate 與站台就會對同一份資料給出不同的前置鏈。
+  // 刻意**不帶 bypass**：客戶端的 NeedNode 列得出只經由可直接領的節點才是祖先的那顆，擋掉它等於
+  // 讓 CI 否決正本資料。站台那邊（`computeSelection()`／`pathTo()`）因此會把練等目標連同它的前置一起併進鏈。
   const rawPrereqRanks = opts.prereqRanks;
   if (rawPrereqRanks === null) {
     warn('規則 26: 沒有提供 data/prereq-ranks.json，前置等級條件未檢查');
@@ -1840,6 +1965,27 @@ export function validate(svgText: string, opts: ValidateOpts): ValidateResult {
       const branches = Object.keys(BRANCH_ZH);
       const at = (id: string) => `規則 28: data/offgame-effects.json 的 ${id}`;
       const finite = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
+      /**
+       * 從符文往上一層一層找，第一層出現的骰子（同層不只一顆時全部回傳）。符文的 scope 必須是這一層
+       * 裡的那顆：只要求「是祖先」的話，指到同一條鏈上更上游的骰子照樣會過，而那正是最容易犯的錯。
+       * `parents` 是規則 6 從整份幾何建出來的，跟站台同一張圖。
+       */
+      const nearestDice = (id: string): string[] => {
+        const seen = new Set([id]);
+        let layer = [id];
+        while (layer.length > 0) {
+          const next: string[] = [];
+          for (const cur of layer) {
+            for (const p of parents.get(cur) ?? []) {
+              if (!seen.has(p)) { seen.add(p); next.push(p); }
+            }
+          }
+          const dice = next.filter(p => byId28.get(p)?.typeZh === '骰子');
+          if (dice.length > 0) return dice.sort();
+          layer = next;
+        }
+        return [];
+      };
 
       for (const n of withText) {
         if ((n.typeZh === '骰子符文' || n.typeZh === '玩家被動') && !(n.id in effects)) {
@@ -1892,6 +2038,18 @@ export function validate(svgText: string, opts: ValidateOpts): ValidateResult {
           }
         } else if (!(scope === 'all' || (typeof scope === 'string' && scope.startsWith('faction:') && branches.includes(scope.slice('faction:'.length))))) {
           push(`${at(id)} 的 scope ${JSON.stringify(scope)} 不合法（all／faction:<分支>／dice:<骰子節點 id>）`);
+          scopeSettled = true;
+        }
+        if (node.typeZh === '骰子符文' && scopeDice !== null) {
+          const nearest = nearestDice(id);
+          if (!nearest.includes(scopeDice)) {
+            push(`${at(id)} 的 scope ${JSON.stringify(scope)} 不是這顆符文最近的骰子祖先（${nearest.length > 0 ? nearest.map(d => `dice:${d}`).join('／') : '找不到任何骰子祖先'}）`);
+          }
+        }
+        // 反方向：玩家被動是共通節點，影響的是全部或一整個系別；`dice:<id>` 的單顆加成是符文的事。放行的話
+        // 從隔壁符文複製貼上的 scope 會把一個被動加成算到一顆無關的骰子上，而上面那條只管符文。
+        if (node.typeZh === '玩家被動' && scopeDice !== null) {
+          push(`${at(id)} 是玩家被動，scope 只能是 all 或 faction:<分支>，不能是 ${JSON.stringify(scope)}（單顆骰子的加成是符文的事）`);
           scopeSettled = true;
         }
         if (node.typeZh === '骰子符文' && scopeDice === null && typeof scope === 'string' && (scope === 'all' || scope.startsWith('faction:'))) {
@@ -1991,7 +2149,8 @@ export function validate(svgText: string, opts: ValidateOpts): ValidateResult {
   // 2. **`icon` 寫一個沒登記的種類** → `eventIcon()` 在建置期丟（那是刻意的），但只有真的建置
   //    才看得到；驗證階段先擋下來，錯誤訊息才指得出是第幾筆第幾列。
   // 3. **`period` 亂填** → 客戶端的活動表裡根本沒有日期（見 `GameEvent.period` 的說明），
-  //    一個猜來的檔期在畫面上跟查證過的日期長得一模一樣。所以它只能是 null 或兩個非空字串。
+  //    一個猜來的檔期在畫面上跟查證過的日期長得一模一樣。所以它只能是 null 或兩個真的日期
+  //    （`YYYY-MM-DD`，可帶 ` HH:MM`），而且開始不晚於結束——`"未知"`、`"?"` 都不是日期。
   // 4. **`version` 寫成 `1.1` 或 `v1.1.2`** → 那個字串會直接印在活動卡片的徽章上。
   //
   // ⚠️ **沒有 `notes` 欄位**（Yuki 2026-09-21 拿掉）：資料出處與上游矛盾的註記是維護者資訊，
@@ -2061,9 +2220,19 @@ export function validate(svgText: string, opts: ValidateOpts): ValidateResult {
         if (!isPlainObject(period)) {
           push(`規則 29(e): ${at}的 period 必須是 null 或 { begin, finish }`);
         } else {
+          const stamps: Record<string, string> = {};
           for (const key of ['begin', 'finish']) {
             const v = period[key];
-            if (typeof v !== 'string' || v === '') push(`規則 29(e): ${at}的 period.${key} 必須是非空字串`);
+            const m = typeof v === 'string' ? /^(\d{4}-\d{2}-\d{2})(?: ([01]\d|2[0-3]):([0-5]\d))?$/.exec(v) : null;
+            if (!m || !isCalendarDate(m[1]!)) {
+              push(`規則 29(e): ${at}的 period.${key} ${JSON.stringify(v)} 必須是 YYYY-MM-DD 或 YYYY-MM-DD HH:MM 的真實日期`);
+              continue;
+            }
+            // 只寫日期的那一端補成當天的頭或尾再比：begin「09-30」＝當天開始、finish「09-30」＝當天結束。
+            stamps[key] = m[2] ? (v as string) : `${m[1]} ${key === 'begin' ? '00:00' : '23:59'}`;
+          }
+          if (stamps['begin'] && stamps['finish'] && stamps['begin'] > stamps['finish']) {
+            push(`規則 29(e): ${at}的 period 開始 ${JSON.stringify(period['begin'])} 晚於結束 ${JSON.stringify(period['finish'])}`);
           }
           for (const key of Object.keys(period)) {
             if (key !== 'begin' && key !== 'finish') push(`規則 29(e): ${at}的 period 有未知欄位 ${JSON.stringify(key)}`);
@@ -2213,9 +2382,9 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
   // 「❌ N 個問題」，一條規則都沒跑。所以讀檔一律走這支，讀不到就變成指得出檔名的錯誤。
   //
   // 「檔案不存在」與「檔案壞掉」刻意分開：`ValidateOpts` 有幾份資料檔本來就備好了一條
-  // 「傳 null ＝沒有這份資料，該規則只警告」的路（upgrade-cost／maxlevel-official／
-  // unlock-exceptions／changelog／board-icons／dice3-icons），CLI 過去走不到它。解析失敗則一律是錯——
-  // 那是「有這份資料，但它壞了」，不是「沒有」。
+  // 「傳 null ＝沒有這份資料，該規則只警告」的路（upgrade-cost／unlock-exceptions／changelog／
+  // board-icons／dice3-icons），CLI 過去走不到它。解析失敗則一律是錯——那是「有這份資料，但它壞了」，
+  // 不是「沒有」。⚠️ maxlevel-official 刻意必填（見 `ValidateOpts.maxLevelOfficial`）。
   const fileErrors: string[] = [];
   const readDataFile = (path: string, optional: boolean): unknown => {
     let text: string;
@@ -2243,10 +2412,10 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
   }
   const opts: ValidateOpts = {
     keywords: (readDataFile('data/keywords.json', false) ?? {}) as Record<string, GlossaryRecord>,
-    upgradeCostTable: readDataFile('data/upgrade-cost.json', true) as UpgradeCostTable | null,
+    upgradeCostTable: readDataFile('data/upgrade-cost.json', true),
     nodeText: readDataFile('data/nodes.json', false),
-    maxLevelOfficial: readDataFile('data/maxlevel-official.json', true) as MaxLevelOfficial | null,
-    unlockExceptions: readDataFile('data/unlock-exceptions.json', true) as Record<string, { unlockVia: string; note?: string; unlockPaid?: unknown; bypassPrereq?: unknown }> | null,
+    maxLevelOfficial: readDataFile('data/maxlevel-official.json', false),
+    unlockExceptions: readDataFile('data/unlock-exceptions.json', true) as Record<string, { unlockVia: string; note?: unknown; unlockPaid?: unknown; bypassPrereq?: unknown }> | null,
     changelog: readDataFile('data/changelog.json', true),
     iconsDir: 'data/icons',
     dataDir: 'data',

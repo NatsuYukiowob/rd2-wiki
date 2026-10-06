@@ -94,6 +94,10 @@ export function addMappedIcon(
 export interface AddRecordIconResult extends AddIconResult {
   /** 這一筆原本的 `icon`；先前沒填過時為 `null`。換圖時舊檔通常就此沒人引用（規則 24(d)／25(d) 會警告，不擋 PR）。 */
   previousHash: string | null;
+  /** 這次改到 `icon` 的所有紀錄 id，依檔案順序：沒有 `sharedIconKey` 時就是指定的那一筆。 */
+  updatedIds: string[];
+  /** 換圖之後，資料檔裡已經沒有任何一筆在用的舊雜湊（這幾個舊檔成了孤兒）。同名兄弟原本指的圖不一定跟指定那筆相同，所以是清單。 */
+  orphanedHashes: string[];
 }
 
 /**
@@ -111,24 +115,41 @@ export interface AddRecordIconResult extends AddIconResult {
 export function addRecordIcon(
   srcPath: string,
   id: string,
-  opts: { iconsDir: string; dataPath: string },
+  opts: {
+    iconsDir: string;
+    dataPath: string;
+    /**
+     * 「這個欄位相同的紀錄共用一張圖」（`data/rift-shop.json` 的同名幾個檔位，規則 27 的 `sharedIconKey`）。
+     * 有設的話同名的兄弟一起換：只換一筆的話規則 27(g) 一定擋下來，工具等於保證產出不合法的狀態。
+     */
+    sharedIconKey?: 'name';
+  },
 ): AddRecordIconResult {
   if (!existsSync(opts.dataPath)) throw new Error(`找不到資料檔: ${opts.dataPath}`);
-  const records: { id?: unknown; icon?: unknown; options?: { id?: unknown; icon?: unknown }[] }[] = JSON.parse(readFileSync(opts.dataPath, 'utf8'));
+  type Rec = { id?: unknown; icon?: unknown; name?: unknown; options?: Rec[] };
+  const records: Rec[] = JSON.parse(readFileSync(opts.dataPath, 'utf8'));
   if (!Array.isArray(records)) throw new Error(`${opts.dataPath} 的最外層不是陣列`);
-  const record = records.flatMap(r => [r, ...(r.options ?? [])]).find(r => r.id === id);
+  const all = records.flatMap(r => [r, ...(r.options ?? [])]);
+  const record = all.find(r => r.id === id);
   // 先找到那一筆再動檔案系統：找不到就失敗時，目錄裡不該留下一張沒人引用的孤兒圖。
   if (!record) throw new Error(`${opts.dataPath} 裡沒有 id 為 ${JSON.stringify(id)} 的紀錄；請先把那一筆的其餘欄位補進資料檔`);
+  // 共用鍵本身沒填（例如照提示先補欄位、還沒填 name 的新紀錄）就不找兄弟：否則 `undefined === undefined`
+  // 會把每一筆同樣沒填的紀錄都當成兄弟一起改掉。
+  const key = opts.sharedIconKey;
+  const shared = key ? record[key] : undefined;
+  const targets = typeof shared === 'string' && shared !== '' ? all.filter(r => r[key!] === shared) : [record];
 
   const result = addIcon(srcPath, opts.iconsDir);
   const previousHash = typeof record.icon === 'string' ? record.icon : null;
-  record.icon = result.hash;
+  const oldHashes = new Set(targets.flatMap(r => (typeof r.icon === 'string' && r.icon !== result.hash ? [r.icon] : [])));
+  for (const r of targets) r.icon = result.hash;
+  const orphanedHashes = [...oldHashes].filter(h => !all.some(r => r.icon === h));
   // 縮排與結尾換行照正本原樣（2 空格 + 換行）。⚠️ **不重新排序**：這兩份檔案的陣列順序
   // 就是畫面上的顯示順序（官方編號序，子選項跟在母條目後面），排一次就是一份看不出改了
   // 哪一筆的整檔 diff。
   writeFileSync(opts.dataPath, `${JSON.stringify(records, null, 2)}\n`);
 
-  return { ...result, previousHash };
+  return { ...result, previousHash, updatedIds: targets.map(r => String(r.id)), orphanedHashes };
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
@@ -146,13 +167,12 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
     // 戰術、Boss 與裂縫效果走同一條分支：三者的資料檔形狀相同（陣列 ＋ 每筆自帶 icon），
     // 差別只有目錄與檔名。分成三段 if 只會讓三邊的提示訊息各自漂移。
     //
-    // ⚠️ 裂縫效果是 **35 張圖對 55 筆**（同名的三個檔位共用一張）：換掉其中一個檔位的圖
-    // 之後，同名的另外兩筆仍然指著舊雜湊——所以底下那句孤兒檔提醒的「若沒有別筆在用」
-    // 對這份檔案是常態而不是例外，看到它先確認同名的兄弟要不要一起換。
+    // ⚠️ 裂縫效果是同名的幾個檔位共用一張圖（規則 27 的 `sharedIconKey: 'name'`），所以它帶同一個
+    // 鍵：換其中一筆的圖時同名兄弟一起換，否則下一步 validate 一定紅在 27(g)。
     const RECORD_KINDS = {
       '--tactic': { label: '戰術', iconsDir: 'data/tactic-icons', dataPath: 'data/tactics.json' },
       '--boss': { label: 'Boss', iconsDir: 'data/boss-icons', dataPath: 'data/boss.json' },
-      '--rift-shop': { label: '裂縫效果', iconsDir: 'data/rift-shop-icons', dataPath: 'data/rift-shop.json' },
+      '--rift-shop': { label: '裂縫效果', iconsDir: 'data/rift-shop-icons', dataPath: 'data/rift-shop.json', sharedIconKey: 'name' },
     } as const;
     // 「對應表是 {節點 id: hash}」的兩條資產路徑走同一條分支，理由同 RECORD_KINDS：
     // 兩段各自的 if 只會讓提示訊息漂移。
@@ -171,10 +191,11 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
       console.log(result.alreadyExists
         ? `${kind.label}圖已存在，未重複寫入：${result.fileName}`
         : `已新增${kind.label}圖：${result.fileName}`);
-      console.log(`已把 ${kind.dataPath} 的 ${id} 指到 ${result.hash}`);
-      if (result.previousHash && result.previousHash !== result.hash) {
-        console.log(`⚠️  ${id} 原本指向 ${result.previousHash}.png；若沒有別筆在用，`
-          + `${kind.iconsDir}/${result.previousHash}.png 就成了孤兒檔（npm run validate 會警告），確認後可以刪掉`);
+      console.log(`已把 ${kind.dataPath} 的 ${result.updatedIds.join('、')} 指到 ${result.hash}`
+        + (result.updatedIds.length > 1 ? '（同名共用一張圖，一起換）' : ''));
+      for (const h of result.orphanedHashes) {
+        console.log(`⚠️  ${h}.png 已經沒有任何一筆在用，`
+          + `${kind.iconsDir}/${h}.png 成了孤兒檔（npm run validate 會警告），確認後可以刪掉`);
       }
     } else if (MAP_KINDS[args[0] as keyof typeof MAP_KINDS]) {
       const map = MAP_KINDS[args[0] as keyof typeof MAP_KINDS]!;

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseGrowth, maxLevelValue, round2 } from '../../src/lib/growth';
+import { growthIssue, parseGrowth, maxLevelValue, round2 } from '../../src/lib/growth';
 
 describe('parseGrowth', () => {
   it('百分比', () => {
@@ -38,6 +38,17 @@ describe('parseGrowth', () => {
   });
   it('括號內外單位不一致視為錯誤', () => {
     expect(() => parseGrowth('增加20%(+4秒)')).toThrow(/單位/);
+  });
+});
+
+describe('growthIssue', () => {
+  it('可升級卻沒有成長值才是 no-growth；等級上限 1 的節點本來就沒有成長值', () => {
+    expect(growthIssue(parseGrowth('攻擊速度增加5%'), 10)).toBe('no-growth');
+    expect(growthIssue(parseGrowth('攻擊速度增加5%'), 1)).toBeNull();
+    expect(growthIssue(parseGrowth('攻擊速度增加5%(+1%)'), 10)).toBeNull();
+  });
+  it('佔位符優先：那是「上游還沒填值」，不是「描述漏了一段」', () => {
+    expect(growthIssue(parseGrowth('攻擊速度增加5%(+{1}%)'), 10)).toBe('placeholder');
   });
 });
 
