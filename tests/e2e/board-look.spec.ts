@@ -1,4 +1,4 @@
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect, type Page } from './fixtures';
 
 /**
  * 骰桌 PR ③（2026-09-23）：/board 換成共用元件。
@@ -24,6 +24,8 @@ test('BL1. /board 頁首是 .page-head、小標是 .sec-title；頁首左緣與�
   await expect(page.locator('h1.page-head')).toHaveCount(1);
   // 三個 .board-h2：隊友的隊伍（預設 hidden）、我的隊伍、骰盤。明細面板的標題是 .detail-h，不算。
   const h2 = await page.locator('.board-h2').count();
+  // 先釘住總數：兩邊都是 0（小標整個被刪掉）時「全部掛上」照樣成立。
+  expect(h2, '.board-h2 的數量').toBe(3);
   expect(await page.locator('.board-h2.sec-title').count(), '.board-h2 沒有全部掛上 .sec-title').toBe(h2);
 
   const left = (sel: string) => page.locator(sel).first().evaluate(el => el.getBoundingClientRect().left);

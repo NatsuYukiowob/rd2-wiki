@@ -2,7 +2,7 @@
 //
 // 這一頁跟 /dice 不同，內容不是拿來被搜尋引擎索引的——它的價值全在互動。所以測試的重心
 // 是「拖曳之後狀態對不對」與「不用滑鼠也能用」，而不是 HTML 裡有沒有字。
-import { test, expect } from '@playwright/test';
+import { test, expect } from './fixtures';
 import { readFileSync } from 'node:fs';
 import { badgeRect, cellRect, imageSize } from '../../src/lib/board-image';
 import { readTree } from '../helpers/read-tree';
@@ -115,7 +115,7 @@ test('B0b. 決策 2／5：骰盤只放組合內的骰子，格子上不提供等
   await page.goto('/board');
   // 骰盤格裡不得出現等級控制項——等級是組合列那一槽的屬性（決策 5）。
   await expect(page.locator('#board-grid .pips-inc, #board-grid .pips-dec, #board-grid .pips-row')).toHaveCount(0);
-  // 骰盤上也不得直接嵌入 41 顆的挑選入口（決策 2：只能放組合內的）。
+  // 骰盤上也不得直接嵌入骰子的挑選入口（決策 2：只能放組合內的）。
   await expect(page.locator('#board-grid .picker-dice')).toHaveCount(0);
 });
 
@@ -144,7 +144,7 @@ test('B0d. 43 顆骰子的挑選圖示都指向純骰子圖，而且每一張都
     expect(src, `${src} 沒有指向 /board 專用的純骰子圖路徑`).toMatch(/^\/assets\/board-icons\/[0-9a-f]{12}\.webp$/);
   }
 
-  // 挑選網格是 max-height: 60vh 的捲動容器，41 張圖大半在可視範圍外，loading="lazy" 只會
+  // 挑選網格是 max-height: 60vh 的捲動容器，大半的圖在可視範圍外，loading="lazy" 只會
   // 載入靠近可視範圍的那幾張——強制全部 eager，純粹是為了讓斷言測得到「檔案真的存在」，
   // 不是在驗「鏡頭外的圖片會不會被瀏覽器延後載入」（那是瀏覽器原生行為，不是這頁的邏輯）。
   await imgs.evaluateAll(els => { for (const el of els) (el as HTMLImageElement).loading = 'eager'; });
@@ -903,7 +903,7 @@ test('B9. 手機寬度下版面不橫向捲，骰盤的 touch-action 是 none', 
   expect(deck.y).toBeGreaterThan(grid.y);
 });
 
-test('B10. 兩個小標與其下方內容區塊一起置中，標題與說明文字維持靠左', { tag: '@mobile' }, async ({ page }) => {
+test('B10. 兩個小標與其下方內容區塊一起置中，標題與說明文字維持靠左', { tag: '@mobile' }, async ({ page, isMobile }) => {
   // 置中量的是各元素自己的框相對 <main> 的左右留白，不是它們「裡面」的東西有沒有置中——
   // 後者只要 justify-content: center 就能造假：元素本身仍貼齊頁面兩側（留白 0），
   // 量出來的數字會騙過「留白相等」這條斷言。
@@ -938,9 +938,13 @@ test('B10. 兩個小標與其下方內容區塊一起置中，標題與說明文
   // #deck-row／#board-grid 底下），所以直接排除這顆，讓 h2s 跟以前一樣只有「我的」兩個。
   const h2s = await page.locator('.board-h2:not(#partner-deck-h)').all();
   const rows = ['#deck-row', '#board-grid'];
+  // 迴圈裡遇到看不見的就跳過——不數一下的話，桌機上小標被刪掉或藏起來時整條測試空轉照樣綠。
+  expect(h2s, '「我的隊伍」「骰盤」兩個小標').toHaveLength(rows.length);
+  let checked = 0;
   for (let i = 0; i < h2s.length; i++) {
     const h2 = h2s[i]!;
     if (!(await h2.isVisible())) continue;
+    checked++;
 
     const h2Box = (await h2.boundingBox())!;
     const h2Gap = gapsFromBox(h2Box);
@@ -957,6 +961,8 @@ test('B10. 兩個小標與其下方內容區塊一起置中，標題與說明文
     const rowCenter = rowBox.x + rowBox.width / 2;
     expect(Math.abs(h2Center - rowCenter), `.board-h2[${i}] 中心 ${h2Center} 與 ${rows[i]} 中心 ${rowCenter} 對不齊`).toBeLessThanOrEqual(2);
   }
+  // 手機（觸控）版面刻意藏起兩個小標，桌機兩個都要真的驗過。
+  if (!isMobile) expect(checked, '桌機上看得見的小標數').toBe(rows.length);
 
   // 靠左的東西應該比置中內容的左邊界更靠近頁面邊緣（除非兩者剛好一樣寬，那種情況也不算錯，
   // 用 toBeLessThanOrEqual 涵蓋）。

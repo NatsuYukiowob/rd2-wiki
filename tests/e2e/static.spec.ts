@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './fixtures';
 
 /**
  * 骰桌 PR ②（2026-09-23）：靜態頁共用元件。

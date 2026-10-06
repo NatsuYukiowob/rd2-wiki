@@ -122,10 +122,10 @@ describe('buildTreeData', () => {
     expect(keys).toEqual([...keys].sort());
   });
 
-  it('41 顆骰子都有覺醒，其他 198 個節點都沒有', () => {
+  it('每顆骰子都有覺醒，其他節點都沒有', () => {
     const withAwakening = data.nodes.filter(n => n.awakening !== undefined);
     expect(withAwakening).toHaveLength(43);
-    expect(withAwakening.every(n => n.type === 'dice')).toBe(true);
+    expect(withAwakening.map(n => n.id)).toEqual(data.nodes.filter(n => n.type === 'dice').map(n => n.id));
     expect(withAwakening.every(n => (n.awakening ?? '').length > 0)).toBe(true);
   });
 
@@ -208,7 +208,7 @@ describe('buildTreeData', () => {
   });
 
   // 傳輸形狀（issue #63）必須無損：解回來要跟 buildTreeData 的輸出逐字元相同，含欄位順序——
-  // diff-summary 用 JSON.stringify 比節點，順序一變就是 241 顆全部「有變動」。
+  // diff-summary 用 JSON.stringify 比節點，順序一變就是全部節點都「有變動」。
   it('encodeTree → decodeTree 無損還原（含欄位順序）', () => {
     const wire = encodeTree(data);
     expect(JSON.stringify(decodeTree(JSON.parse(JSON.stringify(wire))))).toBe(JSON.stringify(data));

@@ -21,7 +21,7 @@
 // （「只有 owned 且 maxLevel>1 才畫牌、牌上文字是當前/上限」），畫面上的等級則改讀側欄的
 // `.sim-level-value`——那是玩家真正看數字的地方。
 import { readFileSync } from 'node:fs';
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect, type Page } from './fixtures';
 import { readTree } from '../helpers/read-tree';
 
 /** `window.__tree` 的形狀（見 src/lib/canvas/debug-api.ts）。 */
@@ -417,7 +417,7 @@ test('S11. 拖曳畫布不算點選', { tag: '@mobile' }, async ({ page }) => {
 test('S13. 每顆節點的圖示中心命中的是它自己，不是隔壁那顆', { tag: '@mobile' }, async ({ page }) => {
   await openSim(page);
   // canvas 版的命中判定是 `hit.ts` 的純幾何（scene 的節點矩形，由後往前找），不再牽涉
-  // 標籤的 pointer-events——但「哪一顆蓋住哪一顆」這件事仍然只有把 241 顆全掃一遍才看得見：
+  // 標籤的 pointer-events——但「哪一顆蓋住哪一顆」這件事仍然只有把全部節點掃一遍才看得見：
   // 只點一顆的話，那一顆恰好沒被蓋到就永遠是綠的。
   //
   // ⚠️ 問的是 `__tree.hitAt()`（畫布自己的命中判定），不是 `elementFromPoint()`——
@@ -571,7 +571,7 @@ test('S16. 差額只列有填的貨幣，全部清空時整塊收起來', async 
 test('S17. 等級滑桿一次拖得完，而且整段拖曳只算一步復原', async ({ page, isMobile }) => {
   // ⚠️ 只在桌機跑：`page.mouse` 驅動不了行動模擬下的原生 `<input type="range">`（實測拖完
   // 停在 Lv.1）——那是 Playwright 對觸控裝置的限制，不是產品的問題。**手機上的觸控拖曳
-  // 只能真機驗**。根因（元素被 innerHTML 換掉）由下面的 S17b 在兩個 project 都守。
+  // 只能真機驗**。根因（元素被 innerHTML 換掉）由下面的 S17b 守（標了 @mobile，兩個 project 都跑）。
   test.skip(isMobile, 'page.mouse 驅動不了行動模擬下的原生 range，手機要真機驗');
   await openSim(page);
   await tapNode(page, TIER_F);   // maxLevel 100
@@ -593,7 +593,7 @@ test('S17. 等級滑桿一次拖得完，而且整段拖曳只算一步復原', 
   await expect(page.locator('.sim-level-value')).toHaveText('Lv.1 / 100');
 });
 
-test('S17b. 連續調整等級不會把滑桿元素換掉（拖曳斷掉的根因）', async ({ page }) => {
+test('S17b. 連續調整等級不會把滑桿元素換掉（拖曳斷掉的根因）', { tag: '@mobile' }, async ({ page }) => {
   await openSim(page);
   await tapNode(page, TIER_F);
   const r = await page.evaluate(() => {

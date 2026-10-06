@@ -1,4 +1,4 @@
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect, type Page } from './fixtures';
 
 /**
  * 骰桌 PR ④（2026-09-23）：/tree、/sim 畫布周邊換成共用元件。

@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync, readFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { writeFileSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { tmpDir } from '../helpers/tmp';
 
 /**
  * 這一檔測的是 `tools/normalize-svg.ts` 的 **CLI 區塊**，不是 `normalizeSvg()` 本身。
@@ -31,7 +31,7 @@ describe('normalize CLI', () => {
   // 沒事，但拿這支正規化任何「含標籤、又不在 repo 根目錄」的 SVG 就會噴 ENOENT 堆疊，
   // 而且是在破壞性寫檔**之後**才噴。程式碼註解當時還寫著「那些情境不該爆掉」。
   it('SVG 不在 repo 根目錄、旁邊也沒有 nodes.json 時，照常正規化並說明略過比對', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'rd2-norm-'));
+    const dir = tmpDir('rd2-norm-');
     const file = join(dir, 'f.svg');
     writeFileSync(file, `<svg xmlns="http://www.w3.org/2000/svg">${NODE('1001', '火骰子')}</svg>`);
 
@@ -46,7 +46,7 @@ describe('normalize CLI', () => {
   // `<text>` 已經被刪掉寫回去了，於是 exit 0、正本與 HEAD 逐位元組相同，貢獻者在 GUI 裡
   // 改的字無聲消失，本機與 CI 全綠。現在漂移時一個位元組都不寫，同一個錯誤跑幾次報幾次。
   it('標籤與 nodes.json 不一致時：報錯、不寫檔，而且再跑一次還是同一個錯', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'rd2-norm-'));
+    const dir = tmpDir('rd2-norm-');
     const file = join(dir, 'f.svg');
     const src = `<svg xmlns="http://www.w3.org/2000/svg">${NODE('1001', '火骰子改過')}</svg>`;
     writeFileSync(file, src);
@@ -63,7 +63,7 @@ describe('normalize CLI', () => {
   });
 
   it('標籤與 nodes.json 一致時（預覽檔存回正本的正常動線）：刪掉標籤、正常寫檔', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'rd2-norm-'));
+    const dir = tmpDir('rd2-norm-');
     const file = join(dir, 'f.svg');
     writeFileSync(file, `<svg xmlns="http://www.w3.org/2000/svg">${NODE('1001', '火骰子')}</svg>`);
     writeFileSync(join(dir, 'nodes.json'), JSON.stringify({ '1001': { label: '火骰子' } }));

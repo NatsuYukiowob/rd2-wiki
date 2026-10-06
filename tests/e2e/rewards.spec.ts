@@ -1,4 +1,4 @@
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect, type Page } from './fixtures';
 import { readFileSync } from 'node:fs';
 import { modeRewardTotals } from '../../src/lib/rewards';
 import type { RewardCatalog } from '../../src/lib/types';
