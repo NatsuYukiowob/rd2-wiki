@@ -1071,6 +1071,9 @@ export function validate(svgText: string, opts: ValidateOpts): ValidateResult {
   // 從別的尺寸縮放過去畫——高 DPI 下糊掉或過度縮小，而且沒有任何訊息。
   const sizesByIcon = new Map<string, Map<string, string[]>>();
   for (const n of nodes) {
+    // 圖不存在（含 href 寫壞、`icon` 被解析成空字串）是 7(a) 的事：不跳過的話所有壞 href 的節點會擠進
+    // 同一個空名字的桶，多報一條指著不存在的圖的尺寸衝突。
+    if (!iconScan.hashes.has(n.icon)) continue;
     const bySize = sizesByIcon.get(n.icon) ?? new Map<string, string[]>();
     const key = `${n.size[0]}x${n.size[1]}`;
     bySize.set(key, [...(bySize.get(key) ?? []), n.id]);
@@ -1453,16 +1456,20 @@ export function validate(svgText: string, opts: ValidateOpts): ValidateResult {
       const shared = n.typeZh === '玩家被動' || n.typeZh === '支援';
       const tableIsOthers = special31.has(n.id) || (shared && paid) || (n.typeZh === '骰子符文' && runeTable === null);
       if (!tableIsOthers) {
-        let unlockCost;
-        try { unlockCost = parseCost(n.costRaw).cost; } catch { continue; }   // 規則 4 的地盤
-        const costNode = {
-          id: n.id, type: typeOfZh(n.typeZh), maxLevel: n.maxLevel, unlockCost,
-          ...(exc ? { unlockVia: exc.unlockVia as UnlockVia } : {}),
-          ...(exc?.unlockPaid === true ? { unlockPaid: true as const } : {}),
-        };
+        // type 不合法是規則 3、成本寫壞是規則 4 的地盤：兩者都只跳過 (a)，(b) 照查——不然同一顆節點
+        // 的成長值問題要等貢獻者修完前一個錯、下一輪 CI 才說。也不能讓 typeOfZh() 的例外丟出去：
+        // 驗證器丟例外的話前面累積的錯誤全部不見。
+        let costNode = null;
+        try {
+          costNode = {
+            id: n.id, type: typeOfZh(n.typeZh), maxLevel: n.maxLevel, unlockCost: parseCost(n.costRaw).cost,
+            ...(exc ? { unlockVia: exc.unlockVia as UnlockVia } : {}),
+            ...(exc?.unlockPaid === true ? { unlockPaid: true as const } : {}),
+          };
+        } catch { /* 見上 */ }
         // tiers／special 傳空的：走到這裡的節點不在 special 裡，也不是 tierKeyOf() 收的付費玩家被動／支援，
         // 兩張表本來就查不到它——查得到的只剩符文表。
-        if (!levelTableFor(costNode, { note: '', source: '', tiers: {}, special: {} }, runeTable)) {
+        if (costNode && !levelTableFor(costNode, { note: '', source: '', tiers: {}, special: {} }, runeTable)) {
           problems.push('查不到逐級升級費用表（`/sim` 只讓它停在 Lv.1）');
         }
       }
@@ -2038,6 +2045,12 @@ export function validate(svgText: string, opts: ValidateOpts): ValidateResult {
           if (!nearest.includes(scopeDice)) {
             push(`${at(id)} 的 scope ${JSON.stringify(scope)} 不是這顆符文最近的骰子祖先（${nearest.length > 0 ? nearest.map(d => `dice:${d}`).join('／') : '找不到任何骰子祖先'}）`);
           }
+        }
+        // 反方向：玩家被動是共通節點，影響的是全部或一整個系別；`dice:<id>` 的單顆加成是符文的事。放行的話
+        // 從隔壁符文複製貼上的 scope 會把一個被動加成算到一顆無關的骰子上，而上面那條只管符文。
+        if (node.typeZh === '玩家被動' && scopeDice !== null) {
+          push(`${at(id)} 是玩家被動，scope 只能是 all 或 faction:<分支>，不能是 ${JSON.stringify(scope)}（單顆骰子的加成是符文的事）`);
+          scopeSettled = true;
         }
         if (node.typeZh === '骰子符文' && scopeDice === null && typeof scope === 'string' && (scope === 'all' || scope.startsWith('faction:'))) {
           push(`${at(id)} 是骰子符文，scope 必須是 dice:<骰子節點 id>`);

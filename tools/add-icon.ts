@@ -96,8 +96,8 @@ export interface AddRecordIconResult extends AddIconResult {
   previousHash: string | null;
   /** 這次改到 `icon` 的所有紀錄 id，依檔案順序：沒有 `sharedIconKey` 時就是指定的那一筆。 */
   updatedIds: string[];
-  /** 換圖之後，資料檔裡已經沒有任何一筆指著 `previousHash`（舊檔成了孤兒）。 */
-  previousOrphaned: boolean;
+  /** 換圖之後，資料檔裡已經沒有任何一筆在用的舊雜湊（這幾個舊檔成了孤兒）。同名兄弟原本指的圖不一定跟指定那筆相同，所以是清單。 */
+  orphanedHashes: string[];
 }
 
 /**
@@ -133,19 +133,23 @@ export function addRecordIcon(
   const record = all.find(r => r.id === id);
   // 先找到那一筆再動檔案系統：找不到就失敗時，目錄裡不該留下一張沒人引用的孤兒圖。
   if (!record) throw new Error(`${opts.dataPath} 裡沒有 id 為 ${JSON.stringify(id)} 的紀錄；請先把那一筆的其餘欄位補進資料檔`);
+  // 共用鍵本身沒填（例如照提示先補欄位、還沒填 name 的新紀錄）就不找兄弟：否則 `undefined === undefined`
+  // 會把每一筆同樣沒填的紀錄都當成兄弟一起改掉。
   const key = opts.sharedIconKey;
-  const targets = key ? all.filter(r => r[key] === record[key]) : [record];
+  const shared = key ? record[key] : undefined;
+  const targets = typeof shared === 'string' && shared !== '' ? all.filter(r => r[key!] === shared) : [record];
 
   const result = addIcon(srcPath, opts.iconsDir);
   const previousHash = typeof record.icon === 'string' ? record.icon : null;
+  const oldHashes = new Set(targets.flatMap(r => (typeof r.icon === 'string' && r.icon !== result.hash ? [r.icon] : [])));
   for (const r of targets) r.icon = result.hash;
-  const previousOrphaned = previousHash !== null && previousHash !== result.hash && !all.some(r => r.icon === previousHash);
+  const orphanedHashes = [...oldHashes].filter(h => !all.some(r => r.icon === h));
   // 縮排與結尾換行照正本原樣（2 空格 + 換行）。⚠️ **不重新排序**：這兩份檔案的陣列順序
   // 就是畫面上的顯示順序（官方編號序，子選項跟在母條目後面），排一次就是一份看不出改了
   // 哪一筆的整檔 diff。
   writeFileSync(opts.dataPath, `${JSON.stringify(records, null, 2)}\n`);
 
-  return { ...result, previousHash, updatedIds: targets.map(r => String(r.id)), previousOrphaned };
+  return { ...result, previousHash, updatedIds: targets.map(r => String(r.id)), orphanedHashes };
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
@@ -189,9 +193,9 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
         : `已新增${kind.label}圖：${result.fileName}`);
       console.log(`已把 ${kind.dataPath} 的 ${result.updatedIds.join('、')} 指到 ${result.hash}`
         + (result.updatedIds.length > 1 ? '（同名共用一張圖，一起換）' : ''));
-      if (result.previousOrphaned) {
-        console.log(`⚠️  ${result.previousHash}.png 已經沒有任何一筆在用，`
-          + `${kind.iconsDir}/${result.previousHash}.png 成了孤兒檔（npm run validate 會警告），確認後可以刪掉`);
+      for (const h of result.orphanedHashes) {
+        console.log(`⚠️  ${h}.png 已經沒有任何一筆在用，`
+          + `${kind.iconsDir}/${h}.png 成了孤兒檔（npm run validate 會警告），確認後可以刪掉`);
       }
     } else if (MAP_KINDS[args[0] as keyof typeof MAP_KINDS]) {
       const map = MAP_KINDS[args[0] as keyof typeof MAP_KINDS]!;

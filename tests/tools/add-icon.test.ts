@@ -267,14 +267,36 @@ describe('addRecordIcon', () => {
       expect(data.map(r => r.icon)).toEqual([result.hash, result.hash, 'bbbbbbbbbbbb', result.hash]);
       expect(result.updatedIds).toEqual(['72', '73', '74']);
       expect(result.previousHash).toBe('aaaaaaaaaaaa');
-      expect(result.previousOrphaned).toBe(true);
+      expect(result.orphanedHashes).toEqual(['aaaaaaaaaaaa']);
+    });
+
+    it('兄弟原本指著不同的舊圖時，每一張變成孤兒的舊圖都要回報', () => {
+      // 只看指定那一筆的舊雜湊的話，已經漂開的兄弟那張舊圖會安靜地變成孤兒。
+      const { src, iconsDir, dataPath } = setupShop();
+      const data = JSON.parse(readFileSync(dataPath, 'utf8')) as { id: string; icon: string }[];
+      data[0]!.icon = 'cccccccccccc';
+      writeFileSync(dataPath, `${JSON.stringify(data, null, 2)}\n`);
+      const result = addRecordIcon(src, '73', { iconsDir, dataPath, sharedIconKey: 'name' });
+      expect([...result.orphanedHashes].sort()).toEqual(['aaaaaaaaaaaa', 'cccccccccccc']);
+    });
+
+    it('指定那筆還沒填共用鍵時只換它自己，不把其他同樣沒填的紀錄當成兄弟', () => {
+      // 找不到 id 的提示要貢獻者「先把那一筆的其餘欄位補進資料檔」——補到一半、還沒有 name 的紀錄很常見。
+      const { src, iconsDir, dataPath } = setupShop();
+      const data = JSON.parse(readFileSync(dataPath, 'utf8')) as Record<string, unknown>[];
+      data.push({ id: '90' }, { id: '91', icon: 'dddddddddddd' });
+      writeFileSync(dataPath, `${JSON.stringify(data, null, 2)}\n`);
+      const result = addRecordIcon(src, '90', { iconsDir, dataPath, sharedIconKey: 'name' });
+      expect(result.updatedIds).toEqual(['90']);
+      const after = JSON.parse(readFileSync(dataPath, 'utf8')) as { id: string; icon?: string }[];
+      expect(after.find(r => r.id === '91')!.icon).toBe('dddddddddddd');
     });
 
     it('沒帶 sharedIconKey 時只換那一筆，舊圖仍有人用就不算孤兒', () => {
       const { src, iconsDir, dataPath } = setupShop();
       const result = addRecordIcon(src, '73', { iconsDir, dataPath });
       expect(result.updatedIds).toEqual(['73']);
-      expect(result.previousOrphaned).toBe(false);
+      expect(result.orphanedHashes).toEqual([]);
     });
   });
 });

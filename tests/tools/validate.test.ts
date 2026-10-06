@@ -223,6 +223,13 @@ describe('validate', () => {
     expect(validate(broken, opts).errors.some(e => /規則 7\(f\): 圖示 [0-9a-f]{12} 被不同顯示尺寸的節點共用（.*1115 是 34x34/.test(e))).toBe(true);
     // 真實資料裡就有同尺寸共用的一組（黃金樣本零錯誤），不需要另造。
     expect(validate(svg, opts).errors.filter(e => /規則 7\(f\)/.test(e))).toEqual([]);
+    // href 寫壞的節點 icon 是空字串：那是 7(a) 的事，不能擠進同一個空名字的桶多報一條尺寸衝突。
+    const badHref = svg
+      .replace(/(data-id="1002">[^]*?<image href=")icons\//, '$1img/')
+      .replace(/(data-id="1115">[^]*?<image href=")icons\//, '$1img/');
+    const r = validate(badHref, opts).errors;
+    expect(r.filter(e => /規則 7\(a\)/.test(e))).toHaveLength(2);
+    expect(r.filter(e => /規則 7\(f\)/.test(e))).toEqual([]);
   });
 
   it('規則 5：邊少了 marker-end 會被擋', () => {
@@ -560,6 +567,18 @@ describe('validate', () => {
       expect(errs.some(e => new RegExp(`規則 31: 節點 ${id}（.*查不到逐級升級費用表`).test(e))).toBe(true);
     });
 
+    it('type 寫錯（規則 3 的地盤）時不丟例外；成本寫壞（規則 4 的地盤）時成長值照查', () => {
+      // 以前 typeOfZh() 的例外直接丟出規則 31，整個驗證器只剩一段 stack trace。
+      for (const [id, type] of [['1101', '被動'], ['1201', '符文']] as const) {
+        const run = () => validate(svg, patch({ [id]: { ...nodeText[id], type } }));
+        expect(run).not.toThrow();
+        expect(run().errors.some(e => new RegExp(`規則 3: 節點 ${id} 未知的 type`).test(e))).toBe(true);
+      }
+      // 成本壞掉以前會讓整顆節點跳過，(b) 要等下一輪 CI 才說。
+      const errs = only31(patch({ '1003': { ...nodeText['1003'], maxLevel: 5, cost: '免費' } }));
+      expect(errs.some(e => /規則 31: 節點 1003（.*描述解析不出每級成長值/.test(e))).toBe(true);
+    });
+
     it('讓路：升級花費表缺席時不替每顆符文再報一次（規則 15 已經警告），符文的成長值是規則 17 的事', () => {
       expect(only31({ ...opts, upgradeCostTable: null })).toEqual([]);
       const rune = Object.entries(nodeText).find(([, r]) => r['type'] === '骰子符文' && (r['maxLevel'] as number) > 1 && /\(\+/.test(String(r['description'])))!;
@@ -752,6 +771,14 @@ describe('validate', () => {
     expect(run('dice:1003')).toEqual([]);   // 真實資料的值
     expect(run('dice:2001').some(e => /1203 的 scope "dice:2001" 不是這顆符文最近的骰子祖先（dice:1003）/.test(e))).toBe(true);
     expect(run('dice:1001').some(e => /1203 的 scope "dice:1001" 不是這顆符文最近的骰子祖先（dice:1003）/.test(e))).toBe(true);
+  });
+
+  it('規則 28：玩家被動的 scope 寫成 dice:<id> 會被擋（反方向：單顆骰子的加成只有符文有）', () => {
+    const o = structuredClone(offgameEffects) as { effects: Record<string, Record<string, unknown>> };
+    const pid = Object.keys(o.effects).find(id => nodeText[id]!['type'] === '玩家被動')!;
+    o.effects[pid]!['scope'] = 'dice:3001';
+    expect(validate(svg, { ...opts, offgameEffects: o }).errors
+      .some(e => new RegExp(`規則 28: .*${pid} 是玩家被動，scope 只能是 all 或 faction`).test(e))).toBe(true);
   });
 
   it('規則 16：管理 ID 重複／格式錯／漏填，與細分類放錯位置，都會被擋', () => {

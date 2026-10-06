@@ -154,6 +154,17 @@ describe('computeSelection', () => {
     expect(sel.bypassed).toBe([...full].filter(id => !sel.chain.has(id)).length);
   });
 
+  // 可直接領的節點身上的練等條件不算：它的前置整條不必走，`/sim` 對已持有／勾選的它也不讀那些條件。
+  it('可直接領的節點身上掛練等條件時不展開、也不計費（合成樣本）', () => {
+    const injected = structuredClone(data);
+    injected.nodes.find(n => n.id === '5008')!.prereqRanks = { '5009': 2 };
+    const plain = computeSelection('5105', data, tables);
+    const sel = computeSelection('5105', injected, tables);
+    expect([...sel.chain].sort()).toEqual([...plain.chain].sort());
+    expect(sel.prereqRanks).toEqual([]);
+    expect(sel.totalCost).toEqual(plain.totalCost);
+  });
+
   // 查不到費用表時要回 null 讓面板寫「成本未確認」，**不可以安靜地當 0**
   //（同 cumulativeUpgradeCost() 回 null 的理由）。
   it('查不到升級費用表時該筆成本是 null，不是 0', () => {
@@ -189,6 +200,12 @@ describe('/tree 的前置鏈與 /sim 的一鍵點亮一致', () => {
   it('練等目標只經由可直接領的節點才是祖先時（合成樣本）也一致', () => {
     const injected = structuredClone(data);
     injected.nodes.find(n => n.id === '5105')!.prereqRanks = { '5109': 2 };
+    expect(check(injected)).toEqual([]);
+  });
+
+  it('練等條件掛在可直接領的節點身上時（合成樣本）也一致', () => {
+    const injected = structuredClone(data);
+    injected.nodes.find(n => n.id === '5008')!.prereqRanks = { '5009': 2 };
     expect(check(injected)).toEqual([]);
   });
 });

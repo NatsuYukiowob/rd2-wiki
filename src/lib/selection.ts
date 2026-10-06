@@ -77,6 +77,15 @@ export interface Selection {
 }
 
 /**
+ * 鏈上哪些節點的練等條件算數：**可直接領的節點（`bypassPrereq`）身上的不算**。它的骰子樹前置整條
+ * 不必走（`prerequisiteChain()` 停在它），掛在它身上的「先把某祖先練到 Lv.N」同樣不適用——`/sim` 的
+ * `pathTo()` 對已持有或勾選的它也不會讀那些條件，算進來的話兩頁又是兩個總價。
+ */
+function rankHolders(chain: ReadonlySet<string>, bypass: ReadonlySet<string>): string[] {
+  return [...chain].filter(x => !bypass.has(x));
+}
+
+/**
  * 前置鏈，再把鏈上練等條件指名的祖先連同它們的前置鏈併進來，反覆到沒有新節點為止。
  *
  * ⚠️ 練等目標**不一定在剪過 bypass 的鏈上**：規則 26 核可它用的是不含 bypass 的祖先集合，所以
@@ -93,7 +102,7 @@ function chainWithRankTargets(
 ): Set<string> {
   const chain = prerequisiteChain(id, parents, bypass);
   for (;;) {
-    const missing = [...requiredPrereqRanks(chain, byId).keys()].filter(p => !chain.has(p));
+    const missing = [...requiredPrereqRanks(rankHolders(chain, bypass), byId).keys()].filter(p => !chain.has(p));
     if (missing.length === 0) return chain;
     for (const p of missing) for (const x of prerequisiteChain(p, parents, bypass)) chain.add(x);
   }
@@ -113,16 +122,15 @@ export function computeSelection(id: string, data: TreeData, tables: PassiveUpgr
   const bypass = new Set(data.nodes.filter(n => n.bypassPrereq).map(n => n.id));
   const chain = chainWithRankTargets(id, parents, bypass, byId);
   const { cost, skipped } = sumUnlockCost(chain, byId);
-  // 「被跳掉幾個」用兩次遍歷的集合差算，而不是在遍歷裡順便數：同一個祖先可能從兩條路徑走到，
-  // 邊走邊數會重複計算。另一次遍歷也走 chainWithRankTargets()（只是不跳過任何節點），兩邊對
-  // 練等目標的展開才一致——否則併進來的那一段會被算成「已跳過」。
-  const full = bypass.size > 0 ? chainWithRankTargets(id, parents, new Set(), byId) : chain;
-  const bypassed = [...full].filter(x => !chain.has(x)).length;
+  // 「被跳掉幾個」＝完整祖先集合裡不在鏈上的那些，用集合差算而不是在遍歷裡順便數：同一個祖先
+  // 可能從兩條路徑走到，邊走邊數會重複計算。練等目標併進來的那一段不必另外處理：規則 26 保證
+  // 練等目標是持有條件那顆的祖先，所以它連同前置都在完整祖先集合裡，集合差自然不會把它算成「已跳過」。
+  const bypassed = bypass.size > 0 ? [...prerequisiteChain(id, parents)].filter(x => !chain.has(x)).length : 0;
   const bypassNodes = [...chain].filter(x => bypass.has(x)).length;
 
   // 必要練等。⚠️ 掃的是整條鏈而不是選到的那一顆，見 requiredPrereqRanks() 的說明。
   let prereqRankCost: Cost = zeroCost();
-  const prereqRanks: PrereqRankCost[] = [...requiredPrereqRanks(chain, byId)]
+  const prereqRanks: PrereqRankCost[] = [...requiredPrereqRanks(rankHolders(chain, bypass), byId)]
     .sort(([a], [b]) => a.localeCompare(b))
     .flatMap(([prereqId, rank]) => {
       const node = byId.get(prereqId);
