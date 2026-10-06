@@ -369,7 +369,7 @@ npm run compare -- <beforeURL> <afterURL>  # computed-style 逐元素比對，�
 ## 工具與 CLI
 
 - **CLI entry guard 一律 `import.meta.url === pathToFileURL(process.argv[1] ?? '').href`**（`tests/tools/entry-guard.test.ts` 掃 `tools/*.ts`）。
-- **`String.replace` 回傳值沒變不代表失敗、變了也不代表成功**：寫回正本要在 callback 設旗標，用 `render-nodes.ts` 的 `mustReplace()`。
+- **`String.replace` 回傳值沒變不代表失敗、變了也不代表成功**：寫回正本要在 callback 設旗標，用 `tools/lib/render-plan.ts` 的 `mustReplace()`。
 - Playwright 的 `omitBackground` 對內容自己畫的背景無效，截圖工具要把背景 `<rect>` 一併隱藏；驗收量 alpha 通道分佈。
 - **Astro 頁面 import 不到 `tools/` 的模組**（build 與 typecheck 都過，渲染時才 `is not defined`）→ 共用純函式放 `src/lib/`，tools 反過來 import。
 - `split-svg.ts`／`render-nodes.ts` 的來源檔一律由參數傳入，**不給預設路徑**。

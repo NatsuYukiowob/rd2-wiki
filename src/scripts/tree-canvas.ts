@@ -24,6 +24,7 @@ import { renderDetail, nodeViewHtml, termViewHtml, awakeningViewHtml } from '../
 import { matchesFilter, stateToQueryString, queryStringToState, isTypingTarget } from '../lib/filter.js';
 import type { Branch, NodeType, PassiveUpgradeCost, TreeData, TreeNode } from '../lib/types.js';
 import { updateNavHeight } from '../lib/nav-height.js';
+import { NARROW_QUERY } from '../lib/breakpoints.js';
 
 // tree.json 是建置期由 tools/build-data.ts 產生、結構保證符合 TreeData；
 // 但 TS 對 JSON 匯入的型別推論會把 tuple（如 viewBox、size）寬鬆推成 number[]，
@@ -130,8 +131,6 @@ let sidePickedFor: string | null = null;
 // 置中平移期間把卡片**釘在終點位置**，不讓它跟著節點跑（見 centerOnSelected()）。
 let panelPinned = false;
 
-/** 手機版斷點。要跟 src/pages/tree.astro 的媒體查詢保持一致，兩邊改動時一起改。 */
-const NARROW_QUERY = '(max-width: 720px)';
 // 只用於「載入當下要不要走手機版初始視角」這種一次性決定；跟著視窗變化的判斷請當場再問一次
 // matchMedia（見 positionPanel()）。
 // 故意不直接寫 `matchMedia(...)`：這支腳本的測試環境（linkedom）不提供 window.matchMedia，
@@ -979,7 +978,7 @@ const filtersToggle = document.getElementById('filters-toggle');
  * 是工具列的一部分、會一直開著——那裡如果也綁「點外面就關」，使用者每次平移畫布都會把自己
  * 的篩選面板關掉。斷點跟 tree.astro 的手機媒體查詢同一個 720px。
  */
-const drawerQuery = typeof matchMedia === 'function' ? matchMedia('(max-width: 720px)') : null;
+const drawerQuery = typeof matchMedia === 'function' ? matchMedia(NARROW_QUERY) : null;
 function isDrawerLayout(): boolean {
   return drawerQuery?.matches ?? false;
 }

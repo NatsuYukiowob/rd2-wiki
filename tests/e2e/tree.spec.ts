@@ -419,6 +419,30 @@ test('B. 縮放錨點跟手：滾輪縮放後，節點維持在同一螢幕座�
   expect(r1.width, '滾輪應該真的把畫面放大了').toBeGreaterThan(r0.width * 1.2);
 });
 
+
+test('B2. 雙指縮放放開一指，剩下那指接著拖得動（真觸控，含瀏覽器補發的 lostpointercapture）', { tag: '@mobile' }, async ({ page, isMobile }) => {
+  test.skip(!isMobile, '要真觸控');
+  await page.goto('/tree');
+  await waitTree(page);
+  const box = (await page.locator('#canvas-host').boundingBox())!;
+  const cx = box.x + box.width / 2, cy = box.y + box.height / 2;
+  const client = await page.context().newCDPSession(page);
+  const touch = (type: 'touchStart' | 'touchMove' | 'touchEnd', pts: { x: number; y: number; id: number }[]) =>
+    client.send('Input.dispatchTouchEvent', { type, touchPoints: pts });
+  const a = { x: cx - 60, y: cy, id: 0 }, b = { x: cx + 60, y: cy, id: 1 };
+  await touch('touchStart', [a]);
+  await touch('touchStart', [a, b]);
+  await touch('touchEnd', [a]);   // ⚠️ CDP 要放開單一指得用 touchEnd 帶那一點；touchMove 少帶一點不會放開
+  const before = (await page.evaluate(() => window.__tree.nodeScreenRect('1001')))!;
+  for (let i = 1; i <= 7; i++) await touch('touchMove', [{ ...b, x: b.x + 10 * i, y: b.y + 8 * i }]);
+  // pointermove 跟著 rAF 對齊送出：最後一步要等抬起（pointerup 之前一定先送完）才量得到。
+  await touch('touchEnd', []);
+  const after = (await page.evaluate(() => window.__tree.nodeScreenRect('1001')))!;
+  expect(after.left - before.left, '剩下那指往右拖 70px，節點要跟著平移').toBeCloseTo(70, 0);
+  expect(after.top - before.top).toBeCloseTo(56, 0);
+  // 從縮放延續過來的拖曳，抬起時不算點選
+  expect((await page.evaluate(() => window.__tree.state())).selected).toBeNull();
+});
 test('D. 拖曳畫布放開在空白處，選取不會被誤觸清除', { tag: '@mobile' }, async ({ page }) => {
   await page.goto('/tree');
   await waitTree(page);

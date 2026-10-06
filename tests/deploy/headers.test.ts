@@ -42,6 +42,16 @@ function issues(text: string): string[] {
   // preload 進了瀏覽器內建清單幾乎撤不回來，要加得先改這條測試並寫下理由。
   if (/preload|includeSubDomains/i.test(hsts)) out.push(`HSTS 不准帶 preload／includeSubDomains：${hsts}`);
   if (all('x-frame-options') !== 'DENY') out.push(`X-Frame-Options 必須是 DENY：${all('x-frame-options')}`);
+  // immutable 只給檔名帶「產物雜湊」的 /_astro/*；固定檔名（sprite.webp、字型、favicon）或來源雜湊命名的
+  // public/assets/ 圖示一旦放了，內容換掉時使用者會卡在舊檔一整年。
+  for (const l of lines.filter(l => l.name === 'cache-control' && /immutable/.test(l.value ?? ''))) {
+    if (l.pattern !== '/_astro/*') out.push(`immutable 只能給 /_astro/*：${l.pattern}`);
+  }
+  // 只能一行：同一個網址樣式寫兩次 Cache-Control，Cloudflare 會用逗號併成一串互相矛盾的值。
+  const astro = lines.filter(l => l.name === 'cache-control' && ('/_astro/*' === l.pattern || l.pattern === '/*'));
+  if (astro.length !== 1 || astro[0]!.pattern !== '/_astro/*' || !/immutable/.test(astro[0]!.value ?? '')) {
+    out.push(`/_astro/* 要有、而且只能有一行 immutable 長快取：${JSON.stringify(astro)}`);
+  }
   return out;
 }
 
@@ -51,7 +61,8 @@ describe('public/_headers', () => {
   });
 
   describe('檢查本身', () => {
-    const base = '/*\n  Strict-Transport-Security: max-age=31536000\n  X-Frame-Options: DENY\n';
+    const base = '/*\n  Strict-Transport-Security: max-age=31536000\n  X-Frame-Options: DENY\n'
+      + '/_astro/*\n  Cache-Control: public, max-age=31536000, immutable\n';
     it('合法：同一個 /* 分兩段寫、另加別的標頭', () => {
       expect(issues(`${base}/*\n  Referrer-Policy: no-referrer\n`)).toEqual([]);
     });
@@ -60,6 +71,12 @@ describe('public/_headers', () => {
     });
     it('`! X-Frame-Options` 拿掉標頭', () => {
       expect(issues(`${base}/embed/*\n  ! X-Frame-Options\n`).join()).toMatch(/x-frame-options 必須只在/);
+    });
+    it('/_astro/* 再補一段 Cache-Control（合併後互相矛盾）', () => {
+      expect(issues(`${base}/_astro/*\n  Cache-Control: no-cache\n`).join()).toMatch(/只能有一行 immutable/);
+    });
+    it('immutable 放到 /_astro/* 以外（固定檔名會卡舊檔一年）', () => {
+      expect(issues(`${base}/assets/*\n  Cache-Control: public, max-age=31536000, immutable\n`).join()).toMatch(/immutable 只能給/);
     });
     it('看不懂的行直接丟錯，不安靜跳過', () => {
       expect(() => issues(`${base}  這不是標頭\n`)).toThrow(/看不懂的標頭行/);

@@ -3,6 +3,7 @@
 // 選取/前置鏈高亮/詳情面板 + 搜尋/篩選/網址狀態同步。
 // 掛載邏輯放在 src/scripts/tree-canvas.ts，方便各任務在同一支腳本上疊加互動。
 import Base from '../layouts/Base.astro';
+import { BRANCH_ZH, TYPE_ZH } from '../lib/labels';
 import '../styles/detail.css';
 import '../styles/canvas.css';
 
@@ -11,21 +12,10 @@ import '../styles/canvas.css';
 // 的地方），不另外開一支 src/components/FilterBar.ts 純字串產生器——沒有需要在瀏覽器沒有
 // 的環境下單獨單元測試的邏輯（不像 NodeDetail.ts 有 HTML escape、關鍵字白名單比對這些
 // 值得鎖住的行為），見 task-16-report.md「FilterBar.ts 的取捨」一節。
-// value 用的字串必須跟 src/lib/types.ts 的 Branch / NodeType 字面聯集完全對應，
-// 因為 tree-canvas.ts 會直接把 dataset 值當 Branch/NodeType 塞進 FilterState。
-const BRANCHES: Array<[string, string]> = [
-  ['nature', '自然'],
-  ['engineering', '工學'],
-  ['magic', '魔法'],
-  ['order', '秩序'],
-  ['chaos', '渾沌'],
-];
-const TYPES: Array<[string, string]> = [
-  ['dice', '骰子'],
-  ['rune', '骰子符文'],
-  ['passive', '玩家被動'],
-  ['support', '支援'],
-];
+// value 直接取 labels.ts 的鍵（型別是 Record<Branch|NodeType, …>），所以跟字面聯集必然一致——
+// tree-canvas.ts 會直接把 dataset 值當 Branch/NodeType 塞進 FilterState。
+const BRANCHES = Object.entries(BRANCH_ZH);
+const TYPES = Object.entries(TYPE_ZH);
 ---
 
 <Base title="骰子樹">

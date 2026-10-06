@@ -113,6 +113,27 @@ describe('hover 的清除', () => {
     h.destroy();
   });
 
+  it('雙指縮放放開一指，剩下那指接著拖得動，抬起時不算點選', () => {
+    const { document, host } = laidOutHost();
+    const h = mountCanvasTree(host, data);
+    const overlay = host.querySelector('canvas.tree-overlay') as HTMLElement;
+    const selected: (string | null)[] = [];
+    h.onSelect(id => selected.push(id));
+    const [x0, y0] = h.view.worldToScreen(0, 0);
+    overlay.dispatchEvent(ptr(document, 'pointerdown', 100, 100, 1));
+    overlay.dispatchEvent(ptr(document, 'pointerdown', 300, 300, 2));
+    overlay.dispatchEvent(ptr(document, 'pointerup', 300, 300, 2));
+    // 瀏覽器在放開的那一指 pointerup 之後非同步補發它的 lostpointercapture：不能把剩下那指的拖曳收掉。
+    overlay.dispatchEvent(ptr(document, 'lostpointercapture', 300, 300, 2));
+    overlay.dispatchEvent(ptr(document, 'pointermove', 160, 140, 1));
+    overlay.dispatchEvent(ptr(document, 'pointermove', 220, 180, 1));
+    const [x1, y1] = h.view.worldToScreen(0, 0);
+    expect([x1 - x0, y1 - y0]).toEqual([120, 80]);
+    overlay.dispatchEvent(ptr(document, 'pointerup', 220, 180, 1));
+    expect(selected).toEqual([]);
+    h.destroy();
+  });
+
   it('lostpointercapture 會把該 pointerId 從觸控點集合移除（之後 hover 能再點亮）', () => {
     const { document, host } = laidOutHost();
     const h = mountCanvasTree(host, data);

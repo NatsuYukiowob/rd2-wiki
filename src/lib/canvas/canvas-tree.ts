@@ -572,8 +572,20 @@ export function mountCanvasTree(host: HTMLElement, data: TreeData, opts: MountOp
     // process pending pointer capture，也就是 pointerup 之後），所以今天三大引擎都安全；
     // 但抄一份快照＋把 release 挪到收尾之後，就算哪個引擎同步派發也不會把點選吃掉。
     const id = down?.id ?? null, wasDown = down !== null, wasDragged = dragged;
+    const pinchEnded = touches.size === 1 && !wasDown;
     endDrag();
     try { overlayEl.releasePointerCapture?.(e.pointerId); } catch { /* 沒捕捉過就沒得放 */ }
+    if (pinchEnded) {
+      // 雙指縮放放開一指：剩下那指接著當單指拖曳，從它目前的位置起算。`dragged` 直接設成 true、
+      // 節點 id 給 null——這一指從縮放手勢延續過來，抬起時不算點選。
+      const [pointerId, p] = [...touches][0]!;
+      down = { x: p.x, y: p.y, id: null, pointerId };
+      last = { x: p.x, y: p.y };
+      dragged = true;
+      // 接手的這一指也要捕捉：它（或觸控筆記型電腦上同時按著的滑鼠）在畫布外放開時，pointerup 才收得到。
+      try { overlayEl.setPointerCapture?.(pointerId); } catch { /* 沒有捕捉能力就算了 */ }
+      return;
+    }
     if (!wasDown) return;
     // 沒超過門檻＝點選；空白處回 null（呼叫端用它清掉選取）。
     if (!isCancel && !wasDragged && touches.size === 0) for (const cb of selectCbs) cb(id, 'pointer');
@@ -601,7 +613,9 @@ export function mountCanvasTree(host: HTMLElement, data: TreeData, opts: MountOp
     if (touches.size < 2) lastDist = 0;
     // 拖曳中被收回捕捉：也要當成手勢結束收尾（pointerup 之後那次是無害的重入，endDrag()
     // 冪等，down 已經是 null、dragged 已經是 false）。
-    endDrag();
+    // ⚠️ 只收「正在拖的那一指」：雙指縮放放開一指時，剩下那指已經接手拖曳（見 endPointer），
+    // 放開那指的 lostpointercapture 隨後才非同步送到，不能把接手的拖曳一起收掉。
+    if (!down || typeof e.pointerId !== 'number' || e.pointerId === down.pointerId) endDrag();
   });
 
   // passive:false：要 preventDefault 擋掉整頁捲動，否則在畫布上滾滾輪會把頁面捲走。

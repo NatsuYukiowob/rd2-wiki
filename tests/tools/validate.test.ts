@@ -256,7 +256,15 @@ describe('validate', () => {
     expect(soleParentEdge).toBeDefined();
     const broken = svg.replace(new RegExp(`<path class="edge"[^>]*d="${soleParentEdge.replace(/[.]/g, '\\.')}"\\s*/>`), '');
     expect(broken).not.toBe(svg);
-    expect(validate(broken, opts).errors.some(e => /不可達/.test(e))).toBe(true);
+    const errors = validate(broken, opts).errors;
+    expect(errors.some(e => /不可達/.test(e))).toBe(true);
+    // 那顆沒了入邊就成了根：「非預期的根」要指名它，不只有下游的不可達。
+    // 邊的終點落在那顆節點的中心（規則 5 的容差內），用數值比對找它，不比字串。
+    const [ox, oy] = soleParentEdge.slice(soleParentEdge.indexOf(' L ') + 3).split(' ').map(Number);
+    const orphanId = [...svg.matchAll(/transform="translate\(([\d.]+),([\d.]+)\)" data-id="(\d+)"/g)]
+      .find(m => Math.hypot(Number(m[1]) - ox!, Number(m[2]) - oy!) < 1)?.[3];
+    expect(orphanId, '前提：找得到那條邊終點上的節點').toBeDefined();
+    expect(errors.some(e => e.includes('非預期的根') && e.includes(orphanId!))).toBe(true);
   });
 
   it('規則 6：加一條反向邊造出環會被擋', () => {
@@ -415,6 +423,11 @@ describe('validate', () => {
 
     expect(withTable({ ...upgradeCostTable, appliesTo: { type: 'rune', maxLevel: 49 } })
       .some(e => /規則 15.*表格長度/.test(e))).toBe(true);
+    // 原型鍵（constructor、toString）在一般物件上查得到值，不能被當成合法的節點型別。
+    for (const type of ['constructor', 'toString', 'foo']) {
+      expect(withTable({ ...upgradeCostTable, appliesTo: { type, maxLevel: 50 } })
+        .some(e => /規則 15: appliesTo\.type .* 不是合法的節點型別/.test(e)), type).toBe(true);
+    }
     // 只驗金幣的話這條會漏：上游哪天讓符文解鎖也吃核心，表格 1 級仍寫 core: 0，
     // 面板那句「含解鎖那一次」就少報核心，而規則 15 全綠。
     const coreDrift = {

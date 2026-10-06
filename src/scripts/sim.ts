@@ -35,7 +35,8 @@ import { levelTableFor, upgradeExtraCost } from '../lib/upgrade-tiers.js';
 import { costHtml, currencyIcon, mythicIcon, simCostHtml } from '../lib/cost-html.js';
 import { subCost, zeroCost } from '../lib/cost.js';
 import { MYTHIC_CORES, mythicCoreByKind } from '../lib/currency.js';
-import { typeLabel } from '../lib/labels.js';
+import { BRANCH_ZH, typeLabel } from '../lib/labels.js';
+import { NARROW_QUERY } from '../lib/breakpoints.js';
 import { renderTaggedText } from '../lib/markup.js';
 import type { Cost, PassiveUpgradeCost, TreeData, TreeNode } from '../lib/types.js';
 
@@ -46,9 +47,7 @@ const data = rawData as unknown as TreeData;
 const tables = rawTables as unknown as PassiveUpgradeCost;
 const ctx = buildSimContext(data, tables);
 
-const GROUP_ZH: Record<AbilityGroup, string> = {
-  global: '全部骰子', nature: '自然', engineering: '工學', magic: '魔法', order: '秩序', chaos: '渾沌',
-};
+const GROUP_ZH: Record<AbilityGroup, string> = { global: '全部骰子', ...BRANCH_ZH };
 
 const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
 
@@ -64,7 +63,7 @@ const tree = mountCanvasTree(host, data, { obscurers: obscuringRects });
 // ⚠️ 它吃的是**相對 host 的 CSS px**，不是 clientX/clientY。
 const vp = tree.view;
 
-const isMobile = typeof matchMedia === 'function' && matchMedia('(width <= 720px)').matches;
+const isMobile = typeof matchMedia === 'function' && matchMedia(NARROW_QUERY).matches;
 
 /**
  * 疊在畫布上、看得見的浮層（視窗座標），給 controller 的鍵盤焦點 ensureVisible 與手機版選節點後
@@ -922,7 +921,7 @@ const PANEL_MAX_RATIO = 0.8;
  *  才是多出來的第二份東西。 */
 const CTA_BOTTOM_GAP = 24;
 
-const panelMq = typeof matchMedia === 'function' ? matchMedia('(width <= 720px)') : null;
+const panelMq = typeof matchMedia === 'function' ? matchMedia(NARROW_QUERY) : null;
 const mobile = (): boolean => panelMq?.matches ?? false;
 
 /** 抽屜的下限＝把手那一列的實際高度。⚠️ 不在這裡寫第二份數字，CSS 的 3.5rem 是唯一來源。 */

@@ -28,3 +28,25 @@ export function planRender(
   }
   return [...drawing].filter(id => !keep.has(id));
 }
+
+/**
+ * 做一次替換，並確認它真的發生了。
+ *
+ * `String.replace` 比對不到時會**原樣回傳**，不會報錯——所以「跑完沒爆」跟「改好了」是兩件事。
+ * 這裡的正則都依賴屬性順序與元素形狀（例如 `href x y width height`），
+ * 日後任何一次 normalize 調整屬性順序都會讓它們默默失效：
+ * 圖示雜湊留在正本裡指向整批換掉後已經不存在的檔案，validate 才會爆出一整片規則
+ * 7(a) 錯誤，而且完全看不出是哪一步說了謊。render-nodes 的樞紐改寫已經用旗標確認過，節點這邊當時
+ * 只數了區塊數（每個區塊必定 +1，等於什麼都沒驗），code review 抓到後改成一致的做法。
+ */
+export function mustReplace(text: string, re: RegExp, to: string, what: string, id: string): string {
+  let hit = false;
+  const out = text.replace(re, (...args) => {
+    hit = true;
+    // 沒有捕捉群組時 args[1] 是比對位置（數字），`$1` 會被換成它而安靜寫壞正本。
+    if (to.includes('$1') && typeof args[1] !== 'string') throw new Error(`${what}的替換字串用了 $1，但 ${re} 沒有捕捉群組`);
+    return to.replace(/\$1/, String(args[1] ?? ''));
+  });
+  if (!hit) throw new Error(`節點 ${id} 的${what}沒有被改到——正本的格式可能變了，${re}`);
+  return out;
+}
