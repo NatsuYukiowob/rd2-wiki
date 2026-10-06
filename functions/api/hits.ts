@@ -14,9 +14,11 @@ interface HitsContext {
 // _headers 不會套用到 Pages Functions 產生的回應（官方文件明載），所以標頭只能在這裡放。
 // no-store 目前其實是多餘的（Cloudflare CDN 預設不快取 JSON、也不快取非 GET），
 // 純粹是日後有人加 Cache Rule 或掛自訂網域時的保險。
+// nosniff：靜態頁的 nosniff 是 Pages 自己加的，Function 的回應沒有，要自己放。
 const HEADERS = {
   'Content-Type': 'application/json',
   'Cache-Control': 'no-store',
+  'X-Content-Type-Options': 'nosniff',
 };
 
 function ok(n: number): Response {
@@ -66,3 +68,8 @@ export async function onRequestGet(ctx: HitsContext): Promise<Response> {
     return fail(500, 'internal', err);
   }
 }
+
+// HEAD 跟 GET 同一條（只讀、不 +1）。沒匯出的話 HEAD 會掉到靜態資產、回 404 頁的 HTML，
+// 用 HEAD 探活的監控會以為端點掛了（其他沒匯出的 method 是 Pages 自己回 405，只有 HEAD 會掉下去）。
+// body 由 runtime 對 HEAD 自動丟掉。刻意照樣讀 D1：探活就該連資料庫一起驗，一次 SELECT 的成本可以忽略。
+export const onRequestHead = onRequestGet;

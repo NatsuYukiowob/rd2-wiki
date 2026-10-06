@@ -396,13 +396,19 @@ npm run compare -- <beforeURL> <afterURL>  # computed-style 逐元素比對，�
 
 - **checkout 在 `download-artifact` 之前**（`clean: true` 會洗掉 `dist/`）；sparse checkout **只取 `functions/` 與 `deploy/`**、
   關 cone mode，不要改回整個 repo（token 所在的 job 不裝網站相依樹）。少了 `functions/` Pages 會靜默跳過 Functions。
-- action 一律 pin 40 碼 SHA（repo 開了 `sha_pinning_required`）。
+- action 一律 pin 40 碼 SHA（repo 開了 `sha_pinning_required`），而且 repo 的 Actions 設定**只放行 GitHub 官方 action**
+  （`allowed_actions=selected`、白名單 pattern 空的）：要用 `actions/`、`github/` 以外的 action，先改設定，否則 job 被拒跑。
+- 兩支 workflow 的 checkout 全部 `persist-credentials: false`（之後都沒有要憑證的 git 操作）；新增 job 照做。
+  這兩條與 dist 上傳的 `include-hidden-files` 都只在 main 上才看得到效果，由 `tests/deploy/workflows.test.ts` 靜態守。
 - **不用 wrangler-action**：wrangler 裝在 `deploy/`（自己的 lockfile），無 secret 的步驟 `npm ci --ignore-scripts --prefix deploy`，
   token 只出現在部署那一步。升級：`cd deploy && npm i wrangler@<新版> --ignore-scripts`，lockfile 一起 commit。
-- 部署後 smoke check 等 `deploy-sha.txt` 回本次 SHA，再驗 `/` 200、`POST /api/hits` 回 `{"n":<數字>}`；打正式網域（部署專屬網址有 Access）。
+- 部署後 smoke check 等 `deploy-sha.txt` 回本次 SHA，再驗 `/` 200、`POST /api/hits` 回 `{"n":<數字>}`、`curl -I` 驗 `/` 的 HSTS／XFO 與
+  `HEAD /api/hits` 200＋nosniff；打正式網域（部署專屬網址有 Access）。
 - deploy 比線上舊（`behind`）會跳過；**回滾用 Cloudflare Pages 儀表板的 Rollback**，重跑舊 run 不會部署。
 - 正式網域寫死在多處，換網域 `git grep rd2wiki.org` 全找。
-- **`public/_headers` 對 Pages Functions 無效**：標頭兩邊都寫（Function 在 `functions/api/hits.ts` 自己放），驗收分開驗。
+- **`public/_headers`（HSTS、`X-Frame-Options: DENY`）對 Pages Functions 無效**：標頭兩邊都寫（Function 在 `functions/api/hits.ts`
+  的 `HEADERS` 自己放，含 nosniff），生效與否由上面的 smoke check 驗。`serve dist` 不讀它，CI 前段只有 `tests/deploy/headers.test.ts` 看內容。
+  決策：先不上 CSP（Astro 與 `Base.astro` 有 inline script／style，要先算 hash 或用 Report-Only 觀察）。
 - **`#hit-counter` 在 HTML 裡不代表看得到**（預設 `hidden`，拿到數字才顯示）；要驗顯示用瀏覽器。前端只看 payload 形狀、
   **不信 status code**（`src/lib/hit-counter.ts`）。
 
