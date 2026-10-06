@@ -57,7 +57,9 @@
 - **版面與節點外觀來自遊戲內的原圖**（座標取原圖 ×0.5，`render-nodes.ts` 的 `DRAWING_TO_SITE`；原圖不在版控內）。節點外觀是多層疊出來的，換圖示不能只複製檔案，要跑 `npm run render-nodes`（Chromium 渲染成
   扁平 PNG 並寫回正本；不掛在建置流程上）。⚠️ `data/dice-tree.svg` 是它的**輸出**：正本裡寫死的 `fill`
   站台讀不到。⚠️ **`render-nodes` 跨 Chromium 版本不是位元組可重現**——「重跑後 PNG 不變」不可當驗收條件。
-  ⚠️ 超越骰子 `1501`／`2503` 與它們的符文 `1601`／`2603`（`type` 是骰子符文）的圖**不是 `render-nodes` 產的**，重跑時會被蓋掉、validate 不擋，要另外處理（見 `data/CLAUDE.md`）。
+  超越骰子 `1501`／`2503` 與它們的符文 `1601`／`2603`（`type` 是骰子符文）的圖**不是 `render-nodes` 產的**：它們在
+  `tools/lib/render-plan.ts` 的 `KEEP_ICON_IDS`，重跑時沿用原檔不重渲染；新增手工圖示的節點要加進這份清單（配方見 `data/CLAUDE.md`）。
+  `render-nodes` 先渲染到 `data/.render-*` 暫存目錄，原圖與正本的節點集合（扣掉保留清單）對不上、或中途任何一步失敗，`data/` 都不動。
 - **節點底盤色改不動**（大多數節點的底盤是遊戲貼圖）。站台底色因此刻意不跟原圖一致，見 `tokens.css` 的 `--bg` 註解。
 - ⚠️ **瀏覽器不渲染這份 SVG，站台上沒有節點元素**。`build:data` 把正本壓成 `src/generated/tree.json`，
   `/tree` 與 `/sim` 由 `src/lib/canvas/`（`mountCanvasTree()`）用 **Canvas 2D** 畫。
@@ -390,6 +392,9 @@ npm run compare -- <beforeURL> <afterURL>  # computed-style 逐元素比對，�
   - worktree 的 `node_modules` 是 symlink 時，手動 `docker run` 多掛 `-v <主 checkout>/node_modules:/work/node_modules:ro`，並先在宿主 build。
 - linkedom 沒有 canvas、不更新 `document.activeElement` → 這兩類只能 E2E 驗。`painter.test.ts` 用 Proxy 假 `Ctx2D`，驗呼叫不驗長相。
 - 臨時 Playwright 腳本要放在 repo 目錄下才 import 得到 `@playwright/test`。
+- 測試要暫存目錄一律用 `tests/helpers/tmp.ts` 的 `tmpDir()`（測完自動清；只能在 `it()` 本體裡呼叫）。直接 `mkdtempSync` 會漏目錄塞爆 /tmp，`tmp.test.ts` 擋。
+- E2E spec 從 `./fixtures` import `test`／`expect`（不是 `@playwright/test`）：它全域聽 `pageerror`，頁面丟例外就紅；
+  自己 `browser.newContext()` 開的 context 另外掛 `watchPageErrors()`。
 - **手機 project 截 `fullPage: true` 會把觸控版面永久換掉**（`(hover: none) and (pointer: coarse)` 變 false）：
   看手機版面截視窗，截完不在同一頁做幾何斷言。
 - **兩個工作區同時跑 E2E 會互相偷 server**（`reuseExistingServer: true`＋固定埠）：一邊用 `E2E_PORT=4399`；
@@ -432,7 +437,7 @@ README 是產品頁形式（banner ＋ 徽章 ＋ `> [!WARNING]` 免責 ＋ 分�
 - 素材在 `.github/media/`（banner 原始碼 `banner.src.html`，重產指令在檔頭），**不要放 `public/`**（會進站台吃規則 12 預算）。
 - **README 截圖**（`screenshot-tree.webp`／`screenshot-mobile.webp`）從正式站拍：`/tree?node=2004`（原子骰子，前置鏈亮起＋詳情卡片），
   `colorScheme: 'dark'`、等 `networkidle` 再 2.5 秒；桌機 viewport 1440×900、`deviceScaleFactor: 1`，手機 `devices['Pixel 7']`；
-  `sharp(png).webp({ quality: 86 })`。腳本放 repo 底下才 import 得到 `playwright`。站台外觀改版後要重拍，README 的節點／連線／圖示數也一起對。
+  `sharp(png).webp({ quality: 86 })`。腳本放 repo 底下才 import 得到 `playwright`。站台外觀改版後要重拍。README／CONTRIBUTING 不寫節點／連線／圖示數（`tests/tools/docs-drift.test.ts` 守，也守 CONTRIBUTING 列齊 validate 的每條規則）。
 - banner 裡不放節點數這類會隨資料變的數字；banner 與 tagline 文案沿用 `Base.astro` 的 `OG_TITLE`／`DESCRIPTION`。
 - 已知限制與 `src/lib/flags.ts` 的暫停功能不寫進 README。
 - 不用 root-relative 連結（`[/about](/about)` 會連到 `github.com/about`）；README 與 `CONTRIBUTING.md` 都寫完整網址。

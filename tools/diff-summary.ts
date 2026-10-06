@@ -67,10 +67,14 @@ export interface DiffSummaryData {
  *    正規化成空白 → 名稱能跳出 `- {id} {name}` 那一行，在行首放 `#`、`-`、`>` 注入區塊語法。
  *    收成空白之後，這些字元只可能出現在行中間、沒有語法意義，也就不必逃逸（名稱才看得懂）。
  * 2. `& < >` 轉 HTML 實體（`&` 必須第一個，否則會把後面自己插入的實體再逃逸一次）。
- * 3. `@` → `&#64;`：顯示仍是 @，但不會提及到無關的人。
+ * 3. `@`、`#` 後面與 `GH` 和 `-` 之間插入 word joiner（`&#8288;`，看不見）：`@user` 不會提及、`#1`／
+ *    `owner/repo#1`／`GH-1` 不會連到議題，也不會在被引用的議題上留下 cross-reference。
+ *    ⚠️ **不能把 `@`／`#` 本身換成實體**（`&#64;`、`&#35;`）：GitHub 先解實體才比對提及與議題參照，
+ *    `gh api /markdown` 實測照樣連結。中間隔一個字元才擋得住。
+ *    ponytail: commit SHA（7 碼以上的十六進位）沒擋——範圍太廣會誤傷合法的名稱與 id，有人拿它洗版再擋。
  * 4. `://` 與 `www.` 拆掉：GFM 的自動連結比對的是**原始文字**，拆掉就不會生成可點的釣魚連結。
  * 5. Markdown 行內語法字元加反斜線。
- * 6. 截長。
+ * 6. 截長，切到一半的實體整個丟掉。
  */
 export function escapeMarkdown(s: string): string {
   return s
@@ -79,11 +83,15 @@ export function escapeMarkdown(s: string): string {
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
-    .replace(/@/g, '&#64;')
+    // 一次比對兩個字元：插入的 `&#8288;` 自己含 #，分兩步會被第二步再插一次。
+    .replace(/[@#]/g, '$&&#8288;')
+    .replace(/\b(GH)-(?=\d)/gi, '$1&#8288;-')
     .replace(/:\/\//g, ':&#47;&#47;')
     .replace(/www\./gi, m => `${m.slice(0, 3)}&#46;`)
     .replace(/([\\`*_[\]|~])/g, '\\$1')
-    .slice(0, MAX_ESCAPED);
+    .slice(0, MAX_ESCAPED)
+    // 截在實體中間的話，`@&#82` 會被解成 `@R`（沒有分號照樣解），等於把剛插的 word joiner 換成別的字。
+    .replace(/&[#\w]*$/, '');
 }
 
 /** 這份 tree.json 的形狀還是這支程式認得的樣子嗎。 */
@@ -257,19 +265,21 @@ export function renderDiffComment(raw: unknown): string {
     SUMMARY_MARKER,
     d.identical === true && d.schemaChanged !== true ? NO_CHANGE_MARKER : '',
     '## 資料差異摘要',
-    d.schemaChanged === true
-      ? '\n⚠️ **基準資料格式已變更**，這次略過逐項比較——請人工確認這個 PR 對資料的影響。\n'
-      : '',
-    `- 節點：${nodes[0]} → ${nodes[1]}`,
-    `- 邊：${edges[0]} → ${edges[1]}`,
-    `- 新增 ${counts.added}｜刪除 ${counts.removed}｜修改 ${counts.changed}`,
-    `- 全樹解鎖成本：核心 ${cost.base.core} → ${cost.head.core}，金幣 ${cost.base.gold.toLocaleString('en-US')} → ${cost.head.gold.toLocaleString('en-US')}`
-      // 超越核心只在兩邊任一有值時才接上去：這則留言貼在每一個資料 PR 上，為一個大多數 PR
-      // 都動不到的貨幣固定多印「0 → 0」，只會稀釋掉真正改了的那幾個數字。
-      + MYTHIC_CORES.map(def => {
-        const [b, h] = [mythicAmount(cost.base, def.kind), mythicAmount(cost.head, def.kind)];
-        return b > 0 || h > 0 ? `，${def.label} ${b.toLocaleString('en-US')} → ${h.toLocaleString('en-US')}` : '';
-      }).join(''),
+    // 格式變了時 computeDiff 給的計數全是 0，照印會變成「節點：0 → 0」，像資料被清空。
+    ...(d.schemaChanged === true
+      ? ['\n⚠️ **基準資料格式已變更**，這次略過逐項比較——請人工確認這個 PR 對資料的影響。\n']
+      : [
+        `- 節點：${nodes[0]} → ${nodes[1]}`,
+        `- 邊：${edges[0]} → ${edges[1]}`,
+        `- 新增 ${counts.added}｜刪除 ${counts.removed}｜修改 ${counts.changed}`,
+        `- 全樹解鎖成本：核心 ${cost.base.core} → ${cost.head.core}，金幣 ${cost.base.gold.toLocaleString('en-US')} → ${cost.head.gold.toLocaleString('en-US')}`
+        // 超越核心只在兩邊任一有值時才接上去：這則留言貼在每一個資料 PR 上，為一個大多數 PR
+        // 都動不到的貨幣固定多印「0 → 0」，只會稀釋掉真正改了的那幾個數字。
+        + MYTHIC_CORES.map(def => {
+          const [b, h] = [mythicAmount(cost.base, def.kind), mythicAmount(cost.head, def.kind)];
+          return b > 0 || h > 0 ? `，${def.label} ${b.toLocaleString('en-US')} → ${h.toLocaleString('en-US')}` : '';
+        }).join(''),
+      ]),
     removedLine,
     d.edgesRewired === true
       ? '\n⚠️ **邊數不變但前置關係被改動**——解鎖成本可能已經改變，請逐條確認下面的清單。'

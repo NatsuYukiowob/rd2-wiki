@@ -96,7 +96,7 @@ jobs:
 
             // 資料沒變動時貼的是這段**固定文字**，不含任何來自輸入的字元。
             const body = noChange
-              ? `${MARKER}\n## 資料差異摘要\n\n這個 PR 沒有變更資料正本的內容。`
+              ? `${MARKER}\n## 資料差異摘要\n\n這個 PR 沒有改動骰子樹（tree.json）。這則摘要只比對骰子樹，戰術、Boss、裂縫商店、活動、骰子數值等其他資料檔的改動不會出現在這裡。`
               : rendered;
 
             // ⚠️ 不能用 context.payload.workflow_run.pull_requests：fork 送來的 PR 在這個欄位

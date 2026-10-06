@@ -19,3 +19,4 @@ docs/
 
 # subagent-driven-development 的工作區（ledger、brief、review package），純本機暫存
 .superpowers/
+data/.render-*/

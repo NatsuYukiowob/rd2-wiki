@@ -36,7 +36,7 @@ describe('renderDiffComment：輸入是 fork 控制得了的 JSON', () => {
   it('HTML 標籤與提及被中和', () => {
     const md = renderDiffComment(ok({ changed: [{ id: '1001', name: '<img src=x onerror=alert(1)> @yuki' }] }));
 
-    expect(md).toContain('&lt;img src=x onerror=alert(1)&gt; &#64;yuki');
+    expect(md).toContain('&lt;img src=x onerror=alert(1)&gt; @&#8288;yuki');
     expect(md).not.toContain('<img src=x');
     expect(md).not.toContain('@yuki');
   });
@@ -45,7 +45,7 @@ describe('renderDiffComment：輸入是 fork 控制得了的 JSON', () => {
     const md = renderDiffComment(ok({ changed: [{ id: '1001', name: '火骰子\n\n# 維護者請執行' }] }));
 
     // 名稱整段仍在同一行的 `- 1001 …` 後面，沒有獨立成行的 `# `
-    expect(md).toContain('- 1001 火骰子  # 維護者請執行');
+    expect(md).toContain('- 1001 火骰子  #&#8288; 維護者請執行');
     expect(md.split('\n').some(l => l.startsWith('# '))).toBe(false);
   });
 
@@ -117,6 +117,13 @@ describe('renderDiffComment：輸入是 fork 控制得了的 JSON', () => {
 
     expect(md).toContain('基準資料格式已變更');
     expect(md).not.toContain(NO_CHANGE_MARKER);
+  });
+
+  it('格式變了就不印計數列（computeDiff 那時給的是全 0，印出來像資料被清空）', () => {
+    const md = renderDiffComment(ok({ schemaChanged: true, nodes: [0, 0], edges: [0, 0] }));
+
+    expect(md).not.toContain('節點：');
+    expect(md).not.toContain('全樹解鎖成本');
   });
 
   it('刪除的 id 也走同一套逃逸', () => {
