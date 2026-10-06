@@ -70,5 +70,6 @@ export async function onRequestGet(ctx: HitsContext): Promise<Response> {
 }
 
 // HEAD 跟 GET 同一條（只讀、不 +1）。沒匯出的話 HEAD 會掉到靜態資產、回 404 頁的 HTML，
-// 用 HEAD 探活的監控會以為端點掛了。body 由 runtime 對 HEAD 自動丟掉。
+// 用 HEAD 探活的監控會以為端點掛了（其他沒匯出的 method 是 Pages 自己回 405，只有 HEAD 會掉下去）。
+// body 由 runtime 對 HEAD 自動丟掉。刻意照樣讀 D1：探活就該連資料庫一起驗，一次 SELECT 的成本可以忽略。
 export const onRequestHead = onRequestGet;

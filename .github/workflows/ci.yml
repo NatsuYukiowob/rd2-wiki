@@ -429,3 +429,19 @@ jobs:
             echo "::error::smoke check 失敗：首頁或 /api/hits 不正常"
             exit 1
           fi
+          # 安全標頭：public/_headers 與 functions/api/hits.ts 的 HEADERS 都只有正式站驗得到
+          #（serve dist 不讀 _headers，tests/deploy/headers.test.ts 只看得到檔案內容）。
+          # `curl -I` 送 HEAD：`/` 走靜態檔、`/api/hits` 走 onRequestHead，兩條路徑分開驗。
+          head_page=$(c -I "$URL/" || true)
+          head_api=$(c -I "$URL/api/hits" || true)
+          bad=''
+          grep -qiE '^strict-transport-security: *max-age=[0-9]+' <<< "$head_page" || bad="$bad / 缺 HSTS；"
+          grep -qiE '^x-frame-options: *DENY' <<< "$head_page" || bad="$bad / 缺 X-Frame-Options；"
+          grep -qiE '^HTTP/[0-9.]+ 200' <<< "$head_api" || bad="$bad HEAD /api/hits 不是 200；"
+          grep -qiE '^x-content-type-options: *nosniff' <<< "$head_api" || bad="$bad /api/hits 缺 nosniff；"
+          if [ -n "$bad" ]; then
+            echo "::error::smoke check 失敗：安全標頭不符（$bad）"
+            printf '%s\n--- /api/hits ---\n%s\n' "$head_page" "$head_api"
+            exit 1
+          fi
+          echo "安全標頭：/ 有 HSTS 與 X-Frame-Options；HEAD /api/hits 200 且帶 nosniff"

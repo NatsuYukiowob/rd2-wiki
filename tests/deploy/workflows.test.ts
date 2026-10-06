@@ -7,9 +7,18 @@ import { readFileSync, readdirSync } from 'node:fs';
  *
  * 以文字切步驟（每一步是縮排 6 格的 `- ` 開頭），不引入 YAML 解析器：兩支 workflow 的步驟縮排一致，
  * 下面「每一步都切得到」那條會在縮排變了的時候先紅。
+ * 比對前先拿掉 YAML 註解：註解裡寫一句 `persist-credentials: false` 不能算數。
  */
 const DIR = '.github/workflows';
-const files = readdirSync(DIR).filter(f => f.endsWith('.yml')).map(f => ({ f, text: readFileSync(`${DIR}/${f}`, 'utf8') }));
+
+/** 拿掉整行註解與行尾 ` # …`（`uses: x@sha # v7` 的 tag 註解）。只拿來比對 key，不在乎 run: 腳本裡的 `#` 被截掉。 */
+function stripComments(text: string): string {
+  return text.split('\n').filter(l => !/^\s*#/.test(l)).map(l => l.replace(/\s+#.*$/, '')).join('\n');
+}
+
+// GitHub 兩種副檔名都會跑。
+const files = readdirSync(DIR).filter(f => /\.ya?ml$/.test(f))
+  .map(f => ({ f, text: stripComments(readFileSync(`${DIR}/${f}`, 'utf8')) }));
 
 function steps(text: string): string[] {
   const out: string[] = [];
@@ -34,7 +43,8 @@ describe('.github/workflows', () => {
   it('只用 GitHub 官方的 action（repo 設定 allowed_actions=selected 的鏡像）', () => {
     // repo 的 Actions 設定只放行 actions/、github/。在這裡加別家的 action 之前，先改 repo 設定的白名單，
     // 再把這條測試一起改——否則 PR 上這個 job 會被 GitHub 拒跑。
-    const refs = files.flatMap(({ text }) => [...text.matchAll(/uses: ([^@\s]+)@/g)].map(m => m[1]));
+    // `docker://` 映像不是 action，這條不管（跟 job 層的 `container:` 一樣，要用就在 PR 裡自己審）。
+    const refs = files.flatMap(({ text }) => [...text.matchAll(/uses: (?!docker:\/\/)([^@\s]+)@/g)].map(m => m[1]));
     for (const r of refs) expect(r, r).toMatch(/^(actions|github)\//);
   });
 
@@ -43,13 +53,13 @@ describe('.github/workflows', () => {
     // 之後跑的 PR 端程式碼（verify）、fork 可控的 artifact（pr-comment）、wrangler（deploy）都讀得到。
     const checkouts = allSteps.filter(({ s }) => /uses: actions\/checkout@/.test(s));
     expect(checkouts.length).toBeGreaterThanOrEqual(4);
-    for (const { f, s } of checkouts) expect(s, `${f}\n${s}`).toMatch(/persist-credentials: false\b/);
+    for (const { f, s } of checkouts) expect(s, `${f}\n${s}`).toMatch(/[\s{,]persist-credentials: false\b/);
   });
 
   it('上傳給 deploy 的 dist 帶 include-hidden-files: true', () => {
     // upload-artifact 預設丟掉點開頭的檔案而且不報錯：public/.well-known/ 這類檔會本機看得到、正式站 404。
     const dist = allSteps.filter(({ s }) => /uses: actions\/upload-artifact@/.test(s) && /^\s+name: dist$/m.test(s));
     expect(dist).toHaveLength(1);
-    expect(dist[0]?.s).toMatch(/include-hidden-files: true\b/);
+    expect(dist[0]?.s).toMatch(/[\s{,]include-hidden-files: true\b/);
   });
 });
