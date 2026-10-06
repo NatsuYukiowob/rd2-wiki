@@ -5,7 +5,7 @@
 //
 // ⚠️ 表格的列數與內容一律**從資料算**，不寫死 24／10／2／6：下一場活動進來時這些數字都會變，
 // 而這幾條該說的是「畫面漏了什麼」不是「數字又要改一次」（B1 為此被寫死過一次）。
-import { test, expect } from '@playwright/test';
+import { test, expect } from './fixtures';
 import { readFileSync } from 'node:fs';
 
 type Cell = string | { icon: string; text: string };

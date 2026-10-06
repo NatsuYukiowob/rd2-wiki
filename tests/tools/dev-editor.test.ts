@@ -14,9 +14,9 @@ import {
   searchSource,
 } from '../../tools/dev-editor/core';
 import { allowed, listFiles, save } from '../../tools/dev-editor/integration';
-import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { tmpDir } from '../helpers/tmp';
 import type { IncomingMessage } from 'node:http';
 
 const SAMPLE = `{
@@ -177,7 +177,7 @@ describe('allowed（寫檔 API 的門）', () => {
 
 describe('save（寫入策略由檔案決定）', () => {
   const mkRoot = () => {
-    const root = mkdtempSync(join(tmpdir(), 'dev-editor-'));
+    const root = tmpDir('dev-editor-');
     mkdirSync(join(root, 'data'));
     mkdirSync(join(root, 'src/pages'), { recursive: true });
     writeFileSync(join(root, 'data/x.json'), '{ "a": "舊" }\n');
@@ -217,7 +217,7 @@ describe('第四輪 review 回歸', () => {
   });
 
   it('CRLF 檔案裡單行片段改成多行，也換回 CRLF', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'dev-editor-'));
+    const root = tmpDir('dev-editor-');
     mkdirSync(join(root, 'data'));
     mkdirSync(join(root, 'src/pages'), { recursive: true });
     writeFileSync(join(root, 'src/pages/p.astro'), '<p>\r\n  第一行\r\n</p>\r\n');

@@ -4,10 +4,12 @@
 // 圖鑑最核心的承諾是「文字進得了 HTML」——那件事在瀏覽器裡看不出差別（有沒有 JS 渲染，
 // 畫面長得一模一樣），只有去讀伺服器回的原始 HTML 才會說話。所以第一條測試刻意用
 // `request.get()` 而不是 `page.goto()`：後者拿到的是 JS 跑完之後的 DOM，驗不到這件事。
-import { test, expect } from '@playwright/test';
+import type { APIRequestContext } from '@playwright/test';
+import { test, expect } from './fixtures';
 import sharp from 'sharp';
 import { resolveColor, settleEnter } from './probe';
 import { readTree } from '../helpers/read-tree';
+import { KEYWORDS_PATH } from '../../src/lib/glossary-groups';
 
 const tree = readTree() as {
   nodes: { id: string; type: string; branch: string; name: string; description: string }[];
@@ -16,13 +18,19 @@ const tree = readTree() as {
 
 const dice = tree.nodes.filter(n => n.type === 'dice');
 
+/** 一頁 HTML 上所有的 id（詞彙頁的錨點）。 */
+async function anchorsOn(request: APIRequestContext, path: string): Promise<Set<string>> {
+  const html = await (await request.get(path)).text();
+  return new Set([...html.matchAll(/\sid="([^"]+)"/g)].map(m => m[1]!));
+}
+
 test('C1. /dice 的骰子名稱與效果是伺服器輸出的 HTML，不是瀏覽器渲染出來的', async ({ request }) => {
   const res = await request.get('/dice');
   expect(res.status()).toBe(200);
   const html = await res.text();
 
   // 這是 #22 要解掉的症狀：2026-08-20 實測 dist/tree/index.html 的可索引文字只有 194 個
-  // 字元，239 個節點名一個字都沒進 HTML。圖鑑必須把 42 顆骰子全部寫進去。
+  // 字元，239 個節點名一個字都沒進 HTML。圖鑑必須把每一顆骰子都寫進去。
   expect(dice.length).toBe(43);
   const missing = dice.filter(d => !html.includes(d.name));
   expect(missing.map(d => d.name)).toEqual([]);
@@ -69,7 +77,7 @@ test('C3. 卡片裡的 #關鍵字 就地換頁：左右滑動過場、卡片高�
   const link = card.locator('a.kw-link').first();
   const term = (await link.getAttribute('data-term'))!;
 
-  // 高度是這個設計唯一的硬性要求：41 張卡片排在 CSS grid 裡，任何一張改高度都會推動整列。
+  // 高度是這個設計唯一的硬性要求：全部卡片排在 CSS grid 裡，任何一張改高度都會推動整列。
   // ⚠️ 先等進場動畫收掉再量：動畫期間卡片掛著 transform，boundingBox 會帶次像素誤差，
   // 底下那條嚴格相等會假紅（2026-08-26 實測 368.8124694824219 vs 368.8125）。見 probe.ts。
   await settleEnter(page);
@@ -176,11 +184,28 @@ test('C3b. 沒有 JS 時 #關鍵字 仍然是一條連得到詞條頁的連結',
     .map(m => m[1]);
   expect(uncoloured, '這些標記沒有官方色').toEqual([]);
 
-  // 隨手挑一條真的去打，確認錨點落在一個存在的詞條上。
-  const [, first, term] = hrefs[0]!;
-  const [path, anchor] = first!.split('#');
-  const page = await (await request.get(path!)).text();
-  expect(page, `${term} 的錨點 ${anchor} 在 ${path} 上不存在`).toContain(`id="${anchor}"`);
+  // 每一條都要落在詞彙頁上一個存在的詞條：錨點對錯時沒有 JS（或中鍵另開）的人只會停在頁頂。
+  // 抽查一條守不住——錯的那組剛好不是第一條時照樣綠。
+  const ids = await anchorsOn(request, KEYWORDS_PATH);
+  const broken = hrefs.map(([, href, term]) => [term, href!.split('#')[1]!] as const).filter(([, a]) => !ids.has(a));
+  expect(broken, '這些 #關鍵字 的錨點在詞彙頁上不存在').toEqual([]);
+});
+
+test('C3d. 其他會印 #關鍵字 的頁面，每條連結的錨點也都在詞彙頁上', async ({ request }) => {
+  // /dice 以外的頁面走同一支 renderStaticText()，各自餵自己的文字；詞彙頁本身的解釋裡也有巢狀標記。
+  // /tactic、/rift-shop 目前的資料沒有標記（0 條），但文字一改就會長出來，所以照樣掃、不要求每頁都有。
+  const ids = await anchorsOn(request, KEYWORDS_PATH);
+  let total = 0;
+  for (const path of ['/tactic', '/boss', '/rift-shop', KEYWORDS_PATH]) {
+    const html = await (await request.get(path)).text();
+    const hrefs = [...html.matchAll(/class="kw-link" href="([^"]+)" data-term="([^"]+)"/g)];
+    total += hrefs.length;
+    const broken = hrefs
+      .map(([, href, term]) => [term, href!] as const)
+      .filter(([, href]) => !href.startsWith(`${KEYWORDS_PATH}#`) || !ids.has(href.split('#')[1]!));
+    expect(broken, `${path} 上這些 #關鍵字 連到不存在的詞條`).toEqual([]);
+  }
+  expect(total, '四頁加起來一條 #關鍵字 都沒有——正則或頁面輸出改了').toBeGreaterThan(0);
 });
 
 test('C3c. 同時只開一張卡片：換一張會收掉前一張，Esc 關的是使用者正在看的那張', async ({ page }) => {
@@ -303,7 +328,7 @@ test('C6. 篩選切換鈕外觀是按鈕、骨子裡仍是 checkbox：鍵盤操�
 // 「值沒進 HTML」。單元測試看得到 statValue()／isFixed()，看不到這三件的任何一件。
 // ---------------------------------------------------------------------------
 
-test('C7. 41 顆骰子的四個檔位數值全部是伺服器輸出的 HTML', async ({ request }) => {
+test('C7. 每顆骰子的四個檔位數值全部是伺服器輸出的 HTML', async ({ request }) => {
   const res = await request.get('/dice');
   const html = await res.text();
 
@@ -385,7 +410,7 @@ test('C7b. 「局內升級」按住時 pill 右上角浮出每級增減、不佔
   }
 });
 
-test('C8. 切檔只換數字：41 張卡片的 pill 區塊高度在四個檔位全都不動', { tag: '@mobile' }, async ({ page }) => {
+test('C8. 切檔只換數字：每張卡片的 pill 區塊高度在四個檔位全都不動', { tag: '@mobile' }, async ({ page }) => {
   await page.goto('/dice');
   const card = page.locator('.dice-card').filter({ hasText: '火骰子' }).first();
   const pills = card.locator('.stat-pill');
@@ -407,7 +432,7 @@ test('C8. 切檔只換數字：41 張卡片的 pill 區塊高度在四個檔位�
   // pill 區塊 68px → 106px）。卡片排在 CSS grid 的同一列裡，它一變高就把火骰子與花骰子
   // 一起從 424.6px 撐到 462.7px——**使用者根本沒去動那兩張**。只量一張卡片＝假通過。
   //
-  // 所以掃全部 41 張 × 四個檔位。用 page.evaluate 直接改 checked 而不是 41×4 次 Playwright
+  // 所以掃全部卡片 × 四個檔位。用 page.evaluate 直接改 checked 而不是逐張逐檔用 Playwright
   // 點擊：後者在這套測試裡要跑兩分鐘。（沒有 JS 也切得動這件事由 C11 守。）
   const result = await page.evaluate(() => {
     const modes = ['base', 'dice7', 'lv15', 'lv15dice7'];
@@ -436,9 +461,9 @@ test('C8. 切檔只換數字：41 張卡片的 pill 區塊高度在四個檔位�
     return { bad, measured, anyValueChanged };
   });
 
-  // 前提斷言：真的掃到 41 張，而且四個檔位真的有值在變。少了這兩行，選擇器哪天改名之後
+  // 前提斷言：每顆骰子都掃到了，而且四個檔位真的有值在變。少了這兩行，選擇器哪天改名之後
   // 這條測試會掃到 0 張卡片、然後「通過」。
-  expect(result.measured, '應該掃到 43 張卡片').toBe(43);
+  expect(result.measured, `應該掃到 ${dice.length} 張卡片（每顆骰子一張）`).toBe(dice.length);
   expect(result.anyValueChanged, '四個檔位應該真的有值不一樣，否則這條在量一個不會動的東西').toBe(true);
   expect(result.bad, 'pill 區塊高度隨檔位改變的卡片').toEqual([]);
 });
@@ -465,8 +490,8 @@ test('C10. 每張卡片是獨立的一組：切一張不會動到別張', async 
 
   await fire.locator('.stat-modes input[value="lv15dice7"]').check();
 
-  // radio 的 name 要是全頁唯一的。忘了帶節點 id 的話 41 張卡片會變成同一組，
-  // 切一張把其他 40 張的選取狀態一起清掉——而畫面上「數字沒變」跟「這顆本來就不會變」
+  // radio 的 name 要是全頁唯一的。忘了帶節點 id 的話全部卡片會變成同一組，
+  // 切一張把其他卡片的選取狀態一起清掉——而畫面上「數字沒變」跟「這顆本來就不會變」
   // 長得一模一樣，只有另一張卡片的 checked 狀態會說話。
   await expect(poison.locator('.stat-modes input[value="base"]')).toBeChecked();
   await expect(poison.locator('.stat-pill').first()).toHaveText(/攻擊力\s*100/, { useInnerText: true });

@@ -8,7 +8,7 @@
 // `toHaveText` 驗的話，`textContent` 會把 `display: none` 的另一段一起讀進來（dice.css 的
 // 數值面板為此吃過虧，斷言拿到「攻擊力 15075022502850」還照樣通過）——這裡量的是
 // **可見性**與**伺服器 HTML**，不是 textContent。
-import { test, expect } from '@playwright/test';
+import { test, expect } from './fixtures';
 import { readFileSync } from 'node:fs';
 import type { Tactic } from '../../src/lib/types';
 

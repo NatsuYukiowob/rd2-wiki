@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './fixtures';
 
 for (const [width, height] of [[390, 844], [430, 932]]) {
   test(`NAV. ${width}×${height} 觸控、裁切、關閉與跳頁`, { tag: '@mobile' }, async ({ browser }, testInfo) => {

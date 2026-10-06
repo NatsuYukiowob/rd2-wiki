@@ -4,7 +4,7 @@
 // 沒有任何既有測試會說話。2026-08-22 那一輪改動跑完 143 條測試全綠，卻同時帶著兩個
 // 人工看圖才發現的 bug（下拉箭頭被拉成一條金槓、短頁面的 footer 停在畫面中間）——
 // 這一份就是把那類東西釘住。
-import { test, expect } from '@playwright/test';
+import { test, expect } from './fixtures';
 import { resolveColor, settleEnter } from './probe';
 import sharp from 'sharp';
 
@@ -598,7 +598,7 @@ test('D16. 導覽列的「上次更新」日期走 Baloo 2', async ({ page, isMo
  * D17. 進場動畫：staggered、夾得住上限、跑完會自己關掉、reduce 之下整組不跑。
  *
  * 四件事各自壞掉時畫面都還能看，所以四條都要驗：
- *  (一) 沒夾上限 → /dice 第 41 張卡片要等 41 × 80ms ＝ 3.64 秒才浮出來（spec §2 決策 3）。
+ *  (一) 沒夾上限 → /dice 最後一張卡片要等（張數 − 1）× --p-stagger 才浮出來（幾十張就是好幾秒）。
  *  (二) `data-enter` 沒被移除 → /dice 用 `[hidden]` 篩選，卡片切回來時 animation 會**重播**。
  *  (三) reduce 之下沒關掉 → 使用者會看到一頁慢慢補齊的空白格，比動畫本身更糟。
  *  (四) 動畫根本沒掛上 → 上面三條全部「通過」，因為它們驗的都是「不要有」。所以每一條
@@ -607,7 +607,7 @@ test('D16. 導覽列的「上次更新」日期走 Baloo 2', async ({ page, isMo
 test('D17. 卡片進場是 staggered 的，延遲夾得住上限，跑完自己關掉', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: null });
   // ⚠️ 用 domcontentloaded 不是 load：`data-enter` 大約一秒後就被腳本移掉了，等 load
-  // （含 41 張卡片的圖）很可能已經來不及。
+  // （含每張卡片的圖）很可能已經來不及。
   await page.goto('/dice', { waitUntil: 'domcontentloaded' });
 
   const read = (n: number) => page.locator('.dice-card').nth(n).evaluate(el => {
@@ -628,11 +628,13 @@ test('D17. 卡片進場是 staggered 的，延遲夾得住上限，跑完自己�
   const ms = (delay: string) => Math.round(parseFloat(delay) * 1000);
 
   expect(ms((await read(1)).delay), '第二張卡片的延遲不是一階 --p-stagger').toBe(stagger);
-  // 夾上限：第 max 張與最後一張（第 41 張）必須是同一個延遲。
+  // 夾上限：第 max 張與最後一張必須是同一個延遲。最後一張用數的，不寫死——加一顆骰子就不再是最後一張。
   const capped = stagger * max;
+  const last = (await page.locator('.dice-card').count()) - 1;
+  expect(last, '卡片數不夠多，量不到「夾住上限」').toBeGreaterThan(max);
   expect(ms((await read(max)).delay), `第 ${max} 張的延遲不是上限值`).toBe(capped);
-  expect(ms((await read(40)).delay),
-    `第 41 張的延遲沒有被夾住（上限應該是 ${capped}ms）——不夾的話它要等 ${41 * stagger}ms`)
+  expect(ms((await read(last)).delay),
+    `最後一張（第 ${last + 1} 張）的延遲沒有被夾住（上限應該是 ${capped}ms）——不夾的話它要等 ${last * stagger}ms`)
     .toBe(capped);
 
   // 跑完之後 data-enter 要消失，否則 [hidden] 篩選切回來時動畫會重播。

@@ -6,7 +6,7 @@
 // ⚠️ 這三條都靠 page.route 攔截 /api/hits。E2E 環境（npx serve dist）本來就沒有
 // Pages Functions，所以「沒攔到」的後果是走真實的 404 → 三條都會以「數字出不來」
 // 的形式紅掉，而不是靜靜通過。HC1 另外明確斷言 route 真的被呼叫過。
-import { test, expect } from '@playwright/test';
+import { test, expect } from './fixtures';
 
 test('HC1. 取到號碼時顯示「你是第 N 位訪客」', async ({ page }) => {
   let called = 0;

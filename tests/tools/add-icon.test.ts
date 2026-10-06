@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { mkdirSync, mkdtempSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
+import { mkdirSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
 import { createHash } from 'node:crypto';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { tmpDir } from '../helpers/tmp';
 import { addIcon, addMappedIcon, addRecordIcon } from '../../tools/add-icon';
 
 /** 產生一張只有簽章 + IHDR chunk 的最小合法 PNG，足以通過 `readPngSize` 的結構性檢查。 */
@@ -25,8 +25,8 @@ function makeMinimalPng(width: number, height: number): Buffer {
 
 describe('addIcon', () => {
   it('依內容 sha256 前 12 碼命名，並複製進目標目錄', () => {
-    const srcDir = mkdtempSync(join(tmpdir(), 'rd2-wiki-src-'));
-    const destDir = mkdtempSync(join(tmpdir(), 'rd2-wiki-dest-'));
+    const srcDir = tmpDir('rd2-wiki-src-');
+    const destDir = tmpDir('rd2-wiki-dest-');
     const png = makeMinimalPng(100, 100);
     const srcPath = join(srcDir, 'my-icon.png');
     writeFileSync(srcPath, png);
@@ -42,8 +42,8 @@ describe('addIcon', () => {
   });
 
   it('目的檔案已存在時不重複寫入，但仍回報正確的雜湊與路徑', () => {
-    const srcDir = mkdtempSync(join(tmpdir(), 'rd2-wiki-src-'));
-    const destDir = mkdtempSync(join(tmpdir(), 'rd2-wiki-dest-'));
+    const srcDir = tmpDir('rd2-wiki-src-');
+    const destDir = tmpDir('rd2-wiki-dest-');
     const png = makeMinimalPng(120, 96);
     const srcPath = join(srcDir, 'icon.png');
     writeFileSync(srcPath, png);
@@ -56,8 +56,8 @@ describe('addIcon', () => {
   });
 
   it('拒絕非 PNG 檔', () => {
-    const srcDir = mkdtempSync(join(tmpdir(), 'rd2-wiki-src-'));
-    const destDir = mkdtempSync(join(tmpdir(), 'rd2-wiki-dest-'));
+    const srcDir = tmpDir('rd2-wiki-src-');
+    const destDir = tmpDir('rd2-wiki-dest-');
     const srcPath = join(srcDir, 'fake.png');
     writeFileSync(srcPath, Buffer.from('not a png'));
 
@@ -65,8 +65,8 @@ describe('addIcon', () => {
   });
 
   it('拒絕最長邊小於 96px 的 PNG', () => {
-    const srcDir = mkdtempSync(join(tmpdir(), 'rd2-wiki-src-'));
-    const destDir = mkdtempSync(join(tmpdir(), 'rd2-wiki-dest-'));
+    const srcDir = tmpDir('rd2-wiki-src-');
+    const destDir = tmpDir('rd2-wiki-dest-');
     const srcPath = join(srcDir, 'tiny.png');
     writeFileSync(srcPath, makeMinimalPng(50, 95));
 
@@ -74,7 +74,7 @@ describe('addIcon', () => {
   });
 
   it('來源檔案不存在時報出明確錯誤', () => {
-    const destDir = mkdtempSync(join(tmpdir(), 'rd2-wiki-dest-'));
+    const destDir = tmpDir('rd2-wiki-dest-');
     expect(() => addIcon('/tmp/rd2-wiki-does-not-exist.png', destDir)).toThrow(/找不到來源檔案/);
   });
 });
@@ -82,7 +82,7 @@ describe('addIcon', () => {
 describe('addMappedIcon', () => {
   /** 一組暫存的「data/board-icons/ ＋ data/board-icons.json」。 */
   const makeBoardDirs = (map: Record<string, string> = {}) => {
-    const dir = mkdtempSync(join(tmpdir(), 'rd2-board-'));
+    const dir = tmpDir('rd2-board-');
     const mapPath = join(dir, 'board-icons.json');
     const iconsDir = join(dir, 'board-icons');
     mkdirSync(iconsDir);
@@ -94,7 +94,7 @@ describe('addMappedIcon', () => {
     // 這條是這支函式存在的理由：圖與對應表少更新任一邊，CI 的規則 21 就會紅
     // （漏對應＝21(a)，漏檔案＝21(f)），而過去沒有任何工具放得進 data/board-icons。
     const { iconsDir, mapPath } = makeBoardDirs({ '1001': 'aaaaaaaaaaaa' });
-    const srcDir = mkdtempSync(join(tmpdir(), 'rd2-wiki-src-'));
+    const srcDir = tmpDir('rd2-wiki-src-');
     const png = makeMinimalPng(150, 175);
     const srcPath = join(srcDir, 'dice.png');
     writeFileSync(srcPath, png);
@@ -110,7 +110,7 @@ describe('addMappedIcon', () => {
 
   it('換圖時回報原本那筆的雜湊（舊檔可能就此變孤兒）', () => {
     const { iconsDir, mapPath } = makeBoardDirs({ '1002': 'bbbbbbbbbbbb' });
-    const srcDir = mkdtempSync(join(tmpdir(), 'rd2-wiki-src-'));
+    const srcDir = tmpDir('rd2-wiki-src-');
     const srcPath = join(srcDir, 'dice.png');
     writeFileSync(srcPath, makeMinimalPng(150, 175));
 
@@ -122,7 +122,7 @@ describe('addMappedIcon', () => {
   it('對應表寫回時維持 id 排序與 2 空格縮排 + 結尾換行', () => {
     // 順序或格式一漂，下一個人的 PR 就會夾帶一份整檔重排的 diff，真正改了哪一筆反而看不出來。
     const { iconsDir, mapPath } = makeBoardDirs({ '5009': 'cccccccccccc', '1001': 'aaaaaaaaaaaa' });
-    const srcDir = mkdtempSync(join(tmpdir(), 'rd2-wiki-src-'));
+    const srcDir = tmpDir('rd2-wiki-src-');
     const srcPath = join(srcDir, 'dice.png');
     writeFileSync(srcPath, makeMinimalPng(150, 175));
 
@@ -134,7 +134,7 @@ describe('addMappedIcon', () => {
 
   it('節點 id 不符編碼規律時直接拒絕，對應表一個字都不動', () => {
     const { iconsDir, mapPath } = makeBoardDirs({ '1001': 'aaaaaaaaaaaa' });
-    const srcDir = mkdtempSync(join(tmpdir(), 'rd2-wiki-src-'));
+    const srcDir = tmpDir('rd2-wiki-src-');
     const srcPath = join(srcDir, 'dice.png');
     writeFileSync(srcPath, makeMinimalPng(150, 175));
 
@@ -146,7 +146,7 @@ describe('addMappedIcon', () => {
     // 檢查重用 addIcon（規則 7(c)／21(c) 同一個判準），而且它先跑——不然會留下一筆指向
     // 不存在檔案的對應，validate 反而多噴一條 21(f)。
     const { iconsDir, mapPath } = makeBoardDirs({ '1001': 'aaaaaaaaaaaa' });
-    const srcDir = mkdtempSync(join(tmpdir(), 'rd2-wiki-src-'));
+    const srcDir = tmpDir('rd2-wiki-src-');
     const tiny = join(srcDir, 'tiny.png');
     writeFileSync(tiny, makeMinimalPng(50, 95));
     const notPng = join(srcDir, 'fake.png');
@@ -161,9 +161,9 @@ describe('addMappedIcon', () => {
 describe('addRecordIcon', () => {
   /** 一份最小的 data/tactics.json 替身：兩筆，第一筆已經有圖、第二筆還沒。 */
   const setup = () => {
-    const srcDir = mkdtempSync(join(tmpdir(), 'rd2-rec-src-'));
-    const iconsDir = mkdtempSync(join(tmpdir(), 'rd2-rec-icons-'));
-    const dataDir = mkdtempSync(join(tmpdir(), 'rd2-rec-data-'));
+    const srcDir = tmpDir('rd2-rec-src-');
+    const iconsDir = tmpDir('rd2-rec-icons-');
+    const dataDir = tmpDir('rd2-rec-data-');
     const dataPath = join(dataDir, 'tactics.json');
     writeFileSync(dataPath, `${JSON.stringify([
       { id: '6', name: '召喚精英', icon: '000000000000' },

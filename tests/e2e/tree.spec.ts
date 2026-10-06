@@ -28,7 +28,7 @@
 // （`npm run e2e:snapshots`，CI 同一個 image）；畫面真的改了要用 `npm run e2e:snapshots:update`
 // 重錄，**重錄之後一定要肉眼看過那四張 PNG 再 commit**（CLAUDE.md：純視覺的改動測試綠
 // 不等於做對）。
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect, type Page } from './fixtures';
 import { resolveColor } from './probe';
 import { readTree } from '../helpers/read-tree';
 
@@ -208,7 +208,7 @@ test('骰子樹渲染出所有節點', async ({ page }) => {
   await waitTree(page);
   expect(await page.evaluate(() => window.__tree.count()))
     .toEqual({ nodes: treeData.nodes.length, edges: treeData.edges.length });
-  // 無障礙那份 DOM 也要一顆不少：canvas 進不了無障礙樹，這 241 顆隱形按鈕是鍵盤與讀屏
+  // 無障礙那份 DOM 也要一顆不少：canvas 進不了無障礙樹，每顆節點一顆的隱形按鈕是鍵盤與讀屏
   // 唯一的入口（src/lib/canvas/a11y.ts）。少掉它們畫面完全正常、鍵盤卻整頁不能用。
   await expect(page.locator('.tree-a11y-node')).toHaveCount(treeData.nodes.length);
 });
@@ -575,7 +575,7 @@ test('F. 畫布快照：預設／選取／篩選／縮放四種狀態都畫得�
   test.skip(testInfo.project.name !== 'desktop', '快照只在 desktop project 維護一份基準圖');
   // ⚠️ 只在 Playwright 官方容器裡比（CI 的 e2e-shard 就是那個容器；本機用 `npm run e2e:snapshots`）。
   // 點陣圖比對吃字型：同一份 dist 在這台開發機（33 套 CJK 字型）與 ubuntu-latest 裸 runner 上，
-  // 241 顆節點的標籤全部不一樣（2026-09-06 PR #65 第一次 CI：10,973 px 紅）。基準圖只有在跟
+  // 全部節點的標籤都不一樣（2026-09-06 PR #65 第一次 CI：10,973 px 紅）。基準圖只有在跟
   // 產生它的環境一模一樣時才有意義，所以裸機上一律跳過，而不是放寬容差。
   test.skip(!process.env.CI && !process.env.E2E_SNAPSHOTS, '快照只在 Playwright 官方容器內比對（npm run e2e:snapshots）');
 

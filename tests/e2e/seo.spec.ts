@@ -8,7 +8,7 @@
 // 三個檔案在這裡合成一個 spec，是因為它們互相依賴：robots.txt 指向 sitemap，
 // sitemap 列出的網址要跟 canonical 對得起來，而「未知路徑回什麼」同時決定前兩者
 // 是不是假象。
-import { test, expect } from '@playwright/test';
+import { test, expect } from './fixtures';
 
 /** 正式站網址。canonical 與 sitemap 裡的絕對網址都應該長這樣，跟本機測試埠無關。 */
 const SITE = 'https://rd2wiki.org';
