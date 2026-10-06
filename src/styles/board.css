@@ -419,6 +419,18 @@
    滑鼠點 A 格的光——pointerdown 的 preventDefault 讓焦點留在 B）目標格可能正是焦點格，焦點框不能被虛線換掉。 */
 .board-cell.buff-src { box-shadow: inset 0 0 0 var(--space-h) var(--gold); }
 .board-cell.buff-dst:not(:focus-visible) { outline: var(--space-h) dashed var(--bonus); outline-offset: calc(-1 * var(--space-1)); }
+/* 高對比模式把 box-shadow 整個拿掉，來源格的內框實線就消失了（目標格的虛線 outline 留得住）。
+   改用 ::after 的 border 畫同一圈內框：border 在高對比下保留，色用系統的 Highlight（BL6）。 */
+@media (forced-colors: active) {
+  .board-cell.buff-src::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border: var(--space-h) solid Highlight;
+    border-radius: inherit;
+    pointer-events: none;
+  }
+}
 /* ⚠️ 掛在隊伍列上（不是 .deck-dice）：B9 量的是這個選擇器，而且拖曳從按鈕邊緣起手時
    仍然要能攔住捲頁手勢。
    ⚠️ **兩條隊伍列都要**：兩盤各自的五個 .deck-dice 都掛了拖曳（board-side.ts 的
@@ -438,10 +450,11 @@
      合作模式是靠 src/scripts/board.ts 真的搬 DOM 達成的（order 不改 Tab 順序），而**搬 DOM 在
      手機上沒有任何視覺效果**——.board-stage 是 display: contents，搬進搬出的四個元素前後都是
      .board-page 的 flex 項目，視覺位置只由 order 決定。所以順序全部寫在這裡。
-     不需要另一套「合作模式」的值，也不需要一個 .coop 類別當鉤子：隊友那一組（3～5）在對戰模式下
-     是 [hidden] ＝ display:none，根本不是 flex 項目，那三個號碼自動讓位。留白的號碼就是它們。
+     order 不需要另一套「合作模式」的值：隊友那一組（3～5）在對戰模式下是 [hidden] ＝ display:none，
+     根本不是 flex 項目，那三個號碼自動讓位。留白的號碼就是它們。唯一靠 `.board-page.coop` 分模式的是
+     兩個隊伍標題顯不顯示（見下面 .board-h2 那段）。
      對戰：h1 → 說明 → 切換鈕 → 我的盤 → 我的隊伍列 → 工具列 →（分享圖）→ 明細
-     合作：h1 → 說明 → 切換鈕 → 隊友隊伍列 → 隊友盤 → 分隔線 → 我的盤 → 我的隊伍列 → 工具列 →…
+     合作：h1 → 說明 → 切換鈕 → 隊友標題 → 隊友隊伍列 → 隊友盤 → 分隔線 → 我的盤 → 我的標題 → 我的隊伍列 → 工具列 →…
      ⚠️ 改號碼要整組一起看：order 是整數，中間插一個就得把後面每一個都往後推。 */
   .board-page > h1 { order: 0; }
   .board-page > .lede { order: 1; }
@@ -475,8 +488,15 @@
   #board-tools { order: 9; }
   #board-live { order: 10; }
   #board-export-out { order: 11; }
-  /* 兩個 h2 在手機上是多餘的：畫面上骰盤與組合列各自只有一塊，位置就說明了它是什麼。 */
-  .board-h2 { display: none; }
+  /* 對戰模式的 h2 在手機上是多餘的：畫面上骰盤與組合列各自只有一塊，位置就說明了它是什麼。
+     合作模式不是：兩組隊伍列長得一模一樣，只有標題分得出哪組是隊友的（B56）。
+     `.coop` 由 board.ts 的 applyCoopLayout() 掛在 .board-page 上；「骰盤」那顆兩種模式都藏。
+     ⚠️ 兩個隊伍標題要有自己的 order：沒給就是 0，會跑到 h1 旁邊、跟隊伍列分家。
+     各自跟自己那組同號、DOM 在前 → 排在那組局外加成正上方；上邊距接手原本那組的。 */
+  .board-page:not(.coop) .board-h2, .board-h2:not([id]) { display: none; }
+  #partner-deck-h { order: 3; }
+  #deck-h { order: 7; margin-top: var(--space-5); }
+  .board-page.coop #offgame-mode { margin-top: 0; }
   /* ⚠️ margin-inline: auto 在這裡必須清掉，不能只改 max-width。`.board-page` 這裡是
      flex column，水平方向的 auto 邊界會取消預設的 stretch（跟 CLAUDE.md 記過的
      `main { margin: 0 auto }` 同一個坑，這次踩在 #board-grid 上）：#board-grid 因此不再

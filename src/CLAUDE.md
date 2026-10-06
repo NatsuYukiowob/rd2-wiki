@@ -113,9 +113,14 @@ visible（`overflow-x: hidden` 明寫，`detail.css`）。
   「不含」影響，但盤面符文跟著模式。施加者數值一律讀施加者自己局外加成後的值（`rowValue()`）。隨機方向／種類的
   角標（`.cell-badge`）走 `cycleAt()`，**不可走 `renderBoard()`**（會收掉卡片）。
 - **合作模式**：跨盤排序方向兩盤相反（隊友盤 ↓、我的盤 ↑），方向由呼叫端傳 `BuffInput.partner.crossDir`（**沒有預設**）；
-  兩份傳同一值會有一盤靜靜不生效。
+  兩份傳同一值會有一盤靜靜不生效。排序疊加強化（4307）讀**施加者那一盤**的符文（客戶端取該格第一個施加者，
+  兩盤都打到時順序靜態算不出、取本盤）。清空鈕在對戰模式只清我的盤（隊友盤保留到切回合作，B48b）。
+  手機（觸控）版面只在合作模式顯示「隊友的隊伍」「我的隊伍」兩個 h2（`.board-page.coop`，B56）。
+- **「產生分享圖」產生中用 `aria-disabled` 不用 `disabled`**（後者讓焦點掉回 `<body>`，B8f）；`.btn` 的停用外觀
+  與 hover／按壓排除都涵蓋 `[aria-disabled='true']`（BL7）。
 - **骰子圖是「純骰子圖」，跟節點圖平行的另一條資產路徑**：`data/board-icons/` ＋ `data/board-icons.json`，
-  `npm run add-icon -- --board <id> <png>` 一次更新兩邊，`tools/lib/icons.ts` 的 `buildBoardIcon()` 轉 webp，規則 21 守。刻意不套
+  `npm run add-icon -- --board <id> <png>` 一次更新兩邊，`tools/lib/icons.ts` 的 `buildBoardIcon()` 轉 webp，規則 21 守；
+  頁面查表走 `iconHashOf()`（`src/lib/dice-icon.ts`，少一筆就讓 build 失敗，/dice 同一支）。刻意不套
   `withGutter()`（那是 canvas 圖集取樣用的）。
 - **四個顯示點**（`.board-cell img`／`.deck-dice img`／`.picker-dice img`／`.drag-ghost`）`object-fit: contain`，
   `tests/lib/board-image.test.ts` 讀 `board.css` 釘住。分享圖（`board-export.ts`）用 `src/lib/board-image.ts` 的

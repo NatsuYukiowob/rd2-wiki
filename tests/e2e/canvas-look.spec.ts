@@ -92,3 +92,58 @@ test('CL3. 分支跳轉鈕是 .chip＋常亮的分支色點；手機 320px 五�
     expect(fit.right, '第五顆超出視窗').toBeLessThanOrEqual(320);
   }
 });
+
+/**
+ * CL4–CL6：Windows 高對比（forced-colors）下的畫布頁（2026-09-24 review P4）。
+ * ⚠️ 畫布像素不會被系統重新著色，所以畫布配色只在它設計時假設的深色底上讀得到；系統色只換得了
+ * DOM 元素。colorScheme: 'light' 模擬淺色高對比主題（Windows「沙漠」）——深色主題測不出這幾條。
+ */
+test('CL4. 淺色高對比：畫布底色維持深色（不被換成 Canvas 白），焦點文字牌仍是系統色', async ({ page }) => {
+  // ⚠️ --bg 要在開高對比之前解：tokenColor() 借一個元素的 color 解色，forced-colors 下那個
+  // color 會被換成 CanvasText。
+  await page.goto('/tree');
+  const bg = await tokenColor(page, '--bg');
+  await page.emulateMedia({ forcedColors: 'active', colorScheme: 'light' });
+  for (const path of ['/tree', '/sim']) {
+    await page.goto(path);
+    const bodyBg = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
+    const hostBg = await page.locator('#canvas-host').evaluate(el => getComputedStyle(el).backgroundColor);
+    expect(hostBg, `${path} 畫布底下是系統的 Canvas 色，深色主題的標籤與連線疊在上面讀不到`).toBe(bg);
+    expect(hostBg).not.toBe(bodyBg);
+    await page.locator('.tree-a11y-node[data-id="1001"]').focus();
+    // 焦點牌在 #canvas-host 裡：host 的 forced-color-adjust: none 會繼承下來，沒接回 auto 的話
+    // 牌子的 Canvas／CanvasText 也一起失效。
+    const tile = await page.locator('.tree-a11y li:focus-within').evaluate(el => getComputedStyle(el).forcedColorAdjust);
+    expect(tile, `${path} 焦點牌沒有接回系統色`).toBe('auto');
+  }
+});
+
+test('CL5. 高對比＋窄視窗：焦點文字牌不被 /sim 抽屜與 /tree 分支列蓋住', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.emulateMedia({ forcedColors: 'active' });
+  for (const path of ['/tree', '/sim']) {
+    await page.goto(path);
+    await page.locator('.tree-a11y-node[data-id="1001"]').focus();
+    // 牌子是 pointer-events: none，elementFromPoint 本來就會穿過它——暫時打開再量最上層是誰。
+    const top = await page.locator('.tree-a11y li:focus-within').evaluate(li => {
+      (li as HTMLElement).style.pointerEvents = 'auto';
+      const r = li.getBoundingClientRect();
+      const hit = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
+      (li as HTMLElement).style.pointerEvents = '';
+      return li.contains(hit) ? 'tile' : `${hit?.tagName}#${hit?.id}.${hit?.className}`;
+    });
+    expect(top, `${path} 焦點牌被蓋住`).toBe('tile');
+  }
+});
+
+test('CL6. 高對比：/sim 的兩個把手（.sim-grip）看得見，不跟所在的面同色', { tag: '@mobile' }, async ({ page, isMobile }) => {
+  test.skip(!isMobile, '把手只在手機版面出現');
+  await page.emulateMedia({ forcedColors: 'active', colorScheme: 'light' });
+  await page.goto('/sim');
+  await page.locator('#sim-fab-more').click();
+  for (const [grip, face] of [['#sim-sheet-close .sim-grip', '#sim-toolbar'], ['#sim-panel-handle .sim-grip', '#sim-panel']] as const) {
+    const g = await page.locator(grip).evaluate(el => getComputedStyle(el).backgroundColor);
+    const f = await page.locator(face).evaluate(el => getComputedStyle(el).backgroundColor);
+    expect(g, `${grip} 跟 ${face} 同色，把手消失`).not.toBe(f);
+  }
+});

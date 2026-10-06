@@ -569,9 +569,10 @@ if (grid && deckH && deckRow && deckLegend && picker && pickerClose && live && c
 
   document.getElementById('board-clear')?.addEventListener('click', () => {
     // 工具列只有一顆清空鈕，而合作模式下畫面上有兩盤——只清一盤會留下一整盤還在算跨盤加成的骰子。
-    // 對戰模式下隊友盤是 hidden 的，清它看不出差別，所以動作不分支，只有播報分。
+    // 對戰模式只清我的盤：隊友盤的內容刻意保留到切回合作（見 applyCoopLayout()），清掉看不見的
+    // 那一盤等於讓使用者切回去時整盤消失，而播報只說得出「骰盤已清空」（B48b）。
     me.clearBoard();
-    partner.clearBoard();
+    if (coop) partner.clearBoard();
     announce(coop ? '兩盤骰盤已清空' : '骰盤已清空');
   });
 
@@ -608,7 +609,10 @@ if (grid && deckH && deckRow && deckLegend && picker && pickerClose && live && c
     exportBtn.addEventListener('click', async () => {
       // 按鈕文字固定不變：改成「產生中…」會讓整條工具列的寬度跳動
       // （CLAUDE.md〈版面的硬規則〉）。
-      exportBtn.disabled = true;
+      // ⚠️ 用 aria-disabled 不用 disabled：disabled 會讓按鈕當場 blur、焦點掉回 <body>，產生完也
+      // 不回來（B8f）。所以重入要自己擋——aria-disabled 不會攔 click。
+      if (exportBtn.getAttribute('aria-disabled') === 'true') return;
+      exportBtn.setAttribute('aria-disabled', 'true');
       try {
         // 分享圖跟著隱藏（Yuki 拍板）：使用者按了隱藏就是不想看到那些數字，分享出去
         // 自然也不該有。只影響骰盤格，不影響組合列——見 ExportInput.hidePips 的說明。
@@ -643,7 +647,7 @@ if (grid && deckH && deckRow && deckLegend && picker && pickerClose && live && c
         // 使用者看到的是「按了完全沒反應」，而這一頁的唯一產出就是這張圖。
         announce('分享圖產生失敗');
       } finally {
-        exportBtn.disabled = false;
+        exportBtn.removeAttribute('aria-disabled');
       }
     });
   }
@@ -682,6 +686,8 @@ if (grid && deckH && deckRow && deckLegend && picker && pickerClose && live && c
    */
   function applyCoopLayout(): void {
     for (const el of partnerBlock) el.hidden = !coop;
+    // 手機版面靠它決定要不要顯示兩個隊伍標題（board.css 觸控段）。
+    boardPage!.classList.toggle('coop', coop);
     if (coop) boardStage!.insertBefore(myDeckBlock(), boardTools);
     else boardPage!.insertBefore(myDeckBlock(), picker);
     renderCoopMode();

@@ -234,7 +234,7 @@ npm run compare -- <beforeURL> <afterURL>  # computed-style 逐元素比對，�
 - **每一條 `transition` 都要指名 token 曲線**；`--e-spring` 只給狀態切換（`tokens.test.ts`「過場曲線」擋裸 `ease`）。
   ⚠️ `--t-med`／`--slide-ms` **長度不准動**（`tree-canvas.ts` 用 `cssMs()` 讀成常數），只換曲線安全。
 - **按壓**＝`transform: scale(var(--p-press))`；⚠️ **不要在 `:active` 裡寫 `transition-duration`**（單值覆寫整份清單）；
-  停用的按鈕要 `:not(:disabled)`。
+  停用的按鈕要 `:not(:disabled)`（用 `aria-disabled` 停用的要連它一起排除，見 `.btn`）。
 - **進場動畫**：`[data-enter]` 由 `Base.astro` `<head>` 的同步 `is:inline` script 掛上、頁尾 `setTimeout` 移除
   （兩端都不能省、**不能改用 `animationend`**、**不寫成伺服器輸出的 `<html data-enter>`**）；`--i` 的上限只在 CSS 夾，
   模板不准 `Math.min`。載入後約一秒 hover 不抬起是已知且接受的。
@@ -244,6 +244,8 @@ npm run compare -- <beforeURL> <afterURL>  # computed-style 逐元素比對，�
 - **減少動態的規則每個 CSS 檔自帶一個 `@media (prefers-reduced-motion: reduce)`**（`/tree` 的在 `tree.astro`），
   不寫全域 `*{transition-duration:0.01ms}`（會關掉傳達資訊的 opacity）。⚠️ **覆寫選擇器要跟被覆寫那條一模一樣、
   `:is()` 包法也一樣**，否則具體度低一階而輸掉（D18）。`tokens.css` 的 reduce 區塊是唯一改 token 的（`--face-lift`，理由在該處）。
+- **畫布頁的高對比**：canvas 像素不會被系統重新著色，`#canvas-host` 在 forced-colors 下 `forced-color-adjust: none`
+  ＋`background: var(--bg)` 保住深色底；裡面的 `.tree-a11y` 接回 `auto`（焦點牌用系統色）。CL4–CL6 守。
 - ⚠️ **`:has()` 與 `color-mix()` 都要有退化路徑**：`forced-colors` 區塊、`color-mix()` 前一行純色 fallback。
 - **守門**：`tokens.test.ts` 掃裸 px／rem（例外在 `ALLOWED` 附理由）、驗每個 `var(--x)` 定義得出來、級距內不准撞值；
   掃描名單自動列舉，另拿寫死的 `EXPECTED_CSS` 反驗——**新增或改名 CSS 檔要一起改 `EXPECTED_CSS`**。

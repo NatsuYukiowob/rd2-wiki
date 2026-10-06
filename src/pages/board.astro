@@ -29,6 +29,7 @@ import nodeTextRaw from '../../data/nodes.json';
 import diceStatsRaw from '../../data/dice-stats.json';
 import { CELLS, DECK_SIZE } from '../lib/board';
 import { BRANCH_ZH } from '../lib/labels';
+import { iconHashOf } from '../lib/dice-icon';
 import { deriveTable, type StatParams } from '../lib/dice-calc';
 import offgameRaw from '../../data/offgame-effects.json';
 import passiveTablesRaw from '../../data/passive-upgrade-cost.json';
@@ -197,7 +198,7 @@ const offgamePayload = {
             data-branch={d.branch}
             title={`${d.name}（${BRANCH_ZH[d.branch]}）`}
           >
-            <img src={`/assets/board-icons/${boardIcons[d.id]}.webp`} alt="" width={d.size[0]} height={d.size[1]} loading="lazy" decoding="async" />
+            <img src={`/assets/board-icons/${iconHashOf(boardIcons, d.id, 'board')}.webp`} alt="" width={d.size[0]} height={d.size[1]} loading="lazy" decoding="async" />
             <span>{d.name}</span>
           </button>
         ))}

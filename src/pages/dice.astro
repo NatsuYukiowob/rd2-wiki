@@ -26,6 +26,7 @@ import { buildTermPayload } from '../lib/static-markup';
 import { BRANCH_ZH } from '../lib/labels';
 import { statsOf } from '../lib/dice-stats';
 import type { DiceStatsTable, GlossaryRecord, TreeData, TreeNode } from '../lib/types';
+import { iconHashOf } from '../lib/dice-icon';
 
 const tree = data as unknown as TreeData;
 const keywords = keywordsRaw as Record<string, GlossaryRecord>;
@@ -59,15 +60,6 @@ const nodes = tree.nodes
 // CI 規則 30 守這份對應表。⚠️ 跟 /board 的純骰子圖（2 號，扁平卡片視角）是**兩條**路徑，
 // 同一顆骰子的兩張圖不一樣，不要互相接線（規則 30 的測試有一條專門守這件事）。
 const dice3Icons = dice3IconsRaw as Record<string, string>;
-// ⚠️ 少一筆就讓建置失敗，不要讓 `!` 把 undefined 放行：`dice3Icons[id]` 是 undefined 時
-// 版面會安靜地印出 `src="/assets/dice3-icons/undefined.webp"`，畫面上是一張破圖而 build
-// 回 0（2026-09-21 /code-review 抓到）。CI 的規則 30(a) 擋得到同一件事，但它跑在 build
-// 之前的另一個步驟——`astro dev` 與單跑 `npm run build` 的人完全不會被告知。
-const icon3Of = (id: string): string => {
-  const hash = dice3Icons[id];
-  if (!hash) throw new Error(`data/dice3-icons.json 沒有節點 ${id} 的 3D 骰子圖（npm run add-icon -- --dice3 ${id} <png>）`);
-  return hash;
-};
 
 const BRANCHES = Object.entries(BRANCH_ZH);
 ---
@@ -125,7 +117,7 @@ const BRANCHES = Object.entries(BRANCH_ZH);
           glossary={glossary}
           upgradeCostTable={tree.meta.upgradeCostTable}
           stats={statsOf(diceStats, gameIds.get(node.id))}
-          icon3Hash={icon3Of(node.id)}
+          icon3Hash={iconHashOf(dice3Icons, node.id, 'dice3')}
         />
       ))}
     </div>
