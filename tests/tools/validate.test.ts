@@ -2,7 +2,6 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { deflateSync } from 'node:zlib';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { tmpDir } from '../helpers/tmp';
 import { validate } from '../../tools/validate';
@@ -869,7 +868,7 @@ describe('validate', () => {
     });
 
     it('圖示目錄整個不見時報一條錯誤，不是拋例外把其餘規則一起帶走', () => {
-      const gone = join(tmpdir(), 'rd2-board-icons-does-not-exist');
+      const gone = join(tmpDir('rd2-board-icons-'), 'does-not-exist');
       // 舊版是 readdirSync 直接拋 ENOENT：CLI 印的是 stack trace 而不是「❌ N 個問題」，
       // 而且 (f) 剛產出的 41 條「指向的圖不存在」全部隨例外消失。
       const result = validate(svg, { ...opts, boardIconsDir: gone });
@@ -878,7 +877,7 @@ describe('validate', () => {
     });
 
     it('規則 7 的圖示目錄不見時同樣是錯誤而不是例外（共用同一支掃描）', () => {
-      const gone = join(tmpdir(), 'rd2-wiki-icons-does-not-exist');
+      const gone = join(tmpDir('rd2-wiki-icons-'), 'does-not-exist');
       const result = validate(svg, { ...opts, iconsDir: gone });
       expect(result.errors.some(e => /規則 7.*讀不到圖示目錄/.test(e) && e.includes(gone))).toBe(true);
     });

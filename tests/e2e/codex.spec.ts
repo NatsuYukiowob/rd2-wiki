@@ -4,7 +4,6 @@
 // 圖鑑最核心的承諾是「文字進得了 HTML」——那件事在瀏覽器裡看不出差別（有沒有 JS 渲染，
 // 畫面長得一模一樣），只有去讀伺服器回的原始 HTML 才會說話。所以第一條測試刻意用
 // `request.get()` 而不是 `page.goto()`：後者拿到的是 JS 跑完之後的 DOM，驗不到這件事。
-import type { APIRequestContext } from '@playwright/test';
 import { test, expect } from './fixtures';
 import sharp from 'sharp';
 import { resolveColor, settleEnter } from './probe';
@@ -18,11 +17,16 @@ const tree = readTree() as {
 
 const dice = tree.nodes.filter(n => n.type === 'dice');
 
-/** 一頁 HTML 上所有的 id（詞彙頁的錨點）。 */
-async function anchorsOn(request: APIRequestContext, path: string): Promise<Set<string>> {
-  const html = await (await request.get(path)).text();
-  return new Set([...html.matchAll(/\sid="([^"]+)"/g)].map(m => m[1]!));
-}
+/** 一頁 HTML 裡的每一條 `#關鍵字` 連結。 */
+const kwLinks = (html: string) =>
+  [...html.matchAll(/class="kw-link" href="([^"]+)" data-term="([^"]+)"/g)].map(([, href, term]) => ({ href: href!, term: term! }));
+
+/**
+ * 詞彙頁上**詞條本身**的錨點。只收 `<article class="kw-entry" id>`，不收頁面上其他 id：
+ * 錨點剛好撞到導覽列或分類面板的 id 時，連結「找得到 id」卻落在錯的地方。
+ */
+const termAnchors = (html: string) =>
+  new Set([...html.matchAll(/<article class="kw-entry" id="([^"]+)"/g)].map(m => m[1]!));
 
 test('C1. /dice 的骰子名稱與效果是伺服器輸出的 HTML，不是瀏覽器渲染出來的', async ({ request }) => {
   const res = await request.get('/dice');
@@ -171,10 +175,11 @@ test('C3. 卡片裡的 #關鍵字 就地換頁：左右滑動過場、卡片高�
 test('C3b. 沒有 JS 時 #關鍵字 仍然是一條連得到詞條頁的連結', async ({ request }) => {
   // 就地換頁是 JS 攔下來的（preventDefault），底下的 href 一定要是真的——不然關掉 JS
   // 或腳本還沒載入時，那些標記就是一堆點不動的字。
+  // 錨點有沒有落在真的詞條上由 C3d 逐條驗（含 /dice）。
   const html = await (await request.get('/dice')).text();
-  const hrefs = [...html.matchAll(/class="kw-link" href="([^"]+)" data-term="([^"]+)"/g)];
-  expect(hrefs.length).toBeGreaterThan(0);
-  for (const [, href] of hrefs) {
+  const links = kwLinks(html);
+  expect(links.length).toBeGreaterThan(0);
+  for (const { href } of links) {
     expect(href).toMatch(/^\/guide\/keywords#[A-Za-z][A-Za-z0-9_-]*$/);
   }
   // 每一個標記都要有官方色。別名（播種／傳送）曾經是全站唯二沒有顏色的標記——
@@ -183,29 +188,25 @@ test('C3b. 沒有 JS 時 #關鍵字 仍然是一條連得到詞條頁的連結',
     .filter(m => !m[0].includes('style="color:'))
     .map(m => m[1]);
   expect(uncoloured, '這些標記沒有官方色').toEqual([]);
-
-  // 每一條都要落在詞彙頁上一個存在的詞條：錨點對錯時沒有 JS（或中鍵另開）的人只會停在頁頂。
-  // 抽查一條守不住——錯的那組剛好不是第一條時照樣綠。
-  const ids = await anchorsOn(request, KEYWORDS_PATH);
-  const broken = hrefs.map(([, href, term]) => [term, href!.split('#')[1]!] as const).filter(([, a]) => !ids.has(a));
-  expect(broken, '這些 #關鍵字 的錨點在詞彙頁上不存在').toEqual([]);
 });
 
-test('C3d. 其他會印 #關鍵字 的頁面，每條連結的錨點也都在詞彙頁上', async ({ request }) => {
-  // /dice 以外的頁面走同一支 renderStaticText()，各自餵自己的文字；詞彙頁本身的解釋裡也有巢狀標記。
+test('C3d. 每個會印 #關鍵字 的頁面，每條連結都落在詞彙頁上真的詞條', async ({ request }) => {
+  // 錨點對錯時，沒有 JS（或中鍵另開）的人只會停在頁頂；抽查一條守不住——錯的那條剛好不是第一條時照樣綠。
+  // 這幾頁都走同一支 renderStaticText()，各自餵自己的文字；詞彙頁本身的解釋裡也有巢狀標記。
   // /tactic、/rift-shop 目前的資料沒有標記（0 條），但文字一改就會長出來，所以照樣掃、不要求每頁都有。
-  const ids = await anchorsOn(request, KEYWORDS_PATH);
+  const pages = ['/dice', '/tactic', '/boss', '/rift-shop', KEYWORDS_PATH];
+  const htmls = await Promise.all(pages.map(async p => (await request.get(p)).text()));
+  const anchors = termAnchors(htmls[pages.indexOf(KEYWORDS_PATH)]!);
+  expect(anchors.size, '詞彙頁上一個詞條都沒抓到——正則或頁面輸出改了').toBeGreaterThan(0);
   let total = 0;
-  for (const path of ['/tactic', '/boss', '/rift-shop', KEYWORDS_PATH]) {
-    const html = await (await request.get(path)).text();
-    const hrefs = [...html.matchAll(/class="kw-link" href="([^"]+)" data-term="([^"]+)"/g)];
-    total += hrefs.length;
-    const broken = hrefs
-      .map(([, href, term]) => [term, href!] as const)
-      .filter(([, href]) => !href.startsWith(`${KEYWORDS_PATH}#`) || !ids.has(href.split('#')[1]!));
+  pages.forEach((path, i) => {
+    const links = kwLinks(htmls[i]!);
+    total += links.length;
+    const broken = links.filter(({ href }) =>
+      !href.startsWith(`${KEYWORDS_PATH}#`) || !anchors.has(href.slice(KEYWORDS_PATH.length + 1)));
     expect(broken, `${path} 上這些 #關鍵字 連到不存在的詞條`).toEqual([]);
-  }
-  expect(total, '四頁加起來一條 #關鍵字 都沒有——正則或頁面輸出改了').toBeGreaterThan(0);
+  });
+  expect(total, '一條 #關鍵字 都沒有——正則或頁面輸出改了').toBeGreaterThan(0);
 });
 
 test('C3c. 同時只開一張卡片：換一張會收掉前一張，Esc 關的是使用者正在看的那張', async ({ page }) => {

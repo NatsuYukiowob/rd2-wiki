@@ -84,29 +84,39 @@ function stripComments(src: string): string {
  * .astro 檔只留 `<style>` 區塊（其餘換成等長空白，位移不變）：frontmatter 與模板裡的 TS／HTML
  * 不是 CSS，而下面的正則允許跨行——`// 舊版 padding: 4px` 這種註解會一路吃到下一個 `;` 變成假紅。
  * 代價：模板的 `style={…}` 屬性不掃（目前只用來帶 `--i`、官方色這類動態值，不帶尺寸）。
+ *
+ * ⚠️ frontmatter 要先整段拿掉、`<style>` 只認行首：註解裡提到 `<style is:global>`（sim.astro 就有）
+ * 的話，會被當成區塊開頭，從那裡一路到真的 `</style>` 全部當 CSS 掃。
  */
 function cssOnly(file: string, src: string): string {
   if (!file.endsWith('.astro')) return src;
   const blank = (s: string) => s.replace(/[^\n]/g, ' ');
+  const fm = /^---\n[\s\S]*?\n---\n/.exec(src);
+  const body = fm ? blank(fm[0]) + src.slice(fm[0].length) : src;
   let out = '';
   let last = 0;
-  for (const m of src.matchAll(/(<style\b[^>]*>)([\s\S]*?)(<\/style>)/g)) {
-    out += blank(src.slice(last, m.index! + m[1]!.length)) + m[2]!;
+  for (const m of body.matchAll(/^([ \t]*<style\b[^>]*>)([\s\S]*?)(<\/style>)/gm)) {
+    out += blank(body.slice(last, m.index! + m[1]!.length)) + m[2]!;
     last = m.index! + m[1]!.length + m[2]!.length;
   }
-  return out + blank(src.slice(last));
+  return out + blank(body.slice(last));
 }
 
+/** 這個檔裡真正是 CSS 的部分，註解已拿掉。尺寸與過場兩條掃描共用。 */
+const cssSource = (file: string) => stripComments(cssOnly(file, readFileSync(file, 'utf8')));
+
+/** 一條宣告的結尾：`;` 或直接接 `}`（規則裡最後一條宣告不寫分號是合法 CSS）。 */
+const DECL_END = String.raw`\s*(?:;|(?=\}))`;
+
 function violations(file: string): string[] {
-  const src = stripComments(cssOnly(file, readFileSync(file, 'utf8')));
+  const src = cssSource(file);
   // :root 本身就是級距的定義處，跳過。
   const root = /^:root \{[\s\S]*?^\}$/m.exec(src);
   const skip: [number, number] = root ? [root.index, root.index + root[0].length] : [-1, -1];
 
   const out: string[] = [];
   // 不綁行首：宣告寫成一行（`.x { padding: 1rem; }`）一樣要掃得到。
-  // 結尾可以是 `;` 或直接接 `}`——規則裡最後一條宣告不寫分號是合法 CSS，只認分號的話會整條漏掉。
-  for (const m of src.matchAll(/([a-z-]+):\s*([^;{}]+?)\s*(?:;|(?=\}))/g)) {
+  for (const m of src.matchAll(new RegExp(String.raw`([a-z-]+):\s*([^;{}]+?)${DECL_END}`, 'g'))) {
     if (m.index !== undefined && m.index >= skip[0] && m.index < skip[1]) continue;
     const [, prop, value] = m;
     if (!SIZED_PROPS.has(prop!)) continue;
@@ -375,9 +385,9 @@ describe('過場曲線', () => {
     const bad: string[] = [];
     let seen = 0;
     for (const file of FILES) {
-      const src = stripComments(readFileSync(file, 'utf8'));
+      const src = cssSource(file);
       // 跨行比對：這個 repo 的多屬性 transition 是一個屬性一行的。
-      for (const m of src.matchAll(/transition:\s*([^;{}]+);/g)) {
+      for (const m of src.matchAll(new RegExp(String.raw`transition:\s*([^;{}]+?)${DECL_END}`, 'g'))) {
         const value = m[1]!.replace(/\s+/g, ' ').trim();
         if (value === 'none') continue;
         seen++;

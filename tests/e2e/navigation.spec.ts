@@ -1,8 +1,10 @@
-import { test, expect } from './fixtures';
+import { test, expect, watchPageErrors } from './fixtures';
 
 for (const [width, height] of [[390, 844], [430, 932]]) {
   test(`NAV. ${width}×${height} 觸控、裁切、關閉與跳頁`, { tag: '@mobile' }, async ({ browser }, testInfo) => {
     const context = await browser.newContext({ baseURL: testInfo.project.use.baseURL, viewport: { width: width!, height: height! }, isMobile: true, hasTouch: true });
+    // 自己開的 context 不在全域 pageerror 防線裡（見 fixtures.ts），這裡自己接。
+    const pageErrors = watchPageErrors(context);
     const page = await context.newPage();
     await page.goto('/');
     const links = page.locator('.nav-links');
@@ -65,6 +67,7 @@ for (const [width, height] of [[390, 844], [430, 932]]) {
       await panel.locator(`a[href="${href}"]`).tap();
       await expect(page).toHaveURL(new RegExp(`${href}/?$`));
     }
+    expect(pageErrors, '頁面腳本丟出未捕捉的例外').toEqual([]);
     await context.close();
     const noJS = await browser.newContext({ baseURL: testInfo.project.use.baseURL, viewport: { width: width!, height: height! }, isMobile: true, hasTouch: true, javaScriptEnabled: false });
     const fallback = await noJS.newPage();

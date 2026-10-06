@@ -4,7 +4,8 @@ import { describe, expect, it } from 'vitest';
 import { tmpDir } from './tmp';
 
 const TESTS_ROOT = join(import.meta.dirname, '..');
-const HELPER = 'helpers/tmp.ts';
+/** 只有這兩個檔可以提到 mkdtemp／tmpdir：helper 本身，與這支守門測試。 */
+const EXEMPT = new Set(['helpers/tmp.ts', 'helpers/tmp.test.ts']);
 
 function listTs(dir: string): string[] {
   return readdirSync(dir).flatMap(name => {
@@ -15,13 +16,15 @@ function listTs(dir: string): string[] {
 }
 
 describe('測試用暫存目錄', () => {
-  it('tests/ 底下只有 helpers/tmp.ts 可以直接 mkdtemp，其他一律走 tmpDir()', () => {
+  it('tests/ 底下只有 helpers/tmp.ts 可以碰 mkdtemp／tmpdir()，其他一律走 tmpDir()', () => {
     // 直接 mkdtemp 的目錄沒人清：跑一次 npm test 會留下幾十個（有的是整套圖示的複本）。
     // 守的是寫法不是執行結果——vitest 平行跑、別的行程也在用 /tmp，數殘留目錄會時好時壞。
+    // 比對的是識別字本身，不是呼叫形式：`import { mkdtempSync as mk }` 的別名、
+    // `mkdirSync(join(tmpdir(), 'x'))` 這種固定名稱的暫存目錄，都一樣會被擋。
     const offenders = listTs(TESTS_ROOT)
       // posix 斜線：HELPER 的比對在 Windows 上也要對得上。
       .map(p => relative(TESTS_ROOT, p).split(sep).join('/'))
-      .filter(rel => rel !== HELPER && /\bmkdtemp(Sync)?\s*\(/.test(readFileSync(join(TESTS_ROOT, ...rel.split('/')), 'utf8')));
+      .filter(rel => !EXEMPT.has(rel) && /\b(mkdtemp(Sync)?|tmpdir)\b/.test(readFileSync(join(TESTS_ROOT, ...rel.split('/')), 'utf8')));
     expect(offenders, '改用 tests/helpers/tmp.ts 的 tmpDir()').toEqual([]);
   });
 

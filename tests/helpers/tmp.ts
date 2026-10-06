@@ -10,10 +10,12 @@ import { onTestFinished } from 'vitest';
 /**
  * 建一個暫存目錄，**這條測試結束時（不論成敗）自動刪掉**。
  * 只能在 `it()` 本體（或它呼叫的函式）裡用——在 `describe` 層或 `beforeAll` 呼叫時，
- * vitest 的 `onTestFinished` 會直接丟例外，不會悄悄漏掉清理。
+ * vitest 的 `onTestFinished` 會直接丟例外。
+ * ⚠️ 先登記清理、再建目錄：反過來的話，丟例外那一刻目錄已經建好了，每跑一次漏一個。
  */
 export function tmpDir(prefix: string): string {
-  const dir = mkdtempSync(join(tmpdir(), prefix));
-  onTestFinished(() => rmSync(dir, { recursive: true, force: true }));
+  let dir: string | undefined;
+  onTestFinished(() => { if (dir) rmSync(dir, { recursive: true, force: true }); });
+  dir = mkdtempSync(join(tmpdir(), prefix));
   return dir;
 }
