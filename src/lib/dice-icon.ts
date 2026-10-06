@@ -13,3 +13,19 @@
  * 改 CSS 的 `3rem` 而沒改這裡，測試會紅。
  */
 export const DICE_CARD_ICON_PX = 48;
+
+/**
+ * 從「節點 id → 內容雜湊」對應表取一顆骰子的圖示雜湊，少一筆就 throw。
+ *
+ * ⚠️ 不要讓 `map[id]!` 把 undefined 放行：版面會安靜地印出 `src="…/undefined.webp"`，畫面上
+ * 一張破圖而 build 回 0。CI 的 validate（規則 21／30）擋得到同一件事，但它跑在 build 之前的另一個
+ * 步驟——`astro dev` 與單跑 `npm run build` 的人完全不會被告知（2026-09-21 /code-review 在 /dice
+ * 抓到；/board 同一個寫法到 2026-09-24 review 才補上）。
+ *
+ * @param flag `add-icon` 的旗標（`dice3`／`board`），錯誤訊息直接給補圖的指令。
+ */
+export function iconHashOf(map: Record<string, string>, id: string, flag: 'dice3' | 'board'): string {
+  const hash = map[id];
+  if (!hash) throw new Error(`data/${flag}-icons.json 沒有節點 ${id} 的圖示（npm run add-icon -- --${flag} ${id} <png>）`);
+  return hash;
+}

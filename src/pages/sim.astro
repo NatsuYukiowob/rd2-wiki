@@ -797,6 +797,13 @@ const optional = [...ctx.optional]
       background: var(--border-strong);
       border-radius: var(--r-pill);
     }
+    /* 高對比模式把背景換成 Canvas，只靠背景畫的把手會跟所在的面同色而消失——「收起工具列」那顆鈕
+       就只剩一片空白（CL6）。 */
+    @media (forced-colors: active) {
+      .sim-grip {
+        background: CanvasText;
+      }
+    }
 
     .sim-head-sum {
       display: flex;

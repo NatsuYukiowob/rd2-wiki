@@ -492,10 +492,36 @@ describe('合作雙盤：跨盤排序', () => {
   it('隊友盤用自己的局外加成算值：隊友全滿時的值大於隊友不含時的值', () => {
     const theirs = boardOf({ 7: align(1, 2) });
     const lo = runCoop(filled({}), theirs, {}, {})[2]!.attackPct;
-    // ⚠️ 只給 4207（施加者那一列的 statAdd）。4307 是**我的**符文、走 input.rune()，
-    //    放進 partnerLevels 不會有作用，擺在這裡只會混淆這條測試在測什麼。
+    // ⚠️ 只給 4207（施加者那一列的 statAdd）。4307 也是施加者那一盤的符文，給了就會多一筆
+    //    疊加、混進這條要比的數字，所以不放。
     const hi = runCoop(filled({}), theirs, {}, { '4207': 99 })[2]!.attackPct;
     expect(hi).toBeGreaterThan(lo);
+  });
+});
+
+describe('合作雙盤：排序疊加強化（4307）讀施加者那一盤的符文', () => {
+  // 客戶端 1.1.2 `PlayerComp::CheckStatBuff4Defender`（off A32604C）：kind 15 取「該格第一個有效
+  // Owner（施加者骰子）」的 rune 189，乘全格層數。2026-09-24 review board-1 之前這裡讀的是接收格
+  // 那一盤，預設狀態（我不含、隊友全滿）下隊友排序打過來的疊加整個消失。
+  // ⚠️ runCoop 的 partnerLevels 預設＝levels：兩邊一定要明寫不同的值，否則選哪一盤都會綠。
+  const stackOf = (cells: CellBuffs[], i: number) => cells[i]!.entries.find(e => e.kind === 'alignmentStack');
+  const theirs = () => boardOf({ 2: align(1, 2) });   // 隊友 col 2 箭頭 ↓ → 我的 col 2 整欄
+
+  it('只有跨盤層數：隊友有 4307、我沒有 → 有疊加，值用隊友的', () => {
+    const cells = runCoop(boardOf({ 7: dice(FIRE) }), theirs(), {}, { '4307': 1 });
+    expect(stackOf(cells, 7)?.text).toBe('排序疊加強化 ×1：攻擊 +10%');
+  });
+
+  it('只有跨盤層數：我有 4307、隊友沒有 → 沒有疊加', () => {
+    const cells = runCoop(boardOf({ 7: dice(FIRE) }), theirs(), { '4307': 1 }, {});
+    expect(stackOf(cells, 7)).toBeUndefined();
+  });
+
+  it('兩盤層數都有：用我這一盤的（客戶端取第一個施加者，順序靜態算不出，見 board-buffs.ts）', () => {
+    const mine = boardOf({ 2: align(1, 2), 7: dice(FIRE) });
+    const hi = runCoop(mine, theirs(), { '4307': 1 }, {});
+    expect(stackOf(hi, 7)?.text).toBe('排序疊加強化 ×2：攻擊 +20%');
+    expect(stackOf(runCoop(mine, theirs(), {}, { '4307': 1 }), 7)).toBeUndefined();
   });
 });
 

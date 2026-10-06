@@ -92,7 +92,8 @@ export interface BuffSide {
 export interface BuffInput extends BuffSide {
   /**
    * 合作模式的另一盤。對戰模式是 undefined——那條路徑與這個欄位出現之前逐項相同。
-   * ⚠️ 只有排序（單一方向）與共鳴兩條規則讀得到它，其餘五條不跨盤（客戶端 IsCoop 的呼叫者掃過）。
+   * ⚠️ 只有排序（單一方向，連同它的疊加強化 4307 讀施加者那一盤的 `rune`）與共鳴兩條規則讀得到它，
+   * 其餘五條不跨盤（客戶端 IsCoop 的呼叫者掃過）。
    */
   partner?: BuffSide & {
     /**
@@ -255,11 +256,14 @@ export function boardBuffs(input: BuffInput): CellBuffs[] {
     }
 
     // 排序疊加強化（4307）：10% × 該格排序層數，1 層也算。
-    // ⚠️【推論，高】跨盤掛上去的是同一格上同一種效果，所以層數一起數。客戶端沒有直接讀到
-    //    這一段的計數方式（要讀對應的計數邏輯才能升等這個推論）。
+    // 【讀到】客戶端 1.1.2 `PlayerComp::CheckStatBuff4Defender`（off A32604C）：該格所有 kind 15
+    // （兩盤打過來的都算）一起數層數，4307 只取**第一個有效施加者**自己那一盤的 rune 189，乘全部層數
+    // ——是施加者的符文，不是接收格這一盤的（2026-09-24 review board-1）。
+    // ⚠️【推論】兩盤的排序都打到這一格時，「第一個」由掛上效果的先後決定（移動會重掛、順序再變），
+    //    靜態算不出來，取本盤。
     const layers = aligns.length + acrossAligns.length;
-    const stack = rune(BOARD_RUNES.alignmentStack);
-    if (layers > 0 && stack !== null) {
+    const stack = layers === 0 ? null : (aligns.length > 0 ? input : partner!).rune(BOARD_RUNES.alignmentStack);
+    if (stack !== null) {
       const v = round9(stack * layers);
       attackPct += v;
       add('alignmentStack', aligns, `排序疊加強化 ×${layers}：攻擊 +${pct(v)}%`, acrossAligns);

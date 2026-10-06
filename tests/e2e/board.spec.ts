@@ -808,6 +808,25 @@ test('B8b. 連按兩次產生分享圖，第二張仍然顯示得出來', async 
     page.locator('#board-export-img').evaluate((el: HTMLImageElement) => el.naturalWidth), { timeout: EXPORT_TIMEOUT }).toBe(1200);
 });
 
+test('B8f. 鍵盤產生分享圖：產生期間與產生之後焦點都留在按鈕上', async ({ page }) => {
+  // 2026-09-24 review board-2：handler 原本把按鈕設成 disabled，按鈕一被停用就 blur，
+  // document.activeElement 掉回 <body>，圖產生完也不回來——讀屏的焦點播報與虛擬游標整個失位。
+  // 改成 aria-disabled＋busy 旗標（同一頁「我的 /sim」的前例）之後焦點不會離開。
+  await page.goto('/board');
+  await page.locator('#board-export').focus();
+  await page.evaluate(() => {
+    const w = window as unknown as { blurred: boolean };
+    w.blurred = false;
+    document.getElementById('board-export')!.addEventListener('blur', () => { w.blurred = true; });
+  });
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#board-export-out')).toBeVisible({ timeout: EXPORT_TIMEOUT });
+  expect(await page.evaluate(() => (window as unknown as { blurred: boolean }).blurred), '產生期間按鈕失去焦點').toBe(false);
+  expect(await page.evaluate(() => document.activeElement?.id)).toBe('board-export');
+  // 產生完要回到可按：aria-disabled 拿掉，B8b 的第二次點擊才不會被 actionability 檢查卡住。
+  await expect(page.locator('#board-export')).not.toHaveAttribute('aria-disabled', 'true');
+});
+
 test('B8d. 產生分享圖之後，工具列與組合列的尺寸仍然不變', { tag: '@mobile' }, async ({ page }) => {
   // B3d 在 Task 4 驗過「挑骰子＋拖曳不會改變工具列尺寸」，但那時 #board-export 的 handler
   // 還不存在。這一條接手另一半：輸出區塊出現時只准把 footer 往下推，不准動到工具列。
@@ -2328,7 +2347,10 @@ test('B48. 合作：兩盤各自用指向對方的排序箭頭互相加成（隊
   // 把卡片收掉，而同一個動作在我的那盤完全正常——只有這條斷言看得到那個半套失敗。
   await page.locator('#partner-offgame-mode button[data-mode="max"]').click();
   await expect(page.locator('#dice-card'), '改隊友的局外加成把卡片收掉了').toBeVisible();
-  await expect(cardValue(page, '攻擊力')).toHaveText('150 (+75)');
+  // +90＝隊友全滿的排序列 +75 ＋ 疊加強化 ×1 層 +15：4307 讀施加者（隊友）那一盤的符文，
+  // 我的盤是「不含」也照樣吃得到（2026-09-24 review board-1，客戶端 A32604C）。
+  await expect(cardValue(page, '攻擊力')).toHaveText('150 (+90)');
+  await expect(page.locator('#dice-detail .detail-board li')).toContainText(['排序疊加強化 ×1：攻擊 +10%']);
   await page.locator('#partner-offgame-mode button[data-mode="none"]').click();
   await expect(cardValue(page, '攻擊力')).toHaveText('150 (+30)');
 
@@ -2413,6 +2435,59 @@ test('B49. 合作模式：跨盤拖曳一律不作用，同盤照常；工具列
   await page.locator('#board-clear').click();
   await expect(page.locator('#board-grid img, #partner-grid img')).toHaveCount(0);
   await expect(page.locator('#board-live')).toHaveText('兩盤骰盤已清空');
+});
+
+test('B48b. 對戰模式按清空只清我的盤：隊友盤的內容保留到切回合作', async ({ page }) => {
+  // 2026-09-24 review gap-board-data-3：清空鈕原本不分模式兩盤都清，跟 applyCoopLayout()
+  // 「隊友盤的內容刻意保留（切回去還在）」互相矛盾，而對戰模式的播報只說「骰盤已清空」。
+  await page.goto('/board');
+  await page.locator('#board-coop-mode button[data-coop="on"]').click();
+  await pickInto(page, 0, dice[0]!.id, 1, theirs);
+  await drag(page, '.deck-dice[data-slot="0"]', '.board-cell[data-index="0"]', theirs);
+  await pickInto(page, 0, dice[1]!.id, 1);
+  await drag(page, '.deck-dice[data-slot="0"]', '.board-cell[data-index="0"]');
+  await expect(page.locator('#partner-grid img')).toHaveCount(1);
+  await expect(page.locator('#board-grid img')).toHaveCount(1);
+
+  await page.locator('#board-coop-mode button[data-coop="off"]').click();
+  await page.locator('#board-clear').click();
+  await expect(page.locator('#board-live')).toHaveText('骰盤已清空');
+  await expect(page.locator('#board-grid img')).toHaveCount(0);
+
+  await page.locator('#board-coop-mode button[data-coop="on"]').click();
+  await expect(page.locator('#partner-grid img'), '對戰模式的清空把看不見的隊友盤也清掉了').toHaveCount(1);
+});
+
+test('B56. 手機合作模式：兩個隊伍標題看得見、各自在自己那組局外加成正上方；對戰模式照舊藏起來', { tag: '@mobile' }, async ({ page, isMobile }) => {
+  // 2026-09-24 review gap-board-data-1（Yuki 裁決 A）：手機版面原本把 .board-h2 全藏
+  // （「畫面上骰盤與組合列各自只有一塊」——那是對戰模式的理由），合作模式下兩組隊伍列長得
+  // 一模一樣，分不出哪組是隊友的。只在合作模式放出「隊友的隊伍」「我的隊伍」。
+  // ⚠️ 手機段是 (hover: none) and (pointer: coarse)，desktop project 不會進那段，所以只跑手機。
+  test.skip(!isMobile, '僅手機版');
+  await page.goto('/board');
+  await expect(page.locator('#deck-h'), '對戰模式不該多出標題').toBeHidden();
+
+  await page.locator('#board-coop-mode button[data-coop="on"]').click();
+  const pairs = [
+    ['#partner-deck-h', '#partner-offgame-mode'],
+    ['#deck-h', '#offgame-mode'],
+  ] as const;
+  for (const [h, block] of pairs) {
+    await expect(page.locator(h)).toBeVisible();
+    const hb = (await page.locator(h).boundingBox())!;
+    const bb = (await page.locator(block).boundingBox())!;
+    // 在自己那組正上方：標題底緣不超過該組頂緣，且兩者之間不夾任何別的區塊（距離 < 一個區塊間距的兩倍）。
+    expect(hb.y + hb.height, `${h} 不在 ${block} 上方`).toBeLessThanOrEqual(bb.y + 0.5);
+    expect(bb.y - (hb.y + hb.height), `${h} 離 ${block} 太遠，中間像是夾了別的東西`).toBeLessThan(48);
+  }
+  // 「隊友的隊伍」在模式切換鈕之下（order 沒給的話會跑到 h1 旁邊）。
+  const sw = (await page.locator('#board-coop-mode').boundingBox())!;
+  const ph = (await page.locator('#partner-deck-h').boundingBox())!;
+  expect(ph.y).toBeGreaterThan(sw.y + sw.height - 0.5);
+
+  await page.locator('#board-coop-mode button[data-coop="off"]').click();
+  await expect(page.locator('#deck-h')).toBeHidden();
+  await expect(page.locator('#partner-deck-h')).toBeHidden();
 });
 
 /**

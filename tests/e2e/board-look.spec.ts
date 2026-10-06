@@ -174,3 +174,37 @@ test('BL5. 明細是 .panel；骰盤格是凹槽（徑向漸層＋內陰影）�
   expect(await page.locator('#board-grid').evaluate(el => getComputedStyle(el).backgroundColor), '盤外框不是 --ink')
     .toBe(await tokenColor(page, '--ink'));
 });
+
+test('BL6. 高對比：加成來源格（.buff-src）的內框仍然看得見', async ({ page }) => {
+  // 2026-09-24 review：.buff-src 只靠 box-shadow 畫內框，forced-colors 會把 box-shadow 拿掉——
+  // 卡片開著時「誰加成了這一格」在高對比下整個看不到（目標格的虛線 outline 留得住）。
+  await page.goto('/board');
+  await page.emulateMedia({ forcedColors: 'active' });
+  const cell = page.locator('#board-grid .board-cell').first();
+  await cell.evaluate(el => el.classList.add('buff-src'));
+  const after = await cell.evaluate(el => {
+    const s = getComputedStyle(el, '::after');
+    return { content: s.content, style: s.borderTopStyle, width: parseFloat(s.borderTopWidth) };
+  });
+  expect(after.content, '高對比下來源格沒有任何框').not.toBe('none');
+  expect(after.style).toBe('solid');
+  expect(after.width).toBeGreaterThan(0);
+});
+
+test('BL7. 「產生分享圖」產生中（aria-disabled）看得出不能按：半透明、hover 不變亮', async ({ page }) => {
+  // board-2 把這顆的 disabled 換成 aria-disabled（保住焦點），而 .btn 的停用外觀原本只寫在
+  // :disabled 上——沒跟著改的話產生中的按鈕看起來照樣可按。
+  await page.goto('/board');
+  const btn = page.locator('#board-export');
+  await btn.evaluate(el => el.setAttribute('aria-disabled', 'true'));
+  await btn.hover();
+  const s = await btn.evaluate(el => ({ opacity: getComputedStyle(el).opacity, filter: getComputedStyle(el).filter }));
+  expect(s.opacity).toBe('0.5');
+  expect(s.filter, '停用中的按鈕 hover 仍然變亮').toBe('none');
+  // 高對比：原生 disabled 是 GrayText，aria-disabled 要長得一樣。
+  await page.emulateMedia({ forcedColors: 'active' });
+  const color = () => btn.evaluate(el => getComputedStyle(el).color);
+  const aria = await color();
+  await btn.evaluate(el => { el.removeAttribute('aria-disabled'); (el as HTMLButtonElement).disabled = true; });
+  expect(aria, '高對比下 aria-disabled 的按鈕不是 GrayText').toBe(await color());
+});

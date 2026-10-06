@@ -151,7 +151,16 @@ main:has(#canvas-host) {
      備援把看得見的畫面整片蓋掉，相對 SVG 版是純粹的回歸。
      所以：容器解除裁切但高度收成 0（它只是個定位錨，不佔畫面），每個 <li> 各自接手
      那份 1px 裁切，只有 :focus-within 那一顆撐開。 */
+  /* 畫布配色（標籤白字、淡紫連線）是照深色底設計的，而 canvas 像素不會被系統重新著色——淺色
+     高對比主題（Windows「沙漠」）把透明的底換成 Canvas 白之後，標籤與連線就讀不到（CL4）。
+     所以畫布這一塊不讓系統換底色，維持設計時的 --bg。
+     ⚠️ forced-color-adjust 會繼承：host 裡的 .tree-a11y 要接回 auto，焦點牌的系統色才有效。 */
+  #canvas-host {
+    forced-color-adjust: none;
+    background: var(--bg);
+  }
   .tree-a11y {
+    forced-color-adjust: auto;
     clip-path: none;
     width: 100%;
     height: 0;
@@ -173,8 +182,12 @@ main:has(#canvas-host) {
      定位基準」的屬性，所以 fixed 的這一顆不受它的裁切影響，穩穩停在視窗左下角。
      顏色一律用系統關鍵字（Canvas／CanvasText／currentColor 的 outline），寫死的色碼
      在高對比模式下會被整個換掉。 */
+  /* ⚠️ z-index 要高過畫布外那些貼底的浮層（/sim 抽屜 4、/tree 分支列 5、/sim 浮動鍵 6、
+     手機 sheet 7）：窄視窗下它們正好佔著左下角，牌子被蓋住就等於沒有焦點回饋（CL5）。
+     #canvas-host 不成堆疊環境，所以這個值直接跟那些兄弟元素比。 */
   .tree-a11y li:focus-within {
     position: fixed;
+    z-index: 8;
     inset: auto auto var(--space-3) var(--space-3);
     clip-path: none;
     width: auto;
