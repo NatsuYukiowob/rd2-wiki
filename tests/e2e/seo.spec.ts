@@ -86,6 +86,18 @@ for (const page_ of PAGES) {
   });
 }
 
+test('SEO-7. 每一頁的搜尋摘要（meta description）都不一樣，而且講的是那一頁', async ({ request }) => {
+  // 全站共用一句時，搜「裂縫商店」的結果摘要寫的是骰子樹；Search Console 也會報重複描述。
+  const seen = new Map<string, string>();
+  for (const p of PAGES) {
+    const html = await (await request.get(p.request)).text();
+    const desc = /<meta name="description" content="([^"]*)"/.exec(html)?.[1] ?? '';
+    expect(desc.length, `${p.request} 沒有 description`).toBeGreaterThan(10);
+    expect(seen.get(desc), `${p.request} 與 ${seen.get(desc)} 用同一句 description`).toBeUndefined();
+    seen.set(desc, p.request);
+  }
+});
+
 test('SEO-5. 未知路徑回 404 而不是首頁', async ({ page, request }) => {
   const res = await request.get('/no-such-page-abc123');
   // soft 404 的樣子就是這裡回 200 ＋ 首頁的 HTML；那會讓無限多個不存在的網址
@@ -105,7 +117,7 @@ test('SEO-5. 未知路徑回 404 而不是首頁', async ({ page, request }) => 
   await page.goto('/no-such-page-abc123');
   expect(await page.title()).toBe('Random Dice 2 wiki | 找不到頁面');
   // 404 頁要能自己走回去，不然使用者只能按上一頁。
-  await expect(page.locator('main a[href="/tree"]')).toBeVisible();
+  await expect(page.locator('main a[href="/tree/"]')).toBeVisible();
 });
 
 test('SEO-6. 404 頁不宣稱自己是任何網址', async ({ page }) => {
@@ -122,4 +134,18 @@ test('SEO-6. 404 頁不宣稱自己是任何網址', async ({ page }) => {
   await expect(page.locator('link[rel="canonical"]')).toHaveCount(1);
   await expect(page.locator('meta[property="og:url"]')).toHaveCount(1);
   await expect(page.locator('meta[name="robots"]')).toHaveCount(0);
+});
+
+test('SEO-8. 站內連結都帶尾斜線（或指向檔案）：跟 canonical／sitemap 同一種寫法，正式站不必先 308 一次', async ({ request }) => {
+  const bad: string[] = [];
+  for (const p of PAGES) {
+    const html = await (await request.get(p.request)).text();
+    // 第二種寫法：/dice 的 `#codex-terms` 把渲染好的解釋 HTML 放在文字內容裡，引號被逃逸成 &quot;。
+    // （腳本自己組的連結看不到，由 codex.spec 的 C3 守。）
+    for (const [, href] of html.matchAll(/<a\b[^>]*\shref=(?:"|&quot;)(\/[^"&]*)/g)) {
+      const path = href!.replace(/[?#].*$/, '');
+      if (!path.endsWith('/') && !/\.[a-z0-9]+$/i.test(path)) bad.push(`${p.request}: ${href}`);
+    }
+  }
+  expect(bad).toEqual([]);
 });

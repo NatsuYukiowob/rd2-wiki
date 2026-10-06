@@ -666,6 +666,24 @@ export interface ValidateResult {
 const isPlainObject = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v);
 
+/**
+ * WebP 裡的 EXIF／XMP chunk 名稱（規則 29(j)）。逐 chunk 走 RIFF，不靠 `file` 指令的判讀。
+ * 不是 WebP 的檔回空陣列；29(j) 另外規定截圖必須是 `.webp`，所以不會有別的格式漏過這一關。
+ */
+export function webpMetadataChunks(buf: Uint8Array): string[] {
+  const text = (i: number) => String.fromCharCode(...buf.subarray(i, i + 4));
+  if (buf.length < 12 || text(0) !== 'RIFF' || text(8) !== 'WEBP') return [];
+  const view = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
+  const found: string[] = [];
+  for (let i = 12; i + 8 <= buf.length;) {
+    const tag = text(i);
+    const size = view.getUint32(i + 4, true);
+    if (tag === 'EXIF' || tag === 'XMP ') found.push(tag.trim());
+    i += 8 + size + (size & 1);
+  }
+  return found;
+}
+
 const ZH_BY_TYPE: Record<string, string> = { dice: '骰子', rune: '骰子符文', passive: '玩家被動', support: '支援' };
 const zhOfType = (t: string | undefined) => (t ? ZH_BY_TYPE[t] : undefined);
 const typeOfZhSafe = (t: string | undefined) => (t ? ZH_BY_TYPE[t] !== undefined : false);
@@ -2218,7 +2236,7 @@ export function validate(svgText: string, opts: ValidateOpts): ValidateResult {
       const period = raw['period'];
       if (period !== null && period !== undefined) {
         if (!isPlainObject(period)) {
-          push(`規則 29(e): ${at}的 period 必須是 null 或 { begin, finish }`);
+          push(`規則 29(e): ${at}的 period 必須是 null 或 { begin, finish, tz }`);
         } else {
           const stamps: Record<string, string> = {};
           for (const key of ['begin', 'finish']) {
@@ -2234,8 +2252,13 @@ export function validate(svgText: string, opts: ValidateOpts): ValidateResult {
           if (stamps['begin'] && stamps['finish'] && stamps['begin'] > stamps['finish']) {
             push(`規則 29(e): ${at}的 period 開始 ${JSON.stringify(period['begin'])} 晚於結束 ${JSON.stringify(period['finish'])}`);
           }
+          // 時區必填：畫面把它跟時間印在一起，少了它讀者會用自己的時區讀「23:59」。
+          const tz = period['tz'];
+          if (typeof tz !== 'string' || !/^UTC(?:\+(?:\d|1[0-4])|-(?:[1-9]|1[0-2]))(?::(?:30|45))?$/.test(tz)) {
+            push(`規則 29(e): ${at}的 period.tz ${JSON.stringify(tz)} 必須是 UTC+9／UTC+5:30 這種寫法（檔期是哪個時區量的）`);
+          }
           for (const key of Object.keys(period)) {
-            if (key !== 'begin' && key !== 'finish') push(`規則 29(e): ${at}的 period 有未知欄位 ${JSON.stringify(key)}`);
+            if (!['begin', 'finish', 'tz'].includes(key)) push(`規則 29(e): ${at}的 period 有未知欄位 ${JSON.stringify(key)}`);
           }
         }
       }
@@ -2290,8 +2313,8 @@ export function validate(svgText: string, opts: ValidateOpts): ValidateResult {
               push(`規則 29(j): ${atk}的 caption 必須是非空字串（它同時是圖說與 alt）`);
             }
             const file = shot['file'];
-            if (typeof file !== 'string' || !/^[a-z0-9][a-z0-9.-]*$/.test(file)) {
-              push(`規則 29(j): ${atk}的 file ${JSON.stringify(file)} 不合法（小寫英數、連字號與點，且不以點或連字號開頭——它直接接在網址 /events/ 後面）`);
+            if (typeof file !== 'string' || !/^[a-z0-9][a-z0-9.-]*\.webp$/.test(file)) {
+              push(`規則 29(j): ${atk}的 file ${JSON.stringify(file)} 不合法（小寫英數、連字號與點，不以點或連字號開頭、副檔名 .webp——它直接接在網址 /events/ 後面，而中繼資料檢查只認得 WebP）`);
               continue;
             }
             usedShots.add(file);
@@ -2299,6 +2322,17 @@ export function validate(svgText: string, opts: ValidateOpts): ValidateResult {
               push(`規則 29(j): ${atk}指向 ${opts.eventShotsDir}/${file}，但讀不到 ${opts.eventShotsDir}（${shotDirError}）`);
             } else if (!shotFiles.includes(file)) {
               push(`規則 29(j): ${atk}指向 ${opts.eventShotsDir}/${file}，那個檔不存在`);
+            } else {
+              // 手機截圖會帶 EXIF（系統建置號、拍攝時間），公開站上不必要；ICC 要留（Display P3，拿掉會偏色）。
+              let meta: string[] = [];
+              try {
+                meta = webpMetadataChunks(readFileSync(join(opts.eventShotsDir, file)));
+              } catch (e) {
+                push(`規則 29(j): ${atk}的 ${file} 讀不到（${(e as Error).message}）`);
+              }
+              if (meta.length > 0) {
+                push(`規則 29(j): ${atk}的 ${file} 帶著 ${meta.join('／')} 中繼資料，請拿掉再提交（ICC 留著；\`exiftool -EXIF:all= -XMP:all=\`）`);
+              }
             }
           }
         }

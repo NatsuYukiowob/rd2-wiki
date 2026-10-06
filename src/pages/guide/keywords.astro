@@ -29,11 +29,11 @@ const tabs = GUIDE_TABS.map(tab => {
 const total = tabs.reduce((n, tab) => n + tab.total, 0);
 ---
 
-<Base title="遊戲名詞">
+<Base title="遊戲名詞" description={`Random Dice 2 骰子描述裡 # 標記的遊戲名詞解釋，共 ${total} 條，依官方底色分類。`}>
   <section class="page" data-kw-page>
     <h1 class="page-head">遊戲名詞</h1>
     {/* 中文句子不斷行：原始碼換行會在「。」後面渲染出一個空白。 */}
-    <p class="lede">骰子描述裡那些帶 <code>#</code> 的詞是遊戲的正式標記，共 {total} 條。分組依據是官方資料表給每個標記的<strong>底色碼</strong>（同色＝同一類機制），組名是本站取的。在<a href="/dice">骰子圖鑑</a>的卡片上點任何一個標記，會就地展開同一份解釋。</p>
+    <p class="lede">骰子描述裡那些帶 <code>#</code> 的詞是遊戲的正式標記，共 {total} 條。分組依據是官方資料表給每個標記的<strong>底色碼</strong>（同色＝同一類機制），組名是本站取的。在<a href="/dice/">骰子圖鑑</a>的卡片上點任何一個標記，會就地展開同一份解釋。</p>
 
     <div class="kw-tabs" role="group" aria-label="名詞分類" data-kw-tabs hidden>
       {tabs.map((tab, i) => (

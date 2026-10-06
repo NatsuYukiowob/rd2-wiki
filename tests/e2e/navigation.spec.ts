@@ -62,10 +62,10 @@ for (const [width, height] of [[390, 844], [430, 932]]) {
     await outside.tap();
     await expect(page).toHaveURL(homeUrl);
     await expect(details).not.toHaveAttribute('open');
-    for (const href of ['/guide', '/rewards']) {
+    for (const href of ['/guide/', '/rewards/']) {
       await summary.tap();
       await panel.locator(`a[href="${href}"]`).tap();
-      await expect(page).toHaveURL(new RegExp(`${href}/?$`));
+      await expect(page).toHaveURL(new RegExp(`${href}$`));
     }
     expect(pageErrors, '頁面腳本丟出未捕捉的例外').toEqual([]);
     await context.close();
@@ -74,10 +74,10 @@ for (const [width, height] of [[390, 844], [430, 932]]) {
     await fallback.goto('/');
     await fallback.locator('summary').tap();
     await expect(fallback.locator('details')).toHaveAttribute('open', '');
-    await fallback.locator('.nav-menu-items a[href="/guide"]').tap();
+    await fallback.locator('.nav-menu-items a[href="/guide/"]').tap();
     await expect(fallback).toHaveURL(/\/guide\/?$/);
     await fallback.locator('summary').tap();
-    await fallback.locator('.nav-menu-items a[href="/rewards"]').tap();
+    await fallback.locator('.nav-menu-items a[href="/rewards/"]').tap();
     await expect(fallback).toHaveURL(/\/rewards\/?$/);
     await noJS.close();
   });

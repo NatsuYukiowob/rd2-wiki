@@ -71,14 +71,14 @@ visible（`overflow-x: hidden` 明寫，`detail.css`）。
   漲了沒人會說話。
 - **`/guide/keywords` 是全部詞彙一頁、上方按鈕切分類**；舊四頁由 `public/_redirects` 301 到 `?tab=<slug>`
   （`serve dist` 不讀 `_redirects`，只能在正式站驗；KW5 只驗產物）。站內 `#關鍵字` 一律連
-  `/guide/keywords#<code>`，頁面腳本要從錨點反查分類（初次載入與 `hashchange` 都要）。
+  `/guide/keywords/#<code>`，頁面腳本要從錨點反查分類（初次載入與 `hashchange` 都要）。
 - **分類依據是官方色碼**（`keywords.json` 的 `color`，清單 `src/lib/glossary-groups.ts`）；頁面要註明分組不是
   本站判斷、只有組名是。沒見過的顏色 `buildGlossary()` 直接丟例外（不要放行）。算條數不要用 `index.byTerm.size`
   （別名指到同一筆）。
 - **關鍵字顏色查 `index.byTerm` 不查 `displayGlossary()`**（後者不含別名）；`usedBy` 先把別名收斂成本尊再去重。
 - **斷詞器只有一份**：`src/lib/markup.ts` 的 `renderTaggedText()`，差別由呼叫端傳 `renderTerm`。不要複製第二份。
 - **卡片裡點 `#關鍵字` 就地換成解釋、不跳頁**：卡片高度不動（同列卡片會被推動）、不列出用到的節點（只給
-  `/tree?q=<詞>`）。解釋在建置期渲染進 `#codex-terms`，放在 `<div hidden>` 的文字內容裡，**不是
+  `/tree/?q=<詞>`）。解釋在建置期渲染進 `#codex-terms`，放在 `<div hidden>` 的文字內容裡，**不是
   `<script type="application/json">`**（`</a>` 會讓 Astro build 失敗）。
 - 卡片本文包在 `.dice-card-main`，CSS **不可用 `.dice-card > header` 這種子代選擇器**；裁切靠 `.dice-card` 與
   `.card-term` 兩層 `overflow: hidden`（C3）。同時只准開一張卡片的詞彙層（`dice.astro` 的 `openCard`，C3c）。

@@ -32,20 +32,29 @@ interface Props {
    * 開起來會同時做兩件事：省略 canonical、加上 `<meta name="robots" content="noindex">`。
    */
   noIndex?: boolean;
+  /**
+   * 這一頁給搜尋引擎的摘要（`<meta name="description">`）。每頁一句、講這一頁有什麼；
+   * 省略時用全站那句（講的是骰子樹）。連結預覽的 og／twitter description 刻意不跟著換，理由同 OG_TITLE。
+   * `tests/e2e/seo.spec.ts` 守各頁互不相同。
+   */
+  description?: string;
 }
 
-const { title, noIndex = false } = Astro.props;
+const { title, noIndex = false, description: pageDescription } = Astro.props;
 
 /**
  * 目前所在的分頁，給導覽列標 `aria-current="page"`（金色字＋底下一條金線）。
  *
- * 尾斜線要先剝掉：Astro 建出來的是 `/dice/index.html`，瀏覽器上的路徑是 `/dice/`，
- * 但導覽列寫的是 `/dice`，直接比字串永遠不相等。
+ * 兩邊的尾斜線都先剝掉再比：瀏覽器上的路徑是 `/dice/`，dev server 也收 `/dice`。
+ * 站內連結一律帶尾斜線（＝canonical 與 sitemap 的寫法，不帶的話正式站每次都先 308 一次）。
  * `startsWith(href + '/')` 是給 /guide 用的——站在 /guide/keywords 時，「遊戲介紹」
  * 這個下拉本身也該亮起來。首頁例外處理，否則 '/' 會match到每一頁。
  */
 const path = Astro.url.pathname.replace(/\/+$/, '') || '/';
-const isCurrent = (href: string) => path === href || (href !== '/' && path.startsWith(href + '/'));
+const isCurrent = (link: string) => {
+  const href = link.replace(/\/+$/, '') || '/';
+  return path === href || (href !== '/' && path.startsWith(href + '/'));
+};
 /**
  * 「遊戲介紹」下拉本身要不要標 `aria-current`。
  *
@@ -64,7 +73,7 @@ const SITE_NAME = 'Random Dice 2 wiki';
 
 /** 連結預覽卡片的標題。全站固定，不隨分頁變動——理由見 <head> 裡的說明。 */
 const OG_TITLE = 'Random Dice 2 wiki - Fan made';
-/** 站台描述。<meta name="description">（給搜尋引擎）與連結預覽共用同一句，不維護兩份。 */
+/** 站台描述：連結預覽的那一句，也是沒有傳 `description` 的頁面的搜尋摘要。README／banner 沿用這個常數。 */
 const DESCRIPTION = 'Random Dice 2 骰子樹非官方玩家攻略站：收錄全部節點、解鎖條件與前置關係。';
 const pageUrl = new URL(Astro.url.pathname, Astro.site).href;
 const imageUrl = new URL('/favicon.png', Astro.site).href;
@@ -74,7 +83,7 @@ const imageUrl = new URL('/favicon.png', Astro.site).href;
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <!--
+    {/*
       data-enter：進場動畫的總開關，規則在 src/styles/base.css。
       ⚠️ 三件事綁在一起，動其中一件之前先讀完：
       (1) 必須是 `is:inline` 而且留在這裡（head、任何卡片之前）。Astro 的一般 script 會被
@@ -87,28 +96,28 @@ const imageUrl = new URL('/favicon.png', Astro.site).href;
           沒有 JS ＝ 完全沒有進場動畫，順帶也不會有「/dice 用 [hidden] 篩選、切回來時動畫
           重播」的問題。
       (3) 拿掉它的 setTimeout 在頁尾那支 script 裡，理由寫在那裡。
-    -->
+    */}
     <script is:inline>
       document.documentElement.setAttribute('data-enter', '');
     </script>
     <title>{SITE_NAME} | {title}</title>
-    <!--
+    {/*
       canonical：告訴搜尋引擎「這一頁的正規網址是哪一個」。同一份內容被多個網址打得到時
       （帶追蹤參數的連結、有無尾斜線、日後的自訂網域），沒有這一行就會被分成好幾份重複內容，
       權重也跟著散掉。網址用 astro.config.mjs 的 `site` 組出來的絕對網址，跟 og:url 同一個。
 
       noIndex 的頁面刻意不輸出 canonical：那種頁面本來就不該被收錄，指一個正規網址給它
       反而是在說「這個網址值得索引」。
-    -->
+    */}
     {!noIndex && <link rel="canonical" href={pageUrl} />}
     {noIndex && <meta name="robots" content="noindex" />}
-    <!-- 分頁圖示用陰陽骰子（節點 4008）的骰子本體，不含節點底板：底板在 32px 下會吃掉四周
+    {/* 分頁圖示用陰陽骰子（節點 4008）的骰子本體，不含節點底板：底板在 32px 下會吃掉四周
          約四分之一的面積，把中間的陰陽符號擠到看不清。圖是方形畫布置中的透明 PNG——favicon
-         的顯示位置是正方形，直接放長方形圖會被壓扁。 -->
+         的顯示位置是正方形，直接放長方形圖會被壓扁。 */}
     <link rel="icon" type="image/png" href="/favicon.png" />
-    <meta name="description" content={DESCRIPTION} />
+    <meta name="description" content={pageDescription ?? DESCRIPTION} />
 
-    <!--
+    {/*
       連結預覽（貼進 Discord／LINE／Twitter 等聊天室時展開的卡片）。
 
       標題刻意**全站固定**、不帶頁名：貼出去的是「這個站」，收到連結的人要先認出它是什麼，
@@ -117,15 +126,15 @@ const imageUrl = new URL('/favicon.png', Astro.site).href;
 
       og:url 與 og:image 一定要是絕對網址（規格要求，相對路徑多數平台直接不顯示）——
       靠 astro.config.mjs 的 `site` 組出來，不在這裡再寫死一次網域。
-    -->
+    */}
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content={OG_TITLE} />
     <meta property="og:title" content={OG_TITLE} />
     <meta property="og:description" content={DESCRIPTION} />
-    <!-- og:url 吃跟 canonical 同一個判斷。404 頁是 Cloudflare Pages 拿來回**任何**未知
+    {/* og:url 吃跟 canonical 同一個判斷。404 頁是 Cloudflare Pages 拿來回**任何**未知
          路徑的那一份，`pageUrl` 卻固定是 `/404/`——貼一個失效連結到聊天室時，卡片會宣稱
          自己代表 `/404/`，那既不是使用者貼的網址，也不是這份檔案實際被服務的路徑。
-         省略它，各平台會退回用實際請求的網址。 -->
+         省略它，各平台會退回用實際請求的網址。 */}
     {!noIndex && <meta property="og:url" content={pageUrl} />}
     <meta property="og:image" content={imageUrl} />
     <meta name="twitter:card" content="summary" />
@@ -134,46 +143,46 @@ const imageUrl = new URL('/favicon.png', Astro.site).href;
     <meta name="twitter:image" content={imageUrl} />
   </head>
   <body>
-    <!-- id="site-nav"：讓 /tree 頁的 tree-canvas.ts 能精準抓到「全站導覽列」這個 nav，
+    {/* id="site-nav"：讓 /tree 頁的 tree-canvas.ts 能精準抓到「全站導覽列」這個 nav，
          不會跟同頁另一個 <nav id="branch-nav">（桌機側欄分支跳轉）搞混，用來量測
-         這個 nav 的實際渲染高度（見 tree-canvas.ts 的 updateNavHeight() 說明）。 -->
+         這個 nav 的實際渲染高度（見 tree-canvas.ts 的 updateNavHeight() 說明）。 */}
     <nav id="site-nav">
       <div class="nav-links">
         <a class="brand" href="/" aria-current={path === '/' ? 'page' : undefined}><Fragment set:html={ICONS.brand} /><span class="brand-text">rd2-wiki</span></a>
-        <a href="/tree" aria-current={isCurrent('/tree') ? 'page' : undefined}>骰子樹</a>
-        <a href="/dice" aria-current={isCurrent('/dice') ? 'page' : undefined}>圖鑑</a>
-        <a href="/board" aria-current={isCurrent('/board') ? 'page' : undefined}>骰盤</a>
-        <a href="/sim" aria-current={isCurrent('/sim') ? 'page' : undefined}>骰子樹-模擬器(beta)</a>
+        <a href="/tree/" aria-current={isCurrent('/tree/') ? 'page' : undefined}>骰子樹</a>
+        <a href="/dice/" aria-current={isCurrent('/dice/') ? 'page' : undefined}>圖鑑</a>
+        <a href="/board/" aria-current={isCurrent('/board/') ? 'page' : undefined}>骰盤</a>
+        <a href="/sim/" aria-current={isCurrent('/sim/') ? 'page' : undefined}>骰子樹-模擬器(beta)</a>
       </div>
-      <!--
+      {/*
         「遊戲介紹」用 <details> 而不是自己刻一個下拉：<summary> 本來就能 Tab 聚焦、能按
         Enter／Space 開合，螢幕閱讀器也會念出展開狀態。自訂元素要補齊這些至少三十行，
         而且補漏一項就是一個只有滑鼠能用的選單。底下的 <script> 只加兩件 <details> 沒有的
         事：點外面關掉、按 Esc 關掉。沒有 JS 時它仍然是一個能開能關的選單。
-      -->
+      */}
       <details class="nav-menu">
         <summary aria-current={guideCurrent ? 'page' : undefined}>遊戲介紹<Fragment set:html={ICONS.down} /></summary>
         <div class="nav-menu-items">
-          <a href="/guide" aria-current={path === '/guide' ? 'page' : undefined}>總覽</a>
-          <!-- 四個詞彙分類 2026-09-27 合併成一頁「遊戲名詞」（Yuki 裁決），頁內再切分類。 -->
+          <a href="/guide/" aria-current={path === '/guide' ? 'page' : undefined}>總覽</a>
+          {/* 四個詞彙分類 2026-09-27 合併成一頁「遊戲名詞」（Yuki 裁決），頁內再切分類。 */}
           <a href={KEYWORDS_PATH} aria-current={isCurrent(KEYWORDS_PATH) ? 'page' : undefined}>遊戲名詞</a>
-          <!-- 戰術與 Boss 收在這個下拉裡（Yuki 2026-08-26 指定）：它們跟上面幾頁一樣是
+          {/* 戰術與 Boss 收在這個下拉裡（Yuki 2026-08-26 指定）：它們跟上面幾頁一樣是
                「遊戲有什麼」的說明，不是站台的互動工具（骰子樹／圖鑑／骰盤／模擬器）。
                ⚠️ 放進來就要一起改上面那個 `guideCurrent`，否則站在 /tactic 時整個下拉不會亮起來，
-               使用者在導覽列上看不出自己在哪一區。 -->
-          <a href="/tactic" aria-current={isCurrent('/tactic') ? 'page' : undefined}>戰術</a>
-          <a href="/boss" aria-current={isCurrent('/boss') ? 'page' : undefined}>怪物圖鑑</a>
-          <a href="/rift-shop" aria-current={isCurrent('/rift-shop') ? 'page' : undefined}>裂縫商店</a>
-          <a href="/events" aria-current={isCurrent('/events') ? 'page' : undefined}>活動</a>
-          <a href="/rewards" aria-current={isCurrent('/rewards') ? 'page' : undefined}>獎勵系統</a>
+               使用者在導覽列上看不出自己在哪一區。 */}
+          <a href="/tactic/" aria-current={isCurrent('/tactic/') ? 'page' : undefined}>戰術</a>
+          <a href="/boss/" aria-current={isCurrent('/boss/') ? 'page' : undefined}>怪物圖鑑</a>
+          <a href="/rift-shop/" aria-current={isCurrent('/rift-shop/') ? 'page' : undefined}>裂縫商店</a>
+          <a href="/events/" aria-current={isCurrent('/events/') ? 'page' : undefined}>活動</a>
+          <a href="/rewards/" aria-current={isCurrent('/rewards/') ? 'page' : undefined}>獎勵系統</a>
         </div>
       </details>
       {FEATURES.contributeLink && (
-        <a href="/about" aria-current={isCurrent('/about') ? 'page' : undefined}>貢獻</a>
+        <a href="/about/" aria-current={isCurrent('/about/') ? 'page' : undefined}>貢獻</a>
       )}
-      <!-- 顯示「上次更新」而非資料版本號：日期取自資料正本 SVG 的 data-updated 屬性
+      {/* 顯示「上次更新」而非資料版本號：日期取自資料正本 SVG 的 data-updated 屬性
            （tools/build-data.ts 解析進 meta.updated），會隨資料更新自動變動，
-           不是寫死在頁面上的字串。 -->
+           不是寫死在頁面上的字串。 */}
       <span class="nav-updated">上次更新 {data.meta.updated}</span>
     </nav>
     <main>

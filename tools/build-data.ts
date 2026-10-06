@@ -11,6 +11,7 @@ import { extractKeywords } from '../src/lib/keywords.js';
 import { branchOfId, categoryOfZh, elementOfStroke, typeOfZh } from '../src/lib/taxonomy.js';
 import { buildAdjacency, findRoots } from '../src/lib/graph.js';
 import { isGlossaryAlias } from '../src/lib/types.js';
+import { textColor } from '../src/lib/glossary-groups.js';
 import type { Branch, Edge, GlossaryDisplay, GlossaryRecord, TreeData, TreeNode, UnlockVia, UpgradeCostTable } from '../src/lib/types.js';
 import { encodeTree } from '../src/lib/tree-wire.js';
 
@@ -162,7 +163,8 @@ export function buildTreeData(svgText: string, opts: BuildOpts): TreeData {
     // 別名不自己帶解釋，展開成本尊那一份（規則 8(b) 保證指得到、而且不會再指向另一個別名）。
     const entry = isGlossaryAlias(record) ? opts.keywords[record.aliasOf] : record;
     if (!entry || isGlossaryAlias(entry)) throw new Error(`詞彙 ${term} 的 aliasOf 指不到本尊`);
-    glossary[term] = { color: entry.color, desc: entry.desc };
+    // 字色不是官方色碼本身：對比不足的那一組換成提亮版（`textColor()`）。
+    glossary[term] = { color: textColor(entry.color), desc: entry.desc };
     pending.push(...extractKeywords(entry.desc, whitelist));
   }
 

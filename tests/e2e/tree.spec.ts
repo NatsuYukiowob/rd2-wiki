@@ -1360,9 +1360,9 @@ test('O3. 篩選面板收得起來也展得開，桌機平移畫布不會把它�
 
 test('Q. 導覽列的「貢獻」入口目前不曝光（FEATURES.contributeLink 暫時關閉），但頁面本身還在', async ({ page }) => {
   await page.goto('/tree');
-  await expect(page.locator('#site-nav a[href="/about"]')).toHaveCount(0);
+  await expect(page.locator('#site-nav a[href="/about/"]')).toHaveCount(0);
   // 其餘入口不能被一起關掉——反向守門，避免「整條導覽列壞了」也能讓上面那條通過。
-  await expect(page.locator('#site-nav a[href="/tree"]')).toHaveCount(1);
+  await expect(page.locator('#site-nav a[href="/tree/"]')).toHaveCount(1);
   // 關的是入口不是頁面：直接開網址仍然要打得開（見 src/lib/flags.ts 的說明）。
   const res = await page.request.get('/about');
   expect(res.status()).toBe(200);

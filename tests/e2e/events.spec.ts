@@ -13,7 +13,7 @@ type GameEvent = {
   id: string;
   name: string;
   version: string;
-  period: { begin: string; finish: string } | null;
+  period: { begin: string; finish: string; tz: string } | null;
   screenshots?: { file: string; caption: string }[];
   summary: string;
   currencies: { kind: string; name: string; note: string }[];
@@ -52,7 +52,7 @@ test('EV1. 每一場活動在索引上各有一張卡片，連到自己那一頁
   await page.goto('/events');
   await expect(page.locator('.event-card-link')).toHaveCount(events.length);
   for (const ev of events) {
-    const card = page.locator(`.event-card-link[href="/events/${ev.id}"]`);
+    const card = page.locator(`.event-card-link[href="/events/${ev.id}/"]`);
     await expect(card).toHaveCount(1);
     await expect(card.locator('.event-badge')).toHaveText(`${ev.version} 客戶端`);
     // 「N 項內容」是從資料算的，不是寫死在版面上。
@@ -118,7 +118,8 @@ test('EV6. 檔期有值才印，沒有的話畫面上不會冒出一個日期', 
     // period 是 null 時整個 `.event-period` 不該存在——猜來的檔期跟查證過的日期長得一模一樣。
     await expect(page.locator('.event-period')).toHaveCount(ev.period ? 1 : 0);
     if (ev.period) {
-      await expect(page.locator('.event-period')).toHaveText(`${ev.period.begin} ～ ${ev.period.finish}`);
+      // 時區跟著印：沒標的「23:59」會被 UTC+8 的讀者讀成自己的 23:59。
+      await expect(page.locator('.event-period')).toHaveText(`${ev.period.begin} ～ ${ev.period.finish}（${ev.period.tz}）`);
     }
   }
 });
@@ -130,7 +131,7 @@ test('EV7. 兩頁的入口都在「遊戲介紹」下拉裡，而且整個下拉
     await expect(page.locator('#site-nav .nav-menu > summary'), path).toHaveAttribute('aria-current', 'page');
   }
   await page.goto('/events');
-  await expect(page.locator('#site-nav a[href="/events"]')).toHaveAttribute('aria-current', 'page');
+  await expect(page.locator('#site-nav a[href="/events/"]')).toHaveAttribute('aria-current', 'page');
 });
 
 test('EV8. 窄螢幕上超寬的表格由容器自己吸收，不讓整份文件橫捲', async ({ page }) => {
@@ -158,4 +159,18 @@ test('EV8. 窄螢幕上超寬的表格由容器自己吸收，不讓整份文件
   }));
   expect(after.scrollable).toBe(true);
   expect(after.doc).toBeLessThanOrEqual(1);
+});
+
+test('EV10. 貨幣列的圖示跟名稱垂直置中（li 是 flex 時圖的 vertical-align 不生效，曾經高出 2.8px）', async ({ page }) => {
+  for (const width of [1280, 320]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto(`/events/${events[0]!.id}`);
+    const offsets = await page.locator('.event-currencies li').evaluateAll(lis => lis.map(li => {
+      const i = li.querySelector('img')!.getBoundingClientRect();
+      const s = li.querySelector('strong')!.getBoundingClientRect();
+      return (i.top + i.bottom) / 2 - (s.top + s.bottom) / 2;
+    }));
+    expect(offsets.length).toBeGreaterThan(0);
+    for (const d of offsets) expect(Math.abs(d), `${width}px 圖示中線偏離名稱 ${d.toFixed(2)}px`).toBeLessThan(1);
+  }
 });

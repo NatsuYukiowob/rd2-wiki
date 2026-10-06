@@ -5,7 +5,8 @@
     "version": "1.1.2",
     "period": {
       "begin": "2026-09-21",
-      "finish": "2026-09-30 23:59"
+      "finish": "2026-09-30 23:59",
+      "tz": "UTC+9"
     },
     "screenshots": [
       {

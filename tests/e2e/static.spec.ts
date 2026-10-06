@@ -118,7 +118,7 @@ test('ST3b. 按住圖鑑卡片裡的檔位切換鈕，整張卡片不跟著縮',
   expect([m[0], m[3]], `按住卡片裡的切換鈕時整張卡片被縮放了（${t}）`).toEqual([1, 1]);
 });
 
-const HOME_ENTRIES = ['/tree', '/dice', '/board', '/sim', '/events', '/guide'];
+const HOME_ENTRIES = ['/tree/', '/dice/', '/board/', '/sim/', '/events/', '/guide/'];
 
 test('ST4. 首頁 6 張入口依序排好、stagger 連號，320px 不撐出橫捲；有 GitHub 原始碼連結', async ({ page }) => {
   await page.goto('/');
@@ -219,3 +219,35 @@ for (const [path, name] of [['/tree', '骰子樹'], ['/sim', '骰子樹模擬器
     expect(box && box.width <= 1 && box.height <= 1, 'h1 要視覺隱藏（.sr-only），不佔版面').toBe(true);
   });
 }
+
+/** 有內容的頁面（`/tree`、`/sim` 只有 sr-only 的 h1，也照樣要合格）。 */
+const ALL_PAGES = ['/', '/tree', '/dice', '/board', '/sim', '/guide', '/guide/keywords', '/tactic', '/boss',
+  '/rift-shop', '/events', '/events/chuseok-2026', '/rewards', '/about'];
+
+test('ST7. 標題階層不跳級：每一頁相鄰標題的層級最多往下一階（讀屏用標題清單當目錄）', async ({ page }) => {
+  for (const path of ALL_PAGES) {
+    await page.goto(path);
+    const levels = await page.locator('h1, h2, h3, h4, h5, h6').evaluateAll(els => els.map(h => Number(h.tagName[1])));
+    const jumps = levels.flatMap((l, i) => (i > 0 && l - levels[i - 1]! > 1 ? [`h${levels[i - 1]}→h${l}（第 ${i} 個）`] : []));
+    expect(jumps, `${path} 的標題 ${levels.join('')}`).toEqual([]);
+  }
+});
+
+test('ST8. 320px 與 280px：靜態頁不撐出橫捲，卡片左右留白對稱（grid 的 minmax 下限不能大於內容寬）', async ({ page }) => {
+  for (const width of [320, 280]) {
+    await page.setViewportSize({ width, height: 800 });
+    for (const path of ['/', '/dice', '/guide', '/guide/keywords', '/tactic', '/boss', '/rift-shop', '/events', '/rewards']) {
+      await page.goto(path);
+      const m = await page.evaluate(() => {
+        const cw = document.documentElement.clientWidth;
+        const rects = [...document.querySelectorAll('.card, .kw-entry, .guide-card')]
+          .map(el => el.getBoundingClientRect()).filter(r => r.width > 0);
+        // 右緣留白比左緣少超過半像素＝卡片頂到螢幕邊或被裁（/dice 在 320px 曾經右邊 0、左邊 16）。
+        const lopsided = rects.filter(r => cw - r.right < r.left - 0.5).length;
+        return { overflow: document.documentElement.scrollWidth - cw, lopsided };
+      });
+      expect(m.overflow, `${width}px ${path} 撐出橫捲`).toBeLessThanOrEqual(0);
+      expect(m.lopsided, `${width}px ${path} 有卡片右側留白比左側少`).toBe(0);
+    }
+  }
+});

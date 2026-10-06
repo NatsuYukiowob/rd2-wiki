@@ -52,13 +52,13 @@ test('D2. --nav-h 在 /tree 以外的頁面也量得到，不是停在 CSS 的 f
 
 test('D3. 目前分頁標 aria-current，而且沒有把下拉選單的箭頭吃掉', async ({ page }) => {
   await page.goto('/dice');
-  await expect(page.locator('#site-nav a[href="/dice"][aria-current="page"]')).toHaveCount(1);
-  await expect(page.locator('#site-nav a[href="/tree"][aria-current="page"]')).toHaveCount(0);
+  await expect(page.locator('#site-nav a[href="/dice/"][aria-current="page"]')).toHaveCount(1);
+  await expect(page.locator('#site-nav a[href="/tree/"][aria-current="page"]')).toHaveCount(0);
 
   await page.goto('/guide/keywords');
   const summary = page.locator('#site-nav .nav-menu > summary');
   await expect(summary).toHaveAttribute('aria-current', 'page');
-  await expect(page.locator('.nav-menu-items a[href="/guide/keywords"][aria-current="page"]')).toHaveCount(1);
+  await expect(page.locator('.nav-menu-items a[href="/guide/keywords/"][aria-current="page"]')).toHaveCount(1);
 
   // ⚠️ 這一段是 2026-08-22 實際發生過的 bug 的守門。
   // 目前分頁的金線一度也畫在 ::after 上，跟下拉箭頭撞在同一個偽元素——而箭頭那條選擇器
@@ -287,6 +287,44 @@ test('D13. 窄螢幕：導覽列自己橫向捲動，不換行也不把整份文
   const nav = (await page.locator('#site-nav').boundingBox())!;
   expect(menu.y + menu.height, '下拉選單被導覽列的 overflow 裁掉了').toBeGreaterThan(nav.y + nav.height);
   await expect(page.locator('#site-nav .nav-menu-items a').first()).toBeVisible();
+});
+
+test('D13d. 「遊戲介紹」下拉裡的焦點框不被選單的捲動容器裁掉（根字級小於 16px 時也一樣）', async ({ page }) => {
+  // 選單是 overflow-y: auto 的捲動容器，畫在內距外的東西會被切；內距與焦點框外擴都是 4px，
+  // 根字級 14px 時內距只剩 3.5px，左右兩邊的金框就被切掉一條。
+  await page.goto('/dice');
+  await page.evaluate(() => { document.documentElement.style.fontSize = '14px'; });
+  await page.locator('#site-nav .nav-menu > summary').click();
+  await page.keyboard.press('Tab');
+  const m = await page.evaluate(() => {
+    const a = document.activeElement as HTMLElement;
+    const menu = a.closest('.nav-menu-items')!;
+    const cs = getComputedStyle(a), ms = getComputedStyle(menu);
+    const reach = parseFloat(cs.outlineWidth) + parseFloat(cs.outlineOffset);   // 焦點框超出連結邊緣多少
+    const room = a.getBoundingClientRect().left - (menu.getBoundingClientRect().left + parseFloat(ms.borderLeftWidth));
+    return { inMenu: !!menu, reach, room };
+  });
+  expect(m.inMenu, '焦點沒有落在下拉選單的連結上').toBe(true);
+  expect(m.reach, `焦點框外擴 ${m.reach}px，可用空間只有 ${m.room}px`).toBeLessThanOrEqual(m.room);
+});
+
+test('D13c. 矮視窗：「遊戲介紹」下拉裝不下時在選單裡捲，最後一項捲得到、點得到', async ({ page }) => {
+  // 選單掛在 sticky 導覽列上，捲頁面帶不動它。915 寬走寬螢幕那條規則（橫放的 Pixel 7），667 走窄螢幕那條；
+  // 高 320 是兩條規則都裝不下全部項目的高度（瀏覽器字級調大時，一般橫放手機就是這個樣子）。
+  for (const [width, height] of [[915, 320], [667, 320]] as const) {
+    await page.setViewportSize({ width, height });
+    await page.goto('/dice');
+    await page.locator('#site-nav .nav-menu > summary').click();
+    const last = page.locator('#site-nav .nav-menu-items a').last();
+    await last.scrollIntoViewIfNeeded();
+    const hit = await last.evaluate(a => {
+      const r = a.getBoundingClientRect();
+      const top = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+      return { bottom: r.bottom, inner: innerHeight, hit: top === a || a.contains(top) };
+    });
+    expect(hit.bottom, `${width}×${height} 最後一項在視窗外`).toBeLessThanOrEqual(hit.inner);
+    expect(hit.hit, `${width}×${height} 最後一項被蓋住或點不到`).toBe(true);
+  }
 });
 
 test('D14. 減少動態的規則拆到各檔之後沒有漏掉任何一條', async ({ page }) => {

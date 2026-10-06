@@ -58,7 +58,7 @@ const termsOf = (text: string) =>
   }));
 ---
 
-<Base title="怪物圖鑑">
+<Base title="怪物圖鑑" description="Random Dice 2 怪物圖鑑：對戰與合作模式的怪物與首領，以及各自的特性與技能效果。">
   <section class="page battle-page">
     <h1 class="page-head">怪物圖鑑</h1>
     <p class="lede">
@@ -115,19 +115,35 @@ const termsOf = (text: string) =>
   //
   // 收起的動作由腳本做而不是寫在 HTML 上——沒有 JS 時解釋就一直顯示著，比「點了沒反應」好。
   // 事件用委派掛在清單上，卡片數量再多也只有一個監聽器。
-  const terms = [...document.querySelectorAll<HTMLElement>('.battle-term')];
-  for (const el of terms) el.hidden = true;
+  //
+  // 連結被接手成開關之後，讀屏要聽得到開合狀態：有對應段落的連結補 aria-expanded／aria-controls
+  // （沒有 JS 時它仍是普通連結，所以這兩個屬性也由腳本加）。
+  const panelOf = (link: HTMLElement) =>
+    link.closest('.battle-item')?.querySelector<HTMLElement>(`.battle-term[data-term="${CSS.escape(link.dataset.term ?? '')}"]`) ?? null;
+  const togglers = [...document.querySelectorAll<HTMLElement>('.battle-item .kw-link[data-term]')];
+  document.querySelectorAll<HTMLElement>('.battle-term').forEach((el, i) => {
+    el.hidden = true;
+    el.id = `battle-term-${i}`;
+  });
+  for (const link of togglers) {
+    const panel = panelOf(link);
+    if (!panel) continue;
+    link.setAttribute('aria-controls', panel.id);
+    link.setAttribute('aria-expanded', 'false');
+  }
 
   document.addEventListener('click', event => {
     const link = (event.target as HTMLElement | null)?.closest<HTMLAnchorElement>('.kw-link[data-term]');
     if (!link) return;
-    const item = link.closest('.battle-item');
-    const term = link.dataset.term;
-    const panel = item?.querySelector<HTMLElement>(`.battle-term[data-term="${CSS.escape(term ?? '')}"]`);
+    const panel = panelOf(link);
     // 找不到對應那一段就讓瀏覽器照常跳到詞條頁——那條連結本來就是有效的，
     // 攔下來卻什麼都不做才是壞掉（沒有 JS 的環境走的正是那條路）。
     if (!panel) return;
     event.preventDefault();
     panel.hidden = !panel.hidden;
+    // 同一張卡片裡指向同一段的連結可能不只一條，狀態一起翻。
+    for (const other of togglers) {
+      if (other.getAttribute('aria-controls') === panel.id) other.setAttribute('aria-expanded', String(!panel.hidden));
+    }
   });
 </script>

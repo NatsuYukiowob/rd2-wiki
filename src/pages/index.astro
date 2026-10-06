@@ -24,17 +24,17 @@ const latestDataStamp = latestDataEntry?.data;
 const latestDataInRecent = latestDataEntry !== undefined && recent.includes(latestDataEntry);
 ---
 
-<Base title="首頁">
+<Base title="首頁" description="Random Dice 2 非官方玩家攻略站：骰子樹、骰子圖鑑、骰盤與骰子樹模擬器，以及戰術、怪物、活動與獎勵資料。">
   <section class="page home-hero">
     <h1 class="page-head">Random Dice 2 wiki</h1>
     <div class="home-links">
       {[
-        { href: '/tree', title: '骰子樹', desc: '可平移縮放的全樹畫布，點節點看前置鏈與累計解鎖成本。' },
-        { href: '/dice', title: '骰子圖鑑', desc: `${diceCount} 顆骰子的基本效果與 7 骰點覺醒，一頁看完。` },
-        { href: '/board', title: '骰盤', desc: '把骰子擺上骰盤，看每一格的面板數值與盤面加成。' },
-        { href: '/sim', title: '骰子樹模擬器', desc: '在骰子樹上逐顆解鎖、調等級，算出整套規劃要花多少、手上還差多少。' },
-        { href: '/events', title: '活動', desc: '遊戲裡辦過的期間限定活動，逐場列出完整內容。' },
-        { href: '/guide', title: '遊戲介紹', desc: '骰子描述裡那些帶 # 的官方標記是什麼意思。' },
+        { href: '/tree/', title: '骰子樹', desc: '可平移縮放的全樹畫布，點節點看前置鏈與累計解鎖成本。' },
+        { href: '/dice/', title: '骰子圖鑑', desc: `${diceCount} 顆骰子的基本效果與 7 骰點覺醒，一頁看完。` },
+        { href: '/board/', title: '骰盤', desc: '把骰子擺上骰盤，看每一格的面板數值與盤面加成。' },
+        { href: '/sim/', title: '骰子樹模擬器', desc: '在骰子樹上逐顆解鎖、調等級，算出整套規劃要花多少、手上還差多少。' },
+        { href: '/events/', title: '活動', desc: '遊戲裡辦過的期間限定活動，逐場列出完整內容。' },
+        { href: '/guide/', title: '遊戲介紹', desc: '骰子描述裡那些帶 # 的官方標記是什麼意思。' },
       ].map((c, i) => (
         <a class="home-card card" href={c.href} style={`--i:${i}`}>
           <h2>{c.title}<Fragment set:html={ICONS.arrow} /></h2>
@@ -43,7 +43,7 @@ const latestDataInRecent = latestDataEntry !== undefined && recent.includes(late
       ))}
     </div>
 
-    <!-- 遊戲版本是玩家在遊戲裡看得到的號碼，更新日期是這個站最後一次跟上游對過資料的日子。
+    {/* 遊戲版本是玩家在遊戲裡看得到的號碼，更新日期是這個站最後一次跟上游對過資料的日子。
          兩個都讀自資料正本（<svg> 的 data-game-version／data-updated），不寫死在頁面上——
          寫死的版本號一定會忘記跟著改。
 
@@ -53,12 +53,12 @@ const latestDataInRecent = latestDataEntry !== undefined && recent.includes(late
 
          ⚠️ id 是 tests/e2e/tree.spec.ts 的 T 抓的目標。那條測試原本抓的是 `section`，
          首頁一多一個區塊就會踩到 Playwright 的 strict mode；選擇器綁版面結構本來就撐不住
-         版面改動，所以改綁這個 id。 -->
+         版面改動，所以改綁這個 id。 */}
     <p id="version-info" class="muted">
       遊戲版本v{data.meta.gameVersion}（更新於 {data.meta.updated}）
     </p>
 
-    <!-- 原始碼連結（2026-09-23 Yuki 要求：全站原本沒有任何一處連到 repo）。 -->
+    {/* 原始碼連結（2026-09-23 Yuki 要求：全站原本沒有任何一處連到 repo）。 */}
     <p class="home-repo">
       <a href="https://github.com/NatsuYukiowob/rd2-wiki">原始碼在 GitHub<Fragment set:html={ICONS.arrow} /></a>
     </p>
@@ -77,24 +77,24 @@ const latestDataInRecent = latestDataEntry !== undefined && recent.includes(late
         <ul>{entry.items.map(item => <li>{item}</li>)}</ul>
       </article>
     ))}
-    <!-- 全分支 review I2：資料版本戳記跟規則 20 同一套語意（最新一筆帶 data 的條目），
+    {/* 全分支 review I2：資料版本戳記跟規則 20 同一套語意（最新一筆帶 data 的條目），
          不是「entries[0] 帶不帶 data」也不是「recent 裡有沒有」。純功能更新排在最前面時
          （目前就是這樣：/board 上線在 entries[0]），最新 3 筆逐條渲染完全不會印出戳記——
-         這裡補一行，不讓資料版本從畫面上消失，也不用為了湊「剛好落在前 3 筆」去動排序。 -->
+         這裡補一行，不讓資料版本從畫面上消失，也不用為了湊「剛好落在前 3 筆」去動排序。 */}
     {!latestDataInRecent && latestDataEntry && latestDataStamp && (
       <p class="note">
         資料版本 <span class="log-stamp">遊戲 v{latestDataStamp.gameVersion}</span>
         （{latestDataEntry.date} {latestDataEntry.title} 對過資料表）
       </p>
     )}
-    <!-- 目前全部條目就這幾筆，還不需要一頁完整記錄；筆數長起來之後再開 /changelog。 -->
+    {/* 目前全部條目就這幾筆，還不需要一頁完整記錄；筆數長起來之後再開 /changelog。 */}
     {changelog.entries.length > recent.length && (
       <p class="note">另有 {changelog.entries.length - recent.length} 筆較早的更新。</p>
     )}
 
-    <!-- 訪客計數器。
+    {/* 訪客計數器。
          預設 hidden，拿到數字才顯示——但 hidden 在 content.css 裡被改成
-         visibility: hidden（保留高度），所以顯示與否都不會讓下面的 footer 跳動。 -->
+         visibility: hidden（保留高度），所以顯示與否都不會讓下面的 footer 跳動。 */}
     <p id="hit-counter" hidden>
       你是第<span id="hit-number"></span>位訪客
     </p>

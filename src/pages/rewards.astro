@@ -19,7 +19,7 @@ const navigation = [...catalog.modes, ...(catalog.repeatable ? [catalog.repeatab
 const totalsByMode = new Map(catalog.modes.map(mode => [mode.id, modeRewardTotals(mode)]));
 ---
 
-<Base title="獎勵系統">
+<Base title="獎勵系統" description="Random Dice 2 各模式、活動與成就的里程碑獎勵，以及全部領完可拿到的資源總量。">
   <section class="page rewards-page" data-rewards-page data-active-mode={defaultMode.id}>
     <h1 class="page-head">獎勵系統</h1>
     <p class="lede">各模式、活動與成就的里程碑獎勵，每個分類頂端列出全部領完可拿到的資源總量；可重複取得的獎勵另列查閱。</p>

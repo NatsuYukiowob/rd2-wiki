@@ -72,35 +72,35 @@ const icon3Of = (id: string): string => {
 const BRANCHES = Object.entries(BRANCH_ZH);
 ---
 
-<Base title="骰子圖鑑">
+<Base title="骰子圖鑑" description={`Random Dice 2 骰子圖鑑：${nodes.length} 顆骰子的基本效果、7 骰點覺醒效果與數值。`}>
   <section class="page">
     <h1 class="page-head">骰子圖鑑</h1>
     <p class="lede">
       {nodes.length} 顆骰子的完整資料：基本效果、7 骰點覺醒效果與官方管理 ID。
-      符文、玩家被動與支援不在這裡——它們是加在骰子與玩家身上的強化，請從<a href="/tree">骰子樹</a>看它們的位置與前置關係。
+      符文、玩家被動與支援不在這裡——它們是加在骰子與玩家身上的強化，請從<a href="/tree/">骰子樹</a>看它們的位置與前置關係。
     </p>
 
-    <!-- 篩選只是把不符合的卡片藏起來，內容一直都在 HTML 裡。沒有 JS 時整頁照常是完整的
-         41 張卡片，只是篩不動——這正是這一頁存在的理由，不能反過來讓 JS 決定有沒有內容。 -->
+    {/* 篩選只是把不符合的卡片藏起來，內容一直都在 HTML 裡。沒有 JS 時整頁照常是完整的
+         41 張卡片，只是篩不動——這正是這一頁存在的理由，不能反過來讓 JS 決定有沒有內容。 */}
     <div id="codex-filters" class="filter-bar">
-      <!--
+      {/*
         用 <div role="group"> 而不是 <fieldset><legend>：<legend> 是特殊盒子，瀏覽器一律把它
         排在版面之外的自己一列，要把它拉回同一列只能靠 float，而 float 又得靠祖先的
         `overflow: hidden` 收住——那會把切換鈕的鍵盤焦點框裁掉（outline 會被祖先的 overflow
         裁切），換行的列距也只能靠手算的 line-height 撐（正是 CLAUDE.md 說咬過五次的
         「寫死的版面偏移量」）。改成一般的 flex 容器，列距交給 gap，三個問題一起消失。
         role="group" ＋ aria-label 是 fieldset/legend 的無障礙等價寫法。
-      -->
+      */}
       <div class="filter-group" role="group" aria-label="分支">
         <span class="filter-group-label" aria-hidden="true">分支</span>
-        <!--
+        {/*
           切換鈕仍然是 <label> 包住一個真的 checkbox，不是自己刻的 <div role="checkbox">：
           鍵盤操作（Tab 聚焦、Space 切換）、螢幕閱讀器唸出的「已勾選／未勾選」、以及沒有 JS
           時仍然是一個可操作的表單控制項，全部是瀏覽器免費給的。自己刻要補齊這些至少三十行，
           而且漏一項就是一個只有滑鼠能用的篩選器。
           checkbox 本身用 CSS 攤平成整顆鈕的大小、透明度 0——它還在原地接點擊與焦點，
           只是看不見（見 components.css 的 .chip input）。
-        -->
+        */}
         <button type="button" id="codex-all" class="chip">全部</button>
         {BRANCHES.map(([value, label]) => (
           <label class="chip" data-branch={value}>
@@ -112,6 +112,8 @@ const BRANCHES = Object.entries(BRANCH_ZH);
       <p class="filter-count" aria-live="polite">顯示 <span id="codex-count">{nodes.length}</span> / {nodes.length}</p>
     </div>
 
+    {/* 卡片名稱是 h3；h1 底下沒有這一層的話標題清單會從 h1 跳到 h3。視覺上不需要它（篩選列就是這一區的頭）。 */}
+    <h2 class="sr-only">骰子列表</h2>
     <div id="codex-grid" class="codex-grid">
       {nodes.map((node, i) => (
         <DiceCard
@@ -128,11 +130,11 @@ const BRANCHES = Object.entries(BRANCH_ZH);
       ))}
     </div>
 
-    <!-- 全部 62 個標記的解釋（建置期就渲染好的 HTML），給卡片的就地視圖用。
+    {/* 全部 62 個標記的解釋（建置期就渲染好的 HTML），給卡片的就地視圖用。
          ⚠️ 刻意用 div 的文字內容而不是 application/json 的腳本標籤：解釋 HTML 裡有 `</a>`
          這種結束標籤，塞進腳本標籤會被 Astro 的編譯器當成腳本內容送去解析，實測直接
          build 失敗（`Unexpected "/"`）。div 的文字內容由 Astro 自動逃逸，`textContent`
-         讀回來就是原本的 JSON。 -->
+         讀回來就是原本的 JSON。 */}
     <div id="codex-terms" hidden>{JSON.stringify(termPayload)}</div>
   </section>
 </Base>
@@ -308,7 +310,7 @@ const BRANCHES = Object.entries(BRANCH_ZH);
     if (entry.used) {
       const search = document.createElement('a');
       search.className = 'card-term-search';
-      search.href = `/tree?q=${encodeURIComponent(term)}`;
+      search.href = `/tree/?q=${encodeURIComponent(term)}`;
       search.textContent = `在骰子樹搜尋 #${term}`;
       search.insertAdjacentHTML('beforeend', ICONS.arrow);
       view.append(search);

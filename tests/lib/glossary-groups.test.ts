@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
-  buildGlossary, GROUPS, GUIDE_TABS, KEYWORDS_PATH, termHref,
+  buildGlossary, displayGlossary, GROUPS, GUIDE_TABS, KEYWORDS_PATH, termHref, textColor,
 } from '../../src/lib/glossary-groups';
 import type { GlossaryRecord, TreeNode } from '../../src/lib/types';
 
@@ -81,5 +81,45 @@ describe('buildGlossary／termHref', () => {
   it('沒見過的色碼當場丟例外，不悄悄塞進某一組', () => {
     expect(() => buildGlossary({ 新詞: { code: 'NEW', color: '#123456', desc: 'x' } }, []))
       .toThrow(/色碼 #123456 不在已知的五組裡/);
+  });
+});
+
+describe('textColor（關鍵字字色的對比）', () => {
+  /** WCAG 2.x 相對亮度與對比。 */
+  const luminance = (hex: string) => {
+    const [r, g, b] = [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16) / 255)
+      .map(c => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4));
+    return 0.2126 * r! + 0.7152 * g! + 0.0722 * b!;
+  };
+  const contrast = (a: string, b: string) => {
+    const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+    return (hi! + 0.05) / (lo! + 0.05);
+  };
+  const tokens = readFileSync('src/styles/tokens.css', 'utf8');
+  const surface = (n: number) => {
+    const m = tokens.match(new RegExp(`^  --surface-${n}: (#[0-9a-fA-F]{6});`, 'm'));
+    if (!m) throw new Error(`tokens.css 讀不到 --surface-${n} 的純色值`);
+    return m[1]!;
+  };
+
+  it('每一組的字色在卡片面（--surface-1）與浮層／覺醒區塊（--surface-2）上都 ≥ 4.5', () => {
+    // 關鍵字是 13–16px 的一般字重，不算大字，AA 門檻 4.5。
+    for (const g of GROUPS) {
+      for (const n of [1, 2]) {
+        const ratio = contrast(textColor(g.color), surface(n));
+        expect(ratio, `${g.slug} ${textColor(g.color)} on --surface-${n}`).toBeGreaterThanOrEqual(4.5);
+      }
+    }
+  });
+
+  it('三個產生渲染資料的地方都換成字色，分組仍看官方色', () => {
+    const status = GROUPS.find(g => g.slug === 'status')!;
+    expect(textColor(status.color)).not.toBe(status.color);
+    const { byTerm } = buildGlossary(SYNTH, []);
+    expect(byTerm.get('冰凍')!.color).toBe(textColor(status.color));
+    expect(byTerm.get('冰凍')!.group.slug).toBe('status');
+    expect(displayGlossary(SYNTH)['冰凍']!.color).toBe(textColor(status.color));
+    // 沒寫 text 的組原樣
+    expect(byTerm.get('果實')!.color).toBe(GROUPS[0]!.color);
   });
 });
