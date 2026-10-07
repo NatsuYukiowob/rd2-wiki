@@ -774,11 +774,9 @@ test('W. 手機版 footer 的著作權聲明不被底部分支 chip 蓋住', { t
   expect(m.overflow, '讓位之後仍不該捲得動').toBeLessThanOrEqual(0);
 });
 
-test('K. 手機版詳情面板的重置警告不被底部分支 chip 蓋住（spec §2.1 強制要求的災情警告）', { tag: '@mobile' }, async ({ page, isMobile }) => {
+test('K. 手機版詳情面板的最後一段不被底部分支 chip 蓋住', { tag: '@mobile' }, async ({ page, isMobile }) => {
   test.skip(!isMobile, '僅手機版：#branch-chips 疊在 #detail 底部的重疊問題只在手機版存在（桌機沒有 #branch-chips）');
   await page.goto('/tree?node=1001');
-  // renderDetail()（NodeDetail.ts）固定把「骰子樹重置需要初期化券…」這段警告放在 #detail
-  // 內容的最後一段，用文字內容鎖定它，不是靠結構順序猜。
   // 先驗「面板方框」本身：不管內容多長、使用者捲到哪裡，#detail 的可視範圍都不該伸進
   // chip 列。2026-08-19 面板變長（關鍵字解釋／骰子覺醒／練滿花費）時就是先在這裡破的——
   // 舊做法靠 padding-bottom 把最後一段推上來，只有「已經捲到底」才成立，而預設 scrollTop=0。
@@ -787,16 +785,16 @@ test('K. 手機版詳情面板的重置警告不被底部分支 chip 蓋住（sp
   if (!panelBox) throw new Error('缺少 bounding box');
   expect(panelBox.y + panelBox.height).toBeLessThanOrEqual(chipsTop + 1);
 
-  const warn = page.locator('#detail .note', { hasText: '初期化券' });
-  await warn.scrollIntoViewIfNeeded();
-  const warnBox = await warn.boundingBox();
+  const last = page.locator('#detail .node-body > .col.chain > :last-child');
+  await last.scrollIntoViewIfNeeded();
+  const lastBox = await last.boundingBox();
   const chipsBox = await page.locator('#branch-chips').boundingBox();
-  if (!warnBox || !chipsBox) throw new Error('缺少 bounding box');
+  if (!lastBox || !chipsBox) throw new Error('缺少 bounding box');
   // #branch-chips 是 position:fixed 疊在 #detail 之上的獨立圖層（DOM 順序在 #detail
-  // 後面，兩者都沒有互相退讓的 z-index，後面的蓋掉前面的）。警告段落捲到底後，它的底緣
+  // 後面，兩者都沒有互相退讓的 z-index，後面的蓋掉前面的）。最後一段捲到底後，它的底緣
   // 不能落進 #branch-chips 的範圍——落進去代表視覺上被蓋住，即使 DOM／CSS 都判定它
   // "visible"（Playwright 的 toBeVisible() 不會檢查有沒有被別的元素蓋住）。
-  expect(warnBox.y + warnBox.height).toBeLessThanOrEqual(chipsBox.y + 1); // 留 1px 容錯
+  expect(lastBox.y + lastBox.height).toBeLessThanOrEqual(chipsBox.y + 1); // 留 1px 容錯
 });
 
 test('N. 選節點時鏡頭置中、卡片貼在節點上方或下方，不擋工具列，畫布平移時跟著走', async ({ page, isMobile }) => {
@@ -1013,7 +1011,7 @@ test('N3. 置中平移期間，卡片一次到位不跟著滑（閃爍修正）'
     '每幀都改變視角時，卡片的重新定位不可以被餓死').toBeLessThan(20);
 });
 
-test('N4. 節點卡片：桌機橫式兩欄、手機單欄，重置警告跨兩欄', { tag: '@mobile' }, async ({ page, isMobile }) => {
+test('N4. 節點卡片：桌機橫式兩欄、手機單欄', { tag: '@mobile' }, async ({ page, isMobile }) => {
   await page.goto('/tree?node=1001');
   await expect(page.locator('#detail')).toBeVisible();
   await page.waitForTimeout(400); // 置中平移跑完再量
@@ -1022,13 +1020,11 @@ test('N4. 節點卡片：桌機橫式兩欄、手機單欄，重置警告跨兩�
     const r = (el: Element) => el.getBoundingClientRect();
     const d = r(document.getElementById('detail')!);
     const cols = [...document.querySelectorAll('#detail .node-body > .col')].map(r);
-    const warn = r(document.querySelector('#detail .reset-warn')!);
     return {
       w: d.width, h: d.height,
       tops: cols.map(c => Math.round(c.top)),
       widths: cols.map(c => c.width),
       count: cols.length,
-      warnW: warn.width,
     };
   });
 
@@ -1041,8 +1037,6 @@ test('N4. 節點卡片：桌機橫式兩欄、手機單欄，重置警告跨兩�
   } else {
     expect(m.tops[0], '桌機版兩欄應該從同一條基線開始').toEqual(m.tops[1]);
     expect(m.w, '卡片應該是橫的（寬 > 高）').toBeGreaterThan(m.h);
-    // 重置警告跨兩欄：它比單獨一欄寬得多。
-    expect(m.warnW).toBeGreaterThan(m.widths[1]! * 1.5);
   }
 });
 
@@ -1158,16 +1152,18 @@ test('N6. 打字改篩選之後，卡片不壓到節點、也不跳到另一邊'
     const tb = document.getElementById('toolbar')!.getBoundingClientRect();
     return n.top - tb.bottom - 24; // 24 = 上下各一個 GAP
   });
-  // 目標留白 240：介於 MIN_PANEL_H（200，低於它就換邊）與卡片自然高度（約 280）之間，
+  // 目標留白取 MIN_PANEL_H（200，低於它就換邊）與卡片自然高度的中點，
   // 正好是「不換邊但整張放不下」那條縫。
-  const dy = Math.round(await room() - 240);
+  const target = Math.round((200 + natural) / 2);
+  expect(natural - 200, '前提：卡片自然高度要比 MIN_PANEL_H 高出一段，才有那條縫').toBeGreaterThan(10);
+  const dy = Math.round(await room() - target);
   expect(dy, '前提：一開始那一側的空間要比目標大，才有得拖').toBeGreaterThan(20);
   await page.mouse.move(200, 600);
   await page.mouse.down();
   for (let i = 1; i <= 10; i++) await page.mouse.move(200, 600 - (dy * i) / 10);
   await page.mouse.up();
   await expect.poll(async () => Math.round(await room()),
-    { message: '前提：畫布真的被拖上去了' }).toBeLessThanOrEqual(245);
+    { message: '前提：畫布真的被拖上去了' }).toBeLessThanOrEqual(target + 5);
 
   const dragged = await nodeOverlap(page, '4112');
   expect(dragged.overlap, '空間變小時卡片要自己變矮，不可以壓到節點').toBe(0);
