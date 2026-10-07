@@ -202,7 +202,8 @@ a.row-card:active {
 /* 分段切換（2026-09-23 骰桌 PR ③）：一條凹槽裡並排幾顆互斥的鈕，選中那顆是金框鍵帽。
    骨子裡是 `<button aria-pressed>`（/board 的狀態機綁在這上面），不是 radio。
    ⚠️ 沒選中的框是 transparent 不是 0：選中換成金框時寬度才不跳（BL3）。
-   ⚠️ aria-disabled 不是 :disabled，hover／按壓要自己排除（/board 沒有 /sim 存檔時的「我的 /sim」）。 */
+   ⚠️ aria-disabled 不是 :disabled，hover／按壓要自己排除（/board 沒有 /sim 存檔時的「我的 /sim」）。
+   也收 `<a>`：/tree ⇄ /sim 的模式切換（ModeSwitch.astro）是換頁，選中那顆不帶 href，金框由它自己的滑塊畫。 */
 .seg {
   display: inline-flex;
   gap: var(--space-h);
@@ -214,20 +215,24 @@ a.row-card:active {
 /* ⚠️ 直向內距是 --space-h 不是 --space-1：凹槽自己上下各有 --space-h，兩者加起來＝一顆獨立按鈕的
    --space-1——整條切換列的外高跟換成 .seg 之前一樣。/board 320px 的首屏是量到剩 1–2px 的
    （B52「對戰：隊伍列掉出首屏」），這一列多長 4px 隊伍列就掉出首屏。 */
-.seg > button {
+.seg > :is(button, a) {
   padding: var(--space-h) var(--space-3);
   border: 1px solid transparent;
   border-radius: calc(var(--r-btn) - var(--space-h));
   background: none;
   color: var(--muted);
   font: inherit;
+  text-decoration: none;
   cursor: pointer;
   transition:
     background-color var(--t-fast) var(--e-out),
     color var(--t-fast) var(--e-out),
     transform var(--t-press) var(--e-out);
 }
-.seg > button:not([aria-disabled='true']):hover {
+/* 連結另外列一條、不併成 :is(button, a[href])：:is() 吃最高的具體度，會把整條規則抬到 (0,4,1)，
+   壓過下面減少動態那段 (0,3,1) 的 transform: none。 */
+.seg > button:not([aria-disabled='true']):hover,
+.seg > a[href]:hover {
   color: var(--fg);
 }
 .seg > button[aria-pressed='true'] {
@@ -236,7 +241,11 @@ a.row-card:active {
   background: color-mix(in srgb, var(--gold) 16%, var(--surface-2));
   color: var(--fg);
 }
-.seg > button:not([aria-disabled='true']):active {
+.seg > a:not([href]) {
+  cursor: default;
+}
+.seg > button:not([aria-disabled='true']):active,
+.seg > a[href]:active {
   transform: scale(var(--p-press));
 }
 /* ⚠️ 光靠 cursor 不夠：沒選中的鈕本來就是 --muted，觸控沒有游標也沒有 hover，停用的必須在外觀上
@@ -246,7 +255,7 @@ a.row-card:active {
   cursor: not-allowed;
 }
 @media (forced-colors: active) {
-  .seg > button {
+  .seg > :is(button, a) {
     border-color: ButtonBorder;
   }
   .seg > button[aria-pressed='true'] {
@@ -607,7 +616,7 @@ a.row-card:active {
   .card,
   .row-card,
   .btn,
-  .seg > button,
+  .seg > :is(button, a),
   .step > button,
   .chip,
   .chip .branch-dot {
@@ -621,6 +630,7 @@ a.row-card:active {
   .btn-alt:not(:disabled, [aria-disabled='true']):active,
   .btn-pri:not(:disabled, [aria-disabled='true']):active,
   .seg > button:not([aria-disabled='true']):active,
+  .seg > a[href]:active,
   .step > button:not(:disabled):active,
   .chip:active {
     transform: none;
