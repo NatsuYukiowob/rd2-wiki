@@ -1462,7 +1462,7 @@ test('P. 工具列對齊：搜尋框與分支側欄切齊同一條左邊界，�
 
   // 中線：工具列每一項（切換鈕、搜尋框、篩選群組的標題與切換鈕）都落在同一條水平中線上。
   const midY = (b: { y: number; height: number }) => b.y + b.height / 2;
-  for (const [name, b] of [['篩選鈕', toggle], ['分組標題', groupLabel], ['切換鈕', chip]] as const) {
+  for (const [name, b] of [['模式切換', leftmost], ['篩選鈕', toggle], ['分組標題', groupLabel], ['切換鈕', chip]] as const) {
     expect(Math.abs(midY(b) - midY(search)), `${name} 與搜尋框的中線差距`).toBeLessThan(1);
   }
 

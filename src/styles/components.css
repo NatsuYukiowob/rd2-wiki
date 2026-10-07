@@ -229,7 +229,10 @@ a.row-card:active {
     color var(--t-fast) var(--e-out),
     transform var(--t-press) var(--e-out);
 }
-.seg > :is(button, a[href]):not([aria-disabled='true']):hover {
+/* 連結另外列一條、不併成 :is(button, a[href])：:is() 吃最高的具體度，會把整條規則抬到 (0,4,1)，
+   壓過下面減少動態那段 (0,3,1) 的 transform: none。 */
+.seg > button:not([aria-disabled='true']):hover,
+.seg > a[href]:hover {
   color: var(--fg);
 }
 .seg > button[aria-pressed='true'] {
@@ -241,7 +244,8 @@ a.row-card:active {
 .seg > a:not([href]) {
   cursor: default;
 }
-.seg > :is(button, a[href]):not([aria-disabled='true']):active {
+.seg > button:not([aria-disabled='true']):active,
+.seg > a[href]:active {
   transform: scale(var(--p-press));
 }
 /* ⚠️ 光靠 cursor 不夠：沒選中的鈕本來就是 --muted，觸控沒有游標也沒有 hover，停用的必須在外觀上
@@ -626,6 +630,7 @@ a.row-card:active {
   .btn-alt:not(:disabled, [aria-disabled='true']):active,
   .btn-pri:not(:disabled, [aria-disabled='true']):active,
   .seg > button:not([aria-disabled='true']):active,
+  .seg > a[href]:active,
   .step > button:not(:disabled):active,
   .chip:active {
     transform: none;

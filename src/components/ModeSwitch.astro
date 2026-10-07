@@ -5,7 +5,7 @@
 //
 // 換頁時金框滑塊（.mode-thumb）從舊位置滑到新位置，頁面本身瞬間切換：跨頁 View Transitions
 // 只給滑塊命名、root 不做動畫。opt-in 由 Base 的 `viewTransition` 輸出（理由見 Base 的 Props），
-// 減少動態時 Base 不宣告＝直接換頁；不支援的瀏覽器（Firefox）同樣直接換頁。
+// 減少動態時 Base 不宣告＝直接換頁；不支援的瀏覽器（Firefox）同樣直接換頁；手機不做（見樣式）。
 interface Props { current: 'tree' | 'sim' }
 const { current } = Astro.props;
 const MODES = [
@@ -57,6 +57,14 @@ const MODES = [
   ::view-transition-old(root),
   ::view-transition-new(root) {
     animation: none;
+  }
+  /* 手機不做：/sim 的切換鈕收在底部 sheet 裡（平常看不到），命名的話滑塊會從頂端工具列一路滑出畫面底部。 */
+  @media (width <= 720px) {
+    .mode-thumb,
+    .mode-label-tree,
+    .mode-label-sim {
+      view-transition-name: none;
+    }
   }
   @media (forced-colors: active) {
     .mode-thumb {

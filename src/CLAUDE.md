@@ -65,13 +65,18 @@ visible（`overflow-x: hidden` 明寫，`detail.css`）。
 
 兩頁工具列最左邊的「瀏覽｜模擬」（`src/components/ModeSwitch.astro`）。仍是兩個網址，不是單頁。
 
-- 按下時才組網址帶 `?node=`／`?view=cx,cy,ppu`（`src/lib/mode-switch.ts`，帶畫面中心的 world 座標與 px/unit，
-  不帶 tx/ty）；落地頁套用後把 `view`（/sim 是兩個都）從網址拿掉。**不是網址分享**，/sim 的「刻意不做」不變。
+- 按下時才組網址帶 `?node=`／`?view=cx,cy,ppu`（`src/lib/mode-switch.ts` 的 `wireModeLink()`，兩頁共用）。
+  中心是**可視區**中心（/sim 桌機扣掉側欄，`visibleCenter()`），不是整個 host。落地頁套用後把 `view`
+  （/sim 是兩個都）從網址拿掉。**不是網址分享**，/sim 的「刻意不做」不變。E2E `mode-switch.spec.ts` MS1–MS5。
+- ⚠️ `/tree` 的 `view` 要在第一次 `applyFilter()` 之前讀（它的 `syncUrl()` 會改寫網址）；篩選（`branch`／`type`／`q`）
+  離開時存 sessionStorage、帶 `view` 回來時補回（/sim 不認得它們）。
 - ⚠️ **/sim 落地只選取、不走 `activate()`**：那條路徑遇到前置齊了的節點會直接取得、花資源（`arriveFromTree()`）。
+  套視角前先 `vp.resize()` 對齊 host 實際尺寸：手機版剛載入時 controller 還沒量到抽屜搬家後的高度，套完會被它的 resize 推走。
 - 金框滑塊靠跨頁 View Transitions：**opt-in 必須是 head 最前面的 inline `<style>`**（Base 的 `viewTransition`），
   寫進頁面打包出的外部 CSS 時 Chrome 常常跳過轉場。只命名滑塊與兩個文字（文字的 group 要疊在滑塊上，
-  否則滑過去時字被蓋掉），root 不做動畫。去別頁時 `pageswap` 先 `skipTransition()`，否則目的頁丟
-  `ViewTransition opt-in disabled`（E2E 的 pageerror 會紅）。
+  否則滑過去時字被蓋掉），root 不做動畫，手機不命名（/sim 的切換鈕收在 sheet 裡）。去別頁時 `pageswap` 先
+  `skipTransition()`，否則目的頁丟 `ViewTransition opt-in disabled`（E2E 的 pageerror 會紅）。
+- `.seg` 的 hover／active 對 `<a>` 另列一條，**不要併成 `:is(button, a[href])`**：具體度會被抬高、壓過減少動態的覆寫（MS4）。
 - **桌機兩頁工具列同高、切換鈕同一位置**：/sim 的內距與搜尋框高度對齊 `/tree`（sim.astro 桌機段）。
   /sim 的搜尋框平常收成放大鏡、聚焦時用負 margin 浮蓋展開（工具列尺寸不隨狀態改變），1280 寬才放得下。
   `/tree` 的 `#search` 固定 `11rem`，1280 寬工具列一行（O4、P 守）。改其中一邊先在 1280 量兩頁 `#toolbar`／`#sim-toolbar` 高度。

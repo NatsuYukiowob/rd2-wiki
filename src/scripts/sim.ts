@@ -37,7 +37,7 @@ import { subCost, zeroCost } from '../lib/cost.js';
 import { MYTHIC_CORES, mythicCoreByKind } from '../lib/currency.js';
 import { BRANCH_ZH, typeLabel } from '../lib/labels.js';
 import { NARROW_QUERY } from '../lib/breakpoints.js';
-import { applyCarriedView, modeSwitchHref, parseViewParam } from '../lib/mode-switch.js';
+import { applyCarriedView, parseViewParam, wireModeLink, type VisibleCenter } from '../lib/mode-switch.js';
 import { renderTaggedText } from '../lib/markup.js';
 import type { Cost, PassiveUpgradeCost, TreeData, TreeNode } from '../lib/types.js';
 
@@ -1191,28 +1191,42 @@ function installMobileLayout(): void {
  * ⚠️ 只選取、**不走 `activate()`**：那條路徑遇到前置齊了的節點會直接取得（花資源），
  * 而使用者只是按了「模擬」。
  */
-function arriveFromTree(): void {
+function arriveFromTree(): boolean {
   const p = new URLSearchParams(location.search);
-  if (!p.has('node') && !p.has('view')) return;
+  if (!p.has('node') && !p.has('view')) return false;
   const id = p.get('node');
   if (id !== null && ctx.byId.has(id)) selected = id;
   const carried = parseViewParam(p.get('view'));
-  if (carried) { applyCarriedView(vp, carried); tree.requestRedraw(); }
+  if (carried) {
+    // 先把 view 對齊 host 的實際尺寸：手機版 installMobileLayout() 剛把著作權搬進抽屜、host 長高了，
+    // controller 的 ResizeObserver 還沒回報（390×844 實測 view 記 666、實際 793）。不先對齊的話，
+    // 套完之後它一 resize（保持中心）就把視角推走半個差值。
+    const r = host.getBoundingClientRect();
+    vp.resize(r.width, r.height);
+    applyCarriedView(vp, carried, visibleCenter());
+    tree.requestRedraw();
+  }
   history.replaceState(history.state, '', location.pathname);
+  return true;
 }
 
-const modeLink = document.querySelector<HTMLAnchorElement>('[data-mode-switch]');
-const fillModeLink = (): void => { if (modeLink) modeLink.href = modeSwitchHref('/tree/', selected, vp); };
-modeLink?.addEventListener('pointerdown', fillModeLink);
-modeLink?.addEventListener('click', fillModeLink);
+/** 可視區中心（相對 host）：桌機扣掉右邊常駐的側欄，跟 fitAll() 同一份量法。 */
+const visibleCenter: VisibleCenter = () => {
+  const rect = host.getBoundingClientRect();
+  return [(rect.width - sidePanelInset(rect)) / 2, rect.height / 2];
+};
+
+wireModeLink('/tree/', () => selected, vp, visibleCenter);
 
 // --- 啟動 -------------------------------------------------------------------
 trackPanelHeight();
 installMobileLayout();
 fitAll();
 loadHoldings();   // 要在第一次 renderTotals() 之前
-arriveFromTree();
+const arrived = arriveFromTree();
 render();
+// 手機版：跟點選節點一樣把抽屜撐到露出主按鈕、節點挪出抽屜底下（兩支都只在手機動作）。
+if (arrived) { revealDetail(); revealSelected(); }
 
 addEventListener('storage', e => {
   // key 為 null＝另一個分頁 localStorage.clear()。

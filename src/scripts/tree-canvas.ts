@@ -25,7 +25,7 @@ import { matchesFilter, stateToQueryString, queryStringToState, isTypingTarget }
 import type { Branch, NodeType, PassiveUpgradeCost, TreeData, TreeNode } from '../lib/types.js';
 import { updateNavHeight } from '../lib/nav-height.js';
 import { NARROW_QUERY } from '../lib/breakpoints.js';
-import { applyCarriedView, modeSwitchHref, parseViewParam } from '../lib/mode-switch.js';
+import { applyCarriedView, parseViewParam, saveTreeFilter, wireModeLink, withSavedTreeFilter } from '../lib/mode-switch.js';
 
 // tree.json 是建置期由 tools/build-data.ts 產生、結構保證符合 TreeData；
 // 但 TS 對 JSON 匯入的型別推論會把 tuple（如 viewBox、size）寬鬆推成 number[]，
@@ -100,7 +100,12 @@ host.addEventListener('wheel', e => {
 // searchEl/filtersEl 這些真正要抓 DOM 表單元素的部分仍留在檔案後面（靠近它們自己的事件
 // 監聽器，閱讀時比較好對照），不需要跟著搬。
 // ?node= 指到不存在的 id 不在這裡擋，由 select() 開頭那一道統一處理（見那裡）。
-const { state: filterState, selected: initialSelected } = queryStringToState(location.search);
+// 從 /sim 切回來（ModeSwitch）時補回離開前的篩選（/sim 不認得它們，見 mode-switch.ts）。
+const initialSearch = withSavedTreeFilter(location.search);
+const { state: filterState, selected: initialSelected } = queryStringToState(initialSearch);
+// 從 /sim 切回來帶的視角。⚠️ 一定要在這裡讀：下面第一次 applyFilter() 就會 syncUrl()
+// 把網址改寫成只剩 node／branch／type／q，讀晚了永遠拿到 null（/code-review 抓到，E2E MS2 守）。
+const carriedView = parseViewParam(new URLSearchParams(initialSearch).get('view'));
 // select() 每次呼叫都會把這個變數更新成當下選取的節點 id，applyFilter() 用它判斷
 // 「篩選條件變了、要不要重新對目前選取的節點跑一次 select() 讓面板/高亮跟著更新」，
 // syncUrl() 也用它組 ?node=。
@@ -1523,19 +1528,14 @@ if (filterState.query.trim() !== '') focusMatches();
 // 順序在 focusMatches() **之後**：兩個參數同時出現時，指名的那顆節點比「命中的那一群」具體。
 // 選取本身是上面 applyFilter() 內部的 select(currentSelected) 做掉的（見那裡的註解），
 // 這裡只補鏡頭；centerOnSelected() 沒有選取時直接返回，窄畫面改走 revealOnNarrow()。
-// 從 /sim 切回來（ModeSwitch）帶著 `?view=`：那邊畫面中心與倍率蓋過上面的預設視角與置中，
-// 套完 syncUrl() 把 view 從網址拿掉（重新整理回到一般進站）。
-const carried = parseViewParam(new URLSearchParams(location.search).get('view'));
-if (carried) {
-  applyCarriedView(tree.view, carried);
+// 從 /sim 切回來（ModeSwitch）帶著 `?view=`：那邊的可視區中心與倍率蓋過上面的預設視角與置中
+// （網址裡的 view 已經被 applyFilter() 的 syncUrl() 拿掉）。手機版另外把選取的節點挪出抽屜底下。
+if (carriedView) {
+  applyCarriedView(tree.view, carriedView);
   tree.requestRedraw();
-  syncUrl();
+  if (currentSelected && isNarrow()) revealOnNarrow(currentSelected);
 } else {
   centerOnSelected();
 }
 
-// 切到 /sim：按下那一刻才組網址（選取與視角隨時在變），pointerdown 讓中鍵／右鍵複製也拿得到。
-const modeLink = document.querySelector<HTMLAnchorElement>('[data-mode-switch]');
-const fillModeLink = (): void => { if (modeLink) modeLink.href = modeSwitchHref('/sim/', currentSelected, tree.view); };
-modeLink?.addEventListener('pointerdown', fillModeLink);
-modeLink?.addEventListener('click', fillModeLink);
+wireModeLink('/sim/', () => currentSelected, tree.view, undefined, () => saveTreeFilter(stateToQueryString(filterState, null)));
