@@ -48,6 +48,10 @@ const optional = [...ctx.optional]
     {/* sheet 的把手兼關閉鈕，桌機 display:none。 */}
     <button type="button" id="sim-sheet-close" aria-label="收起工具列"><span class="sim-grip" aria-hidden="true"></span></button>
     <ModeSwitch current="sim" />
+    {/* 桌機的放大鏡（手機 display:none，那邊有 🔍 浮動鍵）。純裝飾、不接事件：點下去其實點到底下的
+         #sim-search。放在 #sim-search 前面而不是包起來：手機 sheet 的 `.is-search` 規則要 #sim-search
+         是 #sim-toolbar 的直屬子項。 */}
+    <span class="sim-search-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><circle cx="11" cy="11" r="6" /><path d="M15.6 15.6 21 21" /></svg></span>
     <input id="sim-search" type="search" placeholder="搜尋骰子或符文" aria-label="搜尋節點" autocomplete="off" />
 
     <div class="sim-menu">
@@ -221,21 +225,63 @@ const optional = [...ctx.optional]
     border-radius: var(--r-sm);
   }
 
-  /* 桌機：工具列的內距與搜尋框跟 /tree 的 #toolbar 同一組數字（tree.astro）。瀏覽／模擬切換
+  /* 桌機：工具列的內距與搜尋框的高度跟 /tree 的 #toolbar 同一組數字（tree.astro）。瀏覽／模擬切換
      （ModeSwitch）在兩頁要落在同一個位置、工具列同高，換頁時才不會整條跳一下。改這裡或 tree.astro
      任一邊要兩邊一起改。間距刻意維持 --space-2（/tree 是 --space-3）：不影響切換鈕的位置，
-     換成 --space-3 會讓 1366 寬多換一行。手機版是 sheet，另外排（下面 ≤720px 那段）。 */
+     換成 --space-3 會讓 1366 寬多換一行。手機版是 sheet，另外排（下面 ≤720px 那段）。
+     搜尋框平常收成一顆放大鏡，聚焦時展開、浮在右邊的按鈕上：工具列多了切換鈕之後，1280 寬
+     （扣掉側欄只剩 928px）放不下整條搜尋框。展開靠負的 margin-right 抵掉多出來的寬度——
+     工具列的尺寸不准隨狀態改變（頁首註解），所以不能讓它真的把後面的按鈕推開。 */
+  .sim-search-icon {
+    display: none;
+  }
   @media (width > 720px) {
     #sim-toolbar {
+      --sim-search-w: 2.75rem;
+      --sim-search-open-w: 14rem;
       padding: var(--space-2) var(--space-4);
     }
+    .sim-search-icon {
+      position: relative;
+      z-index: 2;
+      display: grid;
+      place-items: center;
+      width: var(--sim-search-w);
+      margin-right: calc(-1 * var(--sim-search-w) - var(--space-2));
+      color: var(--muted);
+      pointer-events: none;
+    }
+    .sim-search-icon svg {
+      width: 1.1rem;
+      height: 1.1rem;
+      fill: none;
+      stroke: currentcolor;
+      stroke-width: 2.4;
+      stroke-linecap: round;
+    }
     #sim-toolbar #sim-search {
-      width: 11rem;
-      padding: var(--space-2) var(--space-3);
+      position: relative;
+      box-sizing: border-box;
+      /* +2px＝左右框線：左內距已經等於整顆放大鏡寬，框線另外算，收合與展開兩種狀態都要加，
+         工具列寬度才會一模一樣（margin 不准寫裸 px，補在 width 上）。 */
+      width: calc(var(--sim-search-w) + 2px);
+      padding: var(--space-2) 0 var(--space-2) var(--sim-search-w);
       font: inherit;
       background: var(--bg);
       border-color: var(--border);
       border-radius: var(--r-xs);
+      cursor: pointer;
+    }
+    #sim-toolbar #sim-search:focus {
+      z-index: 1;
+      width: calc(var(--sim-search-open-w) + 2px);
+      margin-right: calc(var(--sim-search-w) - var(--sim-search-open-w));
+      padding-right: var(--space-3);
+      cursor: text;
+    }
+    /* 收起來時字看不到：有字的話換金框，提示「搜尋還在作用」（畫布上不符合的節點是淡的）。 */
+    #sim-toolbar #sim-search:not(:focus, :placeholder-shown) {
+      border-color: var(--gold);
     }
   }
 
