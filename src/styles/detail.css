@@ -62,11 +62,6 @@
   border-left: 1px solid var(--border);
   padding-left: var(--space-4);
 }
-/* 重置警告跨兩欄。它是最後一段、也是最長的一句，留在右欄會把卡片撐高一截。 */
-#detail .node-body > .reset-warn {
-  grid-column: 1 / -1;
-  margin-bottom: 0;
-}
 /* 兩欄之後，每一欄第一個元素的上邊界外距會讓兩欄的第一行對不齊（h3 有預設 margin-top，
    p 沒有）。歸零讓兩欄從同一條基線開始。 */
 #detail .node-body > .col > :first-child {

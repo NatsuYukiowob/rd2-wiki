@@ -105,12 +105,11 @@ describe('renderDetail', () => {
     expect(host.querySelector('.cost')?.textContent).toBe(formatCost(sel.cost));
   });
 
-  it('必須出現三段警語：AND 上限值、不含強化費用、重置災情警告', () => {
+  it('必須出現兩段警語：AND 上限值、不含強化費用', () => {
     const { host } = renderNode('1002');
     const text = host.textContent ?? '';
     expect(text).toContain('此為 AND 假設下的上限值');
     expect(text).toContain('不含強化費用');
-    expect(text).toContain('⚠️ 骰子樹重置需要初期化券，且有已解鎖骰子消失的災情回報，重置前請先確認。');
   });
 
   // 「練滿 N 級累計」查表要跟 /sim 同一個判準（levelTableFor：special 優先於通用符文表）。

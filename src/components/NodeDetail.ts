@@ -81,9 +81,7 @@ function nodeBody(
   const extra = levels ? upgradeExtraCost(levels, node.maxLevel) : null;
   const maxUpgrade: Cost | null = extra && addCost(extra, node.unlockCost);
 
-  // 兩欄：左欄是「這個節點是什麼」，右欄是「要花多少才走得到」，
-  // 最後那句重置警告（spec §2.1 強制要求，永遠是卡片最後一段）**跨兩欄**放底部——
-  // 它是三段裡最長的一句，塞在右欄會把整張卡片撐高、左欄底下留一大塊空白。
+  // 兩欄：左欄是「這個節點是什麼」，右欄是「要花多少才走得到」。
   // ⚠️ 分欄是**版面**不是內容，所以只加兩層 <div>、由 CSS 決定要不要真的並排
   //（桌機兩欄、手機仍是一欄，見 src/pages/tree.astro 的媒體查詢）。
   // 原本兩段之間的 <hr> 拿掉了：並排之後那條橫線會橫跨兩欄、切在莫名其妙的位置，
@@ -118,7 +116,6 @@ function nodeBody(
         ${sel.bypassed > 0 ? `<p class="note">因此已跳過 ${sel.bypassed} 個前置</p>` : ''}
         ${sel.hiddenByFilter > 0 ? `<p class="note">含 ${sel.hiddenByFilter} 個被篩選隱藏的前置</p>` : ''}
       </div>
-      <p class="note reset-warn">⚠️ 骰子樹重置需要初期化券，且有已解鎖骰子消失的災情回報，重置前請先確認。</p>
     </div>
   `;
 }

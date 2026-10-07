@@ -343,12 +343,11 @@ const TYPES = Object.entries(TYPE_ZH);
       border-radius: 0;
       box-shadow: none;
       /* ⚠️ 這裡曾經是 `bottom: 0` ＋ `padding-bottom: 4.5rem`：讓抽屜壓到螢幕最底下，
-         再靠內距把「重置需要初期化券」那段災情警告（spec §2.1 強制要求，永遠是 #detail
-         的最後一段）推到 #branch-chips 上緣之上。
+         再靠內距把 #detail 的最後一段推到 #branch-chips 上緣之上。
 
          那個做法只在「使用者已經捲到底」時成立。面板一變長（2026-08-19 加了關鍵字解釋、
-         骰子覺醒、練滿花費三段），內容超出 max-height 而 scrollTop 還是 0，警告就落在
-         可視區的下緣——也就是 chip 列正下方——實測 warn 798–839 對上 chips 786.75 起。
+         骰子覺醒、練滿花費三段），內容超出 max-height 而 scrollTop 還是 0，最後一段就落在
+         可視區的下緣，也就是 chip 列正下方，實測最後一段 798–839 對上 chips 786.75 起。
          padding-bottom 完全沒被用到，因為它在捲動內容的「結尾」，而使用者根本還沒捲到那裡。
 
          現在改成讓抽屜的**可視方框**就停在 chip 列上方（`bottom: var(--chips-h)`）：

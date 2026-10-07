@@ -30,7 +30,7 @@ const cards = [
   { href: '/tactic/', title: '戰術', intro: '對戰與合作模式中的戰術效果，可依階段篩選，也能切換看合作模式的版本。', count: tacticCount, unit: '條' },
   { href: '/boss/', title: '怪物圖鑑', intro: '對戰與合作模式中會出現的怪物與首領，以及各自的特性與技能效果。', count: bossCount, unit: '種' },
   { href: '/rift-shop/', title: '裂縫商店', intro: '合作困難模式的局內商店。擊殺首領與 SP 魔像取得討伐硬幣，兌換裂縫效果。', count: riftShopRaw.length, unit: '種' },
-  { href: '/events/', title: '活動', intro: '遊戲裡辦過的期間限定活動，內容取自對應版本的客戶端資料表。', count: eventsRaw.length, unit: '場' },
+  { href: '/events/', title: '活動', intro: '遊戲裡辦過的期間限定活動，逐場列出完整內容。', count: eventsRaw.length, unit: '場' },
   { href: '/rewards/', title: '獎勵系統', intro: '各模式、活動與成就的里程碑獎勵，並列出每個分類全部領完可拿到的資源總量。', count: rewardsRaw.modes.length + (rewardsRaw.repeatable ? 1 : 0), unit: '類' },
 ];
 ---
@@ -38,7 +38,7 @@ const cards = [
 <Base title="總覽" description="Random Dice 2 遊戲介紹總覽：遊戲名詞、戰術、怪物圖鑑、裂縫商店、活動與獎勵。">
   <section class="page">
     <h1 class="page-head">總覽</h1>
-    <p class="lede">遊戲裡的名詞、戰術、怪物、商店、活動與獎勵，跟導覽列「遊戲介紹」選單的項目相同。</p>
+    <p class="lede">遊戲裡的名詞、戰術、怪物、商店、活動與獎勵。</p>
 
     <div class="guide-cards is-content">
       {cards.map((card, i) => (

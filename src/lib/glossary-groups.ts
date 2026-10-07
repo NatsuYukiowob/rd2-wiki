@@ -173,7 +173,7 @@ export const KEYWORDS_PATH = '/guide/keywords/';
 
 export const GUIDE_TABS: readonly { slug: string; title: string; groups: GroupSlug[]; intro: string }[] = [
   { slug: 'mechanics', title: '骰子機制與觸發', groups: ['mechanics'],
-    intro: '骰子自己的機制：合成、堆疊、觸發時機。骰子描述裡最常出現的一組——在骰子圖鑑的卡片上點任何一個標記，也會就地展開這裡的解釋。' },
+    intro: '骰子自己的機制：合成、堆疊、觸發時機。骰子描述裡最常出現的一組。' },
   { slug: 'summons', title: '召喚物與投射物', groups: ['summons'],
     intro: '骰子打出去的東西。這些詞出現在骰子描述裡時，指的是場上一個實際存在的實體，而不是加在誰身上的效果。' },
   { slug: 'status', title: '狀態效果與增減益', groups: ['status', 'buffs'],

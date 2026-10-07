@@ -43,7 +43,7 @@ test('GI1. 總覽卡片與「遊戲介紹」下拉一一對應、資料計數、
   await expect(page).toHaveURL(/\/rewards\/?$/);
   await expect(page).toHaveTitle('Random Dice 2 wiki | 獎勵系統');
   await expect(page.locator('h1')).toHaveText('獎勵系統');
-  await expect(page.locator('.rewards-page > .lede')).toContainText('全部領完可拿到的資源總量');
+  await expect(page.locator('.rewards-page > .lede')).toContainText('全部領完的資源總量');
   await expect(page.locator('#site-nav .nav-menu > summary')).toHaveAttribute('aria-current', 'page');
   await page.locator('#site-nav .nav-menu').evaluate(node => node.setAttribute('open', ''));
   await expect(page.locator('#site-nav a[href="/rewards/"]')).toHaveText('獎勵系統');
