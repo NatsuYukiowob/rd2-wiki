@@ -435,14 +435,18 @@ jobs:
           # `curl -I` 送 HEAD：`/` 走靜態檔、`/api/hits` 走 onRequestHead，兩條路徑分開驗。
           head_page=$(c -I "$URL/" || true)
           head_api=$(c -I "$URL/api/hits" || true)
+          # 長快取：/_astro/* 要帶 immutable（_headers 寫錯 Cloudflare 會靜默忽略）。首頁一定引用至少一支。
+          asset=$(c "$URL/" | grep -oE '/_astro/[^"]+\.(css|js)' | head -1 || true)
+          head_asset=$( [ -n "$asset" ] && c -I "$URL$asset" || true)
           bad=''
           grep -qiE '^strict-transport-security: *max-age=[0-9]+' <<< "$head_page" || bad="$bad / 缺 HSTS；"
           grep -qiE '^x-frame-options: *DENY' <<< "$head_page" || bad="$bad / 缺 X-Frame-Options；"
           grep -qiE '^HTTP/[0-9.]+ 200' <<< "$head_api" || bad="$bad HEAD /api/hits 不是 200；"
           grep -qiE '^x-content-type-options: *nosniff' <<< "$head_api" || bad="$bad /api/hits 缺 nosniff；"
+          grep -qiE '^cache-control:.*immutable' <<< "$head_asset" || bad="$bad ${asset:-/_astro/*} 缺 immutable 長快取；"
           if [ -n "$bad" ]; then
             echo "::error::smoke check 失敗：安全標頭不符（$bad）"
-            printf '%s\n--- /api/hits ---\n%s\n' "$head_page" "$head_api"
+            printf '%s\n--- /api/hits ---\n%s\n--- %s ---\n%s\n' "$head_page" "$head_api" "${asset:-（首頁找不到 /_astro/ 檔）}" "$head_asset"
             exit 1
           fi
-          echo "安全標頭：/ 有 HSTS 與 X-Frame-Options；HEAD /api/hits 200 且帶 nosniff"
+          echo "安全標頭：/ 有 HSTS 與 X-Frame-Options；HEAD /api/hits 200 且帶 nosniff；$asset 帶 immutable"

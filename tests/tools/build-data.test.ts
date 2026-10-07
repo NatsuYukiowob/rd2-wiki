@@ -30,7 +30,15 @@ const opts = {
 const data = buildTreeData(svg, opts);
 
 describe('buildTreeData', () => {
-  it('節點與邊數量正確', () => {
+  // 每顆節點、每條邊都要進產物（數量等於正本）——這條從正本現算，什麼資料 PR 都不會讓它紅。
+  it('每顆節點、每條邊都進了產物（數量等於正本）', () => {
+    expect(data.nodes).toHaveLength(Object.keys(opts.nodeText).length);
+    expect(data.edges).toHaveLength(svg.match(/<path class="edge"/g)!.length);
+  });
+  // ⚠️ 給送資料 PR 的人：這條是**金標**，增刪節點或連線時紅是預期的——刪掉一條前置邊或一顆
+  // 零成本節點，其他規則（19、可達性、成本總和）都不會說話，只有這裡擋得到。照失敗訊息的
+  // 實際值改數字、同步 CLAUDE.md〈不變量〉表，並在註解寫明增減來源。
+  it('節點與邊數釘住正本（金標：增刪節點／連線時要跟著改）', () => {
     expect(data.nodes).toHaveLength(243);
     expect(data.edges).toHaveLength(254);
   });
@@ -48,7 +56,9 @@ describe('buildTreeData', () => {
   // 核心 +70、金幣 +244,000（1772／6,662,000 → 1842／6,906,000）。
   // 2026-09-06 依 1.1.0 客戶端加了太陽骰子 1501（金幣 100,000／太陽核心 2,000）與太陽強化 1601
   // （金幣 50,000／太陽核心 100）：金幣 +150,000、太陽核心 +2,100（→ 1842／7,056,000／2,100）。
-  it('全樹解鎖成本總和釘住正本（成本一動這裡就要跟著動）', () => {
+  // ⚠️ 給送資料 PR 的人：改了任何一顆節點的 `cost`，這條紅是**預期的**——把下面的數字換成
+  // 失敗訊息裡的實際值（Received），同步改 CLAUDE.md〈不變量〉表，並在 PR 說明寫一句為什麼變。
+  it('全樹解鎖成本總和釘住正本（金標：成本一動這裡就要跟著動）', () => {
     expect(data.meta.totalUnlockCost).toEqual({ core: 1842, gold: 7206000, mythic: { solar: 2100, gearSecond: 2100 } });
   });
   // 太陽核心（v1.1.0）也要進全樹總和。光靠上面那條釘住的總和證明不了加總會動（上面那個數字

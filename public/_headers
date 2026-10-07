@@ -6,3 +6,9 @@
 /*
   Strict-Transport-Security: max-age=31536000
   X-Frame-Options: DENY
+
+# Astro 打包出來的 JS／CSS：檔名帶的是**產物本身**的雜湊，內容一變網址就變，可以放一年。
+# ⚠️ public/assets/ 底下的圖示不比照：檔名是**來源 PNG** 的雜湊，換 sharp 版本或改轉檔倍率時同一個網址
+# 會換成不同的位元組，immutable 會讓舊圖卡一年。那些留 Cloudflare 預設（4 小時＋重新驗證）。
+/_astro/*
+  Cache-Control: public, max-age=31536000, immutable

@@ -119,7 +119,8 @@ function pageHtml(): string {
     <div id="toolbar">
       <button id="filters-toggle" type="button">篩選</button>
       <input id="search" type="search">
-      <div id="filters">${branchInputs}${typeInputs}</div>
+      <p id="filter-live"></p>
+      <div id="filters">${branchInputs}${typeInputs}<button id="filter-clear" type="button" data-idle>清除篩選</button></div>
     </div>
     <nav id="branch-nav">${branchButtons}</nav>
     <div id="canvas-host"></div>
@@ -355,6 +356,31 @@ describe('tree-canvas 整合：搜尋、篩選、網址狀態同步', () => {
     diceCb.checked = false;
     fireChange(diceCb);
     expect(page.state().filteredOut).toEqual([]);
+  });
+
+  it('清除鈕：有篩選時才可按（data-idle 拿掉），按下去清空搜尋與所有勾選', async () => {
+    const page = await loadTreePage('?type=dice&q=火');
+    const clear = page.document.getElementById('filter-clear')!;
+    expect(clear.hasAttribute('data-idle')).toBe(false);
+    fireClick(clear);
+    expect(page.state().filteredOut).toEqual([]);
+    expect(page.searchInput.value).toBe('');
+    expect(page.filtersEl.querySelectorAll('input:checked').length).toBe(0);
+    expect(clear.hasAttribute('data-idle')).toBe(true);
+    expect(page.getSearchBox()).toBe('');
+  });
+
+  it('#filter-live 播報篩選結果：沒篩選、有命中、零命中三種文案', async () => {
+    const page = await loadTreePage('');
+    const live = page.document.getElementById('filter-live')!;
+    expect(live.textContent).toBe(`顯示全部 ${treeData.nodes.length} 個節點`);
+    const diceCb = page.filtersEl.querySelector<HTMLInputElement>('input[data-type="dice"]')!;
+    diceCb.checked = true;
+    fireChange(diceCb);
+    expect(live.textContent).toBe(`符合 ${treeData.nodes.filter(n => n.type === 'dice').length} 個節點`);
+    page.searchInput.value = 'zzz-不存在';
+    fireInput(page.searchInput);
+    expect(live.textContent).toBe('沒有符合的節點');
   });
 
   // 這個測試記錄一個環境限制，不是產品行為斷言：確認 linkedom 的 document.activeElement

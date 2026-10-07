@@ -685,8 +685,8 @@ export function webpMetadataChunks(buf: Uint8Array): string[] {
 }
 
 const ZH_BY_TYPE: Record<string, string> = { dice: '骰子', rune: '骰子符文', passive: '玩家被動', support: '支援' };
-const zhOfType = (t: string | undefined) => (t ? ZH_BY_TYPE[t] : undefined);
-const typeOfZhSafe = (t: string | undefined) => (t ? ZH_BY_TYPE[t] !== undefined : false);
+const zhOfType = (t: string | undefined) => (t && Object.hasOwn(ZH_BY_TYPE, t) ? ZH_BY_TYPE[t] : undefined);
+const typeOfZhSafe = (t: string | undefined) => zhOfType(t) !== undefined;
 
 export function validate(svgText: string, opts: ValidateOpts): ValidateResult {
   const errors: string[] = [];

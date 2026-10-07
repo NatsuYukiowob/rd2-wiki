@@ -261,6 +261,29 @@ describe('renderDetail', () => {
     expect(host.innerHTML).toContain('&lt;img src=x onerror=alert(1)&gt;');
   });
 
+  // 名稱、描述、覺醒、詞彙表全都來自社群 PR 改得動的資料檔，而面板是 innerHTML 塞的。
+  it('名稱／描述／覺醒／詞彙表帶標記或引號時全部被跳脫，不會變成活的 DOM 或跳出屬性', () => {
+    const X = '<script>alert(1)</script><img src=x onerror=alert(2)>a&b"c\'d';
+    const evilColor = 'red" onmouseover="alert(3)';
+    const glossary = { ...data.meta.glossary, 冰凍: { color: evilColor, desc: X } };
+    const base = [...byId.values()].find(n => n.awakening)!;
+    const node = { ...base, name: X, description: `${X} #冰凍`, awakening: `${X} #冰凍`, keywords: ['冰凍'] };
+    const htmls: string[] = [];
+    const { document } = parseHTML('<html><body><div id="detail"></div></body></html>');
+    const host = document.getElementById('detail') as unknown as HTMLElement;
+    renderDetail(node, computeSelection(node.id, data, tables), host, glossary, data.meta.upgradeCostTable, tables);
+    htmls.push(host.innerHTML, termViewHtml('冰凍', glossary), termViewHtml(X, glossary), awakeningViewHtml(node, glossary));
+    for (const html of htmls) {
+      const { document: d } = parseHTML(`<html><body>${html}</body></html>`);
+      expect(d.querySelector('script, img')).toBeNull();
+      expect(d.querySelector('[onerror], [onmouseover]')).toBeNull();
+      expect(html).not.toContain('<script>');
+    }
+    expect(host.textContent).toContain(X);
+    const kw = host.querySelector('.kw') as HTMLElement;
+    expect(kw.getAttribute('style')).toBe(`color:${evilColor}`);
+  });
+
   it('#關鍵字 只框住白名單詞本身，不會把後面整句吃進去（見 spec 異常 8）', () => {
     // 4008 描述：「...該排啟用#陰陽 / 對兩個方向啟用#陰陽效果的骰子發動#極致和諧」
     // 第二個 #陰陽 後面緊接「效果的骰子發動」沒有空白或 #，naive 正規表達式

@@ -7,6 +7,7 @@ const ELEMENT_BY_STROKE: Record<string, Element> = {
   '#ef625e': 'nature', '#50b7d8': 'engineering', '#a871ec': 'magic',
   '#f3bd55': 'order', '#e979a5': 'chaos', '#f3c5ff': 'support',
 };
+// ⚠️ 這是 nodes.json 的**資料詞彙**，刻意不從 labels.ts 的顯示字反推：改顯示文案不該讓整份正本解析失敗。
 const TYPE_BY_ZH: Record<string, NodeType> = {
   '骰子': 'dice', '骰子符文': 'rune', '玩家被動': 'passive', '支援': 'support',
 };

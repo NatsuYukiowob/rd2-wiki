@@ -2,6 +2,7 @@
 // 為什麼要這一層：TreeData 是資料正本的形狀（成本、解鎖方式……），畫布關心的是幾何與樣式；
 // 兩者混在一起會讓渲染迴圈每幀重算 formatUnlockVia／sprite 查表這些不變的東西。
 import { formatUnlockVia } from '../format.js';
+import { TYPE_ZH } from '../labels.js';
 import type { Branch, NodeType, Shape, TreeData } from '../types.js';
 
 export interface SceneNode {
@@ -17,9 +18,6 @@ export interface Scene {
   nodes: SceneNode[]; byId: Map<string, SceneNode>; edges: SceneEdge[]; center: SceneCenter | null;
   sprite: { url: string; size: [number, number] }; viewBox: [number, number, number, number]; diceIconWidth: number;
 }
-// 沿用舊的 SVG 渲染器（`src/lib/render.ts`，2026-09-06 刪）既有的中文對照表
-// （aria-label 面向螢幕閱讀器，type 的英文代碼逐字母拼音唸出來體驗很差）。
-const TYPE_LABEL: Record<NodeType, string> = { dice: '骰子', rune: '骰子符文', passive: '玩家被動', support: '支援' };
 
 /** 把 TreeData 攤成畫圖紀錄。一次算完，之後每一幀都只讀這份，不再碰 TreeData。 */
 export function buildScene(data: TreeData): Scene {
@@ -27,7 +25,8 @@ export function buildScene(data: TreeData): Scene {
     id: n.id, x: n.x, y: n.y, w: n.size[0], h: n.size[1], shape: n.shape, type: n.type, branch: n.branch,
     icon: n.icon, cell: data.meta.sprite.index[n.icon] ?? null,
     label: n.label, labelAlways: n.type === 'dice' || n.type === 'support',
-    ariaLabel: `${n.name}，${TYPE_LABEL[n.type]}，${formatUnlockVia(n)}`,
+    // aria-label 用中文類型字：英文代碼會被逐字母唸出來。
+    ariaLabel: `${n.name}，${TYPE_ZH[n.type]}，${formatUnlockVia(n)}`,
     bypassPrereq: n.bypassPrereq === true,
   }));
   const byId = new Map(nodes.map(n => [n.id, n]));
