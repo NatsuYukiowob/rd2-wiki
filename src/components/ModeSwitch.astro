@@ -1,0 +1,83 @@
+---
+// /tree（瀏覽）⇄ /sim（模擬）的模式切換，兩頁工具列各放一份。仍是兩個網址：
+// 另一頁那顆是連結，按下前由頁面腳本補上 `?node=`／`?view=`（src/lib/mode-switch.ts），
+// 到了另一頁還原選取與視角，看起來像同一頁換模式。目前這頁那顆不帶 href。
+//
+// 換頁時金框滑塊（.mode-thumb）從舊位置滑到新位置，頁面本身瞬間切換：跨頁 View Transitions
+// 只給滑塊命名、root 不做動畫。opt-in 由 Base 的 `viewTransition` 輸出（理由見 Base 的 Props），
+// 減少動態時 Base 不宣告＝直接換頁；不支援的瀏覽器（Firefox）同樣直接換頁。
+interface Props { current: 'tree' | 'sim' }
+const { current } = Astro.props;
+const MODES = [
+  { key: 'tree', href: '/tree/', label: '瀏覽' },
+  { key: 'sim', href: '/sim/', label: '模擬' },
+] as const;
+---
+<nav class="seg mode-switch" aria-label="骰子樹模式">
+  {MODES.map(m => m.key === current
+    ? <a aria-current="page"><span class="mode-thumb" aria-hidden="true"></span><span class={`mode-label-${m.key}`}>{m.label}</span></a>
+    : <a href={m.href} data-mode-switch><span class={`mode-label-${m.key}`}>{m.label}</span></a>)}
+</nav>
+
+<style is:global>
+  .mode-switch > a {
+    position: relative;
+    isolation: isolate;
+  }
+  .mode-switch > a[aria-current='page'] {
+    color: var(--fg);
+  }
+  /* 選中外觀跟 `.seg > button[aria-pressed='true']` 同一組（金框＋金色混底），只是畫在獨立元素上，
+     才能單獨命名給 View Transitions 移動。 */
+  .mode-thumb {
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    border: 1px solid var(--gold);
+    border-radius: inherit;
+    background: var(--surface-3);
+    background: color-mix(in srgb, var(--gold) 16%, var(--surface-2));
+    view-transition-name: mode-thumb;
+  }
+  ::view-transition-group(mode-thumb) {
+    animation-duration: var(--slide-ms);
+    animation-timing-function: var(--e-spring);
+  }
+  /* 文字也各自命名、疊在滑塊上面：只命名滑塊的話，它整層浮在頁面快照之上，滑過去時把兩顆的字都蓋掉。 */
+  .mode-label-tree {
+    view-transition-name: mode-label-tree;
+  }
+  .mode-label-sim {
+    view-transition-name: mode-label-sim;
+  }
+  ::view-transition-group(mode-label-tree),
+  ::view-transition-group(mode-label-sim) {
+    z-index: 1;
+  }
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation: none;
+  }
+  @media (forced-colors: active) {
+    .mode-thumb {
+      forced-color-adjust: none;
+      border-color: Highlight;
+      background: Highlight;
+    }
+    .mode-switch > a[aria-current='page'] {
+      forced-color-adjust: none;
+      color: HighlightText;
+    }
+  }
+</style>
+
+<script>
+  // 滑塊只在 /tree ⇄ /sim 之間（Base 的 viewTransition）。從這兩頁去別頁時，對方沒有 opt-in，
+  // Chrome 會在**目的頁**丟一個未處理的 rejection（「ViewTransition opt-in disabled」，E2E 的
+  // pageerror 監聽會紅）——離開前在這裡先略過。
+  addEventListener('pageswap', e => {
+    if (!e.viewTransition) return;
+    const to = e.activation?.entry.url ? new URL(e.activation.entry.url).pathname : '';
+    if (to !== '/tree/' && to !== '/sim/') e.viewTransition.skipTransition();
+  });
+</script>

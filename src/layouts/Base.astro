@@ -38,9 +38,16 @@ interface Props {
    * `tests/e2e/seo.spec.ts` 守各頁互不相同。
    */
   description?: string;
+  /**
+   * 跨頁 View Transitions 的 opt-in（/tree ⇄ /sim 的左右滑動，動畫本身寫在兩頁的樣式裡）。
+   * ⚠️ 必須是 head 最前面的 inline `<style>`：寫在頁面打包出來的外部 CSS 裡時，Chrome 常常在
+   * 讀到它之前就判定「沒有 opt-in」而跳過轉場（2026-10-08 實測同一條路徑 6 次只成功 1–3 次，
+   * 改成 inline 後 20/20）。
+   */
+  viewTransition?: boolean;
 }
 
-const { title, noIndex = false, description: pageDescription } = Astro.props;
+const { title, noIndex = false, description: pageDescription, viewTransition = false } = Astro.props;
 
 /**
  * 目前所在的分頁，給導覽列標 `aria-current="page"`（金色字＋底下一條金線）。
@@ -83,6 +90,9 @@ const imageUrl = new URL('/favicon.png', Astro.site).href;
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    {viewTransition && (
+      <style is:inline>@media (prefers-reduced-motion: no-preference) { @view-transition { navigation: auto; } }</style>
+    )}
     {/*
       data-enter：進場動畫的總開關，規則在 src/styles/base.css。
       ⚠️ 三件事綁在一起，動其中一件之前先讀完：

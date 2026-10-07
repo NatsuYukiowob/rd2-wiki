@@ -25,6 +25,7 @@ import { matchesFilter, stateToQueryString, queryStringToState, isTypingTarget }
 import type { Branch, NodeType, PassiveUpgradeCost, TreeData, TreeNode } from '../lib/types.js';
 import { updateNavHeight } from '../lib/nav-height.js';
 import { NARROW_QUERY } from '../lib/breakpoints.js';
+import { applyCarriedView, modeSwitchHref, parseViewParam } from '../lib/mode-switch.js';
 
 // tree.json 是建置期由 tools/build-data.ts 產生、結構保證符合 TreeData；
 // 但 TS 對 JSON 匯入的型別推論會把 tuple（如 viewBox、size）寬鬆推成 number[]，
@@ -1522,4 +1523,19 @@ if (filterState.query.trim() !== '') focusMatches();
 // 順序在 focusMatches() **之後**：兩個參數同時出現時，指名的那顆節點比「命中的那一群」具體。
 // 選取本身是上面 applyFilter() 內部的 select(currentSelected) 做掉的（見那裡的註解），
 // 這裡只補鏡頭；centerOnSelected() 沒有選取時直接返回，窄畫面改走 revealOnNarrow()。
-centerOnSelected();
+// 從 /sim 切回來（ModeSwitch）帶著 `?view=`：那邊畫面中心與倍率蓋過上面的預設視角與置中，
+// 套完 syncUrl() 把 view 從網址拿掉（重新整理回到一般進站）。
+const carried = parseViewParam(new URLSearchParams(location.search).get('view'));
+if (carried) {
+  applyCarriedView(tree.view, carried);
+  tree.requestRedraw();
+  syncUrl();
+} else {
+  centerOnSelected();
+}
+
+// 切到 /sim：按下那一刻才組網址（選取與視角隨時在變），pointerdown 讓中鍵／右鍵複製也拿得到。
+const modeLink = document.querySelector<HTMLAnchorElement>('[data-mode-switch]');
+const fillModeLink = (): void => { if (modeLink) modeLink.href = modeSwitchHref('/sim/', currentSelected, tree.view); };
+modeLink?.addEventListener('pointerdown', fillModeLink);
+modeLink?.addEventListener('click', fillModeLink);

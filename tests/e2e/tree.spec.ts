@@ -1454,9 +1454,11 @@ test('P. 工具列對齊：搜尋框與分支側欄切齊同一條左邊界，�
 
   // 左邊界：#toolbar 與 #branch-nav 上下相接、同屬畫布左上角那一疊，內距不同的話按鈕會比
   // 工具列凸出去。用幾何斷言而不是比對 CSS 值——這個 repo 的固定偏移量咬過三次（見 CLAUDE.md）。
-  // 比的是工具列**最左邊那一項**：2026-08-22 之前那是搜尋框，現在是篩選切換鈕（桌機也能收合了）。
+  // 比的是工具列**最左邊那一項**：2026-08-22 之前那是搜尋框，之後是篩選切換鈕（桌機也能收合了），
+  // 現在是瀏覽／模擬切換（ModeSwitch）。
   const toggle = await box('#filters-toggle');
-  expect(Math.abs(toggle.x - branchBtn.x)).toBeLessThan(1);
+  const leftmost = await box('#toolbar .mode-switch');
+  expect(Math.abs(leftmost.x - branchBtn.x)).toBeLessThan(1);
 
   // 中線：工具列每一項（切換鈕、搜尋框、篩選群組的標題與切換鈕）都落在同一條水平中線上。
   const midY = (b: { y: number; height: number }) => b.y + b.height / 2;

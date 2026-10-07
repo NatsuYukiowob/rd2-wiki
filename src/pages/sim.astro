@@ -15,6 +15,7 @@
 // tier 是 (maxLevel, unlockCost.gold) 的純函數，那兩個欄位產物裡本來就有，複製一份
 // costTier 欄位進去只是拿 gzip 預算換一個推得出來的值。
 import Base from '../layouts/Base.astro';
+import ModeSwitch from '../components/ModeSwitch.astro';
 import { ICONS } from '../lib/icons';
 import '../styles/canvas.css';
 import { treeData as data } from '../lib/tree-data';
@@ -35,7 +36,7 @@ const optional = [...ctx.optional]
   .sort((a, b) => a.id.localeCompare(b.id));
 ---
 
-<Base title="骰子樹-模擬器(beta)" description="Random Dice 2 骰子樹模擬器：在骰子樹上規劃解鎖順序，計算還需要多少金幣與核心。">
+<Base title="骰子樹-模擬器(beta)" viewTransition description="Random Dice 2 骰子樹模擬器：在骰子樹上規劃解鎖順序，計算還需要多少金幣與核心。">
   {/* 整頁的主標題，視覺隱藏（理由同 /tree：畫面上的標題是畫布本身）。少了它側欄的 h2
        會變成這一頁的最高層標題，層級從 h2 起跳（2026-09-24 review）。 */}
   <h1 class="sr-only">骰子樹模擬器</h1>
@@ -46,6 +47,7 @@ const optional = [...ctx.optional]
   <div id="sim-toolbar">
     {/* sheet 的把手兼關閉鈕，桌機 display:none。 */}
     <button type="button" id="sim-sheet-close" aria-label="收起工具列"><span class="sim-grip" aria-hidden="true"></span></button>
+    <ModeSwitch current="sim" />
     <input id="sim-search" type="search" placeholder="搜尋骰子或符文" aria-label="搜尋節點" autocomplete="off" />
 
     <div class="sim-menu">
@@ -217,6 +219,24 @@ const optional = [...ctx.optional]
     background: var(--surface-1);
     border: 1px solid var(--border-strong);
     border-radius: var(--r-sm);
+  }
+
+  /* 桌機：工具列的內距與搜尋框跟 /tree 的 #toolbar 同一組數字（tree.astro）。瀏覽／模擬切換
+     （ModeSwitch）在兩頁要落在同一個位置、工具列同高，換頁時才不會整條跳一下。改這裡或 tree.astro
+     任一邊要兩邊一起改。間距刻意維持 --space-2（/tree 是 --space-3）：不影響切換鈕的位置，
+     換成 --space-3 會讓 1366 寬多換一行。手機版是 sheet，另外排（下面 ≤720px 那段）。 */
+  @media (width > 720px) {
+    #sim-toolbar {
+      padding: var(--space-2) var(--space-4);
+    }
+    #sim-toolbar #sim-search {
+      width: 11rem;
+      padding: var(--space-2) var(--space-3);
+      font: inherit;
+      background: var(--bg);
+      border-color: var(--border);
+      border-radius: var(--r-xs);
+    }
   }
 
   #sim-toolbar input[type='search'] {

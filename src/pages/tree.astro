@@ -3,6 +3,7 @@
 // 選取/前置鏈高亮/詳情面板 + 搜尋/篩選/網址狀態同步。
 // 掛載邏輯放在 src/scripts/tree-canvas.ts，方便各任務在同一支腳本上疊加互動。
 import Base from '../layouts/Base.astro';
+import ModeSwitch from '../components/ModeSwitch.astro';
 import { BRANCH_ZH, TYPE_ZH } from '../lib/labels';
 import '../styles/detail.css';
 import '../styles/canvas.css';
@@ -18,7 +19,7 @@ const BRANCHES = Object.entries(BRANCH_ZH);
 const TYPES = Object.entries(TYPE_ZH);
 ---
 
-<Base title="骰子樹">
+<Base title="骰子樹" viewTransition>
   {/* 整頁的主標題。畫面上的「標題」是畫布本身，所以視覺隱藏；少了它讀屏的標題導覽在這一頁
        一個標題都找不到（2026-09-24 review）。.sr-only 是 absolute ＋ clip-path，不佔版面，
        不影響 body:has(#canvas-host) 的零偏移量排版。 */}
@@ -32,6 +33,7 @@ const TYPES = Object.entries(TYPE_ZH);
        完全不吃這個 id，只吃裡面兩個原本就有的 id。 */}
   <div id="tree-controls">
     <div id="toolbar">
+      <ModeSwitch current="tree" />
       {/* 手機版才顯示（見下面 CSS）：篩選收進頂部抽屜，預設收起，點這顆按鈕展開/收起
            #filters（切 .open class，接線見 tree-canvas.ts）。桌機版 #filters 本來就常駐
            顯示，不需要這顆按鈕，靠 CSS 媒體查詢隱藏。 */}
@@ -152,7 +154,9 @@ const TYPES = Object.entries(TYPE_ZH);
     border: 1px solid var(--border);
     border-radius: var(--r-xs);
     padding: var(--space-2) var(--space-3);
-    min-width: 14rem;
+    /* 寬度是讓整條工具列在 1280 寬一行放得下（模式切換＋篩選鈕＋搜尋框＋展開的篩選群組，餘裕約 22px）。
+       放寬前先在 1280 量 #toolbar 高度；placeholder 本來就放不完整，寬一點也一樣會截。 */
+    width: 11rem;
     font: inherit;
   }
 
@@ -386,6 +390,12 @@ const TYPES = Object.entries(TYPE_ZH);
     /* 抽屜是往下掉的，箭頭跟著改成上下向。 */
     #filters-toggle::after {
       content: '▾';
+    }
+    /* 模式切換（ModeSwitch）＋篩選鈕＋搜尋框要擠在同一行：桌機的固定寬度在 390px 會把搜尋框擠到第二行，
+       工具列從一行變兩行、畫布少一截。手機改成吃剩下的寬度。 */
+    #search {
+      flex: 1 1 0;
+      min-width: 0;
     }
     #filters {
       display: none;

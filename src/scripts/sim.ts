@@ -37,6 +37,7 @@ import { subCost, zeroCost } from '../lib/cost.js';
 import { MYTHIC_CORES, mythicCoreByKind } from '../lib/currency.js';
 import { BRANCH_ZH, typeLabel } from '../lib/labels.js';
 import { NARROW_QUERY } from '../lib/breakpoints.js';
+import { applyCarriedView, modeSwitchHref, parseViewParam } from '../lib/mode-switch.js';
 import { renderTaggedText } from '../lib/markup.js';
 import type { Cost, PassiveUpgradeCost, TreeData, TreeNode } from '../lib/types.js';
 
@@ -1183,11 +1184,34 @@ function installMobileLayout(): void {
   }
 }
 
+// --- 從 /tree 切過來（ModeSwitch）---------------------------------------------
+/**
+ * 還原 /tree 帶來的 `?node=`／`?view=`，然後把參數從網址拿掉：這不是網址分享（刻意不做，
+ * 見 sim.astro 檔頭），只是一次性的交接，重新整理要回到一般進站。
+ * ⚠️ 只選取、**不走 `activate()`**：那條路徑遇到前置齊了的節點會直接取得（花資源），
+ * 而使用者只是按了「模擬」。
+ */
+function arriveFromTree(): void {
+  const p = new URLSearchParams(location.search);
+  if (!p.has('node') && !p.has('view')) return;
+  const id = p.get('node');
+  if (id !== null && ctx.byId.has(id)) selected = id;
+  const carried = parseViewParam(p.get('view'));
+  if (carried) { applyCarriedView(vp, carried); tree.requestRedraw(); }
+  history.replaceState(history.state, '', location.pathname);
+}
+
+const modeLink = document.querySelector<HTMLAnchorElement>('[data-mode-switch]');
+const fillModeLink = (): void => { if (modeLink) modeLink.href = modeSwitchHref('/tree/', selected, vp); };
+modeLink?.addEventListener('pointerdown', fillModeLink);
+modeLink?.addEventListener('click', fillModeLink);
+
 // --- 啟動 -------------------------------------------------------------------
 trackPanelHeight();
 installMobileLayout();
 fitAll();
 loadHoldings();   // 要在第一次 renderTotals() 之前
+arriveFromTree();
 render();
 
 addEventListener('storage', e => {
