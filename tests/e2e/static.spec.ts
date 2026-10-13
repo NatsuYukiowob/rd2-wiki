@@ -251,3 +251,17 @@ test('ST8. 320px 與 280px：靜態頁不撐出橫捲，卡片左右留白對稱
     }
   }
 });
+
+test('ST9. 產出的 CSS 沒被壓縮器改寫成舊瀏覽器讀不懂的寫法（Safari 16.4 以前不認 range 語法、18 以前只認帶前綴的 backdrop-filter）', async ({ page }) => {
+  let css = '';
+  for (const path of ALL_PAGES) {
+    await page.goto(path);
+    const hrefs = await page.locator('link[rel="stylesheet"]').evaluateAll(els => els.map(el => (el as HTMLLinkElement).href));
+    for (const href of hrefs) css += await (await page.request.get(href)).text();
+    css += (await page.locator('style').allTextContents()).join('');
+  }
+  expect(css).toContain('@media');
+  expect(css.match(/@media[^{]*\bwidth\s*[<>]/g) ?? [], '@media 被改寫成 range 語法').toEqual([]);
+  expect(css, '無前綴的 backdrop-filter 不見了').toMatch(/[;{]backdrop-filter:/);
+  expect(css, '-webkit-backdrop-filter 不見了').toContain('-webkit-backdrop-filter:');
+});

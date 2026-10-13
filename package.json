@@ -30,7 +30,7 @@
     "@astrojs/sitemap": "^3.7.3",
     "@playwright/test": "^1.49.0",
     "@types/node": "^24.0.0",
-    "astro": "^5.0.0",
+    "astro": "^7.3.8",
     "linkedom": "^0.18.0",
     "serve": "^14.2.0",
     "sharp": "^0.34.0",
