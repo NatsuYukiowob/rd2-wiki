@@ -154,7 +154,7 @@ npm run normalize    # 把 GUI 工具的重寫攤平回正規形式（跑完 git
 npm run preview      # 產出帶名字與 id 的 data/dice-tree.preview.svg，用來肉眼確認版面
 npm run validate     # 檢查資料本身正確不正確（規則 0～10、13～31，見下一節）
 npm run build        # 或 npm run build:data；順便檢查組裝後的體積有沒有超出效能預算（規則 12）
-npm run typecheck    # 型別檢查（tsc --noEmit）；動到 src/ 或 tools/ 一定要跑
+npm run typecheck    # 型別檢查（astro check ＋ tsc --noEmit）；動到 src/ 或 tools/ 一定要跑
 npm run test         # 純函式與解析器的單元測試
 ```
 
@@ -372,7 +372,7 @@ PR 送出後，CI 會用 `npm run validate` 檢查正本與各資料檔的正確
   ⚠️ 這跟規則 0 不同：規則 0 擋解析器讀不懂的結構，定點檢查擋**格式漂移**，
   例如座標寫成 `x="897"` 而正規形式是 `x="897.00"`，`validate` 是綠的，定點檢查才會紅。
   修法就是在本機跑 `npm run normalize` 然後把它產生的改動一起 commit。
-- **型別檢查**：CI 會跑 `npm run typecheck`（`tsc --noEmit`，含 `noUnusedLocals`，
+- **型別檢查**：CI 會跑 `npm run typecheck`（`astro check` 檢查 `.astro`，再跑 `tsc --noEmit`；含 `noUnusedLocals`，
   會抓沒用到的 import）。只改 `data/` 通常碰不到；動到 `src/` 或 `tools/` 一定要先在本機跑過。
 
 ### 規則 12：效能預算（`npm run validate` 不會查，`npm run build` 才會查）

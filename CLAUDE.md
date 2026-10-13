@@ -74,7 +74,7 @@
 
 ```bash
 npm run validate    # 資料驗證（CI 守門員，規則表見下）
-npm run typecheck   # tsc --noEmit（含 noUnusedLocals）
+npm run typecheck   # astro check && tsc --noEmit（含 noUnusedLocals；.astro 由 astro check 檢查）
 npm run normalize   # 攤平圖層/matrix/相對路徑、清掉 <text> 與註解（送 PR 前必跑）
 npm run preview     # 把標籤注回幾何，產出 data/dice-tree.preview.svg（不進版控）
 npm run add-icon    # 新增圖示，自動用內容雜湊命名（--board／--dice3／--tactic／--boss／--rift-shop 指向另一條資產路徑）
