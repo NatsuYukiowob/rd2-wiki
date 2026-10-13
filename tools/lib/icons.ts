@@ -1,4 +1,4 @@
-import sharp from 'sharp';
+import sharp, { type OverlayOptions, type Sharp } from 'sharp';
 
 /** 一張待打包圖示：雜湊檔名、原始 PNG 位元組、在畫面上的顯示尺寸 [寬, 高]。 */
 export interface IconEntry {
@@ -47,7 +47,7 @@ const TRANSPARENT = { r: 0, g: 0, b: 0, alpha: 0 };
  * 補完再 `extend` 出四周的透明邊。舊版拆成三段（縮放→編碼 PNG→再解碼讀 metadata→合成），
  * 每張圖每種尺寸多兩次編解碼，整個 build:data 多出約 1,400 次（同一份 review 指出）。
  */
-function withGutter(buf: Buffer, w: number, h: number, gutter: number): sharp.Sharp {
+function withGutter(buf: Buffer, w: number, h: number, gutter: number): Sharp {
   return sharp(buf)
     .resize({
       width: w - gutter * 2,
@@ -86,7 +86,7 @@ export async function buildSprite(
   }
 
   const index: Record<string, [number, number, number, number]> = {};
-  const composites: sharp.OverlayOptions[] = [];
+  const composites: OverlayOptions[] = [];
   let top = 0;
   let canvasWidth = 0;
 
