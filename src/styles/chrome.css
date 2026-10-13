@@ -21,8 +21,9 @@
      會變成全透明、內容直接從它後面穿過去。 */
   background: var(--surface-2);
   background: color-mix(in srgb, var(--surface-2) 88%, transparent);
+  /* 只寫無前綴：-webkit- 那行由 CSS 壓縮器照 astro.config.mjs 的 cssTarget 補（Safari 18 以前要）。
+     兩行都手寫的話壓縮器只留後寫的那行。 */
   backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
   /* 底線走 --gold 35%，不是 --border：導覽列是全站唯一一條橫貫畫面的線，用中性邊框色
      時它只是「內容到這裡為止」，換成暗金之後它才是站台自己的一條邊。35% 是上限——
      再高就會跟 .brand 與 [aria-current] 的金色搶，那兩個才是要被讀到的東西。

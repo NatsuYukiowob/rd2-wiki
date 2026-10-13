@@ -120,7 +120,7 @@ npm run dev      # 先產生資料，再啟動本機開發伺服器
 
 ### 架構
 
-Astro 5 產生的靜態頁，部署在 Cloudflare Pages；首頁的訪客計數器是一支
+Astro 7 產生的靜態頁，部署在 Cloudflare Pages；首頁的訪客計數器是一支
 Pages Functions（`functions/api/hits.ts`）搭配 D1，除此之外沒有伺服器端邏輯。
 骰子樹畫布是 Canvas 2D ＋ TypeScript，不依賴前端框架（`data/dice-tree.svg` 只是資料正本，
 建置時轉成 JSON，瀏覽器不渲染它）。
