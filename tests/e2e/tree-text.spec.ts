@@ -23,12 +23,16 @@ async function holdTreeText(page: Page): Promise<{ release: () => void; hits: ()
   return { release, hits: () => hits };
 }
 
-test('TX1. /tree 帶 ?node= 進站：文字包沒到時樹先畫、卡片不開；到了才開，描述與覺醒入口都在', async ({ page }) => {
+test('TX1. /tree 帶 ?node= 進站：文字包沒到時樹與選取先有、卡片不開；到了才開，描述與覺醒入口都在', async ({ page }) => {
   const text = await holdTreeText(page);
   await page.goto(`/tree/?node=${DICE.id}`);
   await ready(page);
   expect(await page.evaluate(() => window.__tree.count().nodes)).toBe(tree.nodes.length);
   await expect.poll(text.hits).toBe(1);
+  // 選取、前置鏈、網址不等文字；只有卡片還沒開
+  const st = await page.evaluate(() => window.__tree.state() as { selected: string | null; chain: string[] });
+  expect(st.selected).toBe(DICE.id);
+  expect(st.chain.length).toBeGreaterThan(0);
   await expect(page.locator('#detail')).toBeHidden();
 
   text.release();
@@ -39,11 +43,12 @@ test('TX1. /tree 帶 ?node= 進站：文字包沒到時樹先畫、卡片不開�
   await expect(page).toHaveURL(new RegExp(`node=${DICE.id}`));
 });
 
-test('TX2. /sim 帶 ?node= 落地：文字包沒到時不開詳情；到了才選取，描述在', async ({ page }) => {
+test('TX2. /sim 帶 ?node= 落地：文字包沒到時選取已在、詳情面板還是空的；到了才畫，描述在', async ({ page }) => {
   const text = await holdTreeText(page);
   await page.goto(`/sim/?node=${DICE.id}`);
   await ready(page);
   await expect.poll(text.hits).toBe(1);
+  expect(await page.evaluate(() => (window.__tree.state() as { selected: string | null }).selected)).toBe(DICE.id);
   await expect(page.locator('#sim-detail')).toHaveClass(/empty/);
 
   text.release();
@@ -60,5 +65,5 @@ test('TX3. 文字包載不到：頁面照常運作，卡片開得起來，只是
   await expect(page.locator('#detail .desc').first()).toBeEmpty();
   // 搜尋名稱還能用
   await page.locator('#search').fill(DICE.name);
-  await expect.poll(() => page.evaluate(id => window.__tree.state().filteredOut.includes(id), DICE.id)).toBe(false);
+  await expect.poll(() => page.evaluate(id => (window.__tree.state() as { filteredOut: string[] }).filteredOut.includes(id), DICE.id)).toBe(false);
 });

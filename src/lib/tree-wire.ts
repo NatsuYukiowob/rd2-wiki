@@ -62,14 +62,18 @@ export function encodeTreeText(data: TreeData): TreeTextWire {
   };
 }
 
+function assertSameBuild(text: TreeTextWire, nodeCount: number): void {
+  if (text.description.length !== nodeCount) {
+    throw new Error(`tree-text.json 有 ${text.description.length} 筆描述，tree.json 有 ${nodeCount} 顆節點，不是同一次建置的產物`);
+  }
+}
+
 /**
  * 把文字包就地補進「只用 tree.json 還原」的 TreeData（瀏覽器端文字包晚到時用）。
  * 節點數對不上代表兩個檔不是同一次建置的產物，補進去只會把描述貼到別顆節點上。
  */
 export function applyTreeText(data: TreeData, text: TreeTextWire): void {
-  if (text.description.length !== data.nodes.length) {
-    throw new Error(`tree-text.json 有 ${text.description.length} 筆描述，tree.json 有 ${data.nodes.length} 顆節點，不是同一次建置的產物`);
-  }
+  assertSameBuild(text, data.nodes.length);
   data.nodes.forEach((n, i) => {
     n.description = text.description[i]!;
     const a = text.awakening[n.id];
@@ -94,9 +98,7 @@ export function decodeTree(raw: unknown, text?: TreeTextWire): TreeData {
   const icons = s.icons as string[];
   const cells = s.cells as Cell[];
   const { icons: _i, cells: _c, ...sprite } = s;
-  if (text && text.description.length !== w.nodes.length) {
-    throw new Error(`tree-text.json 有 ${text.description.length} 筆描述，tree.json 有 ${w.nodes.length} 顆節點，不是同一次建置的產物`);
-  }
+  if (text) assertSameBuild(text, w.nodes.length);
   const nodes = w.nodes.map((n, at) => {
     const out: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(n)) {

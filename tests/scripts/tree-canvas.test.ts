@@ -760,6 +760,7 @@ describe('tree-canvas 整合：詳情面板的視圖堆疊', () => {
 });
 
 // issue #63 方案 B：描述、覺醒、關鍵字解釋在另一包，比腳本晚到。
+// 到之前選取、前置鏈、篩選、網址照常，只有詳情卡片不開（內容與高度都要那些文字）。
 describe('tree-canvas 整合：文字包晚到', () => {
   function gate(): { hold: Promise<void>; release: () => void } {
     let release!: () => void;
@@ -767,11 +768,13 @@ describe('tree-canvas 整合：文字包晚到', () => {
     return { hold, release };
   }
 
-  it('`?node=` 進站：文字到之前卡片不開，到了才選取並畫出描述與覺醒入口', async () => {
+  it('`?node=` 進站：選取與前置鏈馬上有，卡片等文字到了才開，描述與覺醒入口都在', async () => {
     const { hold, release } = gate();
     const page = await loadTreePage('?node=1002', { holdText: hold });
+    expect(page.state().selected).toBe('1002');
+    expect(page.state().chain.length).toBeGreaterThan(0);
+    expect(page.getSearchBox()).toContain('node=1002');
     expect(page.detailEl.hidden).toBe(true);
-    expect(page.state().selected).toBeNull();
 
     release();
     await page.textReady;
@@ -782,7 +785,17 @@ describe('tree-canvas 整合：文字包晚到', () => {
     expect(page.detailEl.querySelector('[data-detail-awakening]')).not.toBeNull();
   });
 
-  it('`?q=` 進站：比對描述的搜尋等文字到了才套', async () => {
+  it('不認得的 `?node=` 不等文字就從網址拿掉', async () => {
+    const { hold, release } = gate();
+    const page = await loadTreePage('?node=9999', { holdText: hold });
+    expect(page.state().selected).toBeNull();
+    expect(page.getSearchBox()).not.toContain('node=');
+    release();
+    await page.textReady;
+    expect(page.detailEl.hidden).toBe(true);
+  });
+
+  it('`?q=` 進站：名稱與關鍵字的比對馬上套；只出現在描述裡的字等文字到了才命中', async () => {
     // 找一段只出現在描述裡的字：名字、關鍵字都不含它，所以文字沒到之前不可能命中。
     let q = '';
     for (const n of treeData.nodes) {
@@ -791,28 +804,47 @@ describe('tree-canvas 整合：文字包晚到', () => {
     }
     expect(q).not.toBe('');
     const byDescOnly = treeData.nodes.filter(n => n.description.includes(q));
+
     const { hold, release } = gate();
     const page = await loadTreePage(`?q=${encodeURIComponent(q)}`, { holdText: hold });
-    expect(page.state().filteredOut).toEqual([]);
+    expect(page.state().filteredOut.length).toBe(treeData.nodes.length);
 
     release();
     await page.textReady;
-    expect(page.state().filteredOut.length).toBeGreaterThan(0);
+    expect(page.state().filteredOut.length).toBe(treeData.nodes.length - byDescOnly.length);
     for (const n of byDescOnly) expect(page.state().filteredOut).not.toContain(n.id);
+
+    // 名稱比對不必等文字
+    const g2 = gate();
+    const byName = await loadTreePage(`?q=${encodeURIComponent('尖刺骰子')}`, { holdText: g2.hold });
+    expect(byName.state().filteredOut).not.toContain('1002');
+    expect(byName.state().filteredOut.length).toBeGreaterThan(0);
+    g2.release();
+    await byName.textReady;
   });
 
-  it('一般進站不等文字；文字到之前就點了節點，到齊後卡片補上描述', async () => {
+  it('文字到之前就點了節點：選取馬上生效、卡片到齊後才開；期間取消選取就不會被開回來', async () => {
     const { hold, release } = gate();
     const page = await loadTreePage('', { holdText: hold });
     fireClick(page.document.querySelector('button[data-id="1002"]')!);
-    expect(page.detailEl.hidden).toBe(false);
     expect(page.state().selected).toBe('1002');
-    expect(page.detailEl.querySelector('.desc')!.textContent).toBe('');
+    expect(page.detailEl.hidden).toBe(true);
 
     release();
     await page.textReady;
     expect(page.state().selected).toBe('1002');
+    expect(page.detailEl.hidden).toBe(false);
     expect(page.detailEl.querySelector('.desc')!.textContent).not.toBe('');
     expect(page.detailEl.querySelector('[data-detail-awakening]')).not.toBeNull();
+
+    const g2 = gate();
+    const other = await loadTreePage('?node=1002', { holdText: g2.hold });
+    fireClick(other.document.querySelector('button[data-id="1101"]')!);
+    expect(other.state().selected).toBe('1101');
+    g2.release();
+    await other.textReady;
+    // 等的期間改選了別顆：開的是他選的那顆，不是網址原本指名的
+    expect(other.state().selected).toBe('1101');
+    expect(other.detailEl.querySelector('h2')!.textContent).toBe(treeData.nodes.find(n => n.id === '1101')!.name);
   });
 });

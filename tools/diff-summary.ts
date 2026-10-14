@@ -314,9 +314,10 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
   // 沒有這個檔＝文字還在 tree.json 裡的舊單檔形狀。
   const load = (p: string) => {
     const raw: unknown = JSON.parse(readFileSync(p, 'utf8'));
-    const textPath = p.replace(/\.json$/, '-text.json');
+    // 檔名不是 .json 結尾就沒有「旁邊的文字檔」可言（replace 會原樣交回同一個路徑）。
+    const textPath = p.endsWith('.json') ? p.replace(/\.json$/, '-text.json') : null;
     try {
-      return decodeTree(raw, existsSync(textPath) ? JSON.parse(readFileSync(textPath, 'utf8')) : undefined);
+      return decodeTree(raw, textPath && existsSync(textPath) ? JSON.parse(readFileSync(textPath, 'utf8')) : undefined);
     } catch { return raw as TreeData; }
   };
   const base = load(basePath);

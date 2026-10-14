@@ -132,6 +132,8 @@ let state: SimState = deserializeSim(readSaved(), ctx) ?? initialSimState(ctx);
 const undoStack: SimState[] = [];
 const redoStack: SimState[] = [];
 let selected: string | null = null;
+/** tree-text.json 到了沒，見 renderDetailPanel()。 */
+let textArrived = false;
 
 function readSaved(): string | null {
   // localStorage 在無痕模式、或使用者關掉網站資料時會直接丟例外（不是回 null）。
@@ -459,7 +461,9 @@ function levelBlockHtml(node: TreeNode): string {
 
 function renderDetailPanel(): void {
   const box = $('sim-detail');
-  const node = selected === null ? undefined : ctx.byId.get(selected);
+  // 描述與關鍵字解釋在另一包、比這支腳本晚到（tree-client.ts）。到之前選取照常（畫布高亮、模式切換都認得），
+  // 只有面板先維持空的：先畫的話描述是空的，手機版抽屜的高度也會照空的內容算。
+  const node = selected === null || !textArrived ? undefined : ctx.byId.get(selected);
   if (!node) {
     box.classList.add('empty');
     box.innerHTML = '<p class="note">點畫布上的節點看它的詳情；前置都解開的節點點一下就會取得。</p>';
@@ -1224,19 +1228,14 @@ installMobileLayout();
 fitAll();
 loadHoldings();   // 要在第一次 renderTotals() 之前
 const arrived = arriveFromTree();
-// 描述與關鍵字解釋在另一包（tree-client.ts），比這支腳本晚到。從 /tree 帶著選取過來時，
-// 詳情面板等文字到了才開：先開的話描述是空的，手機版抽屜的高度也會照空的內容算。
-const arrivedSelection = selected;
-selected = null;
 render();
+// 手機版：跟點選節點一樣把抽屜撐到露出主按鈕、節點挪出抽屜底下（兩支都只在手機動作）。
+if (arrived) { revealDetail(); revealSelected(); }
 void treeTextReady.then(() => {
-  // 等的這段時間使用者自己點了別顆，就不蓋掉他的選取。
-  if (selected === null) selected = arrivedSelection;
-  // 也涵蓋「文字到之前就點了節點或開了能力統計」：用到齊的文字重畫。
-  // 正在拖等級滑桿就不畫（面板重畫會把滑桿換掉），放開時本來就會重畫。
-  if (levelDragFrom === null) render();
-  // 手機版：跟點選節點一樣把抽屜撐到露出主按鈕、節點挪出抽屜底下（兩支都只在手機動作）。
-  if (arrived && selected !== null && selected === arrivedSelection) { revealDetail(); revealSelected(); }
+  textArrived = true;
+  render();
+  // 面板現在才有內容：有選取的話，手機版抽屜照真正的高度再撐一次。
+  if (selected !== null) { revealDetail(); revealSelected(); }
 });
 
 addEventListener('storage', e => {
