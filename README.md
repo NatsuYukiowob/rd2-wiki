@@ -100,6 +100,7 @@ npm run dev      # 先產生資料，再啟動本機開發伺服器
 `data/dice-tree.svg` 與 `data/icons/` 解析、合併、轉換成網站實際使用的產物：
 
 - `src/generated/tree.json`——節點與連線的結構化資料
+- `src/generated/tree-text.json`——節點描述、覺醒與關鍵字解釋（瀏覽器另外載）
 - `public/assets/sprite.webp`、`public/assets/icons/*.webp`——圖示資產
 
 這些產物不進 repo（見 `.gitignore`），每次建置都會重新產生。

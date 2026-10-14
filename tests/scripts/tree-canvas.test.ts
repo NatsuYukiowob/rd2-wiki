@@ -15,6 +15,7 @@
 // 掛得起來但一個像素都不會畫；也沒有版面引擎，所以容器尺寸由測試自己 stub 在
 // `#canvas-host` 的 getBoundingClientRect 上（controller 的 measure() 讀的就是它）。
 // **stub 必須在 import 之前掛**：初始視角是在模組執行期算的，晚一步就量到 0×0。
+import { readFileSync } from 'node:fs';
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { parseHTML, Event as LinkedomEvent } from 'linkedom';
 import {
@@ -182,7 +183,11 @@ function makeLocationAndHistory(initialSearch: string, initialStates: unknown[] 
 
 async function loadTreePage(
   initialSearch: string,
-  opts: { mobile?: boolean; width?: number; height?: number; historyStates?: unknown[] } = {},
+  opts: {
+    mobile?: boolean; width?: number; height?: number; historyStates?: unknown[];
+    /** 給了就把文字包擋在這個 promise 後面，並且不等它到齊就交回控制權（測「文字晚到」）。 */
+    holdText?: Promise<void>;
+  } = {},
 ) {
   const { document, window } = parseHTML(pageHtml());
   const { location, history, box } = makeLocationAndHistory(initialSearch, opts.historyStates);
@@ -216,7 +221,18 @@ async function loadTreePage(
   }
 
   vi.resetModules();
+  if (opts.holdText) {
+    const hold = opts.holdText;
+    const text = JSON.parse(readFileSync(new URL('../../src/generated/tree-text.json', import.meta.url), 'utf8'));
+    vi.doMock('../../src/generated/tree-text.json', async () => { await hold; return { default: text }; });
+  } else {
+    vi.doUnmock('../../src/generated/tree-text.json');
+  }
   await import('../../src/scripts/tree-canvas');
+  // 描述、覺醒、關鍵字解釋是另一包、晚一拍才補進來；`?node=`／`?q=` 進站的收尾也排在它後面。
+  // 等它到齊再把控制權交回測試，下面每一條看到的都是「文字已經在」的頁面。
+  const { treeTextReady } = await import('../../src/lib/tree-client');
+  if (!opts.holdText) await treeTextReady;
 
   return {
     document,
@@ -226,6 +242,7 @@ async function loadTreePage(
     detailEl: document.getElementById('detail')!,
     state: () => debug().state(),
     scale: () => debug().scale(),
+    textReady: treeTextReady,
   };
 }
 
@@ -739,5 +756,95 @@ describe('tree-canvas 整合：詳情面板的視圖堆疊', () => {
     fireClick(page.detailEl.querySelector('.desc')!);
     expect(topTitle(page)).toBe('尖刺骰子');
     expect(page.searchInput.value).toBe('');
+  });
+});
+
+// issue #63 方案 B：描述、覺醒、關鍵字解釋在另一包，比腳本晚到。
+// 到之前選取、前置鏈、篩選、網址照常，只有詳情卡片不開（內容與高度都要那些文字）。
+describe('tree-canvas 整合：文字包晚到', () => {
+  function gate(): { hold: Promise<void>; release: () => void } {
+    let release!: () => void;
+    const hold = new Promise<void>(r => { release = r; });
+    return { hold, release };
+  }
+
+  it('`?node=` 進站：選取與前置鏈馬上有，卡片等文字到了才開，描述與覺醒入口都在', async () => {
+    const { hold, release } = gate();
+    const page = await loadTreePage('?node=1002', { holdText: hold });
+    expect(page.state().selected).toBe('1002');
+    expect(page.state().chain.length).toBeGreaterThan(0);
+    expect(page.getSearchBox()).toContain('node=1002');
+    expect(page.detailEl.hidden).toBe(true);
+
+    release();
+    await page.textReady;
+    expect(page.detailEl.hidden).toBe(false);
+    expect(page.state().selected).toBe('1002');
+    expect(page.detailEl.querySelector('.desc')!.textContent).not.toBe('');
+    expect(page.detailEl.querySelector('.kw')).not.toBeNull();
+    expect(page.detailEl.querySelector('[data-detail-awakening]')).not.toBeNull();
+  });
+
+  it('不認得的 `?node=` 不等文字就從網址拿掉', async () => {
+    const { hold, release } = gate();
+    const page = await loadTreePage('?node=9999', { holdText: hold });
+    expect(page.state().selected).toBeNull();
+    expect(page.getSearchBox()).not.toContain('node=');
+    release();
+    await page.textReady;
+    expect(page.detailEl.hidden).toBe(true);
+  });
+
+  it('`?q=` 進站：名稱與關鍵字的比對馬上套；只出現在描述裡的字等文字到了才命中', async () => {
+    // 找一段只出現在描述裡的字：名字、關鍵字都不含它，所以文字沒到之前不可能命中。
+    let q = '';
+    for (const n of treeData.nodes) {
+      const piece = /[\u4e00-\u9fff]{4}/.exec(n.description)?.[0];
+      if (piece && !treeData.nodes.some(m => m.name.includes(piece) || m.keywords.some(k => k.includes(piece)))) { q = piece; break; }
+    }
+    expect(q).not.toBe('');
+    const byDescOnly = treeData.nodes.filter(n => n.description.includes(q));
+
+    const { hold, release } = gate();
+    const page = await loadTreePage(`?q=${encodeURIComponent(q)}`, { holdText: hold });
+    expect(page.state().filteredOut.length).toBe(treeData.nodes.length);
+
+    release();
+    await page.textReady;
+    expect(page.state().filteredOut.length).toBe(treeData.nodes.length - byDescOnly.length);
+    for (const n of byDescOnly) expect(page.state().filteredOut).not.toContain(n.id);
+
+    // 名稱比對不必等文字
+    const g2 = gate();
+    const byName = await loadTreePage(`?q=${encodeURIComponent('尖刺骰子')}`, { holdText: g2.hold });
+    expect(byName.state().filteredOut).not.toContain('1002');
+    expect(byName.state().filteredOut.length).toBeGreaterThan(0);
+    g2.release();
+    await byName.textReady;
+  });
+
+  it('文字到之前就點了節點：選取馬上生效、卡片到齊後才開；期間取消選取就不會被開回來', async () => {
+    const { hold, release } = gate();
+    const page = await loadTreePage('', { holdText: hold });
+    fireClick(page.document.querySelector('button[data-id="1002"]')!);
+    expect(page.state().selected).toBe('1002');
+    expect(page.detailEl.hidden).toBe(true);
+
+    release();
+    await page.textReady;
+    expect(page.state().selected).toBe('1002');
+    expect(page.detailEl.hidden).toBe(false);
+    expect(page.detailEl.querySelector('.desc')!.textContent).not.toBe('');
+    expect(page.detailEl.querySelector('[data-detail-awakening]')).not.toBeNull();
+
+    const g2 = gate();
+    const other = await loadTreePage('?node=1002', { holdText: g2.hold });
+    fireClick(other.document.querySelector('button[data-id="1101"]')!);
+    expect(other.state().selected).toBe('1101');
+    g2.release();
+    await other.textReady;
+    // 等的期間改選了別顆：開的是他選的那顆，不是網址原本指名的
+    expect(other.state().selected).toBe('1101');
+    expect(other.detailEl.querySelector('h2')!.textContent).toBe(treeData.nodes.find(n => n.id === '1101')!.name);
   });
 });

@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync, readdirSync } from 'node:fs';
 import { gzipSync } from 'node:zlib';
 import { buildTreeData } from '../../tools/build-data';
-import { decodeTree, encodeTree } from '../../src/lib/tree-wire';
+import { applyTreeText, decodeTree, encodeTree, encodeTreeText } from '../../src/lib/tree-wire';
 import { mythicAmount } from '../../src/lib/cost';
 import { textColor } from '../../src/lib/glossary-groups';
 import { buildSprite, type IconEntry } from '../../tools/lib/icons';
@@ -234,12 +234,56 @@ describe('buildTreeData', () => {
 
   // 傳輸形狀（issue #63）必須無損：解回來要跟 buildTreeData 的輸出逐字元相同，含欄位順序——
   // diff-summary 用 JSON.stringify 比節點，順序一變就是全部節點都「有變動」。
-  it('encodeTree → decodeTree 無損還原（含欄位順序）', () => {
+  it('encodeTree＋encodeTreeText → decodeTree 無損還原（含欄位順序）', () => {
     const wire = encodeTree(data);
-    expect(JSON.stringify(decodeTree(JSON.parse(JSON.stringify(wire))))).toBe(JSON.stringify(data));
+    const text = encodeTreeText(data);
+    expect(JSON.stringify(decodeTree(JSON.parse(JSON.stringify(wire)), JSON.parse(JSON.stringify(text))))).toBe(JSON.stringify(data));
     // 去重真的有發生：label 只留在跟 name 不同的節點上，icon 是索引
     expect(wire.nodes.every(n => n.label === undefined || n.label !== n.name)).toBe(true);
     expect(wire.nodes.every(n => Number.isInteger(n.icon))).toBe(true);
+  });
+  // 方案 B：詳情卡片才用得到的文字不在首屏包裡。少了這條，有人把 description 加回 encodeTree
+  // 只會讓預算餘裕默默縮水 6 KB，其他測試照樣綠。
+  it('tree.json 不帶 description／awakening／glossary，這三樣只在 tree-text.json', () => {
+    const wire = JSON.parse(JSON.stringify(encodeTree(data)));
+    expect(wire.nodes.some((n: object) => 'description' in n || 'awakening' in n)).toBe(false);
+    expect('glossary' in wire.meta).toBe(false);
+    const text = encodeTreeText(data);
+    expect(text.description).toEqual(data.nodes.map(n => n.description));
+    expect(Object.keys(text.awakening).sort()).toEqual(data.nodes.filter(n => n.awakening).map(n => n.id).sort());
+    expect(text.glossary).toEqual(data.meta.glossary);
+  });
+  // 瀏覽器端的路徑：先只用 tree.json 還原（文字是空的），文字包到了再就地補。
+  it('decodeTree 不給文字包時文字是空的，applyTreeText 補完後與完整資料相同', () => {
+    const lean = decodeTree(JSON.parse(JSON.stringify(encodeTree(data))));
+    expect(lean.nodes.every(n => n.description === '' && n.awakening === undefined)).toBe(true);
+    expect(lean.meta.glossary).toEqual({});
+    // 留在首屏包的欄位不受影響：搜尋要 keywords、/sim 的計算要 growth
+    expect(lean.nodes.map(n => [n.keywords, n.growth])).toEqual(data.nodes.map(n => [n.keywords, n.growth]));
+    applyTreeText(lean, encodeTreeText(data));
+    expect(lean).toEqual(data);
+  });
+  it('文字包的筆數跟節點數對不上就丟錯，不把描述貼到別顆節點上', () => {
+    const wire = JSON.parse(JSON.stringify(encodeTree(data)));
+    const text = encodeTreeText(data);
+    const short = { ...text, description: text.description.slice(1) };
+    expect(() => decodeTree(wire, short)).toThrow(/不是同一次建置/);
+    expect(() => applyTreeText(decodeTree(wire), short)).toThrow(/不是同一次建置/);
+  });
+  // 拆包的那個 PR 裡，CI 的 base 分支建出來的 tree.json 還是「文字在裡面」的單檔。
+  it('decodeTree 吃文字還沒拆出去的單檔形狀（CI diff-summary 的 base 端）', () => {
+    const wire = JSON.parse(JSON.stringify(encodeTree(data)));
+    const text = encodeTreeText(data);
+    const single = {
+      ...wire,
+      meta: Object.fromEntries(Object.entries(wire.meta).flatMap(([k, v]) => (k === 'totalUnlockCost' ? [[k, v], ['glossary', text.glossary]] : [[k, v]]))),
+      nodes: wire.nodes.map((n: Record<string, unknown>, i: number) => Object.fromEntries(Object.entries(n).flatMap(([k, v]) => {
+        if (k !== 'upgradeCost') return [[k, v]];
+        const a = text.awakening[n.id as string];
+        return [[k, v], ['description', text.description[i]], ...(a ? [['awakening', a]] : [])];
+      }))),
+    };
+    expect(JSON.stringify(decodeTree(single))).toBe(JSON.stringify(data));
   });
   // code review #68：認不出的形狀要原樣交回，讓 diff-summary 的 looksLikeTree 判成 schemaChanged，
   // 而不是在 decode 這一層丟 TypeError 把那層防護跳過。

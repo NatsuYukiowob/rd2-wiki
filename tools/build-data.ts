@@ -13,7 +13,7 @@ import { buildAdjacency, findRoots } from '../src/lib/graph.js';
 import { isGlossaryAlias } from '../src/lib/types.js';
 import { textColor } from '../src/lib/glossary-groups.js';
 import type { Branch, Edge, GlossaryDisplay, GlossaryRecord, TreeData, TreeNode, UnlockVia, UpgradeCostTable } from '../src/lib/types.js';
-import { encodeTree } from '../src/lib/tree-wire.js';
+import { encodeTree, encodeTreeText } from '../src/lib/tree-wire.js';
 
 interface BuildOpts {
   /** `data/keywords.json` 的內容：key ＝不含 `#` 的詞，同時是規則 8 的白名單與玩家看的解釋。 */
@@ -290,11 +290,16 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
   }
 
   const data = buildTreeData(svgText, { keywords, nodeText, unlockExceptions, prereqRanks, upgradeCostTable, spriteIndex: index, spriteSize: size });
-  // 寫出去的是傳輸形狀（label 去重、icon 改索引，見 src/lib/tree-wire.ts），預算量的也是它。
+  // 寫出去的是傳輸形狀（label 去重、icon 改索引、文字另成一檔，見 src/lib/tree-wire.ts）。
+  // 預算量的是 tree.json：瀏覽器一進 /tree、/sim 就要有的那一包。tree-text.json 是打開詳情卡片
+  // 才用得到的文字，另外載，不設上限、只把大小印出來。
   const json = JSON.stringify(encodeTree(data));
   writeFileSync('src/generated/tree.json', json);
+  const textJson = JSON.stringify(encodeTreeText(data));
+  writeFileSync('src/generated/tree-text.json', textJson);
 
   console.log(`tree.json ${(Buffer.byteLength(json) / 1024).toFixed(1)} KB, sprite ${(sprite.length / 1024).toFixed(0)} KB`);
+  console.log(`tree-text.json gzip ${(gzipSync(Buffer.from(textJson)).length / 1024).toFixed(1)} KB（不計入預算）`);
 
   // spec §11 效能預算：正式產物（真實 sprite index，不是測試用的替身資料）
   // 必須量 CLI 實際寫出的 tree.json 與 sprite.webp，測試套件裡的 spriteIndex 是 202 筆全同值

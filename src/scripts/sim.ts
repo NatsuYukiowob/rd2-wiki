@@ -9,7 +9,7 @@
 // SVG 渲染器（src/lib/render.ts）與 Viewport，平移縮放、點選判定、等級牌各寫了第二份——
 // 那正是這個 repo 反覆被咬的「複製第二份出去」（規則 21 複製規則 7、FILTERS_MS 複製 --t-med）。
 // 模擬器的差異全部收斂成 state.ts 的 `SimPaint`，controller 內沒有第二條繪圖路徑。
-import { treeData as rawData } from '../lib/tree-data.js';
+import { treeData as rawData, treeTextReady } from '../lib/tree-client.js';
 import rawTables from '../../data/passive-upgrade-cost.json';
 import { mountCanvasTree, type ScreenRect } from '../lib/canvas/canvas-tree.js';
 import { animatePan } from '../lib/canvas/animate-pan.js';
@@ -132,6 +132,8 @@ let state: SimState = deserializeSim(readSaved(), ctx) ?? initialSimState(ctx);
 const undoStack: SimState[] = [];
 const redoStack: SimState[] = [];
 let selected: string | null = null;
+/** tree-text.json 到了沒，見 renderDetailPanel()。 */
+let textArrived = false;
 
 function readSaved(): string | null {
   // localStorage 在無痕模式、或使用者關掉網站資料時會直接丟例外（不是回 null）。
@@ -459,7 +461,9 @@ function levelBlockHtml(node: TreeNode): string {
 
 function renderDetailPanel(): void {
   const box = $('sim-detail');
-  const node = selected === null ? undefined : ctx.byId.get(selected);
+  // 描述與關鍵字解釋在另一包、比這支腳本晚到（tree-client.ts）。到之前選取照常（畫布高亮、模式切換都認得），
+  // 只有面板先維持空的：先畫的話描述是空的，手機版抽屜的高度也會照空的內容算。
+  const node = selected === null || !textArrived ? undefined : ctx.byId.get(selected);
   if (!node) {
     box.classList.add('empty');
     box.innerHTML = '<p class="note">點畫布上的節點看它的詳情；前置都解開的節點點一下就會取得。</p>';
@@ -1227,6 +1231,12 @@ const arrived = arriveFromTree();
 render();
 // 手機版：跟點選節點一樣把抽屜撐到露出主按鈕、節點挪出抽屜底下（兩支都只在手機動作）。
 if (arrived) { revealDetail(); revealSelected(); }
+void treeTextReady.then(() => {
+  textArrived = true;
+  render();
+  // 面板現在才有內容：有選取的話，手機版抽屜照真正的高度再撐一次。
+  if (selected !== null) { revealDetail(); revealSelected(); }
+});
 
 addEventListener('storage', e => {
   // key 為 null＝另一個分頁 localStorage.clear()。

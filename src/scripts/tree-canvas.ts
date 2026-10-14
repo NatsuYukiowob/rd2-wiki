@@ -6,7 +6,7 @@
 // 這裡只留 `/tree` 專屬的東西：搜尋、篩選、網址狀態同步、詳情卡片的擺位與視圖堆疊、
 // 分支跳轉。畫面狀態（選取、前置鏈、被篩掉的節點）一律用 `tree.setState()` 交出去，
 // 不再自己往 DOM 掛 class——canvas 裡什麼都不是元素，沒有 classList 可掛。
-import { treeData as rawData } from '../lib/tree-data.js';
+import { treeData as rawData, treeTextReady } from '../lib/tree-client.js';
 // ⚠️ **這份費用表刻意不進 tree.json**（tier 是 (maxLevel, unlockCost.gold) 的純函數，見
 // PassiveUpgradeCost 的說明），所以走頁面 import 直接進 /tree 的 JS bundle，不吃那 20 KB
 // 的 gzip 預算。`/sim` 用的是同一份檔案、同一種載法。詳情面板有兩個地方需要它：
@@ -134,6 +134,12 @@ let panelSide: 'above' | 'below' = 'above';
 // panelSide 是為了哪一顆節點算的。applyFilter() 每次輸入都會呼叫 select(currentSelected)，
 // 不記這個的話會跟著重算——見 select() 裡的說明。
 let sidePickedFor: string | null = null;
+/**
+ * 描述、覺醒、關鍵字解釋（tree-text.json）到了沒。它們在另一包、比這支腳本晚到（tree-client.ts）。
+ * 到之前選取、前置鏈、篩選、網址照常運作，只有詳情卡片不開：卡片的內容與高度都要那些文字，
+ * 先開的話會是空的，擺法與置中也會照空卡片的高度算。到了之後由檔案最底下那段補開。
+ */
+let textArrived = false;
 // 置中平移期間把卡片**釘在終點位置**，不讓它跟著節點跑（見 centerOnSelected()）。
 let panelPinned = false;
 
@@ -326,7 +332,7 @@ function select(id: string | null): void {
   resetViewStack();
   markSelectedButton(id);
   currentSelected = id;
-  panel.hidden = id === null;
+  panel.hidden = id === null || !textArrived;
   syncUrl();
   if (id === null) {
     // 清空選取：鏈也要一起清掉，不然畫面會留著上一顆的金光。
@@ -339,6 +345,7 @@ function select(id: string | null): void {
   // 邊的高亮不必另外算：painter 用「兩端都在 chain 裡」判斷（state.ts 的 edgeAlpha／
   // edgeColor），跟舊版逐條 line 掛 .in-chain 是同一個判準，少一份會漂移的複本。
   tree.setState({ selected: id, chain: new Set(sel.chain) });
+  if (!textArrived) return;   // 卡片等文字，見 textArrived
 
   renderDetail(node, sel, panel, data.meta.glossary, data.meta.upgradeCostTable, tables);
   viewStack = [{ view: { kind: 'node', id }, scrollTop: 0 }];
@@ -1537,5 +1544,27 @@ if (carriedView) {
 } else {
   centerOnSelected();
 }
+
+// --- 文字包到齊 ---------------------------------------------------------------
+// 使用者在文字到之前有沒有碰過頁面：碰過就不再替他帶鏡頭（進站的 focusMatches／帶來的視角只做給還沒動手的人）。
+let touched = false;
+for (const type of ['pointerdown', 'wheel', 'keydown'] as const) {
+  window.addEventListener(type, () => { touched = true; }, { once: true, capture: true, passive: true });
+}
+void treeTextReady.then(() => {
+  textArrived = true;
+  const landing = !touched;
+  if (filterState.query.trim() !== '') {
+    // 搜尋也比對描述與覺醒：重套一次，命中的節點可能變多。裡面的 select(currentSelected) 順便把卡片開起來。
+    applyFilter();
+    if (landing && !carriedView) focusMatches();
+  } else if (currentSelected) {
+    select(currentSelected);
+  }
+  if (!currentSelected) return;
+  // 卡片現在才有高度，鏡頭照「開啟一顆節點」的規矩補上（同上面進站的那段：/sim 帶來的視角不置中）。
+  if (landing && carriedView) { if (isNarrow()) revealOnNarrow(currentSelected); }
+  else centerOnSelected();
+});
 
 wireModeLink('/sim/', () => currentSelected, tree.view, undefined, () => saveTreeFilter(stateToQueryString(filterState, null)));
