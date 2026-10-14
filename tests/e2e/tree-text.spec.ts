@@ -48,7 +48,8 @@ test('TX2. /sim 帶 ?node= 落地：文字包沒到時選取已在、詳情面�
   await page.goto(`/sim/?node=${DICE.id}`);
   await ready(page);
   await expect.poll(text.hits).toBe(1);
-  expect(await page.evaluate(() => (window.__tree.state() as { selected: string | null }).selected)).toBe(DICE.id);
+  // /sim 的選取不在 `__tree.state()` 裡（見 sim.spec.ts 檔頭），問無障礙按鈕上的 aria-current。
+  await expect(page.locator(`button[data-id="${DICE.id}"]`)).toHaveAttribute('aria-current', 'true');
   await expect(page.locator('#sim-detail')).toHaveClass(/empty/);
 
   text.release();
