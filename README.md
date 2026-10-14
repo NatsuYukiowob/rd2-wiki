@@ -110,7 +110,7 @@ npm run dev      # 先產生資料，再啟動本機開發伺服器
 |---|---|
 | `npm run dev` | 本機開發伺服器 |
 | `npm run build` | 產出 `dist/`（先跑 `build:data` 再 `astro build`） |
-| `npm run typecheck` | `tsc --noEmit`，CI 的必要檢查之一 |
+| `npm run typecheck` | `astro check`（含 `.astro`）＋ `tsc --noEmit`，CI 的必要檢查之一 |
 | `npm test` | 單元測試（Vitest；`pretest` 會自動先產生資料） |
 | `npm run e2e` | 端對端測試（Playwright；`pree2e` 會自動先建置） |
 

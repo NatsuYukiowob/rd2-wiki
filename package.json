@@ -13,7 +13,7 @@
     "normalize": "tsx tools/normalize-svg.ts data/dice-tree.svg",
     "preview": "tsx tools/build-preview-svg.ts",
     "validate": "tsx tools/validate.ts",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "astro check && tsc --noEmit",
     "add-icon": "tsx tools/add-icon.ts",
     "add-currency-icon": "tsx tools/add-currency-icon.ts",
     "render-nodes": "tsx tools/render-nodes.ts",
@@ -27,6 +27,7 @@
     "e2e": "playwright test"
   },
   "devDependencies": {
+    "@astrojs/check": "^0.9.10",
     "@astrojs/sitemap": "^3.7.3",
     "@playwright/test": "^1.49.0",
     "@types/node": "^24.0.0",
