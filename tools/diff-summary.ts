@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import type { Cost, TreeData } from '../src/lib/types.js';
 import { costFromJson, mythicAmount, zeroCost } from '../src/lib/cost.js';
@@ -303,15 +303,21 @@ export function buildDiffSummary(base: TreeData, head: TreeData): string {
 if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
   const [basePath, headPath] = [process.argv[2], process.argv[3]];
   if (!basePath || !headPath) {
-    console.error('用法: npx tsx tools/diff-summary.ts <base.json> <head.json>');
+    console.error('用法: npx tsx tools/diff-summary.ts <base.json> <head.json>\n'
+      + '（旁邊有同名的 <base>-text.json／<head>-text.json 就一併讀進來，那是 tree-text.json）');
     process.exit(1);
   }
-  // decodeTree 兩種形狀都吃：改成傳輸形狀的那個 PR 裡，base 分支建出來的還是舊形狀。
+  // decodeTree 幾種形狀都吃：改傳輸形狀的那個 PR 裡，base 分支建出來的還是舊形狀。
   // 解不開（例如圖示索引超出範圍）就退回原始物件，交給 computeDiff 的 looksLikeTree 判成 schemaChanged，
   // 而不是讓 CI 的 verify 直接崩掉、差異摘要貼不出來。
+  // 描述、覺醒、關鍵字解釋在 tree-text.json：不一起讀的話，只改文字的 PR 會被說成「沒有變動」。
+  // 沒有這個檔＝文字還在 tree.json 裡的舊單檔形狀。
   const load = (p: string) => {
     const raw: unknown = JSON.parse(readFileSync(p, 'utf8'));
-    try { return decodeTree(raw); } catch { return raw as TreeData; }
+    const textPath = p.replace(/\.json$/, '-text.json');
+    try {
+      return decodeTree(raw, existsSync(textPath) ? JSON.parse(readFileSync(textPath, 'utf8')) : undefined);
+    } catch { return raw as TreeData; }
   };
   const base = load(basePath);
   const head = load(headPath);

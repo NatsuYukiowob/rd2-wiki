@@ -6,7 +6,7 @@
 // 這裡只留 `/tree` 專屬的東西：搜尋、篩選、網址狀態同步、詳情卡片的擺位與視圖堆疊、
 // 分支跳轉。畫面狀態（選取、前置鏈、被篩掉的節點）一律用 `tree.setState()` 交出去，
 // 不再自己往 DOM 掛 class——canvas 裡什麼都不是元素，沒有 classList 可掛。
-import { treeData as rawData } from '../lib/tree-data.js';
+import { treeData as rawData, treeTextReady } from '../lib/tree-client.js';
 // ⚠️ **這份費用表刻意不進 tree.json**（tier 是 (maxLevel, unlockCost.gold) 的純函數，見
 // PassiveUpgradeCost 的說明），所以走頁面 import 直接進 /tree 的 JS bundle，不吃那 20 KB
 // 的 gzip 預算。`/sim` 用的是同一份檔案、同一種載法。詳情面板有兩個地方需要它：
@@ -1520,22 +1520,41 @@ for (const cb of filtersEl.querySelectorAll<HTMLInputElement>('input[data-type]'
   });
 }
 
-applyFilter();
-// 網址帶了搜尋字串就把鏡頭帶到命中的節點上。分享連結（或按下重新整理）本來就是在說
-// 「看這些」，落在原本的初始視角只會看到一片灰，跟點關鍵字時的死路一模一樣。
-if (filterState.query.trim() !== '') focusMatches();
-// `?node=` 進站也要置中——分享連結指名了一顆節點，它落在初始視角的哪個角落是隨機的。
-// 順序在 focusMatches() **之後**：兩個參數同時出現時，指名的那顆節點比「命中的那一群」具體。
-// 選取本身是上面 applyFilter() 內部的 select(currentSelected) 做掉的（見那裡的註解），
-// 這裡只補鏡頭；centerOnSelected() 沒有選取時直接返回，窄畫面改走 revealOnNarrow()。
-// 從 /sim 切回來（ModeSwitch）帶著 `?view=`：那邊的可視區中心與倍率蓋過上面的預設視角與置中
-// （網址裡的 view 已經被 applyFilter() 的 syncUrl() 拿掉）。手機版另外把選取的節點挪出抽屜底下。
-if (carriedView) {
-  applyCarriedView(tree.view, carriedView);
-  tree.requestRedraw();
-  if (currentSelected && isNarrow()) revealOnNarrow(currentSelected);
-} else {
-  centerOnSelected();
+// 進站收尾：套篩選（連帶選取 `?node=`）、帶鏡頭。
+function start(): void {
+  applyFilter();
+  // 網址帶了搜尋字串就把鏡頭帶到命中的節點上。分享連結（或按下重新整理）本來就是在說
+  // 「看這些」，落在原本的初始視角只會看到一片灰，跟點關鍵字時的死路一模一樣。
+  if (filterState.query.trim() !== '') focusMatches();
+  // `?node=` 進站也要置中——分享連結指名了一顆節點，它落在初始視角的哪個角落是隨機的。
+  // 順序在 focusMatches() **之後**：兩個參數同時出現時，指名的那顆節點比「命中的那一群」具體。
+  // 選取本身是上面 applyFilter() 內部的 select(currentSelected) 做掉的（見那裡的註解），
+  // 這裡只補鏡頭；centerOnSelected() 沒有選取時直接返回，窄畫面改走 revealOnNarrow()。
+  // 從 /sim 切回來（ModeSwitch）帶著 `?view=`：那邊的可視區中心與倍率蓋過上面的預設視角與置中
+  // （網址裡的 view 已經被 applyFilter() 的 syncUrl() 拿掉）。手機版另外把選取的節點挪出抽屜底下。
+  if (carriedView) {
+    applyCarriedView(tree.view, carriedView);
+    tree.requestRedraw();
+    if (currentSelected && isNarrow()) revealOnNarrow(currentSelected);
+  } else {
+    centerOnSelected();
+  }
 }
+
+// 描述、覺醒、關鍵字解釋在另一包（tree-client.ts），比這支腳本晚到。
+// 網址指名了節點或帶了搜尋字串時，收尾要用到那些文字（詳情卡片的內容與高度、搜尋比對描述），
+// 等文字到了才做，卡片不會先開成空的再長高。其餘情況馬上收尾。
+const startNeedsText = currentSelected !== null || filterState.query.trim() !== '';
+if (!startNeedsText) start();
+// 等的這段時間鏡頭先落在 /sim 帶來的視角上，不要先顯示預設視角再跳過去（start() 裡會再套一次，結果相同）。
+else if (carriedView) { applyCarriedView(tree.view, carriedView); tree.requestRedraw(); }
+void treeTextReady.then(() => {
+  // 文字到之前使用者可能已經點了節點（卡片是用空的描述量的高度）：擺法一律用到齊的文字重算。
+  sidePickedFor = null;
+  if (startNeedsText) { start(); return; }
+  // 文字到之前使用者已經點了節點或打了搜尋：用到齊的文字重畫一次。
+  if (filterState.query.trim() !== '') applyFilter();
+  else if (currentSelected) select(currentSelected);
+});
 
 wireModeLink('/sim/', () => currentSelected, tree.view, undefined, () => saveTreeFilter(stateToQueryString(filterState, null)));

@@ -61,7 +61,8 @@
   `tools/lib/render-plan.ts` 的 `KEEP_ICON_IDS`，重跑時沿用原檔不重渲染；新增手工圖示的節點要加進這份清單（配方見 `data/CLAUDE.md`）。
   `render-nodes` 先渲染到 `data/.render-*` 暫存目錄，原圖與正本的節點集合（扣掉保留清單）對不上、或中途任何一步失敗，`data/` 都不動。
 - **節點底盤色改不動**（大多數節點的底盤是遊戲貼圖）。站台底色因此刻意不跟原圖一致，見 `tokens.css` 的 `--bg` 註解。
-- ⚠️ **瀏覽器不渲染這份 SVG，站台上沒有節點元素**。`build:data` 把正本壓成 `src/generated/tree.json`，
+- ⚠️ **瀏覽器不渲染這份 SVG，站台上沒有節點元素**。`build:data` 把正本壓成 `src/generated/tree.json`
+  （畫樹、搜尋、計算要的欄位）與 `src/generated/tree-text.json`（描述、覺醒、關鍵字解釋；瀏覽器另外載），
   `/tree` 與 `/sim` 由 `src/lib/canvas/`（`mountCanvasTree()`）用 **Canvas 2D** 畫。
   `document.querySelector('.node')` 回 null、CSS 碰不到節點（在 `canvas.css` 加 `.node` 規則無效也不報錯）；
   唯一例外是每顆節點一顆的隱形 `<button>`。外觀在 `theme.ts`（從 token 讀）、`state.ts`、`painter.ts`，
@@ -120,7 +121,7 @@ npm run compare -- <beforeURL> <afterURL>  # computed-style 逐元素比對，�
 | 戰術／Boss／裂縫／活動 | 見各自規則 | 規則 24／25／27／29 |
 | 獎勵 | **沒有 validate 規則** | `tests/data/rewards.test.ts` |
 | 畫布 viewBox | `0 0 2000 1700` | |
-| 效能預算（硬斷言） | `tree.json` gzip ≤ 20KB／sprite ≤ 400KB（實測值 `build:data` 會印） | `tests/tools/build-data.test.ts`（CI 規則 12） |
+| 效能預算（硬斷言） | `tree.json` gzip ≤ 20KB／sprite ≤ 400KB（實測值 `build:data` 會印；`tree-text.json` 不設上限、只印大小） | `tests/tools/build-data.test.ts`（CI 規則 12） |
 
 - **版本欄位有三個、意義不同，首頁顯示前兩個，不要合併**：`data-game-version`（玩家看得到的遊戲版本）、
   `<metadata>` 的 `resource bundle`（決策：直接寫遊戲版本，不採客戶端 `BundleVersion`，語意不同）、
@@ -377,9 +378,17 @@ npm run compare -- <beforeURL> <afterURL>  # computed-style 逐元素比對，�
 
 ## 測試環境
 
-- `src/generated/tree.json` 是 gitignored 產物，`pretest`／`pree2e` 會先產生，**不要拿掉**。
-- **tree.json 是傳輸形狀不是 `TreeData`**：讀它一律經 `decodeTree()`（`src/lib/tree-wire.ts`）；站台用
-  `src/lib/tree-data` 的 `treeData`，測試用 `tests/helpers/read-tree.ts` 的 `readTree()`。**不可 `JSON.parse(...) as TreeData`**。
+- `src/generated/tree.json`、`tree-text.json` 是 gitignored 產物，`pretest`／`pree2e` 會先產生，**不要拿掉**。
+- **tree.json 是傳輸形狀不是 `TreeData`**，而且不帶描述、覺醒、關鍵字解釋（那三樣在 `tree-text.json`）：
+  讀它一律經 `decodeTree()`（`src/lib/tree-wire.ts`），**不可 `JSON.parse(...) as TreeData`**。入口三個：
+  - `.astro` 的 frontmatter（建置期）用 `src/lib/tree-data` 的 `treeData`，兩個檔都讀、資料完整。
+  - 瀏覽器腳本（`src/scripts/`）用 `src/lib/tree-client` 的 `treeData`＋`treeTextReady`：文字包用動態 import
+    晚一拍到，兌現前 `description` 是空字串、沒有 `awakening`、`meta.glossary` 是空物件。
+    **⚠️ 瀏覽器腳本不可 import `tree-data`**：整份文字會被打進首屏的 JS，預算照樣綠但等於沒拆。
+    要顯示那三樣的地方等 `treeTextReady`（或兌現後重畫），`tests/e2e/tree-text.spec.ts` 的 TX1–TX3 守。
+  - 測試用 `tests/helpers/read-tree.ts` 的 `readTree()`（完整資料）。
+- **新欄位要進哪一包**：畫樹、命中判定、搜尋、花費與成長計算用得到的進 `tree.json`；只有打開詳情卡片才看得到的文字
+  進 `tree-text.json`（`encodeTree`／`encodeTreeText`）。CI 的差異摘要兩個檔都讀（`/tmp/<名>.json` 旁的 `<名>-text.json`）。
 - **E2E 不量畫布內的 DOM 幾何，一律問 `window.__tree`**（`src/lib/canvas/debug-api.ts`：`count()`／`scale()`／
   `nodeScreenRect(id)`／`state()`／`hitAt(x, y)`）。隱形按鈕被 `clip-path` 裁成 1px，`boundingBox()` 不報錯只給錯值。
   它永遠安裝，不加 build flag。

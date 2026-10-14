@@ -9,7 +9,7 @@
 // SVG 渲染器（src/lib/render.ts）與 Viewport，平移縮放、點選判定、等級牌各寫了第二份——
 // 那正是這個 repo 反覆被咬的「複製第二份出去」（規則 21 複製規則 7、FILTERS_MS 複製 --t-med）。
 // 模擬器的差異全部收斂成 state.ts 的 `SimPaint`，controller 內沒有第二條繪圖路徑。
-import { treeData as rawData } from '../lib/tree-data.js';
+import { treeData as rawData, treeTextReady } from '../lib/tree-client.js';
 import rawTables from '../../data/passive-upgrade-cost.json';
 import { mountCanvasTree, type ScreenRect } from '../lib/canvas/canvas-tree.js';
 import { animatePan } from '../lib/canvas/animate-pan.js';
@@ -1224,9 +1224,20 @@ installMobileLayout();
 fitAll();
 loadHoldings();   // 要在第一次 renderTotals() 之前
 const arrived = arriveFromTree();
+// 描述與關鍵字解釋在另一包（tree-client.ts），比這支腳本晚到。從 /tree 帶著選取過來時，
+// 詳情面板等文字到了才開：先開的話描述是空的，手機版抽屜的高度也會照空的內容算。
+const arrivedSelection = selected;
+selected = null;
 render();
-// 手機版：跟點選節點一樣把抽屜撐到露出主按鈕、節點挪出抽屜底下（兩支都只在手機動作）。
-if (arrived) { revealDetail(); revealSelected(); }
+void treeTextReady.then(() => {
+  // 等的這段時間使用者自己點了別顆，就不蓋掉他的選取。
+  if (selected === null) selected = arrivedSelection;
+  // 也涵蓋「文字到之前就點了節點或開了能力統計」：用到齊的文字重畫。
+  // 正在拖等級滑桿就不畫（面板重畫會把滑桿換掉），放開時本來就會重畫。
+  if (levelDragFrom === null) render();
+  // 手機版：跟點選節點一樣把抽屜撐到露出主按鈕、節點挪出抽屜底下（兩支都只在手機動作）。
+  if (arrived && selected !== null && selected === arrivedSelection) { revealDetail(); revealSelected(); }
+});
 
 addEventListener('storage', e => {
   // key 為 null＝另一個分頁 localStorage.clear()。

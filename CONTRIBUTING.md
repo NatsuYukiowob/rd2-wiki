@@ -49,7 +49,7 @@
 （2026-08-22 之前文字寫在 SVG 的 `data-*` 屬性與 `<title>` 裡。`<title>` 是名稱與
 說明的第二份副本，改一個字要改兩處，整個節點又擠在一行 500 字元的標籤裡，沒辦法 review。）
 
-其他東西（`src/generated/tree.json`、`public/assets/`）都是 `npm run build:data` 從上面
+其他東西（`src/generated/tree.json`、`src/generated/tree-text.json`、`public/assets/`）都是 `npm run build:data` 從上面
 自動產生的**建置產物**，不要手動編輯，也不會被提交進 repo（在 `.gitignore` 裡）。改了
 正本之後，本機跑 `npm run build:data` 或 `npm run dev` 就會重新產生。
 
@@ -383,14 +383,17 @@ PR 送出後，CI 會用 `npm run validate` 檢查正本與各資料檔的正確
 實際用量與距離門檻的餘裕，例如：
 
 ```
-tree.json gzip 15.7 KB / 20 KB，餘裕 4.3 KB
-sprite.webp 132.3 KB / 400 KB，餘裕 267.7 KB
+tree-text.json gzip 5.8 KB（不計入預算）
+tree.json gzip 11.5 KB / 20 KB，餘裕 8.5 KB
+sprite.webp 127.9 KB / 400 KB，餘裕 272.1 KB
 ```
 
-**`sprite.webp` 的餘裕很寬鬆，但 `tree.json` 那條很緊**（目前只剩不到 3 KB，換算大約是
-再加 40～50 個節點就會超標），遊戲改版一次加一整個新分支很容易就吃光。所以就算只是新增
-幾個節點，送 PR 前也建議看一眼這行輸出，餘裕快見底就及早跟其他貢獻者提，
-不要等超標變成紅燈才發現。
+`tree.json` 是瀏覽器一打開骰子樹就要下載的那一包（節點位置、連線、名稱、花費這些），上限管的是它。
+節點的描述、覺醒與關鍵字解釋另外放在 `tree-text.json`，打開詳情卡片才用得到，不計入上限，
+所以**描述寫長一點不會吃掉餘裕，新增節點才會**。
+
+遊戲改版一次加一整個新分支仍然可能吃掉不少餘裕。所以就算只是新增幾個節點，送 PR 前也建議
+看一眼這行輸出，餘裕快見底就及早跟其他貢獻者提，不要等超標變成紅燈才發現。
 
 超過門檻時，`npm run build`（或 `build:data`）本身會印出 `❌` 錯誤訊息並以非 0 狀態結束，
 CI 的建置步驟也會失敗，一樣會擋下 PR，只是時間點跟 `validate` 不同。**單獨跑

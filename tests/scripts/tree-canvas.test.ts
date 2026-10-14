@@ -15,6 +15,7 @@
 // 掛得起來但一個像素都不會畫；也沒有版面引擎，所以容器尺寸由測試自己 stub 在
 // `#canvas-host` 的 getBoundingClientRect 上（controller 的 measure() 讀的就是它）。
 // **stub 必須在 import 之前掛**：初始視角是在模組執行期算的，晚一步就量到 0×0。
+import { readFileSync } from 'node:fs';
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { parseHTML, Event as LinkedomEvent } from 'linkedom';
 import {
@@ -182,7 +183,11 @@ function makeLocationAndHistory(initialSearch: string, initialStates: unknown[] 
 
 async function loadTreePage(
   initialSearch: string,
-  opts: { mobile?: boolean; width?: number; height?: number; historyStates?: unknown[] } = {},
+  opts: {
+    mobile?: boolean; width?: number; height?: number; historyStates?: unknown[];
+    /** 給了就把文字包擋在這個 promise 後面，並且不等它到齊就交回控制權（測「文字晚到」）。 */
+    holdText?: Promise<void>;
+  } = {},
 ) {
   const { document, window } = parseHTML(pageHtml());
   const { location, history, box } = makeLocationAndHistory(initialSearch, opts.historyStates);
@@ -216,7 +221,18 @@ async function loadTreePage(
   }
 
   vi.resetModules();
+  if (opts.holdText) {
+    const hold = opts.holdText;
+    const text = JSON.parse(readFileSync(new URL('../../src/generated/tree-text.json', import.meta.url), 'utf8'));
+    vi.doMock('../../src/generated/tree-text.json', async () => { await hold; return { default: text }; });
+  } else {
+    vi.doUnmock('../../src/generated/tree-text.json');
+  }
   await import('../../src/scripts/tree-canvas');
+  // 描述、覺醒、關鍵字解釋是另一包、晚一拍才補進來；`?node=`／`?q=` 進站的收尾也排在它後面。
+  // 等它到齊再把控制權交回測試，下面每一條看到的都是「文字已經在」的頁面。
+  const { treeTextReady } = await import('../../src/lib/tree-client');
+  if (!opts.holdText) await treeTextReady;
 
   return {
     document,
@@ -226,6 +242,7 @@ async function loadTreePage(
     detailEl: document.getElementById('detail')!,
     state: () => debug().state(),
     scale: () => debug().scale(),
+    textReady: treeTextReady,
   };
 }
 
@@ -739,5 +756,63 @@ describe('tree-canvas 整合：詳情面板的視圖堆疊', () => {
     fireClick(page.detailEl.querySelector('.desc')!);
     expect(topTitle(page)).toBe('尖刺骰子');
     expect(page.searchInput.value).toBe('');
+  });
+});
+
+// issue #63 方案 B：描述、覺醒、關鍵字解釋在另一包，比腳本晚到。
+describe('tree-canvas 整合：文字包晚到', () => {
+  function gate(): { hold: Promise<void>; release: () => void } {
+    let release!: () => void;
+    const hold = new Promise<void>(r => { release = r; });
+    return { hold, release };
+  }
+
+  it('`?node=` 進站：文字到之前卡片不開，到了才選取並畫出描述與覺醒入口', async () => {
+    const { hold, release } = gate();
+    const page = await loadTreePage('?node=1002', { holdText: hold });
+    expect(page.detailEl.hidden).toBe(true);
+    expect(page.state().selected).toBeNull();
+
+    release();
+    await page.textReady;
+    expect(page.detailEl.hidden).toBe(false);
+    expect(page.state().selected).toBe('1002');
+    expect(page.detailEl.querySelector('.desc')!.textContent).not.toBe('');
+    expect(page.detailEl.querySelector('.kw')).not.toBeNull();
+    expect(page.detailEl.querySelector('[data-detail-awakening]')).not.toBeNull();
+  });
+
+  it('`?q=` 進站：比對描述的搜尋等文字到了才套', async () => {
+    // 找一段只出現在描述裡的字：名字、關鍵字都不含它，所以文字沒到之前不可能命中。
+    let q = '';
+    for (const n of treeData.nodes) {
+      const piece = /[\u4e00-\u9fff]{4}/.exec(n.description)?.[0];
+      if (piece && !treeData.nodes.some(m => m.name.includes(piece) || m.keywords.some(k => k.includes(piece)))) { q = piece; break; }
+    }
+    expect(q).not.toBe('');
+    const byDescOnly = treeData.nodes.filter(n => n.description.includes(q));
+    const { hold, release } = gate();
+    const page = await loadTreePage(`?q=${encodeURIComponent(q)}`, { holdText: hold });
+    expect(page.state().filteredOut).toEqual([]);
+
+    release();
+    await page.textReady;
+    expect(page.state().filteredOut.length).toBeGreaterThan(0);
+    for (const n of byDescOnly) expect(page.state().filteredOut).not.toContain(n.id);
+  });
+
+  it('一般進站不等文字；文字到之前就點了節點，到齊後卡片補上描述', async () => {
+    const { hold, release } = gate();
+    const page = await loadTreePage('', { holdText: hold });
+    fireClick(page.document.querySelector('button[data-id="1002"]')!);
+    expect(page.detailEl.hidden).toBe(false);
+    expect(page.state().selected).toBe('1002');
+    expect(page.detailEl.querySelector('.desc')!.textContent).toBe('');
+
+    release();
+    await page.textReady;
+    expect(page.state().selected).toBe('1002');
+    expect(page.detailEl.querySelector('.desc')!.textContent).not.toBe('');
+    expect(page.detailEl.querySelector('[data-detail-awakening]')).not.toBeNull();
   });
 });

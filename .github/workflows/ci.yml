@@ -107,9 +107,12 @@ jobs:
       - name: 產生差異摘要（規則 11：id 變動警告）
         if: github.event_name == 'pull_request'
         run: |
+          # tree-text.json（描述、覺醒、關鍵字解釋）放在同名的 *-text.json，diff-summary 會一併讀。
+          # base 分支還沒拆檔的話沒有這個檔，文字就在它的 tree.json 裡。
           cp src/generated/tree.json /tmp/head.json
+          cp src/generated/tree-text.json /tmp/head-text.json
           git worktree add /tmp/base ${{ github.event.pull_request.base.sha }}
-          (cd /tmp/base && npm ci --ignore-scripts && npm run build:data && cp src/generated/tree.json /tmp/base.json)
+          (cd /tmp/base && npm ci --ignore-scripts && npm run build:data && cp src/generated/tree.json /tmp/base.json && { [ ! -f src/generated/tree-text.json ] || cp src/generated/tree-text.json /tmp/base-text.json; })
           npx tsx tools/diff-summary.ts /tmp/base.json /tmp/head.json
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: github.event_name == 'pull_request'
