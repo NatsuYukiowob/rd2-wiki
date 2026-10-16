@@ -275,7 +275,7 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
   // 所以同樣**不套 withGutter()**。要是哪天需要不同的轉檔參數，是在那支函式加參數，
   // 不是複製第四份。
   //
-  // ⚠️ `new Set(...)` 不只是省事：`data/rift-shop.json` 是 **35 張圖對 55 筆**（同一個效果
+  // ⚠️ `new Set(...)` 不只是省事：`data/rift-shop.json` 是 **39 張圖對 61 筆**（同一個效果
   // 的三個檔位共用一張，客戶端只給 `*Low` 畫圖），沒有去重就會把同一張圖轉三遍。
   for (const [file, dir, out] of [
     ['data/tactics.json', 'data/tactic-icons', 'public/assets/tactic-icons'],

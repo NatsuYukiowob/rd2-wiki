@@ -155,7 +155,7 @@ const WILLS = [
   if (filters && count && empty) {
     const boxes = [...filters.querySelectorAll<HTMLInputElement>('input[name=grade]')];
     // ⚠️ 選擇器要指名這兩個 class，不能只寫 `[data-grade]`——每一條 `.battle-item` 也帶著
-    // 自己的 `data-grade`（給測試與樣式用），全抓進來會變成逐條開關 55 個 <li>，
+    // 自己的 `data-grade`（給測試與樣式用），全抓進來會變成逐條開關 61 個 <li>，
     // 而真正該藏的組標題反而混在同一份清單裡，行為看起來一樣、意圖卻讀不出來。
     const groups = [...document.querySelectorAll<HTMLElement>('.battle-group-head[data-grade], .battle-list[data-grade]')];
 

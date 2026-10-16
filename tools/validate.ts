@@ -187,7 +187,7 @@ function checkIconedRecordList(
      * 放寬 (g)「兩筆不准指向同一張圖」的欄位名：兩筆**這一欄的值相同時**才准共用同一張圖。
      *
      * 只有 `data/rift-shop.json` 用（傳 `'name'`）：客戶端只給 `*Low` 畫圖，同一個效果的
-     * 三個檔位在遊戲裡本來就是同一張圖，35 張 ↔ 55 筆是正確狀態而不是漏加圖。
+     * 三個檔位在遊戲裡本來就是同一張圖，39 張 ↔ 61 筆是正確狀態而不是漏加圖。
      *
      * ⚠️ **不做成 `boolean`。** 整條關掉的話，(g) 真正要擋的「複製上一筆、忘了換成新加進來
      * 的那張」就完全沒人守了——而那時 (d)(f) 全部沉默（檔案在、也沒有孤兒檔），畫面上是
@@ -630,7 +630,7 @@ export interface ValidateOpts {
   prereqRanks: unknown;
   /** `data/rift-shop.json` 的內容。同 `tactics`，沒有時傳 `null`（規則 27 只警告）。 */
   riftShop: unknown;
-  /** `data/rift-shop-icons/` 所在目錄。⚠️ 這一份是 35 張圖對 55 筆，見規則 27 的說明。 */
+  /** `data/rift-shop-icons/` 所在目錄。⚠️ 這一份是 39 張圖對 61 筆，見規則 27 的說明。 */
   riftShopIconsDir: string;
   /**
    * `data/offgame-effects.json`：骰子樹符文／玩家被動對 /board 數值卡片的語意（規則 28）。
@@ -1866,7 +1866,7 @@ export function validate(svgText: string, opts: ValidateOpts): ValidateResult {
   // 第五條資產路徑，跟規則 24／25 同一種資料檔，所以通用檢查一樣全部走
   // checkIconedRecordList()。跟前兩條的差別只有兩件，兩件都寫在這一層：
   //
-  // 1. **圖示是多對一**（35 張 ↔ 55 筆）。客戶端只給 `*Low` 畫圖，同一個效果的三個檔位
+  // 1. **圖示是多對一**（39 張 ↔ 61 筆）。客戶端只給 `*Low` 畫圖，同一個效果的三個檔位
   //    在遊戲裡本來就是同一張圖，所以傳 `sharedIconKey: 'name'` 放行同名之間的共用。
   //    ⚠️ 不是把 (g) 關掉——跨不同名字共用仍然是抄錯，見那一支的說明。
   // 2. **階級是這份資料自己的語意軸**（同規則 25 的 `difficulty`）：(i) 管階級與權重的
@@ -1892,6 +1892,9 @@ export function validate(svgText: string, opts: ValidateOpts): ValidateResult {
       markupKeys: ['effect'],
       whitelist,
       sharedIconKey: 'name',
+      // 「掌握弱點I／II／III」名字不同但客戶端只有 `ReduceBossHpLow` 一張圖（同 *Low 慣例），
+      // 遊戲裡三個檔位就是同一張。只放行這一組，其他跨名共用照擋。
+      sharedIconIds: [['133', '134', '135']],
     });
     scan.errors.forEach(push);
     scan.warnings.forEach(warn);

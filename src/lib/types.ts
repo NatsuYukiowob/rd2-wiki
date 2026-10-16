@@ -464,7 +464,7 @@ export interface RiftShopEffect {
   /**
    * `data/rift-shop-icons/` 底下來源 PNG 的內容 sha256 前 12 碼。
    *
-   * ⚠️ **這一份是多對一：35 張圖 ↔ 55 筆。** 客戶端只給 `*Low` 畫圖，`*Mid`／`*High`
+   * ⚠️ **這一份是多對一：39 張圖 ↔ 61 筆。** 客戶端只給 `*Low` 畫圖，`*Mid`／`*High`
    * 沒有自己的 sprite——同一個效果的三個檔位在遊戲裡本來就是同一張圖。所以規則 27 用
    * `sharedIconKey: 'name'` 放行**同名之間**的共用，跨不同名字共用仍然是錯（規則 27(g)）。
    */

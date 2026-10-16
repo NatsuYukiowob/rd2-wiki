@@ -364,7 +364,7 @@ test('RS3. 沒有 JS 時全部裂縫效果仍然完整顯示', async ({ browser 
   await context.close();
 });
 
-test('RS4. 圖示等比縮放不裁切；35 張圖對 55 筆是刻意的，每一張都載得到', async ({ page, request }) => {
+test('RS4. 圖示等比縮放不裁切；39 張圖對 61 筆是刻意的，每一張都載得到', async ({ page, request }) => {
   await page.goto('/rift-shop');
   const imgs = page.locator('.battle-icon');
   await expect(imgs).toHaveCount(riftShop.length);
