@@ -95,20 +95,22 @@ test('EV4. 內容頁的表格列數與資料一致，每一列的格數都等於
   }
 });
 
-test('EV5. 貨幣圖與遊戲內截圖都真的載得到', async ({ page, request }) => {
-  const ev = events[0]!;
-  await page.goto(`/events/${ev.id}`);
-  const srcs = await page.locator('.currency-icon, .event-shots img').evaluateAll(
-    els => [...new Set(els.map(e => (e as HTMLImageElement).getAttribute('src') ?? ''))],
-  );
-  expect(srcs.length).toBeGreaterThan(0);
-  // ⚠️ 不用 naturalWidth：這些圖不見得都在視窗裡，量到的會是捲軸位置不是圖存不存在（B5 的教訓）。
-  for (const src of srcs) {
-    expect((await request.get(src)).status(), src).toBe(200);
-  }
-  // 截圖是內容不是裝飾，alt 必須是圖說本身。
-  for (const shot of ev.screenshots ?? []) {
-    await expect(page.locator(`.event-shots img[src="/events/${shot.file}"]`)).toHaveAttribute('alt', shot.caption);
+test('EV5. 每一場活動的貨幣圖與遊戲內截圖都真的載得到', async ({ page, request }) => {
+  // 每一場都驗：只驗 events[0] 的話，新活動插到最前面，舊活動的圖就沒人守了。
+  for (const ev of events) {
+    await page.goto(`/events/${ev.id}`);
+    const srcs = await page.locator('.currency-icon, .event-shots img').evaluateAll(
+      els => [...new Set(els.map(e => (e as HTMLImageElement).getAttribute('src') ?? ''))],
+    );
+    expect(srcs.length).toBeGreaterThan(0);
+    // ⚠️ 不用 naturalWidth：這些圖不見得都在視窗裡，量到的會是捲軸位置不是圖存不存在（B5 的教訓）。
+    for (const src of srcs) {
+      expect((await request.get(src)).status(), src).toBe(200);
+    }
+    // 截圖是內容不是裝飾，alt 必須是圖說本身。
+    for (const shot of ev.screenshots ?? []) {
+      await expect(page.locator(`.event-shots img[src="/events/${shot.file}"]`)).toHaveAttribute('alt', shot.caption);
+    }
   }
 });
 
@@ -162,15 +164,15 @@ test('EV8. 窄螢幕上超寬的表格由容器自己吸收，不讓整份文件
 });
 
 test('EV10. 貨幣列的圖示跟名稱垂直置中（li 是 flex 時圖的 vertical-align 不生效，曾經高出 2.8px）', async ({ page }) => {
-  for (const width of [1280, 320]) {
+  for (const width of [1280, 320]) for (const ev of events) {
     await page.setViewportSize({ width, height: 900 });
-    await page.goto(`/events/${events[0]!.id}`);
+    await page.goto(`/events/${ev.id}`);
     const offsets = await page.locator('.event-currencies li').evaluateAll(lis => lis.map(li => {
       const i = li.querySelector('img')!.getBoundingClientRect();
       const s = li.querySelector('strong')!.getBoundingClientRect();
       return (i.top + i.bottom) / 2 - (s.top + s.bottom) / 2;
     }));
     expect(offsets.length).toBeGreaterThan(0);
-    for (const d of offsets) expect(Math.abs(d), `${width}px 圖示中線偏離名稱 ${d.toFixed(2)}px`).toBeLessThan(1);
+    for (const d of offsets) expect(Math.abs(d), `${ev.id} ${width}px 圖示中線偏離名稱 ${d.toFixed(2)}px`).toBeLessThan(1);
   }
 });

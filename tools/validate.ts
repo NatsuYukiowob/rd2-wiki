@@ -2166,7 +2166,7 @@ export function validate(svgText: string, opts: ValidateOpts): ValidateResult {
   //    畫面上是一張看起來很正常、但數字對錯欄的表。
   // 2. **`icon` 寫一個沒登記的種類** → `eventIcon()` 在建置期丟（那是刻意的），但只有真的建置
   //    才看得到；驗證階段先擋下來，錯誤訊息才指得出是第幾筆第幾列。
-  // 3. **`period` 亂填** → 客戶端的活動表裡根本沒有日期（見 `GameEvent.period` 的說明），
+  // 3. **`period` 亂填** → 不是每場活動的客戶端表都有日期（見 `GameEvent.period` 的說明），
   //    一個猜來的檔期在畫面上跟查證過的日期長得一模一樣。所以它只能是 null 或兩個真的日期
   //    （`YYYY-MM-DD`，可帶 ` HH:MM`），而且開始不晚於結束——`"未知"`、`"?"` 都不是日期。
   // 4. **`version` 寫成 `1.1` 或 `v1.1.2`** → 那個字串會直接印在活動卡片的徽章上。
@@ -2232,7 +2232,7 @@ export function validate(svgText: string, opts: ValidateOpts): ValidateResult {
         push(`規則 29(d): ${at}的 version ${JSON.stringify(version)} 不是 x.y.z（它直接印在活動卡片的徽章上）`);
       }
 
-      // period：客戶端沒有日期欄位，所以「沒有」要寫成 null，不是空字串、不是 "未知"。
+      // period：日期查不到（表裡沒有、也沒實測）就寫成 null，不是空字串、不是 "未知"。
       const period = raw['period'];
       if (period !== null && period !== undefined) {
         if (!isPlainObject(period)) {

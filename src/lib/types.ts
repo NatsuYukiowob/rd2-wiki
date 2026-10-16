@@ -475,7 +475,7 @@ export interface RiftShopEffect {
  * 一場期間限定活動（`data/events.json` 的一筆，`/events`）。
  *
  * 資料來自客戶端那一版的活動資料表（中秋是 `ChuseokBoardTable`／`ChuseokMarketTable`／
- * `ChuseokShopFreeTable`／`ChoseokLapRewardTable`），名稱一律取 `localization.json` 的
+ * `ChuseokShopFreeTable`／`ChoseokLapRewardTable`；探索賓果是 `BingoEvent*` 那一族），名稱一律取 `localization.json` 的
  * `zh-tw`（官方繁中），不自己翻譯。
  *
  * ⚠️ **內容欄位刻意是通用的 `sections`（標題＋欄名＋列），不是「盤面」「商店」這種具名欄位。**
@@ -496,14 +496,15 @@ export interface GameEvent {
    */
   version: string;
   /**
-   * 活動檔期。⚠️ **不是從客戶端表讀出來的**：活動表裡沒有日期欄位（只有 `SeasonTable`
-   * 這種賽季表帶 `Begin`／`Finish`），檔期由伺服器控，要靠玩家在遊戲裡實測。
+   * 活動檔期。來源看活動：有排程表的就讀表（探索賓果的 `BingoEventScheduleTable` 帶
+   * `Begin`／`Finish`），沒有的（中秋）由伺服器控，要靠玩家在遊戲裡實測。
    *
    * `tz` 必填（`UTC+9` 這種寫法），畫面上跟著時間一起印：讀者大多在 UTC+8，沒標時區的
    * 「23:59」會被讀成自己的 23:59，最後一小時要換的東西就換不到了。
    *
-   * ⚠️ **沒有實測來源就寫 `null`**，不要為了填滿它去猜一個日期——猜來的跟查證過的在畫面上
-   * 長得一模一樣。產生器把這一格放在「人工補充」區塊，重跑不會把它洗掉。
+   * ⚠️ **表裡沒有、也沒有實測來源就寫 `null`**，不要為了填滿它去猜一個日期——猜來的跟查證過的
+   * 在畫面上長得一模一樣。實測來的檔期放在產生器的「人工補充」區塊，重跑不會把它洗掉；
+   * 從表讀的每次重跑都重算。
    */
   period: { begin: string; finish: string; tz: string } | null;
   /**
