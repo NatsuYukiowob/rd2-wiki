@@ -9,8 +9,8 @@ import type { DiceStatsTable } from '../../src/lib/types';
 const table = JSON.parse(readFileSync('data/dice-stats.json', 'utf8')) as DiceStatsTable;
 
 describe('data/dice-stats.json', () => {
-  it('43 顆骰子，每顆至少有攻擊力、攻擊速度、目標三項', () => {
-    expect(Object.keys(table)).toHaveLength(43);
+  it('44 顆骰子，每顆至少有攻擊力、攻擊速度、目標三項', () => {
+    expect(Object.keys(table)).toHaveLength(44);
     for (const [gameId, entry] of Object.entries(table)) {
       expect(entry.stats.map(s => s.label).slice(0, 3), gameId).toEqual(['攻擊力', '攻擊速度', '目標']);
     }
@@ -22,9 +22,10 @@ describe('data/dice-stats.json', () => {
   // 而那跟「它本來就是固定值」在畫面上一模一樣。
   // 1.1.2 的齒輪二階骰子（D209）取自客戶端表，多 5 項（攻擊力、攻擊速度與三項齒輪能力值）；
   // 同一輪把 1.1.0 時只寫了 base 的 30 項專屬能力值依客戶端成長參數補成四檔（Yuki 2026-09-18）。
-  it('帶四個檔位的項目正好 133 個＝官方強化分頁 97 列＋太陽骰子 2 項－審判骰子攻擊速度＋齒輪二階骰子 5 項＋補齊的 30 項', () => {
+  // 1.1.4 的極限骰子（D307）取自客戶端表，多 3 項（攻擊力、攻擊速度、每疊加傷害增加量）。
+  it('帶四個檔位的項目正好 136 個＝官方強化分頁 97 列＋太陽骰子 2 項－審判骰子攻擊速度＋齒輪二階骰子 5 項＋補齊的 30 項＋極限骰子 3 項', () => {
     const scaling = Object.values(table).flatMap(e => e.stats).filter(s => s.dice7 !== undefined);
-    expect(scaling).toHaveLength(133);
+    expect(scaling).toHaveLength(136);
   });
 
   // 官方表自己空著的格子照原文寫成「待實測」。刻意逐格釘住而不是只數個數：上游哪天補了值，
@@ -50,12 +51,13 @@ describe('data/dice-stats.json', () => {
   // （`D401` 吞噬骰子的「原始目標文本：範圍前」——官方原文寫「範圍前」，那一欄被正規化成
   // 「範圍內」，和 nodes.json 的「擊殺範圍內怪物時」一致）。校訂記錄是給維護者看的，
   // 印在卡片上對玩家沒有意義，只會像個錯字。
-  it('備註只收解釋機制的那 8 條，不收資料表自己的校訂記錄', () => {
+  it('備註只收解釋機制的那 9 條，不收資料表自己的校訂記錄', () => {
     const noted = Object.entries(table).filter(([, e]) => e.note !== undefined);
     // D008 太陽骰子的備註是登場條件（3 骰點火骰子 3 個以上時超越），來源是 1.1.0 客戶端的
     // `Local_Appearance`，性質同機制說明。
     // D209 齒輪二階骰子同理（1.1.2 客戶端 `MythicTranscendTable` 的超越條件＋召喚時的齒輪種類）。
-    expect(noted.map(([g]) => g).sort()).toEqual(['D005', 'D008', 'D102', 'D104', 'D201', 'D204', 'D208', 'D209']);
+    // D307 極限骰子同理（1.1.4 客戶端 `MythicTranscendTable` 的超越條件：連擊骰子 111 連擊）。
+    expect(noted.map(([g]) => g).sort()).toEqual(['D005', 'D008', 'D102', 'D104', 'D201', 'D204', 'D208', 'D209', 'D307']);
     for (const [gameId, e] of noted) {
       expect(e.note, `${gameId} 的備註看起來是校訂記錄不是機制說明`).not.toMatch(/^原始.*文本/);
     }
