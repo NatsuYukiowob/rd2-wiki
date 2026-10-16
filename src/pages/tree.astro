@@ -467,6 +467,11 @@ const TYPES = Object.entries(TYPE_ZH);
     padding: var(--space-2) var(--space-4);
     cursor: pointer;
   }
+  /* 矮視窗（手機橫放）展開時 nav＋footer＋清單會比視窗高：畫布 `min-height: 0` 會被壓到 0。
+     展開期間保住畫布一截，代價是那種視窗下頁面會捲（收合時照樣不捲，U 守）。 */
+  main:has(> #node-index[open]) > #canvas-host {
+    min-height: 30dvh;
+  }
   .node-index-body {
     max-height: 40dvh;
     overflow-y: auto;

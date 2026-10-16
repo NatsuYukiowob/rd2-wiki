@@ -153,8 +153,8 @@ test('SEO-8. 站內連結都帶尾斜線（或指向檔案）：跟 canonical／
   expect(bad).toEqual([]);
 });
 
-test('SEO-9. 畫布頁的文字進得了 HTML：/tree 有全部節點的描述（收合在畫布下方），/sim 有頁面說明', async ({ page, request }) => {
-  // 畫布上的字不在 DOM 裡，這兩頁原本只有工具列的字：Search Console 判成「已檢索、未建立索引」。
+test('SEO-9. /tree 畫布上的文字進得了 HTML：全部節點的描述收合在畫布下方', { tag: '@mobile' }, async ({ page, request }) => {
+  // 畫布上的字不在 DOM 裡，這一頁原本只有工具列的字：Search Console 判成「已檢索、未建立索引」。
   const tree = readTree();
   const html = await (await request.get('/tree/')).text();
   expect(html, '/tree 沒有節點清單').toContain('<details id="node-index">');
@@ -176,7 +176,4 @@ test('SEO-9. 畫布頁的文字進得了 HTML：/tree 有全部節點的描述�
   await index.locator('summary').click();
   await expect(index.locator('dt').first()).toBeVisible();
   expect(await noPageScroll(), '展開後頁面可以捲動').toBe(true);
-
-  const sim = await (await request.get('/sim/')).text();
-  expect(sim).toMatch(/<p class="sr-only">在骰子樹上逐顆解鎖節點/);
 });

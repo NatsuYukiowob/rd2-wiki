@@ -1943,3 +1943,27 @@ test('A5. 在詞彙頁重新整理之後，再推一層按 ← 第一下就退�
   await expect(topViewTitle(page)).toHaveText('尖刺骰子');
   expect(new URL(page.url()).searchParams.get('node')).toBe('1002');
 });
+
+test('N7. 節點一覽展開時：卡片與被選節點讓到清單上方，焦點在清單裡按方向鍵不平移畫布', async ({ page, isMobile }) => {
+  test.skip(isMobile, '僅桌機：手機版 #detail 是底部抽屜');
+  // 一覽（NodeIndex.astro）展開後佔掉畫布底部一截：下界還用視窗底部的話，卡片會蓋在清單上、
+  // 置中會把節點推到清單底下（`bottomLimit()`）。
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await page.goto('/tree/?node=1002');
+  await waitTree(page);
+  const panel = page.locator('#detail');
+  await expect(panel).toBeVisible();
+  await page.locator('#node-index > summary').click();
+  const listTop = async () => (await page.locator('#node-index').boundingBox())!.y;
+  await expect.poll(async () => (await panel.boundingBox())!.y + (await panel.boundingBox())!.height - await listTop(),
+    { message: '卡片下緣應在清單上緣之上' }).toBeLessThanOrEqual(1);
+
+  // 方向鍵：焦點在清單的捲動盒上時捲清單，不平移畫布。
+  await page.locator('.node-index-body').focus();
+  const before = await nodeRect(page, '1002');
+  await page.keyboard.press('ArrowDown');
+  await page.keyboard.press('ArrowRight');
+  await page.waitForTimeout(200);
+  const after = await nodeRect(page, '1002');
+  expect(Math.abs(after.left - before.left) + Math.abs(after.top - before.top), '畫布被方向鍵平移了').toBeLessThan(1);
+});
