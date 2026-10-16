@@ -32,7 +32,7 @@ export type CurrencyKind = 'core' | 'gold';
  */
 /**
  * 活動貨幣（`/events` 的中秋賞月活動、探索賓果活動）。跟討伐硬幣同一個理由留在圖示這一層：它們不是
- * 骰子樹的花費，活動一結束連遊戲裡都作廢（`event_chuseok_alert`）。
+ * 骰子樹的花費，只在活動裡用（中秋的還明寫活動結束作廢，`event_chuseok_alert`）。
  */
 export type EventCoinKind = 'chuseoktoken' | 'chuseokcoin' | 'explorationticket' | 'explorationcoin';
 

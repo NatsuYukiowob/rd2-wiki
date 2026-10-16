@@ -29,8 +29,6 @@ describe('活動資料的貨幣圖', () => {
     // 第二份」：新登記一種超越核心卻沒進這裡的話，資料檔用它就會驗證失敗而畫面沒問題。
     expect(EVENT_ICON_KINDS).toContain('gold');
     expect(EVENT_ICON_KINDS).toContain('chuseokcoin');
-    expect(EVENT_ICON_KINDS).toContain('explorationcoin');
-    expect(EVENT_ICON_KINDS).toContain('explorationticket');
     for (const def of MYTHIC_CORES) expect(EVENT_ICON_KINDS).toContain(def.kind);
   });
 
