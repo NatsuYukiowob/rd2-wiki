@@ -1,5 +1,318 @@
 [
   {
+    "id": "exploration-bingo-2026",
+    "name": "探索賓果活動",
+    "version": "1.1.4",
+    "period": {
+      "begin": "2026-10-17 00:00",
+      "finish": "2026-10-27 00:00",
+      "tz": "UTC+9"
+    },
+    "screenshots": [
+      {
+        "file": "exploration-bingo-2026-board.webp",
+        "caption": "活動主畫面：5×5 賓果盤面與累積通過次數獎勵",
+        "width": 554,
+        "height": 1200
+      },
+      {
+        "file": "exploration-bingo-2026-exchange.webp",
+        "caption": "兌換所：用古代印記換道具",
+        "width": 554,
+        "height": 1200
+      },
+      {
+        "file": "exploration-bingo-2026-shop.webp",
+        "caption": "商店：每日免費與觀看廣告領取",
+        "width": 554,
+        "height": 1200
+      }
+    ],
+    "summary": "透過進行合作戰獲得挖掘鎚子吧！將有一定機率掉落挖掘鎚子。使用挖掘鎚子完成賓果，獲得隱藏獎勵吧！使用古代印記獲得特別獎勵吧。",
+    "currencies": [
+      {
+        "kind": "explorationticket",
+        "name": "挖掘鎚子",
+        "note": "用於探索賓果活動抽取的貨幣。"
+      },
+      {
+        "kind": "explorationcoin",
+        "name": "古代印記",
+        "note": "於探索賓果活動兌換所使用的貨幣。"
+      }
+    ],
+    "sections": [
+      {
+        "title": "賓果盤面",
+        "note": "使用挖掘鎚子完成賓果，並獲得獎勵吧！5×5 盤面，抽取 1 次消耗挖掘鎚子 20。獎勵擺在哪一格、哪一條線每次隨機，下表是各種獎勵各有幾個。",
+        "columns": [
+          "類型",
+          "獎勵",
+          "數量"
+        ],
+        "rows": [
+          [
+            "格子",
+            {
+              "icon": "gold",
+              "text": "金幣 100"
+            },
+            "10 格"
+          ],
+          [
+            "格子",
+            {
+              "icon": "gold",
+              "text": "金幣 300"
+            },
+            "5 格"
+          ],
+          [
+            "格子",
+            {
+              "icon": "gold",
+              "text": "金幣 500"
+            },
+            "1 格"
+          ],
+          [
+            "格子",
+            {
+              "icon": "explorationcoin",
+              "text": "古代印記 1"
+            },
+            "8 格"
+          ],
+          [
+            "格子",
+            {
+              "icon": "explorationcoin",
+              "text": "古代印記 3"
+            },
+            "1 格"
+          ],
+          [
+            "連線",
+            {
+              "icon": "gold",
+              "text": "金幣 2,000"
+            },
+            "5 條"
+          ],
+          [
+            "連線",
+            {
+              "icon": "explorationcoin",
+              "text": "古代印記 5"
+            },
+            "5 條"
+          ],
+          [
+            "角落",
+            {
+              "icon": "explorationcoin",
+              "text": "古代印記 15"
+            },
+            "1 個"
+          ]
+        ]
+      },
+      {
+        "title": "兌換所",
+        "note": "用古代印記兌換。購買上限以整個活動期間計。",
+        "columns": [
+          "兌換內容",
+          "價格",
+          "購買上限"
+        ],
+        "rows": [
+          [
+            "探索橫幅",
+            {
+              "icon": "explorationcoin",
+              "text": "200"
+            },
+            "1 次"
+          ],
+          [
+            "探索圖示",
+            {
+              "icon": "explorationcoin",
+              "text": "100"
+            },
+            "1 次"
+          ],
+          [
+            "探索邊框",
+            {
+              "icon": "explorationcoin",
+              "text": "100"
+            },
+            "1 次"
+          ],
+          [
+            "齒輪二階圖示",
+            {
+              "icon": "explorationcoin",
+              "text": "100"
+            },
+            "1 次"
+          ],
+          [
+            "極限邊框",
+            {
+              "icon": "explorationcoin",
+              "text": "100"
+            },
+            "1 次"
+          ],
+          [
+            {
+              "icon": "extreme",
+              "text": "極限核心 500"
+            },
+            {
+              "icon": "explorationcoin",
+              "text": "500"
+            },
+            "1 次"
+          ],
+          [
+            {
+              "icon": "solar",
+              "text": "太陽核心 200"
+            },
+            {
+              "icon": "explorationcoin",
+              "text": "200"
+            },
+            "2 次"
+          ],
+          [
+            {
+              "icon": "gearSecond",
+              "text": "齒輪二階核心 200"
+            },
+            {
+              "icon": "explorationcoin",
+              "text": "200"
+            },
+            "2 次"
+          ],
+          [
+            {
+              "icon": "treeSeed",
+              "text": "骰子樹種子 1"
+            },
+            {
+              "icon": "explorationcoin",
+              "text": "100"
+            },
+            "2 次"
+          ],
+          [
+            {
+              "icon": "gold",
+              "text": "金幣 100,000"
+            },
+            {
+              "icon": "explorationcoin",
+              "text": "200"
+            },
+            "1 次"
+          ],
+          [
+            {
+              "icon": "core",
+              "text": "骰子核心 5"
+            },
+            {
+              "icon": "explorationcoin",
+              "text": "200"
+            },
+            "1 次"
+          ]
+        ]
+      },
+      {
+        "title": "免費領取",
+        "note": "活動商店每日可領取。",
+        "columns": [
+          "來源",
+          "獎勵",
+          "每日上限"
+        ],
+        "rows": [
+          [
+            "每日免費",
+            {
+              "icon": "explorationticket",
+              "text": "挖掘鎚子 20"
+            },
+            "1 次"
+          ],
+          [
+            "觀看廣告",
+            {
+              "icon": "explorationcoin",
+              "text": "古代印記 1"
+            },
+            "1 次"
+          ]
+        ]
+      },
+      {
+        "title": "累積通過次數",
+        "note": "累積通過次數達到指定次數時額外給獎。最終獎勵要先在活動畫面選定，選定後無法變更。",
+        "columns": [
+          "通過次數",
+          "獎勵"
+        ],
+        "rows": [
+          [
+            "1 次",
+            {
+              "icon": "explorationcoin",
+              "text": "古代印記 50"
+            }
+          ],
+          [
+            "3 次",
+            {
+              "icon": "explorationcoin",
+              "text": "古代印記 75"
+            }
+          ],
+          [
+            "5 次",
+            {
+              "icon": "explorationcoin",
+              "text": "古代印記 100"
+            }
+          ],
+          [
+            "9 次",
+            {
+              "icon": "explorationcoin",
+              "text": "古代印記 150"
+            }
+          ],
+          [
+            "12 次",
+            {
+              "icon": "explorationcoin",
+              "text": "古代印記 200"
+            }
+          ],
+          [
+            "15 次",
+            "最終獎勵（自選）300"
+          ]
+        ]
+      }
+    ]
+  },
+  {
     "id": "chuseok-2026",
     "name": "中秋賞月活動",
     "version": "1.1.2",

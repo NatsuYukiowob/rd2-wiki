@@ -16,11 +16,21 @@ describe('活動資料的貨幣圖', () => {
       expect(eventCellHtml(row[0]!)).toBe(`${eventIcon(kind!)}${text}`);
     }
   });
+  it('探索賓果的兌換所以古代印記計價，最終獎勵是自選的純文字格', () => {
+    const event = events.find(e => e.id === 'exploration-bingo-2026')!;
+    const rows = event.sections.flatMap(s => s.rows);
+    const core = rows.find(r => typeof r[0] === 'object' && r[0].text === '極限核心 500')!;
+    expect(core).toEqual([{ icon: 'extreme', text: '極限核心 500' }, { icon: 'explorationcoin', text: '500' }, '1 次']);
+    expect(rows).toContainEqual(['15 次', '最終獎勵（自選）300']);
+  });
+
   it('固定登記的貨幣與每一種超越核心都在合法清單裡', () => {
     // 清單只有一份（`CURRENCY_ICON_KINDS` ＋ `MYTHIC_CORES`）——這條守的是「有人又複製了
     // 第二份」：新登記一種超越核心卻沒進這裡的話，資料檔用它就會驗證失敗而畫面沒問題。
     expect(EVENT_ICON_KINDS).toContain('gold');
     expect(EVENT_ICON_KINDS).toContain('chuseokcoin');
+    expect(EVENT_ICON_KINDS).toContain('explorationcoin');
+    expect(EVENT_ICON_KINDS).toContain('explorationticket');
     for (const def of MYTHIC_CORES) expect(EVENT_ICON_KINDS).toContain(def.kind);
   });
 
