@@ -1,0 +1,53 @@
+---
+// 骰子樹全部節點的文字清單，收在 `/tree` 畫布下方的 <details>：畫布上的字（名稱、描述、覺醒）
+// 不在 HTML 裡，搜尋引擎與讀屏在這一頁原本只讀得到工具列。這份清單把同樣的文字在建置期輸出進 HTML。
+//
+// ⚠️ 用收合的 <details>，不用 `.sr-only`：整頁的文字幾乎都在這裡，放進看不見的 1px 盒子
+// 等於隱藏文字。收合的內容搜尋引擎會收錄，使用者也展開得到。
+// ⚠️ 展開後清單在自己的捲動盒裡捲（`max-height`），頁面本身仍不捲動（E2E 的 U；
+// 矮視窗例外，見 tree.astro）。代價是展開期間畫布變矮，卡片與置中的下界讓到清單上緣（`bottomLimit()`）。
+// ⚠️ 資料讀 `tree-data`（建置期、兩包都讀）。這是 .astro frontmatter，不會進瀏覽器的 JS。
+import { treeData as data } from '../lib/tree-data';
+import keywordsRaw from '../../data/keywords.json';
+import { buildGlossary, displayGlossary } from '../lib/glossary-groups';
+import { renderStaticText } from '../lib/static-markup';
+import { BRANCH_ZH, typeLabel, AWAKENING_CONDITION } from '../lib/labels';
+import type { GlossaryRecord, TreeData } from '../lib/types';
+
+const tree = data as unknown as TreeData;
+const keywords = keywordsRaw as Record<string, GlossaryRecord>;
+const index = buildGlossary(keywords, tree.nodes);
+const whitelist = Object.keys(keywords);
+const glossary = displayGlossary(keywords);
+const text = (s: string) => renderStaticText(s, whitelist, glossary, index);
+const nameOf = new Map(tree.nodes.map(n => [n.id, n.name]));
+// 直接前置（邊是 [前置, 後繼]）。`bypassPrereq` 不改圖結構，那條邊照印。
+const prereqs = new Map<string, string[]>();
+for (const [from, to] of tree.edges) prereqs.set(to, [...(prereqs.get(to) ?? []), nameOf.get(from) ?? from]);
+const branches = Object.entries(BRANCH_ZH).map(([branch, label]) => ({
+  label,
+  nodes: tree.nodes.filter(n => n.branch === branch).sort((a, b) => a.id.localeCompare(b.id)),
+}));
+---
+
+<details id="node-index">
+  <summary>骰子樹節點一覽（{tree.nodes.length} 個）</summary>
+  {/* 捲動盒要能用鍵盤捲（同 /events 的表格容器）。 */}
+  <div class="node-index-body" tabindex="0" role="region" aria-label="骰子樹節點一覽">
+    {branches.map(b => (
+      <section>
+        <h2>{b.label}（{b.nodes.length} 個）</h2>
+        <dl>
+          {b.nodes.map(n => (
+            <Fragment>
+              <dt>{n.name}<span class="note">（{typeLabel(n)}{n.maxLevel > 1 ? `，最高 Lv.${n.maxLevel}` : ''}）</span></dt>
+              <dd><Fragment set:html={text(n.description)} /></dd>
+              {n.awakening && <dd>覺醒（{AWAKENING_CONDITION}）：<Fragment set:html={text(n.awakening)} /></dd>}
+              {prereqs.has(n.id) && <dd class="note">前置：{prereqs.get(n.id)!.join('、')}</dd>}
+            </Fragment>
+          ))}
+        </dl>
+      </section>
+    ))}
+  </div>
+</details>

@@ -241,7 +241,8 @@ for (const btn of document.querySelectorAll<HTMLButtonElement>('#branch-chips bu
 window.addEventListener('keydown', e => {
   if (isTypingTarget(document.activeElement?.tagName)) return;
   if (e.ctrlKey || e.metaKey || e.altKey || e.defaultPrevented) return;
-  if (e.key.startsWith('Arrow') && panel.contains(document.activeElement)) return;
+  // 節點一覽同理：焦點在它的捲動盒、summary 或關鍵字連結上時，方向鍵是捲清單。
+  if (e.key.startsWith('Arrow') && (panel.contains(document.activeElement) || nodeIndex?.contains(document.activeElement))) return;
   const step = 60;
   let moved = true;
   // ⚠️ 縮放錨點要用**畫布中心**（相對 host 的 CSS px），不是 innerWidth/2：`CanvasView`
@@ -286,6 +287,16 @@ if (!detailEl) {
 // TS 的 control-flow 窄化不會跨函式邊界持續生效到下面的 select()（一個獨立的函式宣告）
 // 裡，所以另外宣告一個型別明確標成 HTMLElement（非 null）的 binding 給 select() 閉包用。
 const panel: HTMLElement = detailEl;
+// 畫布下方的節點一覽（NodeIndex.astro）。展開時它佔掉畫布底部一截，卡片與置中的下界要讓開它。
+const nodeIndex = document.getElementById('node-index') as HTMLDetailsElement | null;
+
+/**
+ * 卡片與置中可用的下界（視窗座標）。收合時沿用視窗底部（卡片本來就可以蓋到 footer 上）；
+ * 一覽展開時換成它的上緣，否則卡片會蓋在清單上、置中的節點會被推到清單底下。
+ */
+function bottomLimit(): number {
+  return nodeIndex?.open ? Math.min(window.innerHeight, nodeIndex.getBoundingClientRect().top) : window.innerHeight;
+}
 
 /**
  * 詳情面板的視圖堆疊，以及進行中換頁動畫的收尾。
@@ -599,10 +610,11 @@ function targetCenterY(
   nodeH: number,
   topLimit: number,
 ): number {
-  const center = (topLimit + window.innerHeight) / 2;
+  const bottom = bottomLimit();
+  const center = (topLimit + bottom) / 2;
   const need = GAP + cardH + CENTER_SLACK;
   const lo = topLimit + GAP + nodeH / 2 + (side === 'above' ? need : 0);
-  const hi = window.innerHeight - GAP - nodeH / 2 - (side === 'below' ? need : 0);
+  const hi = bottom - GAP - nodeH / 2 - (side === 'below' ? need : 0);
   // 兩邊擠不下時（極矮的視窗）以「卡片完整顯示」為優先，讓節點貼到另一側的邊。
   if (hi < lo) return side === 'above' ? hi : lo;
   return Math.min(Math.max(center, lo), hi);
@@ -768,7 +780,8 @@ function positionPanel(opts: {
   // 的前置」一行（279.7 → 312.2），四顆抽樣節點有三顆被卡片完全蓋住（重疊 467.6 px²）。
   // 那條路徑不會重新置中（刻意的，見 centerOnSelected() 的註解），所以只能靠上限自己收斂。
   const roomAbove = n.top - topLimit - GAP * 2;
-  const roomBelow = window.innerHeight - n.bottom - GAP * 2;
+  const bottom = bottomLimit();
+  const roomBelow = bottom - n.bottom - GAP * 2;
   // 偏好側連 MIN_PANEL_H 都放不下、而另一側放得下時，這一次先讓到另一側。
   // ⚠️ opts.globalCap（select() 量自然高度時用）走的是另一條路：那時節點還沒平移到定位，
   // 拿當下的空間算會量到一個被壓扁的高度，而置中的目標位置正是用那個高度算出來的。
@@ -779,7 +792,7 @@ function positionPanel(opts: {
     : panelSide;
   // 置中之後那一側必定放得下自然高度（見 targetCenterY()），所以這個上限在正常動線上不會
   // 真的裁到卡片；它只在使用者把節點拖到畫面邊緣、或內容變高之後才生效。
-  const globalCap = Math.max(0, window.innerHeight - topLimit - GAP * 3 - NODE_ROOM);
+  const globalCap = Math.max(0, bottom - topLimit - GAP * 3 - NODE_ROOM);
   const sideRoom = Math.max(MIN_PANEL_H, side === 'above' ? roomAbove : roomBelow);
   panel.style.maxHeight = `${opts.globalCap ? globalCap : Math.min(globalCap, sideRoom)}px`;
 
@@ -792,7 +805,7 @@ function positionPanel(opts: {
   const top = clamp(
     side === 'below' ? n.bottom + GAP : n.top - GAP - height,
     topLimit + GAP,
-    Math.max(topLimit + GAP, window.innerHeight - height - GAP),
+    Math.max(topLimit + GAP, bottom - height - GAP),
   );
 
   // 只有當卡片的垂直範圍真的跟側欄重疊時才把左緣往右推——卡片落在側欄下方時沒必要浪費那段寬度。
@@ -840,6 +853,8 @@ function schedulePositionPanel(): void {
 // 包一層而不是直接把 schedulePositionPanel 當 callback：它不收參數，而回呼日後若加上參數
 // 會被靜靜地當成 options 傳進去。畫布一動就是「重新對齊」，不帶任何選項。
 tree.onViewChange(() => schedulePositionPanel());
+// 一覽開合會改變卡片的下界（bottomLimit()），畫布的 resize 未必剛好排出一幀。
+nodeIndex?.addEventListener('toggle', () => schedulePositionPanel());
 window.addEventListener('resize', () => schedulePositionPanel());
 
 // 「使用者選了一顆節點」由 controller 判定：它在 pointerdown 當下用幾何命中記下被按到的

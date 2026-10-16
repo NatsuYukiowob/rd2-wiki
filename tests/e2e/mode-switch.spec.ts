@@ -2,13 +2,18 @@ import { test, expect, type Page } from './fixtures';
 import { readTree } from '../helpers/read-tree';
 
 // /tree ⇄ /sim 的模式切換（src/components/ModeSwitch.astro、src/lib/mode-switch.ts）。
-// 「視角帶過去」的判準是**可視區中心**對同一個 world 點、倍率相同：/sim 桌機右邊常駐側欄，
+// 「視角帶過去」的判準是**可視區中心**對同一個 world 點、倍率（px/unit）相同：/sim 桌機右邊常駐側欄，
 // 可視區是 host 扣掉側欄，不是整個 #canvas-host。
 
 const nodes = (readTree() as { nodes: { id: string; name: string }[] }).nodes;
 const nameOf = (id: string) => nodes.find(n => n.id === id)!.name;
 
 const ready = (page: Page) => page.waitForFunction(() => Boolean(window.__tree));
+
+/** 節點在螢幕上的寬度（CSS px）：「倍率相同」的判準。⚠️ 不比 `__tree.scale()`：那是相對
+ *  「整樹塞進畫布」的倍率，兩頁畫布高度不同（/tree 底下多一列節點一覽）時同一個 px/unit
+ *  是不同的 scale。`?view=` 帶的是 px/unit。 */
+const nodeWidth = (page: Page, id: string) => page.evaluate(nodeId => window.__tree.nodeScreenRect(nodeId)!.width, id);
 
 /** 節點中心相對「可視區中心」的位移（CSS px）。 */
 async function offsetFromVisibleCenter(page: Page, id: string): Promise<[number, number]> {
@@ -31,7 +36,7 @@ test('MS1. 瀏覽 → 模擬：帶著選取與視角過去，只選取不取得�
   await page.goto('/tree/?node=1201');
   await ready(page);
   await page.waitForTimeout(600);   // centerOnSelected 的緩動平移
-  const scale = await page.evaluate(() => window.__tree.scale());
+  const w = await nodeWidth(page, '1201');
   const at = await offsetFromVisibleCenter(page, '1201');
 
   await page.locator('#toolbar [data-mode-switch]').click();
@@ -40,7 +45,7 @@ test('MS1. 瀏覽 → 模擬：帶著選取與視角過去，只選取不取得�
   await expect(page).toHaveURL(/\/sim\/$/);
   await expect(page.locator('#sim-owned-count')).toHaveText(owned!);
   await expect(page.locator('#sim-detail h3')).toHaveText(nameOf('1201'));
-  expect(await page.evaluate(() => window.__tree.scale())).toBeCloseTo(scale, 2);
+  expect(await nodeWidth(page, '1201') / w).toBeCloseTo(1, 2);
   const at2 = await offsetFromVisibleCenter(page, '1201');
   expect(Math.abs(at2[0] - at[0]), `水平位移 ${at[0]} → ${at2[0]}`).toBeLessThan(2);
   expect(Math.abs(at2[1] - at[1]), `垂直位移 ${at[1]} → ${at2[1]}`).toBeLessThan(2);
@@ -53,14 +58,14 @@ test('MS2. 模擬 → 瀏覽：沒選節點時也帶回倍率與可視區中心�
   await page.mouse.move(host!.x + 300, host!.y + 300);
   for (let i = 0; i < 4; i++) { await page.mouse.wheel(0, -300); await page.waitForTimeout(60); }
   await page.waitForTimeout(400);
-  const scale = await page.evaluate(() => window.__tree.scale());
+  const w = await nodeWidth(page, '1201');
   const at = await offsetFromVisibleCenter(page, '1201');
 
   await page.locator('#sim-toolbar [data-mode-switch]').click();
   await page.waitForURL(u => u.pathname === '/tree/');
   await ready(page);
   await expect(page).toHaveURL(/\/tree\/$/);
-  expect(await page.evaluate(() => window.__tree.scale())).toBeCloseTo(scale, 2);
+  expect(await nodeWidth(page, '1201') / w).toBeCloseTo(1, 2);
   const at2 = await offsetFromVisibleCenter(page, '1201');
   expect(Math.abs(at2[0] - at[0]), `水平位移 ${at[0]} → ${at2[0]}`).toBeLessThan(2);
   expect(Math.abs(at2[1] - at[1]), `垂直位移 ${at[1]} → ${at2[1]}`).toBeLessThan(2);

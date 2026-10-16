@@ -4,6 +4,7 @@
 // 掛載邏輯放在 src/scripts/tree-canvas.ts，方便各任務在同一支腳本上疊加互動。
 import Base from '../layouts/Base.astro';
 import ModeSwitch from '../components/ModeSwitch.astro';
+import NodeIndex from '../components/NodeIndex.astro';
 import { BRANCH_ZH, TYPE_ZH } from '../lib/labels';
 import '../styles/detail.css';
 import '../styles/canvas.css';
@@ -91,6 +92,7 @@ const TYPES = Object.entries(TYPE_ZH);
       <button type="button" class="chip" data-branch={value}><span class={`branch-dot branch-${value}`} aria-hidden="true"></span>{label}</button>
     ))}
   </div>
+  <NodeIndex />
 </Base>
 
 <style is:global>
@@ -450,5 +452,49 @@ const TYPES = Object.entries(TYPE_ZH);
     #filter-clear:active {
       transform: none;
     }
+  }
+
+  /* 節點文字清單（`NodeIndex.astro`）：畫布與 footer 之間的一列，收合時只佔 summary 高度。
+     ⚠️ `flex: none`：它是 `main:has(#canvas-host)` 的 flex 子項，畫布 `flex: 1` 分剩下的。
+     展開後在 `.node-index-body` 自己的捲動盒裡捲，頁面不捲（E2E 的 U）。 */
+  #node-index {
+    flex: none;
+    border-top: 1px solid var(--border);
+    color: var(--muted);
+    font-size: var(--fs-sm);
+  }
+  #node-index > summary {
+    padding: var(--space-2) var(--space-4);
+    cursor: pointer;
+  }
+  /* 矮視窗（手機橫放）展開時 nav＋footer＋清單會比視窗高：畫布 `min-height: 0` 會被壓到 0。
+     展開期間保住畫布一截，代價是那種視窗下頁面會捲（收合時照樣不捲，U 守）。 */
+  main:has(> #node-index[open]) > #canvas-host {
+    min-height: 30dvh;
+  }
+  .node-index-body {
+    max-height: 40dvh;
+    overflow-y: auto;
+    padding: 0 var(--space-4) var(--space-4);
+    color: var(--fg);
+  }
+  .node-index-body h2 {
+    margin: var(--space-4) 0 var(--space-2);
+    font-size: var(--fs-base);
+  }
+  .node-index-body dl {
+    max-width: 44rem;
+    margin: 0;
+  }
+  .node-index-body dt {
+    margin-top: var(--space-3);
+    font-weight: 700;
+  }
+  .node-index-body dd {
+    margin: 0;
+  }
+  #node-index .note {
+    color: var(--muted);
+    font-weight: 400;
   }
 </style>
