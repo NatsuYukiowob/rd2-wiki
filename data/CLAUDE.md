@@ -11,11 +11,14 @@
   CSV 源檔＋編譯二進位兩份，取 CSV；表頭三列＝註解／欄名／型別，資料從第 4 列起。文字在 `localization_text`
   （`ko,en,ja,zh-tw` 四欄）。解包工具、解出的 CSV、各產生腳本**不進版控**（維護者本機）。
 - **對照鍵**：節點 id ＝ `DiceTreeNodeTable.Id`；成本 ＝ `RankUpGoldArr[0]`／`RankUpGoodsArr[0]`（`RankUpGoodsType`：
-  `NODE_STONE` 核心、`CORE_SOLAR` 太陽核心、`CORE_GEAR_SECOND` 齒輪二階核心）；骰子 ＝ `DefenderTable` 第 KindId 列；
+  `NODE_STONE` 核心、`CORE_SOLAR` 太陽核心、`CORE_GEAR_SECOND` 齒輪二階核心、`CORE_EXTREME` 極限核心）；骰子 ＝ `DefenderTable` 第 KindId 列；
   符文 ＝ `RuneTable.Id`；被動 ＝ `PlayerPassiveTable` 第 KindId 列。
   ⚠️ **等級上限不是 `RankUpGoldArr` 的長度**（上游一律補滿 50 格），骰子符文的上限在 `RuneTable.MaxRank`。
 - **SVG 座標 ＝ `(1000 + 0.2·x, 850 − 0.2·y)`**（`Position` 欄）。刻意不吻合表格的節點：`1407`（版面調整）、
-  `1601`（比表格再往下 30，讓出骰子標籤）、`2503`／`2603`（一起往上 20，否則標籤壓到 `2303`）。其餘一律照表格。
+  `1601`（比表格再往下 30，讓出骰子標籤）、`2503`／`2603`（一起往上 20，否則標籤壓到 `2303`）、`3405`（比表格左 20、上 20，否則標籤壓到 `3205` 的標籤）、
+  `3605`（比表格再往左 10，讓出 `3505` 的骰子標籤）、`2307`（比表格往下 20，否則 `2207` 的標籤壓到它的圖示）。
+  量重疊要用畫布的字（`700 12px` world 單位，`theme.labelPx`），預覽 SVG 的字比較小、會低估。
+  已知且接受：`3305` 的標籤左緣擦進 `3505` 圖框右下約 2.5（落在圖檔的透明邊，畫面看不出來；要避開得把 `3505` 移 40 以上）。其餘一律照表格。
 - ⚠️ **客戶端描述是樣板不是成品**：`{0}`／`{1}` 用 `Value1`／`Value1_RankAdd` 填、`<tag>X</tag>` 換成 `#關鍵字`、
   `<color>`／`<u>` 剝掉。三類差異**不是遊戲改了**：(a) 樣板沒放成長佔位（`盛開`／`排序增幅`／`末日宣言`），正本保留
   `(+每級)` 讓規則 17 算得出來；(b) 負值成長印成 `-0.5秒(+-0.2秒)`，正本維持 `0.5秒(+0.2秒)`；(c) 值在別張表
@@ -43,9 +46,9 @@
 - 階段清單有三份要一起改：`src/lib/types.ts` 的 `TacticStage`、`src/lib/tactics.ts` 的 `TACTIC_STAGES`（＝篩選鈕順序）、
   規則 24(e) 的 `stages`；E2E 是 `tests/e2e/battle.spec.ts` 的 T6。
 
-## 超越骰子（`1501` 太陽／`2503` 齒輪二階，含符文 `1601`／`2603`）
+## 超越骰子（`1501` 太陽／`2503` 齒輪二階／`3505` 極限，含符文 `1601`／`2603`／`3605`）
 
-- 解鎖除了入邊還要前置節點練到 Lv.50（`1201`／`2203`）→ `data/prereq-ranks.json`（上游 `NeedNode`／`NeedNodeRank`，
+- 解鎖除了入邊還要前置節點練到 Lv.50（`1201`／`2203`／`3205`）→ `data/prereq-ranks.json`（上游 `NeedNode`／`NeedNodeRank`，
   規則 26），不寫進描述。登場條件寫在 `dice-stats.json` 的 `note`（客戶端 `MythicTranscendTable`）。
 - 符文的逐級費用在 `passive-upgrade-cost.json` 的 `special`（金幣＋超越核心）。
 - **圖示不是 `render-nodes` 產的**（在 `KEEP_ICON_IDS`，重跑時沿用原檔）。要重做圖時手工合成：節點 ＝ `DiceTree_Transcendence_on`

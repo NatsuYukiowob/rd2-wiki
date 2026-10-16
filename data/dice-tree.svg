@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="2000" height="1700" viewBox="0 0 2000 1700" data-version="1.1.0" data-game-version="1.1.3" data-updated="2026-10-04" data-label-mode="skill-names">
-<metadata>Random Dice 2 dice tree; layout rebased on RD2骰子樹 v1.0.1 (2026-08-18), coordinates halved; content from game client 1.1.3 data tables (resource bundle 1.1.3) on 2026-10-04.</metadata><style>
+<svg xmlns="http://www.w3.org/2000/svg" width="2000" height="1700" viewBox="0 0 2000 1700" data-version="1.1.0" data-game-version="1.1.4" data-updated="2026-10-17" data-label-mode="skill-names">
+<metadata>Random Dice 2 dice tree; layout rebased on RD2骰子樹 v1.0.1 (2026-08-18), coordinates halved; content from game client 1.1.4 data tables (resource bundle 1.1.4) on 2026-10-17.</metadata><style>
 text{font-family:'Noto Sans TC','Microsoft JhengHei',sans-serif;fill:#f7f3ff;text-anchor:middle}.edge{fill:none;stroke:#a89ad3;stroke-linecap:round;stroke-width:3.2;opacity:.9}.node .cost{font-size:9px;fill:#ffd66f}.node .id{font-size:8px;fill:#aaa4c1}.dice-label{font-size:10px;font-weight:700}.fallback-label{font-size:10px;font-weight:700}.mini-label{font-size:8px;font-weight:700}.tree-center-link{fill:none;stroke:#a89ad3;stroke-width:3.2;stroke-linecap:round;opacity:.96}.tree-center-label{font-size:12px;font-weight:700}</style>
 <rect width="100%" height="100%" fill="#2f2942" />
 <defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#736b91" /></marker></defs>
@@ -87,7 +87,7 @@ text{font-family:'Noto Sans TC','Microsoft JhengHei',sans-serif;fill:#f7f3ff;tex
 <path class="edge" marker-end="url(#arrow)" d="M 370.00 1270.00 L 330.00 1230.00" />
 <path class="edge" marker-end="url(#arrow)" d="M 960.00 1110.00 L 990.00 1080.00" />
 <path class="edge" marker-end="url(#arrow)" d="M 960.00 1110.00 L 960.00 1160.00" />
-<path class="edge" marker-end="url(#arrow)" d="M 870.00 1270.00 L 830.00 1270.00" />
+<path class="edge" marker-end="url(#arrow)" d="M 870.00 1270.00 L 840.00 1320.00" />
 <path class="edge" marker-end="url(#arrow)" d="M 870.00 1270.00 L 870.00 1230.00" />
 <path class="edge" marker-end="url(#arrow)" d="M 720.00 1420.00 L 760.00 1460.00" />
 <path class="edge" marker-end="url(#arrow)" d="M 720.00 1420.00 L 720.00 1460.00" />
@@ -131,7 +131,10 @@ text{font-family:'Noto Sans TC','Microsoft JhengHei',sans-serif;fill:#f7f3ff;tex
 <path class="edge" marker-end="url(#arrow)" d="M 1130.00 1170.00 L 1130.00 1210.00" />
 <path class="edge" marker-end="url(#arrow)" d="M 1130.00 1170.00 L 1090.00 1210.00" />
 <path class="edge" marker-end="url(#arrow)" d="M 1280.00 1320.00 L 1280.00 1360.00" />
-<path class="edge" marker-end="url(#arrow)" d="M 1280.00 1320.00 L 1240.00 1360.00" />
+<path class="edge" marker-end="url(#arrow)" d="M 1280.00 1320.00 L 1220.00 1300.00" />
+<path class="edge" marker-end="url(#arrow)" d="M 1280.00 1360.00 L 1220.00 1380.00" />
+<path class="edge" marker-end="url(#arrow)" d="M 1220.00 1300.00 L 1220.00 1380.00" />
+<path class="edge" marker-end="url(#arrow)" d="M 1220.00 1380.00 L 1160.00 1380.00" />
 <path class="edge" marker-end="url(#arrow)" d="M 1330.00 1470.00 L 1330.00 1510.00" />
 <path class="edge" marker-end="url(#arrow)" d="M 1330.00 1470.00 L 1330.00 1430.00" />
 <path class="edge" marker-end="url(#arrow)" d="M 1480.00 1220.00 L 1510.00 1250.00" />
@@ -344,7 +347,7 @@ text{font-family:'Noto Sans TC','Microsoft JhengHei',sans-serif;fill:#f7f3ff;tex
 <g class="node" transform="translate(990.00,1080.00)" data-id="2306"><polygon points="0,-13 13,0 0,13 -13,0" fill="#405276" stroke="#50b7d8" stroke-width="2" /><image href="icons/c37d20412411.png" x="-13" y="-13" width="26" height="26" preserveAspectRatio="xMidYMid meet" /></g>
 <g class="node" transform="translate(960.00,1160.00)" data-id="2406"><polygon points="0,-13 13,0 0,13 -13,0" fill="#405276" stroke="#50b7d8" stroke-width="2" /><image href="icons/2dd0fbbc8ed1.png" x="-13" y="-13" width="26" height="26" preserveAspectRatio="xMidYMid meet" /></g>
 <g class="node" transform="translate(870.00,1270.00)" data-id="2207"><polygon points="0,-13 13,0 0,13 -13,0" fill="#405276" stroke="#50b7d8" stroke-width="2" /><image href="icons/889cdb789f65.png" x="-13" y="-13" width="26" height="26" preserveAspectRatio="xMidYMid meet" /></g>
-<g class="node" transform="translate(830.00,1270.00)" data-id="2307"><polygon points="0,-13 13,0 0,13 -13,0" fill="#405276" stroke="#50b7d8" stroke-width="2" /><image href="icons/dc6a37917645.png" x="-13" y="-13" width="26" height="26" preserveAspectRatio="xMidYMid meet" /></g>
+<g class="node" transform="translate(840.00,1320.00)" data-id="2307"><polygon points="0,-13 13,0 0,13 -13,0" fill="#405276" stroke="#50b7d8" stroke-width="2" /><image href="icons/dc6a37917645.png" x="-13" y="-13" width="26" height="26" preserveAspectRatio="xMidYMid meet" /></g>
 <g class="node" transform="translate(870.00,1230.00)" data-id="2407"><polygon points="0,-13 13,0 0,13 -13,0" fill="#405276" stroke="#50b7d8" stroke-width="2" /><image href="icons/d4267f811f3f.png" x="-13" y="-13" width="26" height="26" preserveAspectRatio="xMidYMid meet" /></g>
 <g class="node" transform="translate(720.00,1420.00)" data-id="2208"><polygon points="0,-13 13,0 0,13 -13,0" fill="#405276" stroke="#50b7d8" stroke-width="2" /><image href="icons/4085799c8453.png" x="-13" y="-13" width="26" height="26" preserveAspectRatio="xMidYMid meet" /></g>
 <g class="node" transform="translate(760.00,1460.00)" data-id="2308"><polygon points="0,-13 13,0 0,13 -13,0" fill="#405276" stroke="#50b7d8" stroke-width="2" /><image href="icons/ca6e461afb65.png" x="-13" y="-13" width="26" height="26" preserveAspectRatio="xMidYMid meet" /></g>
@@ -390,7 +393,9 @@ text{font-family:'Noto Sans TC','Microsoft JhengHei',sans-serif;fill:#f7f3ff;tex
 <g class="node" transform="translate(1090.00,1210.00)" data-id="3404"><polygon points="0,-13 13,0 0,13 -13,0" fill="#405276" stroke="#a871ec" stroke-width="2" /><image href="icons/46fa7d528277.png" x="-13" y="-13" width="26" height="26" preserveAspectRatio="xMidYMid meet" /></g>
 <g class="node" transform="translate(1280.00,1320.00)" data-id="3205"><polygon points="0,-13 13,0 0,13 -13,0" fill="#405276" stroke="#a871ec" stroke-width="2" /><image href="icons/9a79d29a3637.png" x="-13" y="-13" width="26" height="26" preserveAspectRatio="xMidYMid meet" /></g>
 <g class="node" transform="translate(1280.00,1360.00)" data-id="3305"><polygon points="0,-13 13,0 0,13 -13,0" fill="#405276" stroke="#a871ec" stroke-width="2" /><image href="icons/1faa4fc9da0d.png" x="-13" y="-13" width="26" height="26" preserveAspectRatio="xMidYMid meet" /></g>
-<g class="node" transform="translate(1240.00,1360.00)" data-id="3405"><polygon points="0,-13 13,0 0,13 -13,0" fill="#405276" stroke="#a871ec" stroke-width="2" /><image href="icons/f254e57c9a0f.png" x="-13" y="-13" width="26" height="26" preserveAspectRatio="xMidYMid meet" /></g>
+<g class="node" transform="translate(1220.00,1300.00)" data-id="3405"><polygon points="0,-13 13,0 0,13 -13,0" fill="#405276" stroke="#a871ec" stroke-width="2" /><image href="icons/f254e57c9a0f.png" x="-13" y="-13" width="26" height="26" preserveAspectRatio="xMidYMid meet" /></g>
+<g class="node" transform="translate(1220.00,1380.00)" data-id="3505"><rect x="-25" y="-26.5" width="50" height="53" rx="8" fill="#322b4b" stroke="#a871ec" stroke-width="2" /><image href="icons/cb81902ee6c7.png" x="-25" y="-26.5" width="50" height="53" preserveAspectRatio="xMidYMid meet" /></g>
+<g class="node" transform="translate(1160.00,1380.00)" data-id="3605"><polygon points="0,-13 13,0 0,13 -13,0" fill="#405276" stroke="#a871ec" stroke-width="2" /><image href="icons/ddad7b6730cc.png" x="-13" y="-13" width="26" height="26" preserveAspectRatio="xMidYMid meet" /></g>
 <g class="node" transform="translate(1330.00,1470.00)" data-id="3206"><polygon points="0,-13 13,0 0,13 -13,0" fill="#405276" stroke="#a871ec" stroke-width="2" /><image href="icons/ecf67b6f6fa1.png" x="-13" y="-13" width="26" height="26" preserveAspectRatio="xMidYMid meet" /></g>
 <g class="node" transform="translate(1330.00,1510.00)" data-id="3306"><polygon points="0,-13 13,0 0,13 -13,0" fill="#405276" stroke="#a871ec" stroke-width="2" /><image href="icons/fbe25e6a09f5.png" x="-13" y="-13" width="26" height="26" preserveAspectRatio="xMidYMid meet" /></g>
 <g class="node" transform="translate(1330.00,1430.00)" data-id="3406"><polygon points="0,-13 13,0 0,13 -13,0" fill="#405276" stroke="#a871ec" stroke-width="2" /><image href="icons/5042dd39c557.png" x="-13" y="-13" width="26" height="26" preserveAspectRatio="xMidYMid meet" /></g>

@@ -1,6 +1,6 @@
 {
   "note": "官方資料表「技能效果」欄標註的滿級數值，用來反向驗算站台從 data/nodes.json 的 description 推導出來的 growth。鍵是 nodes.json 的 gameId。",
-  "source": "1.1.0 客戶端解包資料表 RuneTable／PlayerPassiveTable（Value1 + (Lv−1)×RankAdd）；2026-09-06 逐筆對過，1.0.3 xlsx 時期的 44 筆全部未變動",
+  "source": "1.1.0 客戶端解包資料表 RuneTable／PlayerPassiveTable（Value1 + (Lv−1)×RankAdd）；2026-09-06 逐筆對過，1.0.3 xlsx 時期的 44 筆全部未變動；之後各版新增的符文（D2090 齒輪二階強化 1.1.2、D3070 極限強化 1.1.4）取自該版客戶端 RuneTable",
   "values": {
     "D0000": {
       "level": 50,
@@ -231,6 +231,11 @@
       "level": 20,
       "value": 210.0,
       "unit": "%"
+    },
+    "D3070": {
+      "level": 20,
+      "value": 2.0,
+      "unit": "x"
     }
   }
 }

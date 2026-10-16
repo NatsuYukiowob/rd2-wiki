@@ -109,7 +109,7 @@ function reshape(shape: Shape, w: number, h: number): { re: RegExp; to: string }
 }
 
 /**
- * 超越骰子 1501／2503 與符文 1601／2603 的圖示不是這支產的（遊戲的超越節點底板疊骰子 sprite，
+ * 超越骰子 1501／2503／3505 與符文 1601／2603／3605 的圖示不是這支產的（遊戲的超越節點底板疊骰子 sprite，
  * 配方見 `data/CLAUDE.md`），在 `KEEP_ICON_IDS` 裡、重跑時原樣保留。正本裡 1501 刻意仍是 `<rect>`、
  * 六角只在圖裡——不要為了配合圖把它改成 6 點 polygon（下面會判成 'hex'，那是支援節點的形狀）。
  */
