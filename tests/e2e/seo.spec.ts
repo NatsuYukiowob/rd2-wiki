@@ -9,6 +9,8 @@
 // sitemap 列出的網址要跟 canonical 對得起來，而「未知路徑回什麼」同時決定前兩者
 // 是不是假象。
 import { test, expect } from './fixtures';
+import { readTree } from '../helpers/read-tree';
+import { escapeHtml } from '../../src/lib/markup';
 
 /** 正式站網址。canonical 與 sitemap 裡的絕對網址都應該長這樣，跟本機測試埠無關。 */
 const SITE = 'https://rd2wiki.org';
@@ -149,4 +151,32 @@ test('SEO-8. 站內連結都帶尾斜線（或指向檔案）：跟 canonical／
     }
   }
   expect(bad).toEqual([]);
+});
+
+test('SEO-9. 畫布頁的文字進得了 HTML：/tree 有全部節點的描述（收合在畫布下方），/sim 有頁面說明', async ({ page, request }) => {
+  // 畫布上的字不在 DOM 裡，這兩頁原本只有工具列的字：Search Console 判成「已檢索、未建立索引」。
+  const tree = readTree();
+  const html = await (await request.get('/tree/')).text();
+  expect(html, '/tree 沒有節點清單').toContain('<details id="node-index">');
+  const section = html.slice(html.indexOf('<details id="node-index">'));
+  expect((section.match(/<dt>/g) ?? []).length).toBe(tree.nodes.length);
+  // 描述與覺醒都是那一顆的完整文字，挑一顆有覺醒、覺醒裡沒有 `#` 標記的骰子驗。
+  const dice = tree.nodes.find(n => n.awakening && !n.awakening.includes('#'))!;
+  expect(section).toContain(dice.name);
+  expect(section).toContain(escapeHtml(dice.awakening!.split('\n')[0]!));
+
+  // 收合時只佔一列、頁面不捲；展開後清單在自己的盒子裡捲，頁面仍不捲。
+  await page.goto('/tree/');
+  const index = page.locator('#node-index');
+  await expect(index).not.toHaveAttribute('open');
+  const closed = await index.boundingBox();
+  expect(closed!.height).toBeLessThan(60);
+  const noPageScroll = () => page.evaluate(() => document.documentElement.scrollHeight <= window.innerHeight);
+  expect(await noPageScroll(), '收合時頁面可以捲動').toBe(true);
+  await index.locator('summary').click();
+  await expect(index.locator('dt').first()).toBeVisible();
+  expect(await noPageScroll(), '展開後頁面可以捲動').toBe(true);
+
+  const sim = await (await request.get('/sim/')).text();
+  expect(sim).toMatch(/<p class="sr-only">在骰子樹上逐顆解鎖節點/);
 });
