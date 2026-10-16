@@ -65,7 +65,7 @@
 | `passive-upgrade-cost.json` | 規則 22（雙向） | `bands` 照官方寫法（`core` 只在 `from` 那級收一次），展開只走 `src/lib/upgrade-tiers.ts` 的 `expandTier()`，validate 與 `/sim` 共用 |
 | `dice-stats.json` | 規則 23 | 見下 |
 | `tactics.json`／`boss.json` | 規則 24／25 | 見下 |
-| `rift-shop.json` | 規則 27 | 換圖用 `add-icon --rift-shop`（同名的檔位一起換）；來源 `TacticsEffectTable` 的 `Store === True` 列；跟 `tactics.json`（`Use === True`）**不要合併**；每個檔位一筆、按階級分組；三種「意志」寫死在頁面、不進資料檔 |
+| `rift-shop.json` | 規則 27 | 換圖用 `add-icon --rift-shop`（同一組檔位一起換，分組看 `gameId` 去掉 Low／Mid／High，不看名字）；來源 `TacticsEffectTable` 的 `Store === True` 列；跟 `tactics.json`（`Use === True`）**不要合併**；每個檔位一筆、按階級分組；三種「意志」寫死在頁面、不進資料檔 |
 | `events.json` | 規則 29 | 軸是活動不是版本；內容是通用表格（`sections[].columns`＋`rows`）；只收帶專屬貨幣與兌換所的限時活動（賽季、熱門時段、付費禮包不收）；截圖客戶端拿不到、檔期看活動（有排程表就讀表，沒有就靠實測），拿不到的放產生腳本的「人工補充」區塊，都沒有時 `period` 為 `null`，有的話連同時區（`tz`）一起寫；活動貨幣圖進 `public/currency/`、種類登記在 `src/lib/cost-html.ts` 的 `CurrencyIconKind` |
 | `rewards.json` | `tests/data/rewards.test.ts`（**沒有 validate 規則**） | 由 `tools/import-rewards.py` 從本機主表匯入；收藏品圖只在 `assetStatus: 'ready'` 且有 `icon` 時用，**沒確認過的圖不要拿截圖或單層 sprite 充數**；`public/rewards/` 沒有轉檔管線，別放更大的原圖 |
 | `changelog.json` | 規則 20 | 規則 20 檢查**最新一筆帶 `data` 的條目**，不是 `entries[0]` |

@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { tmpDir } from '../helpers/tmp';
 import { validate, webpMetadataChunks } from '../../tools/validate';
 import type { GlossaryEntry, MaxLevelOfficial, UpgradeCostTable } from '../../src/lib/types';
+import { riftIconGroup } from '../../tools/lib/icon-group';
 
 const svg = readFileSync('data/dice-tree.svg', 'utf8');
 const nodeText: Record<string, Record<string, unknown>> = JSON.parse(readFileSync('data/nodes.json', 'utf8'));
@@ -1949,9 +1950,9 @@ describe('規則 27：裂縫商店', () => {
   const rows = () => structuredClone(riftShop) as Record<string, unknown>[];
   const withShop = (over: unknown) => ({ ...opts, riftShop: over });
   /** 同名三檔的第一組（強化彈 72／73／74）在真實資料裡的索引。 */
-  const family = (data: Record<string, unknown>[]) => {
-    const first = data.find(r => data.filter(x => x.name === r.name).length > 1)!;
-    return data.filter(r => r.name === first.name);
+  const family = (data: Record<string, unknown>[], gameIdStem?: string) => {
+    const stem = gameIdStem ?? riftIconGroup(data.find(r => data.filter(x => riftIconGroup(x) === riftIconGroup(r)).length > 1)!);
+    return data.filter(r => riftIconGroup(r) === stem);
   };
 
   it('沒有提供 data/rift-shop.json 時只警告、不擋 PR', () => {
@@ -1965,26 +1966,27 @@ describe('規則 27：裂縫商店', () => {
     expect(result.errors.some(e => /規則 27\(a\).*最外層必須是陣列/.test(e))).toBe(true);
   });
 
-  it('真實資料裡同名的三個檔位共用一張圖是合法的（39 張圖對 61 筆）', () => {
+  it('真實資料裡同一組的三個檔位共用一張圖是合法的（39 張圖對 61 筆，含名字不同的掌握弱點I／II／III）', () => {
     // 這條是 sharedIconKey 存在的理由：客戶端只給 *Low 畫圖，同一個效果的三個檔位
     // 在遊戲裡本來就是同一張圖。零錯誤才代表放行條件真的生效了。
     const data = rows();
     expect(new Set(data.map(r => r.icon)).size).toBeLessThan(data.length);
+    expect(new Set(family(data, 'ReduceBossHp').map(r => r.name)).size).toBe(3);
     expect(validate(svg, withShop(data)).errors.filter(e => /規則 27/.test(e))).toEqual([]);
   });
 
-  it('不同名字的兩筆指向同一張圖仍然被擋', () => {
-    // ⚠️ sharedIconKey 放寬的是「同名共用」，不是整條 (g) 關掉。這條反例守住那條界線：
+  it('不同組的兩筆指向同一張圖仍然被擋', () => {
+    // ⚠️ sharedIconKey 放寬的是「同組共用」，不是整條 (g) 關掉。這條反例守住那條界線：
     // 「複製上一筆、忘了換成新加進來的那張」在這份檔案裡照樣要紅，否則畫面上會是兩條
     // 名字不同、圖一模一樣的卡片，而 (d)(f) 全程沉默（檔案在、也沒有孤兒檔）。
     const data = rows();
     const [a, b] = [data.find(r => r.name === '絕滅')!, data.find(r => r.name === '挖掘王')!];
     b.icon = a.icon;
     const result = validate(svg, withShop(data));
-    expect(result.errors.some(e => /規則 27\(g\).*指向同一張圖.*它們的 name 不同/.test(e))).toBe(true);
+    expect(result.errors.some(e => /規則 27\(g\).*指向同一張圖.*它們的檔位組.*不同/.test(e))).toBe(true);
   });
 
-  it('同名的兩筆指向不同的圖會被擋（sharedIconKey 的反方向）', () => {
+  it('同組的兩筆指向不同的圖會被擋（sharedIconKey 的反方向）', () => {
     // ⚠️ 這是 2026-09-06 code review 抓到的漏洞：sharedIconKey 原本只做了「放行同名共用」
     // 這一半，反方向沒人守，實測**零錯誤零警告**。失敗長相是手改 JSON 只換了其中一筆的 icon
     // （`add-icon --rift-shop` 現在會把同名的兄弟一起換），同名的兄弟仍指著舊雜湊，而
@@ -2001,7 +2003,20 @@ describe('規則 27：裂縫商店', () => {
     expect(trio.length).toBeGreaterThan(1);
     trio[1]!.icon = hash;
     const result = validate(svg, { ...opts, riftShop: data, riftShopIconsDir: dir });
-    expect(result.errors.some(e => /規則 27\(g\).*name 同為.*指向不同的圖/.test(e))).toBe(true);
+    expect(result.errors.some(e => /規則 27\(g\).*檔位組.*同為.*指向不同的圖/.test(e))).toBe(true);
+  });
+
+  it('名字不同的同組（掌握弱點I／II／III）只換一筆的圖也會被擋', () => {
+    // 用名字分組時這組三個名字各自成組，反方向檢查等於不存在（2026-10-17 code review）。
+    const dir = tmpDir('rd2-rift-stem-');
+    for (const f of readdirSync(riftShopIconsDir)) writeFileSync(join(dir, f), readFileSync(join(riftShopIconsDir, f)));
+    const fresh = readFileSync(join('data/tactic-icons', readdirSync('data/tactic-icons')[0]!));
+    const hash = createHash('sha256').update(fresh).digest('hex').slice(0, 12);
+    writeFileSync(join(dir, `${hash}.png`), fresh);
+    const data = rows();
+    family(data, 'ReduceBossHp')[1]!.icon = hash;
+    const result = validate(svg, { ...opts, riftShop: data, riftShopIconsDir: dir });
+    expect(result.errors.some(e => /規則 27\(g\).*同為「ReduceBossHp」.*指向不同的圖/.test(e))).toBe(true);
   });
 
   it('gameId 撞號會被擋（畫面上完全正常，只有對帳時才會發現）', () => {
