@@ -431,10 +431,10 @@ export type RiftShopGrade = '一般' | '稀有' | '傳說';
  * 裂縫商店的一條效果（`data/rift-shop.json` 的一筆）。
  *
  * 「裂縫商店」是**困難合作模式**的局內商店，用擊殺首領與 SP 魔像掉落的討伐硬幣兌換。
- * 這 55 條在客戶端 `TacticsEffectTable` 裡跟戰術同表，靠 `Store === True` 區分：
+ * 這 61 條在客戶端 `TacticsEffectTable` 裡跟戰術同表，靠 `Store === True` 區分：
  *
  * - `Use === True` 的 55 條是每波輪替池 ＝ `data/tactics.json`（`/tactic`）。
- * - `Store === True` 的 55 條是商店池 ＝ 這一份（`/rift-shop`）。
+ * - `Store === True` 的 61 條是商店池 ＝ 這一份（`/rift-shop`）。
  * - 兩者**互斥且不重疊**：`CoopHardWaveTable.CoopTacticsIndex` 引用到的 44 個 index
  *   沒有一個是 `Store === True`。
  *
@@ -457,16 +457,16 @@ export interface RiftShopEffect {
    * （一般 30／稀有 20／傳說 10），所以規則 27(i) 守「同一階級的 weight 必須一致」。
    */
   weight: number;
-  /** 效果全文，`Local_Desc` 代入 `Value_0..3` 後的結果。這 55 條一個 `#標記` 都沒有。 */
+  /** 效果全文，`Local_Desc` 代入 `Value_0..3` 後的結果。這 61 條一個 `#標記` 都沒有。 */
   effect: string;
   /** 客戶端 `TacticsKind`（`FieldAttackUpLow`…）。同 `Tactic.gameId` 的角色。 */
   gameId: string;
   /**
    * `data/rift-shop-icons/` 底下來源 PNG 的內容 sha256 前 12 碼。
    *
-   * ⚠️ **這一份是多對一：35 張圖 ↔ 55 筆。** 客戶端只給 `*Low` 畫圖，`*Mid`／`*High`
+   * ⚠️ **這一份是多對一：39 張圖 ↔ 61 筆。** 客戶端只給 `*Low` 畫圖，`*Mid`／`*High`
    * 沒有自己的 sprite——同一個效果的三個檔位在遊戲裡本來就是同一張圖。所以規則 27 用
-   * `sharedIconKey: 'name'` 放行**同名之間**的共用，跨不同名字共用仍然是錯（規則 27(g)）。
+   * `sharedIconKey`（`riftIconGroup`：`gameId` 去掉 Low／Mid／High）放行**同組之間**的共用，跨組共用仍然是錯（規則 27(g)）。
    */
   icon: string;
 }

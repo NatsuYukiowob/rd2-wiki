@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 import { tmpDir } from '../helpers/tmp';
 import { addIcon, addMappedIcon, addRecordIcon } from '../../tools/add-icon';
+import { riftIconGroup } from '../../tools/lib/icon-group';
 
 /** 產生一張只有簽章 + IHDR chunk 的最小合法 PNG，足以通過 `readPngSize` 的結構性檢查。 */
 function makeMinimalPng(width: number, height: number): Buffer {
@@ -241,17 +242,17 @@ describe('addRecordIcon', () => {
     expect(readFileSync(dataPath, 'utf8')).toBe(before);
   });
 
-  describe('sharedIconKey（裂縫效果：同名的幾個檔位共用一張圖）', () => {
+  describe('sharedIconKey（裂縫效果：同一組的幾個檔位共用一張圖）', () => {
     /** 兩組同名：「強化彈」三筆共用 a…、「冰凍」一筆用 b…。 */
     const setupShop = () => {
       const srcDir = tmpDir('rd2-rec-src-');
       const iconsDir = tmpDir('rd2-rec-icons-');
       const dataPath = join(tmpDir('rd2-rec-data-'), 'rift-shop.json');
       writeFileSync(dataPath, `${JSON.stringify([
-        { id: '72', name: '強化彈', icon: 'aaaaaaaaaaaa' },
-        { id: '73', name: '強化彈', icon: 'aaaaaaaaaaaa' },
-        { id: '80', name: '冰凍', icon: 'bbbbbbbbbbbb' },
-        { id: '74', name: '強化彈', icon: 'aaaaaaaaaaaa' },
+        { id: '72', name: '強化彈', gameId: 'FieldAttackUpLow', icon: 'aaaaaaaaaaaa' },
+        { id: '73', name: '強化彈', gameId: 'FieldAttackUpMid', icon: 'aaaaaaaaaaaa' },
+        { id: '80', name: '冰凍', gameId: 'FreezeLow', icon: 'bbbbbbbbbbbb' },
+        { id: '74', name: '強化彈', gameId: 'FieldAttackUpHigh', icon: 'aaaaaaaaaaaa' },
       ], null, 2)}\n`);
       const src = join(srcDir, 'x.png');
       writeFileSync(src, makeMinimalPng(176, 206));
@@ -261,7 +262,7 @@ describe('addRecordIcon', () => {
     it('換其中一筆時同名的兄弟一起換，別的名字不動、陣列順序不變', () => {
       // 只換一筆的話規則 27(g)「同名卻指向不同的圖」一定擋下來——工具保證產出不合法的狀態。
       const { src, iconsDir, dataPath } = setupShop();
-      const result = addRecordIcon(src, '73', { iconsDir, dataPath, sharedIconKey: 'name' });
+      const result = addRecordIcon(src, '73', { iconsDir, dataPath, sharedIconKey: riftIconGroup });
       const data = JSON.parse(readFileSync(dataPath, 'utf8')) as { id: string; icon: string }[];
       expect(data.map(r => r.id)).toEqual(['72', '73', '80', '74']);
       expect(data.map(r => r.icon)).toEqual([result.hash, result.hash, 'bbbbbbbbbbbb', result.hash]);
@@ -276,20 +277,35 @@ describe('addRecordIcon', () => {
       const data = JSON.parse(readFileSync(dataPath, 'utf8')) as { id: string; icon: string }[];
       data[0]!.icon = 'cccccccccccc';
       writeFileSync(dataPath, `${JSON.stringify(data, null, 2)}\n`);
-      const result = addRecordIcon(src, '73', { iconsDir, dataPath, sharedIconKey: 'name' });
+      const result = addRecordIcon(src, '73', { iconsDir, dataPath, sharedIconKey: riftIconGroup });
       expect([...result.orphanedHashes].sort()).toEqual(['aaaaaaaaaaaa', 'cccccccccccc']);
     });
 
     it('指定那筆還沒填共用鍵時只換它自己，不把其他同樣沒填的紀錄當成兄弟', () => {
-      // 找不到 id 的提示要貢獻者「先把那一筆的其餘欄位補進資料檔」——補到一半、還沒有 name 的紀錄很常見。
+      // 找不到 id 的提示要貢獻者「先把那一筆的其餘欄位補進資料檔」——補到一半、還沒有 gameId 的紀錄很常見。
       const { src, iconsDir, dataPath } = setupShop();
       const data = JSON.parse(readFileSync(dataPath, 'utf8')) as Record<string, unknown>[];
       data.push({ id: '90' }, { id: '91', icon: 'dddddddddddd' });
       writeFileSync(dataPath, `${JSON.stringify(data, null, 2)}\n`);
-      const result = addRecordIcon(src, '90', { iconsDir, dataPath, sharedIconKey: 'name' });
+      const result = addRecordIcon(src, '90', { iconsDir, dataPath, sharedIconKey: riftIconGroup });
       expect(result.updatedIds).toEqual(['90']);
       const after = JSON.parse(readFileSync(dataPath, 'utf8')) as { id: string; icon?: string }[];
       expect(after.find(r => r.id === '91')!.icon).toBe('dddddddddddd');
+    });
+
+    it('名字不同但同一組（掌握弱點I／II／III）也整組一起換', () => {
+      // 用名字分組時只會換到指定那一筆，另外兩個檔位留在舊圖，而規則 27(g) 兩個方向都沉默。
+      const { src, iconsDir, dataPath } = setupShop();
+      const data = JSON.parse(readFileSync(dataPath, 'utf8')) as Record<string, unknown>[];
+      data.push(
+        { id: '133', name: '掌握弱點I', gameId: 'ReduceBossHpLow', icon: 'eeeeeeeeeeee' },
+        { id: '134', name: '掌握弱點II', gameId: 'ReduceBossHpMid', icon: 'eeeeeeeeeeee' },
+        { id: '135', name: '掌握弱點III', gameId: 'ReduceBossHpHigh', icon: 'eeeeeeeeeeee' },
+      );
+      writeFileSync(dataPath, `${JSON.stringify(data, null, 2)}\n`);
+      const result = addRecordIcon(src, '133', { iconsDir, dataPath, sharedIconKey: riftIconGroup });
+      expect(result.updatedIds).toEqual(['133', '134', '135']);
+      expect(result.orphanedHashes).toEqual(['eeeeeeeeeeee']);
     });
 
     it('沒帶 sharedIconKey 時只換那一筆，舊圖仍有人用就不算孤兒', () => {

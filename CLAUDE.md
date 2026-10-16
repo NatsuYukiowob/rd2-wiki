@@ -49,7 +49,7 @@
 - 由社群發 PR 維護，**CI 是唯一防線**（維護者不可能逐行 review SVG 的 diff）。
 - ⚠️ **同一顆骰子在三條資產路徑的圖不一樣，不要互相接線**（節點圖／純骰子圖／3D 圖）。接錯時兩份檔案
   各自合法、畫面只是「變回扁平」；規則 30 的測試要求兩份對應表不得指向同一個雜湊。
-- ⚠️ **只有 `rift-shop-icons` 允許多對一**（同一效果的三個檔位共用一張，規則 27 的 `sharedIconKey: 'name'`）；
+- ⚠️ **只有 `rift-shop-icons` 允許多對一**（同一效果的三個檔位共用一張，規則 27 的 `sharedIconKey`＝`gameId` 去掉 Low／Mid／High，不看名字）；
   戰術只有 `9`／`40` 一組共圖（規則 24(g) `sharedIconIds`）。
 - **文案不放 SVG**（含 `<text>`，標籤搬到 `label` 欄）：改一句描述＝JSON 一行 diff。正本用 Inkscape 打開是
   無名圖示，`npm run preview` 把標籤與 id 注回；**正本 → preview → normalize 必須逐位元組回到正本**
@@ -187,7 +187,7 @@ npm run compare -- <beforeURL> <afterURL>  # computed-style 逐元素比對，�
 | 24 | `data/tactics.json`：(a) 非空陣列 (b)–(d) 圖示目錄（含子選項的圖）(e) 欄位型別、`stage` 合法 (f) 圖不存在 (g) 兩筆同圖——**只放行 `sharedIconIds`**，且那兩筆反過來必須同圖 (h) 編號與 **`gameId` 撞號** (i) 子選項形狀，id 是「母編號-序號」、含 `-` 卻在頂層也擋 (j) `availability` 三布林齊全且至少一 true、可用模式要有對應文本、未啟用編號指名擋 (k) `#標記` 在白名單 |
 | 25 | `data/boss.json`（怪物圖鑑）：通用檢查走 `checkIconedRecordList()`；**自己只寫** `difficulty` ∈ {一般, 困難}、`kind` ∈ {一般怪物, 首領}、一般怪物只能配一般（＝`/boss` 的三組），其餘不准複製 |
 | 26 | `data/prereq-ranks.json`：外層只有 note／source／ranks；內層鍵必須是外層節點的**祖先**且非自己；2 ≤ rank ≤ 該前置 `maxLevel`。`TreeNode.prereqRanks` **只在有值的節點上放欄位**（tree.json 預算） |
-| 27 | `data/rift-shop.json`：走 `checkIconedRecordList()` 且傳 `sharedIconKey: 'name'`；**(g) 雙向**——跨名共用錯、同名不同圖也錯。自己的語意檢查：(e) `grade` 合法、`cost`／`weight` 正整數 (i) 同階級 `weight` 一致（刻意不寫死數值）(j) 同名多筆的階級互異 |
+| 27 | `data/rift-shop.json`：走 `checkIconedRecordList()` 且傳 `sharedIconKey`（`tools/lib/icon-group.ts`，按 `gameId` 去尾分組）；**(g) 雙向**——跨組共用錯、同組不同圖也錯。自己的語意檢查：(e) `grade` 合法、`cost`／`weight` 正整數 (i) 同階級 `weight` 一致（刻意不寫死數值）(j) 同名多筆的階級互異 |
 | 28 | `data/offgame-effects.json`：**雙向**（每顆符文／被動都有一筆，`none` 附 reason；孤兒擋）、`target` 在 `src/lib/offgame.ts` 詞彙內、`scope` 合法（**符文的 `dice:<id>` 必須是它最近的骰子祖先**，只要求「是祖先」的話指到同鏈上游的骰子照樣過；**玩家被動只能 `all`／`faction:`**）、`maxLevel` 一致、成長值與描述一致（`parseGrowth`）、`stat*` 的 `label` 在 dice-stats 存在、`mechanic` 必填 template（`{V}`／`{V2}`）、未知欄位擋。不進 tree.json，這條是唯一防線 |
 | 29 | `data/events.json`：**不走 `checkIconedRecordList()`**。(a) 非空陣列 (b) 必填／未知欄位（**沒有 `notes` 欄位**，決策：維護者註記不進資料，不要加回）(c) `id` 小寫英數連字號、不撞號（頁面錨點）(d) `version` x.y.z (e) `period` 只能 `null` 或 `{begin, finish, tz}`，兩端是真實日期 `YYYY-MM-DD`（可帶 ` HH:MM`）且開始不晚於結束（只寫日期的一端算整天），`tz` 必填 `UTC±N`（畫面跟時間一起印） (f) `currencies` 的 `kind` 已登記 (g) 段落形狀 (h) **每列格數＝表頭欄數** (i) 格子是非空字串或 `{icon, text}` (j) `screenshots` 檔在 `public/events/`、`caption` 非空、寬高正整數、檔名無路徑、WebP 不帶 EXIF／XMP（ICC 要留）；**目錄讀不到是錯不是跳過**。合法 `icon`／`kind` 只有 `src/lib/events.ts` 的 `EVENT_ICON_KINDS` 一份 |
 | 31 | 可升級（`maxLevel > 1`）的節點：(a) `levelTableFor()` 查得到逐級費用表（否則 `/sim` 只讓它停在 Lv.1）(b) `growthIssue()` 不是 `no-growth`。判準是站台與 `build-data` 自己用的那兩支；**讓路**：(a) 不看 `special` 與付費解鎖的玩家被動／支援（規則 22）、升級花費表缺席時不看符文（規則 15），(b) 不看符文（規則 17） |

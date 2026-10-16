@@ -3,6 +3,7 @@ import { pathToFileURL } from 'node:url';
 import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 import { readPngSize } from './lib/png.js';
+import { riftIconGroup } from './lib/icon-group.js';
 
 export interface AddIconResult {
   /** sha256 前 12 碼，同時也是不含副檔名的檔名。 */
@@ -96,7 +97,7 @@ export interface AddRecordIconResult extends AddIconResult {
   previousHash: string | null;
   /** 這次改到 `icon` 的所有紀錄 id，依檔案順序：沒有 `sharedIconKey` 時就是指定的那一筆。 */
   updatedIds: string[];
-  /** 換圖之後，資料檔裡已經沒有任何一筆在用的舊雜湊（這幾個舊檔成了孤兒）。同名兄弟原本指的圖不一定跟指定那筆相同，所以是清單。 */
+  /** 換圖之後，資料檔裡已經沒有任何一筆在用的舊雜湊（這幾個舊檔成了孤兒）。同組兄弟原本指的圖不一定跟指定那筆相同，所以是清單。 */
   orphanedHashes: string[];
 }
 
@@ -119,25 +120,25 @@ export function addRecordIcon(
     iconsDir: string;
     dataPath: string;
     /**
-     * 「這個欄位相同的紀錄共用一張圖」（`data/rift-shop.json` 的同名幾個檔位，規則 27 的 `sharedIconKey`）。
-     * 有設的話同名的兄弟一起換：只換一筆的話規則 27(g) 一定擋下來，工具等於保證產出不合法的狀態。
+     * 「同組的紀錄共用一張圖」（`data/rift-shop.json` 的同一個效果的幾個檔位，規則 27 的 `sharedIconKey`）。
+     * 有設的話同組的兄弟一起換：只換一筆的話規則 27(g) 一定擋下來，工具等於保證產出不合法的狀態。
      */
-    sharedIconKey?: 'name';
+    sharedIconKey?: (rec: { gameId?: unknown }) => string | undefined;
   },
 ): AddRecordIconResult {
   if (!existsSync(opts.dataPath)) throw new Error(`找不到資料檔: ${opts.dataPath}`);
-  type Rec = { id?: unknown; icon?: unknown; name?: unknown; options?: Rec[] };
+  type Rec = { id?: unknown; icon?: unknown; name?: unknown; gameId?: unknown; options?: Rec[] };
   const records: Rec[] = JSON.parse(readFileSync(opts.dataPath, 'utf8'));
   if (!Array.isArray(records)) throw new Error(`${opts.dataPath} 的最外層不是陣列`);
   const all = records.flatMap(r => [r, ...(r.options ?? [])]);
   const record = all.find(r => r.id === id);
   // 先找到那一筆再動檔案系統：找不到就失敗時，目錄裡不該留下一張沒人引用的孤兒圖。
   if (!record) throw new Error(`${opts.dataPath} 裡沒有 id 為 ${JSON.stringify(id)} 的紀錄；請先把那一筆的其餘欄位補進資料檔`);
-  // 共用鍵本身沒填（例如照提示先補欄位、還沒填 name 的新紀錄）就不找兄弟：否則 `undefined === undefined`
+  // 共用鍵本身沒填（例如照提示先補欄位、還沒填 gameId 的新紀錄）就不找兄弟：否則 `undefined === undefined`
   // 會把每一筆同樣沒填的紀錄都當成兄弟一起改掉。
-  const key = opts.sharedIconKey;
-  const shared = key ? record[key] : undefined;
-  const targets = typeof shared === 'string' && shared !== '' ? all.filter(r => r[key!] === shared) : [record];
+  const groupOf = opts.sharedIconKey;
+  const shared = groupOf?.(record);
+  const targets = shared !== undefined ? all.filter(r => groupOf!(r) === shared) : [record];
 
   const result = addIcon(srcPath, opts.iconsDir);
   const previousHash = typeof record.icon === 'string' ? record.icon : null;
@@ -167,12 +168,12 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
     // 戰術、Boss 與裂縫效果走同一條分支：三者的資料檔形狀相同（陣列 ＋ 每筆自帶 icon），
     // 差別只有目錄與檔名。分成三段 if 只會讓三邊的提示訊息各自漂移。
     //
-    // ⚠️ 裂縫效果是同名的幾個檔位共用一張圖（規則 27 的 `sharedIconKey: 'name'`），所以它帶同一個
-    // 鍵：換其中一筆的圖時同名兄弟一起換，否則下一步 validate 一定紅在 27(g)。
+    // ⚠️ 裂縫效果是同一組的幾個檔位共用一張圖（規則 27 的 `sharedIconKey`，`riftIconGroup`），所以它帶同一個
+    // 鍵：換其中一筆的圖時同組兄弟一起換，否則下一步 validate 一定紅在 27(g)。
     const RECORD_KINDS = {
       '--tactic': { label: '戰術', iconsDir: 'data/tactic-icons', dataPath: 'data/tactics.json' },
       '--boss': { label: 'Boss', iconsDir: 'data/boss-icons', dataPath: 'data/boss.json' },
-      '--rift-shop': { label: '裂縫效果', iconsDir: 'data/rift-shop-icons', dataPath: 'data/rift-shop.json', sharedIconKey: 'name' },
+      '--rift-shop': { label: '裂縫效果', iconsDir: 'data/rift-shop-icons', dataPath: 'data/rift-shop.json', sharedIconKey: riftIconGroup },
     } as const;
     // 「對應表是 {節點 id: hash}」的兩條資產路徑走同一條分支，理由同 RECORD_KINDS：
     // 兩段各自的 if 只會讓提示訊息漂移。

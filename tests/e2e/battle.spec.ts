@@ -314,7 +314,7 @@ test('RS1. /rift-shop 的名稱、階級、價格與效果全文是伺服器輸�
   expect(riftShop.length).toBeGreaterThan(0);
   expect(riftShop.filter(e => !html.includes(e.name)).map(e => e.name)).toEqual([]);
   // 名字有了不代表內容有了——效果全文才是玩家搜尋時會命中的東西。
-  // 這 55 條目前一個 `#關鍵字` 標記都沒有（2026-09-06 實測），所以可以整句直接比對。
+  // 這 61 條目前一個 `#關鍵字` 標記都沒有（2026-10-17 實測），所以可以整句直接比對。
   expect(riftShop.filter(e => !html.includes(e.effect)).map(e => e.id)).toEqual([]);
   // 價格也要在 HTML 裡：傳說階級有 100 與 200 兩種，只看組標題會把奇蹟之石當成 100。
   expect(riftShop.filter(e => !html.includes(`>${e.cost}<`)).map(e => e.id)).toEqual([]);
@@ -364,7 +364,7 @@ test('RS3. 沒有 JS 時全部裂縫效果仍然完整顯示', async ({ browser 
   await context.close();
 });
 
-test('RS4. 圖示等比縮放不裁切；35 張圖對 55 筆是刻意的，每一張都載得到', async ({ page, request }) => {
+test('RS4. 圖示等比縮放不裁切；39 張圖對 61 筆是刻意的，每一張都載得到', async ({ page, request }) => {
   await page.goto('/rift-shop');
   const imgs = page.locator('.battle-icon');
   await expect(imgs).toHaveCount(riftShop.length);
@@ -372,9 +372,9 @@ test('RS4. 圖示等比縮放不裁切；35 張圖對 55 筆是刻意的，每�
 
   const srcs = await imgs.evaluateAll(els => els.map(el => (el as HTMLImageElement).getAttribute('src') ?? ''));
   expect(srcs.filter(s => !s)).toEqual([]);
-  // ⚠️ 這一頁的 src 本來就會重複（同名的三個檔位共用一張圖，客戶端只給 *Low 畫圖）。
-  // 去重之後的張數要剛好等於資料裡的唯一雜湊數——多了代表有人替某個檔位另外加了圖，
-  // 少了代表兩個不同的效果撞到同一張（規則 27(g) 會擋，這裡是畫面端的第二道）。
+  // ⚠️ 這一頁的 src 本來就會重複（同一組的三個檔位共用一張圖，客戶端只給 *Low 畫圖）。
+  // 去重之後的張數要剛好等於資料裡的唯一雜湊數：守的是「畫面引用的圖＝資料裡的圖」。
+  // 跨組撞圖是規則 27(g) 的事，這裡驗不到。
   expect(new Set(srcs).size).toBe(new Set(riftShop.map(e => e.icon)).size);
 
   const bad: string[] = [];
