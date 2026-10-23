@@ -78,6 +78,8 @@ export interface GlossaryIndex {
   byGroup: Record<GroupSlug, GlossaryItem[]>;
   /** 詞 → 詞條。**別名也在裡面**，指向本尊那一筆（見 buildGlossary）。 */
   byTerm: Map<string, GlossaryItem>;
+  /** 詞條頁路徑（含語言前綴），`termHref()` 用它組連結。 */
+  path: string;
 }
 
 /**
@@ -105,6 +107,7 @@ function collectTerms(text: string, whitelist: readonly string[]): Set<string> {
 export function buildGlossary(
   keywords: Record<string, GlossaryRecord>,
   nodes: readonly TreeNode[],
+  path: string = KEYWORDS_PATH,
 ): GlossaryIndex {
   const whitelist = Object.keys(keywords);
   const canonical = (term: string): string => {
@@ -160,7 +163,7 @@ export function buildGlossary(
   for (const list of Object.values(byGroup)) {
     list.sort((a, b) => b.usedBy.length - a.usedBy.length || a.anchor.localeCompare(b.anchor));
   }
-  return { byGroup, byTerm };
+  return { byGroup, byTerm, path };
 }
 
 /**
@@ -191,7 +194,7 @@ export const GUIDE_TABS: readonly { slug: string; title: string; groups: GroupSl
 export function termHref(index: GlossaryIndex, term: string): string | null {
   const item = index.byTerm.get(term);
   if (!item) return null;
-  return `${KEYWORDS_PATH}#${item.anchor}`;
+  return `${index.path}#${item.anchor}`;
 }
 
 /**

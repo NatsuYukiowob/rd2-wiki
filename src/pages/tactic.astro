@@ -1,12 +1,12 @@
 ---
 // 靜態玩家文本留在 HTML；候選池、階段篩選只切換可見性。
 import Base from '../layouts/Base.astro';
-import { langFromPath, messages } from '../lib/i18n';
+import { langFromPath, messages, localizePath } from '../lib/i18n';
 import '../styles/battle.css';
 import tacticsRaw from '../../data/tactics.json';
 import tacticsVi from '../../data/i18n/vi/tactics.json';
 import { keywordsFor, treeDataFor } from '../lib/tree-data';
-import { buildGlossary, displayGlossary } from '../lib/glossary-groups';
+import { buildGlossary, displayGlossary, KEYWORDS_PATH } from '../lib/glossary-groups';
 import { renderStaticText } from '../lib/static-markup';
 import { localizeTactics, type LocaleTactic } from '../lib/record-locale';
 import { DEFAULT_TACTIC_MODE, TACTIC_MODES, TACTIC_STAGES, tacticMatches } from '../lib/tactics';
@@ -17,7 +17,7 @@ const LOCALE: Partial<Record<typeof pageLang, Record<string, LocaleTactic>>> = {
 const tactics = localizeTactics(tacticsRaw as Tactic[], LOCALE[pageLang]);
 const keywords = keywordsFor(pageLang);
 const tree = treeDataFor(pageLang);
-const index = buildGlossary(keywords, tree.nodes);
+const index = buildGlossary(keywords, tree.nodes, localizePath(KEYWORDS_PATH, langFromPath(Astro.url.pathname)));
 const glossary = displayGlossary(keywords);
 const whitelist = Object.keys(keywords);
 const initialCount = tactics.filter(t => tacticMatches(t, DEFAULT_TACTIC_MODE, TACTIC_STAGES)).length;

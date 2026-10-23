@@ -8,10 +8,10 @@
 // 矮視窗例外，見 tree.astro）。代價是展開期間畫布變矮，卡片與置中的下界讓到清單上緣（`bottomLimit()`）。
 // ⚠️ 資料讀 `tree-data`（建置期、兩包都讀）。這是 .astro frontmatter，不會進瀏覽器的 JS。
 import { keywordsFor, treeDataFor } from '../lib/tree-data';
-import { buildGlossary, displayGlossary } from '../lib/glossary-groups';
+import { buildGlossary, displayGlossary, KEYWORDS_PATH } from '../lib/glossary-groups';
 import { renderStaticText } from '../lib/static-markup';
 import { BRANCH_ZH, typeLabel, awakeningCondition } from '../lib/labels';
-import { langFromPath, messages } from '../lib/i18n';
+import { langFromPath, messages, localizePath } from '../lib/i18n';
 import type { TreeData } from '../lib/types';
 
 const lang = langFromPath(Astro.url.pathname);
@@ -19,7 +19,7 @@ const m = messages(lang);
 const t = m.nodeIndex;
 const tree = treeDataFor(langFromPath(Astro.url.pathname)) as unknown as TreeData;
 const keywords = keywordsFor(langFromPath(Astro.url.pathname));
-const index = buildGlossary(keywords, tree.nodes);
+const index = buildGlossary(keywords, tree.nodes, localizePath(KEYWORDS_PATH, langFromPath(Astro.url.pathname)));
 const whitelist = Object.keys(keywords);
 const glossary = displayGlossary(keywords);
 const text = (s: string) => renderStaticText(s, whitelist, glossary, index);

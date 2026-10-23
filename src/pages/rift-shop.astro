@@ -10,12 +10,12 @@
 // 版面共用 battle.css（圖左文右的橫列清單），分組方式抄 /boss 的難度分組。
 // 同樣不進 tree.json：靜態頁建置期直接讀 data/，不吃那 20 KB gzip 預算。
 import Base from '../layouts/Base.astro';
-import { langFromPath, messages } from '../lib/i18n';
+import { langFromPath, messages, localizePath } from '../lib/i18n';
 import '../styles/battle.css';
 import riftShopRaw from '../../data/rift-shop.json';
 import keywordsRaw from '../../data/keywords.json';
 import { treeData } from '../lib/tree-data';
-import { buildGlossary, displayGlossary } from '../lib/glossary-groups';
+import { buildGlossary, displayGlossary, KEYWORDS_PATH } from '../lib/glossary-groups';
 import { renderStaticText } from '../lib/static-markup';
 import { currencyIcon } from '../lib/cost-html';
 import type { GlossaryRecord, RiftShopEffect, RiftShopGrade, TreeData } from '../lib/types';
@@ -23,7 +23,7 @@ import type { GlossaryRecord, RiftShopEffect, RiftShopGrade, TreeData } from '..
 const effects = riftShopRaw as RiftShopEffect[];
 const keywords = keywordsRaw as Record<string, GlossaryRecord>;
 const tree = treeData as unknown as TreeData;
-const index = buildGlossary(keywords, tree.nodes);
+const index = buildGlossary(keywords, tree.nodes, localizePath(KEYWORDS_PATH, langFromPath(Astro.url.pathname)));
 const glossary = displayGlossary(keywords);
 const whitelist = Object.keys(keywords);
 

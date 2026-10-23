@@ -4,6 +4,7 @@ import { LANGS, DEFAULT_LANG } from '../../src/lib/i18n';
 import { applyLocale, buildLocaleText, localeIssues, localizeKeywords } from '../../src/lib/tree-locale';
 import { readTree } from '../helpers/read-tree';
 import { statText } from '../../src/lib/stat-text';
+import { buildGlossary, KEYWORDS_PATH, termHref } from '../../src/lib/glossary-groups';
 import { BULLET_LABEL } from '../../src/lib/offgame-calc';
 import { bossLocaleIssues, localizeBosses, localizeTactics, tacticLocaleIssues, type RecordTerms } from '../../src/lib/record-locale';
 import { isGlossaryAlias, type Boss, type GlossaryRecord, type Tactic } from '../../src/lib/types';
@@ -136,5 +137,14 @@ describe('tacticLocaleIssues', () => {
     expect(wrong.some(s => s.includes('數字對不上'))).toBe(true);
     expect(wrong.some(s => s.includes('#標記對不上'))).toBe(true);
     expect(tacticLocaleIssues(src, { '1': { name: 'A', versus: 'Triệu hồi 3 #Quái thường' } }, terms)).toEqual([]);
+  });
+});
+
+describe('termHref 跟著語言前綴走', () => {
+  it('buildGlossary 帶入的路徑就是連結的前綴，預設是原文詞條頁', () => {
+    const tree = readTree();
+    expect(termHref(buildGlossary(sourceKeywords, tree.nodes), '燙傷')).toBe(`${KEYWORDS_PATH}#BURN`);
+    const vi = buildGlossary(localizeKeywords(sourceKeywords, json('data/i18n/vi/keywords.json')), tree.nodes, '/vi/guide/keywords/');
+    expect(termHref(vi, 'Bỏng')).toBe('/vi/guide/keywords/#BURN');
   });
 });

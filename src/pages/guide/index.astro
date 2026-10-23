@@ -2,7 +2,7 @@
 // 遊戲介紹的索引頁：卡片跟導覽列「遊戲介紹」下拉的項目一一對應、順序相同（2026-09-27 Yuki 裁決），
 // 每張補一句說明與條數——下拉選單塞不下這些。
 import Base from '../../layouts/Base.astro';
-import { langFromPath, linker, messages } from '../../lib/i18n';
+import { langFromPath, linker, messages, localizePath } from '../../lib/i18n';
 import { treeData as data } from '../../lib/tree-data';
 import keywordsRaw from '../../../data/keywords.json';
 import { buildGlossary, GROUPS, KEYWORDS_PATH } from '../../lib/glossary-groups';
@@ -16,7 +16,7 @@ import { ICONS } from '../../lib/icons';
 
 const tree = data as unknown as TreeData;
 const keywords = keywordsRaw as Record<string, GlossaryRecord>;
-const index = buildGlossary(keywords, tree.nodes);
+const index = buildGlossary(keywords, tree.nodes, localizePath(KEYWORDS_PATH, langFromPath(Astro.url.pathname)));
 
 // ⚠️ 不能寫 `index.byTerm.size`：那份表為了讓別名也查得到本尊，會把 2 個別名（播種、傳送）
 // 也指到同一筆詞條上，數出來是 64 而不是 62 條解釋。
