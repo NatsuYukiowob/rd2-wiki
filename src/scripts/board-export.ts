@@ -174,7 +174,7 @@ export async function renderShareImage(input: ExportInput): Promise<HTMLCanvasEl
         ctx.textAlign = 'left';
       }
       // 角標：只畫設定過的（「?」不畫——沒指定就是沒有資訊）。不看 hidePips：方向是擺位資訊，不是星數。
-      const badge = badgeText(p);
+      const badge = badgeText(p, documentLang());
       if (badge && badge.glyph !== '?') {
         const r = badgeRect(i, coop, side);
         ctx.fillStyle = COLORS.chip;

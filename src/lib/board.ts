@@ -7,6 +7,7 @@
 // ⚠️ 越界一律 no-op 而不是丟例外：index 的唯一來源是指標座標換算與鍵盤位移，兩者都可能
 // 在版面變動的瞬間算出界。讓它安靜回原值，比讓整支腳本在拖曳中途丟例外好。
 // 但「安靜」跟「寫錯」在畫面上長得一模一樣，所以每一條 no-op 都有對應的單元測試。
+import { messages, type Lang } from './i18n.js';
 
 export const COLS = 5;
 export const ROWS = 3;
@@ -153,21 +154,21 @@ export function cycleBadge(board: Board, index: number): Board {
 }
 
 const DIR_GLYPH = ['↑', '→', '↓', '←'] as const;
-const DIR_WORD = ['朝上', '朝右', '朝下', '朝左'] as const;
-const GEAR_GLYPH: Record<GearKind, string> = { reinforce: '強', power: '動', speed: '變' };
-const GEAR_WORD: Record<GearKind, string> = { reinforce: '強化齒輪', power: '動力齒輪', speed: '變速齒輪' };
 
 /**
  * 角標的三種文字：`glyph` 畫在格子上（「?」＝未指定）、`spoken` 接在格子的 aria-label 後面、
  * `announce` 是切換後的播報。沒有角標的骰子回 null。畫面、分享圖、明細面板都從這裡拿字，不要各寫一份。
  */
-export function badgeText(p: Placed | null | undefined): { glyph: string; spoken: string; announce: string } | null {
+export function badgeText(p: Placed | null | undefined, lang: Lang = 'zh'): { glyph: string; spoken: string; announce: string } | null {
   const kind = badgeKind(p);
   if (!p || !kind) return null;
+  const T = messages(lang).buffs;
   if (kind === 'dir') {
-    if (p.dir === undefined) return { glyph: '?', spoken: '方向未指定', announce: '排序改為未指定' };
-    return { glyph: DIR_GLYPH[p.dir], spoken: `方向${DIR_WORD[p.dir]}`, announce: `排序改為${DIR_WORD[p.dir]}` };
+    if (p.dir === undefined) return { glyph: '?', spoken: T.dirUnset, announce: T.dirUnsetSay };
+    const w = T.dirWord[p.dir]!;
+    return { glyph: DIR_GLYPH[p.dir], spoken: T.dir(w), announce: T.dirSay(w) };
   }
-  if (p.gear === undefined) return { glyph: '?', spoken: '種類未指定', announce: '齒輪二階改為未指定' };
-  return { glyph: GEAR_GLYPH[p.gear], spoken: `種類：${GEAR_WORD[p.gear]}`, announce: `齒輪二階改為${GEAR_WORD[p.gear]}` };
+  if (p.gear === undefined) return { glyph: '?', spoken: T.gearUnset, announce: T.gearUnsetSay };
+  const w = T.gearWord[p.gear]!;
+  return { glyph: T.gearGlyph[p.gear]!, spoken: T.gear(w), announce: T.gearSay(w) };
 }

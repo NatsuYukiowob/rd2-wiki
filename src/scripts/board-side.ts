@@ -137,7 +137,8 @@ export interface Side {
   onSaveChanged(): void;
 }
 
-const TB = messages(documentLang()).board;
+const LANG = documentLang();
+const TB = messages(LANG).board;
 const MODE_NAME: Record<OffgameMode, string> = TB.modeName;
 
 export function createSide(dom: SideDom, opts: SideOptions): Side {
@@ -298,7 +299,7 @@ export function createSide(dom: SideDom, opts: SideOptions): Side {
         pips.textContent = String(p.pips);
         cell.append(img, pips);
         // 角標：7 骰點以下的排序（方向）／齒輪二階（種類）。狀態由格子的 aria-label 說，角標本身 aria-hidden。
-        const b = badgeText(p);
+        const b = badgeText(p, LANG);
         if (b) {
           const el = document.createElement('span');
           el.className = b.glyph === '?' ? 'cell-badge unset' : 'cell-badge';
@@ -329,7 +330,7 @@ export function createSide(dom: SideDom, opts: SideOptions): Side {
     state.board = next;
     renderCells();
     opts.onChange();
-    say(badgeText(state.board[i])!.announce);
+    say(badgeText(state.board[i], LANG)!.announce);
   }
 
   dom.deckRow.addEventListener('click', e => {

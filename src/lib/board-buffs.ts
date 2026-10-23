@@ -20,6 +20,7 @@ import {
 import { formatNumber, round9, type StatParams } from './dice-calc.js';
 import { effectValue, type NamedEffect } from './offgame.js';
 import { NO_BOARD, rowValue, type AppliedEffect, type BoardBonus } from './offgame-calc.js';
+import { messages, type Lang } from './i18n.js';
 
 export const LIGHT_ID = '1006';
 export const RESONANCE_ID = '3002';
@@ -113,6 +114,8 @@ export interface BuffInput extends BuffSide {
    * 說成「隊友盤」，指到相反的地方。替隊友那一盤算時要傳「我的盤」。
    */
   partnerLabel?: string;
+  /** 明細文字的語言；預設中文。 */
+  lang?: Lang;
 }
 
 /** 盤面符文的取值：等級來源跟局外加成同一個（offgame-calc.ts 的 levelSource()）。 */
@@ -179,9 +182,9 @@ function connected(board: Board, i: number, diceId: string): number[] {
 const pct = (n: number): string => formatNumber(n, 3);
 const sum = (ns: readonly number[]): number => round9(ns.reduce((s, n) => s + n, 0));
 const isSeven = (p: Placed): boolean => p.pips >= MAX_PIPS;
-function where(i: number): string {
+function where(i: number, lang: Lang = 'zh'): string {
   const { row, col } = cellPos(i);
-  return `第 ${row + 1} 列第 ${col + 1} 格`;
+  return messages(lang).buffs.where(row + 1, col + 1);
 }
 
 /**
@@ -191,7 +194,9 @@ function where(i: number): string {
  */
 export function boardBuffs(input: BuffInput): CellBuffs[] {
   const { board, rune, partner } = input;
-  const partnerLabel = input.partnerLabel ?? '隊友盤';
+  const lang = input.lang ?? 'zh';
+  const T = messages(lang).buffs;
+  const partnerLabel = input.partnerLabel ?? messages(lang).board.partnerBoard;
   /** 某一盤上、施加者那一列在**那一盤**局外加成之後的值；列不存在時當 0。 */
   const rowIn = (side: BuffSide, p: Placed, label: string): number =>
     rowValue(side.params(p.diceId), label, p.pips, side.spLevel(p.diceId), side.applied(p.diceId)) ?? 0;
@@ -217,10 +222,10 @@ export function boardBuffs(input: BuffInput): CellBuffs[] {
     if (lights.length > 0) {
       const v = sum(lights.map(j => rowOf(board[j]!, BUFF_ROWS.light)));
       intervalPcts.push(v);
-      add('light', lights, `鄰格光 ×${lights.length}：攻速 +${pct(v)}%`);
+      add('light', lights, T.light(lights.length, pct(v)));
       const sevens = lights.filter(j => isSeven(board[j]!));
       if (sevens.length > 0) {
-        add('lightCrit', sevens, `鄰格 7 點光 ×${sevens.length}：暴擊率 +${pct(LIGHT7_CRIT * sevens.length)}%`);
+        add('lightCrit', sevens, T.lightCrit(sevens.length, pct(LIGHT7_CRIT * sevens.length)));
       }
     }
 
@@ -234,7 +239,7 @@ export function boardBuffs(input: BuffInput): CellBuffs[] {
       const a = board[j]!;
       const v = rowOf(a, BUFF_ROWS.alignment);
       attackPct += v;
-      add('alignment', [j], `排序（${where(j)} ${isSeven(a) ? '四向' : badgeText(a)!.glyph}）：攻擊 +${pct(v)}%`);
+      add('alignment', [j], T.alignment(where(j, lang), isSeven(a) ? T.fourWay : badgeText(a, lang)!.glyph, pct(v)));
     }
 
     // 跨盤排序：另一盤上箭頭指著這一盤（crossDir；或 7 骰點四向）的排序骰，對我這一欄的整欄三格施加。
@@ -252,7 +257,7 @@ export function boardBuffs(input: BuffInput): CellBuffs[] {
       const a = partner!.board[j]!;
       const v = rowIn(partner!, a, BUFF_ROWS.alignment);
       attackPct += v;
-      add('alignment', [], `排序（${partnerLabel} ${where(j)} ${isSeven(a) ? '四向' : badgeText(a)!.glyph}）：攻擊 +${pct(v)}%`, [j]);
+      add('alignment', [], T.alignment(`${partnerLabel} ${where(j, lang)}`, isSeven(a) ? T.fourWay : badgeText(a, lang)!.glyph, pct(v)), [j]);
     }
 
     // 排序疊加強化（4307）：10% × 該格排序層數，1 層也算。
@@ -266,7 +271,7 @@ export function boardBuffs(input: BuffInput): CellBuffs[] {
     if (stack !== null) {
       const v = round9(stack * layers);
       attackPct += v;
-      add('alignmentStack', aligns, `排序疊加強化 ×${layers}：攻擊 +${pct(v)}%`, acrossAligns);
+      add('alignmentStack', aligns, T.alignStack(layers, pct(v)), acrossAligns);
     }
 
     // 共鳴：同骰點（7 骰點的共鳴＝全盤）的每一顆共鳴，含自己；攻速相加成一個來源，明細依施加者骰點分行。
@@ -284,7 +289,7 @@ export function boardBuffs(input: BuffInput): CellBuffs[] {
     if (res.length > 0) {
       for (const p of pipsOf(board, res)) {
         const js = res.filter(j => board[j]!.pips === p);
-        add('resonanceSpeed', js, `共鳴（${p} 骰點 ×${js.length}）：攻速 +${pct(sum(js.map(j => rowOf(board[j]!, BUFF_ROWS.resonance))))}%`);
+        add('resonanceSpeed', js, T.resonance('', p, js.length, pct(sum(js.map(j => rowOf(board[j]!, BUFF_ROWS.resonance))))));
       }
       mineResSum = sum(res.map(j => rowOf(board[j]!, BUFF_ROWS.resonance)));
     }
@@ -292,7 +297,7 @@ export function boardBuffs(input: BuffInput): CellBuffs[] {
       const pb = partner!.board;
       for (const p of pipsOf(pb, resThere)) {
         const js = resThere.filter(j => pb[j]!.pips === p);
-        add('resonanceSpeed', [], `共鳴（${partnerLabel} ${p} 骰點 ×${js.length}）：攻速 +${pct(sum(js.map(j => rowIn(partner!, pb[j]!, BUFF_ROWS.resonance))))}%`, js);
+        add('resonanceSpeed', [], T.resonance(`${partnerLabel} `, p, js.length, pct(sum(js.map(j => rowIn(partner!, pb[j]!, BUFF_ROWS.resonance))))), js);
       }
       theirsResSum = sum(resThere.map(j => rowIn(partner!, pb[j]!, BUFF_ROWS.resonance)));
     }
@@ -318,8 +323,8 @@ export function boardBuffs(input: BuffInput): CellBuffs[] {
         if ((p >= MAX_PIPS ? allRes : same.length) < 3) continue;
         const v = round9(trio * same.length);
         attackPct += v;
-        if (isPartner) add('resonanceAttack', [], `三重共鳴（${partnerLabel} ${p} 骰點 ×${same.length}）：攻擊 +${pct(v)}%`, same);
-        else add('resonanceAttack', same, `三重共鳴（${p} 骰點 ×${same.length}）：攻擊 +${pct(v)}%`);
+        if (isPartner) add('resonanceAttack', [], T.tripleResonance(`${partnerLabel} `, p, same.length, pct(v)), same);
+        else add('resonanceAttack', same, T.tripleResonance('', p, same.length, pct(v)));
       }
     };
     applyTrio(input, res, false);
@@ -333,12 +338,12 @@ export function boardBuffs(input: BuffInput): CellBuffs[] {
       if (rowCells.every(j => board[j]?.diceId === BINGO_ID)) {
         const v = rowOf(me, BUFF_ROWS.bingoRow);
         intervalPcts.push(v);
-        add('bingoRow', rowCells, `陰陽橫排：攻速 +${pct(v)}%`);
+        add('bingoRow', rowCells, T.bingoRow(pct(v)));
       }
       if (colCells.every(j => board[j]?.diceId === BINGO_ID)) {
         const v = rowOf(me, BUFF_ROWS.bingoCol);
         statusPct += v;
-        add('bingoCol', colCells, `陰陽直排：攻擊 +${pct(v)}%`);
+        add('bingoCol', colCells, T.bingoCol(pct(v)));
       }
     }
 
@@ -349,7 +354,7 @@ export function boardBuffs(input: BuffInput): CellBuffs[] {
       if (group.length >= 2) {
         const v = round9(link * group.length);
         intervalPcts.push(v);
-        add('gear', group, `齒輪相連 ×${group.length}：攻速 +${pct(v)}%`);
+        add('gear', group, T.gearLink(group.length, pct(v)));
       }
     }
 
@@ -361,7 +366,7 @@ export function boardBuffs(input: BuffInput): CellBuffs[] {
       if (group.length >= 2 && speed.length > 0) {
         const v = sum(speed.map(j => rowOf(board[j]!, BUFF_ROWS.gearSpeed)));
         intervalPcts.push(v);
-        add('gearSecond', speed, `齒輪二階變速 ×${speed.length}：攻速 +${pct(v)}%`);
+        add('gearSecond', speed, T.gearSecond(speed.length, pct(v)));
       }
     }
 
@@ -374,8 +379,8 @@ export function boardBuffs(input: BuffInput): CellBuffs[] {
       if (byCount || isSeven(me)) {
         neonPct = neonSpeed;
         // 只靠自己 7 骰點啟用時，盤上其他霓虹沒有貢獻：不列成來源格，文字也不寫顆數。
-        if (byCount) add('neon', neons, `霓虹啟用（盤上 ${n} 顆）：子彈攻速 +${pct(neonSpeed)}%`);
-        else add('neon', [], `霓虹啟用（7 骰點）：子彈攻速 +${pct(neonSpeed)}%`);
+        if (byCount) add('neon', neons, T.neonCount(n, pct(neonSpeed)));
+        else add('neon', [], T.neonSeven(pct(neonSpeed)));
       }
     }
 
@@ -416,9 +421,10 @@ export function buffHighlights(
 }
 
 /** 角標「?」那顆自己的明細多一行：排序方向／齒輪二階種類還沒指定，它的加成沒有算進去。 */
-export function pendingHint(p: Placed | null | undefined): string | null {
+export function pendingHint(p: Placed | null | undefined, lang: Lang = 'zh'): string | null {
   const kind = badgeKind(p);
-  if (kind === 'dir' && p?.dir === undefined) return '方向未指定，點左上角標切換';
-  if (kind === 'gear' && p?.gear === undefined) return '種類未指定，點左上角標切換';
+  const T = messages(lang).buffs;
+  if (kind === 'dir' && p?.dir === undefined) return T.pendingDir;
+  if (kind === 'gear' && p?.gear === undefined) return T.pendingGear;
   return null;
 }

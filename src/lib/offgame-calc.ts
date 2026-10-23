@@ -22,6 +22,7 @@ import {
   type NamedEffect, type OffgameTarget,
 } from './offgame.js';
 import type { Branch } from './types.js';
+import { messages, type Lang } from './i18n.js';
 
 export type OffgameMode = 'none' | 'sim' | 'max';
 
@@ -231,19 +232,20 @@ function head(group: readonly AppliedEffect[]): string {
   return a.effect.maxLevel > 1 ? `${a.effect.name} Lv.${a.level}` : a.effect.name;
 }
 
-function numericText(group: readonly AppliedEffect[], params: readonly StatParams[], pips: number, level: number): string {
+function numericText(group: readonly AppliedEffect[], params: readonly StatParams[], pips: number, level: number, lang: Lang): string {
+  const T = messages(lang).buffs;
   const e = group[0]!.effect;
   const v = round9(group.reduce((s, a) => s + effectValue(a.effect, a.level), 0));
   const p = params.find(x => x.label === e.label);
   const unit = (p && numericAt(p, pips, level)?.unit) ?? '';
   switch (e.target) {
-    case 'attackPct': return `攻擊 +${fmt(v)}%`;
-    case 'intervalPct': return `攻速 +${fmt(v)}%`;
-    case 'bulletIntervalPct': return `子彈攻速 +${fmt(v)}%`;
-    case 'critPct': return `暴擊率 +${fmt(v)}%`;
+    case 'attackPct': return T.attack(fmt(v));
+    case 'intervalPct': return T.speed(fmt(v));
+    case 'bulletIntervalPct': return T.bulletSpeed(fmt(v));
+    case 'critPct': return T.crit(fmt(v));
     case 'bulletPct':
-    case 'hitAttackMul': return `子彈 ×${fmt(1 + v / 100)}`;
-    case 'hitAttackFlat': return `子彈 +${fmt(Math.ceil(v))}`;
+    case 'hitAttackMul': return T.bulletMul(fmt(1 + v / 100));
+    case 'hitAttackFlat': return T.bulletAdd(fmt(Math.ceil(v)));
     case 'statMul': return `${e.label} ×${fmt(1 + v / 100)}`;
     case 'statSet': return `${e.label} ${fmt((e.setBase ?? 0) + Math.trunc(v))}${unit}`;
     case 'statAdd': {
@@ -270,17 +272,19 @@ export function detailLines(
   pips: number,
   level: number,
   applied: readonly AppliedEffect[],
+  lang: Lang = 'zh',
 ): DetailLines {
+  const colon = messages(lang).buffs.colon;
   const mechanic: string[] = [];
   const groups = new Map<string, AppliedEffect[]>();
   for (const a of applied) {
     if (a.effect.target === 'mechanic') {
-      mechanic.push(`${head([a])}：${mechanicText(a)}`);
+      mechanic.push(`${head([a])}${colon}${mechanicText(a)}`);
       continue;
     }
     const key = `${a.effect.target} ${a.effect.name} ${a.effect.label ?? ''}`;
     groups.set(key, [...(groups.get(key) ?? []), a]);
   }
-  const offgame = [...groups.values()].map(g => `${head(g)}：${numericText(g, params, pips, level)}`);
+  const offgame = [...groups.values()].map(g => `${head(g)}${colon}${numericText(g, params, pips, level, lang)}`);
   return { offgame, mechanic };
 }

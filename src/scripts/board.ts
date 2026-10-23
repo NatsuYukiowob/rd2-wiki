@@ -227,6 +227,7 @@ if (grid && deckH && deckRow && deckLegend && picker && pickerClose && live && c
     const { self, other } = sidesFor(active);
     return boardBuffs({
       ...self.buffSide(),
+      lang: LANG,
       // ⚠️ crossDir 是「另一盤上會跨盤打到這一盤的排序方向」，兩份剛好相反：算我的盤時隊友盤畫在
       // 上面，它箭頭往下（2）那顆才打到我；算隊友盤那一份時我的盤在下面，要的是箭頭往上（0）。
       // 兩邊寫同一個值的話，會有一盤靜靜地完全沒有跨盤排序。
@@ -278,14 +279,14 @@ if (grid && deckH && deckRow && deckLegend && picker && pickerClose && live && c
     }
     const side = detail.side;
     const lv = side.spLevelOf(p.diceId);
-    const lines = detailLines(statParams[p.diceId] ?? [], p.pips, lv, side.appliedFor(p.diceId));
+    const lines = detailLines(statParams[p.diceId] ?? [], p.pips, lv, side.appliedFor(p.diceId), LANG);
     detailEmpty.hidden = true;
     detailBody.hidden = false;
     detailTitle.textContent = titlePrefix(side) + cardTitle(diceMeta.get(p.diceId)?.name ?? p.diceId, p.pips, lv, LANG);
     fillList(detailOffgameH, detailOffgame, lines.offgame);
     fillList(detailMechanicH, detailMechanic, lines.mechanic);
     // 盤面：這一格拿到的每個來源一行；方向／種類還沒指定的排序、齒輪二階自己再多一行提示。
-    const hint = pendingHint(p);
+    const hint = pendingHint(p, LANG);
     fillList(detailBoardH, detailBoard, [...(buffsOf(side)[detail.index]?.entries ?? []).map(e => e.text), ...(hint ? [hint] : [])]);
     detailNothing.hidden = lines.offgame.length + lines.mechanic.length > 0;
     detailNothing.textContent = side.state.mode === 'none' ? TB.nothingNone : TB.nothing;
