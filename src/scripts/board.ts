@@ -21,6 +21,10 @@ import { SIM_STORAGE_KEY, deserializeSim } from '../lib/sim-io.js';
 import { ownedIds } from '../lib/sim.js';
 import { decodeSaveContext, type SaveContextWire } from '../lib/sim-save-lite.js';
 import type { Branch } from '../lib/types.js';
+import { documentLang, messages } from '../lib/i18n.js';
+
+const LANG = documentLang();
+const TB = messages(LANG).board;
 
 const grid = document.getElementById('board-grid');
 const deckH = document.getElementById('deck-h');
@@ -74,10 +78,10 @@ if (grid && deckH && deckRow && deckLegend && picker && pickerClose && live && c
    * 說的是「這個加成的來源在哪一盤」。兩者在同一個畫面上同時出現，方向相反——所以看隊友盤的
    * 卡片時，明細裡的來源盤要寫「我的盤」（buffsOf() 負責傳），兩個詞才不會互相打架。
    */
-  const MY_BOARD = '我的盤';
-  const PARTNER_BOARD = '隊友盤';
+  const MY_BOARD = TB.myBoard;
+  const PARTNER_BOARD = TB.partnerBoard;
   /** 隊友那一盤的播報前綴（見 board-side.ts 的 SideOptions.announcePrefix）。 */
-  const PARTNER_SAY = `${PARTNER_BOARD}：`;
+  const PARTNER_SAY = TB.partnerSay(PARTNER_BOARD);
 
   /** 數值卡片的計算參數（board.astro 建置期注入），以骰子 id 為鍵。 */
   const statParams = JSON.parse(statsEl.textContent ?? '{}') as Record<string, StatParams[]>;
@@ -112,11 +116,7 @@ if (grid && deckH && deckRow && deckLegend && picker && pickerClose && live && c
   }
   /** 頁面開著時存檔可能變（見 refreshSave()），所以是 let。存檔全頁只有一份，兩盤共用。 */
   let simSave = readSimSave();
-  const MODE_NOTE: Record<OffgameMode, string> = {
-    none: '未含骰子樹（符文／被動）加成',
-    sim: '局外加成：我的 /sim 存檔',
-    max: '局外加成：全部練滿',
-  };
+  const MODE_NOTE: Record<OffgameMode, string> = TB.modeNote;
 
   /** 骰子的顯示資料，直接從挑選網格的按鈕讀回來——那 41 顆已經在 HTML 裡了，
    *  再從別的地方載一次只會多一份會漂移的副本。 */
@@ -183,7 +183,7 @@ if (grid && deckH && deckRow && deckLegend && picker && pickerClose && live && c
       defaultMode: 'max',
       diceMeta,
       /** 無障礙名稱的前綴，跟 board.astro 輸出的隊友端靜態標記逐字相同（見 SideOptions）。 */
-      namePrefix: '隊友',
+      namePrefix: TB.partnerPrefix,
       announce,
       announcePrefix: PARTNER_SAY,
       onChange,
@@ -281,14 +281,14 @@ if (grid && deckH && deckRow && deckLegend && picker && pickerClose && live && c
     const lines = detailLines(statParams[p.diceId] ?? [], p.pips, lv, side.appliedFor(p.diceId));
     detailEmpty.hidden = true;
     detailBody.hidden = false;
-    detailTitle.textContent = titlePrefix(side) + cardTitle(diceMeta.get(p.diceId)?.name ?? p.diceId, p.pips, lv);
+    detailTitle.textContent = titlePrefix(side) + cardTitle(diceMeta.get(p.diceId)?.name ?? p.diceId, p.pips, lv, LANG);
     fillList(detailOffgameH, detailOffgame, lines.offgame);
     fillList(detailMechanicH, detailMechanic, lines.mechanic);
     // 盤面：這一格拿到的每個來源一行；方向／種類還沒指定的排序、齒輪二階自己再多一行提示。
     const hint = pendingHint(p);
     fillList(detailBoardH, detailBoard, [...(buffsOf(side)[detail.index]?.entries ?? []).map(e => e.text), ...(hint ? [hint] : [])]);
     detailNothing.hidden = lines.offgame.length + lines.mechanic.length > 0;
-    detailNothing.textContent = side.state.mode === 'none' ? '局外加成設為「不含」' : '這顆骰子沒有局外加成';
+    detailNothing.textContent = side.state.mode === 'none' ? TB.nothingNone : TB.nothing;
   }
 
   /**
@@ -328,7 +328,7 @@ if (grid && deckH && deckRow && deckLegend && picker && pickerClose && live && c
     const m = bonusCardModel(
       diceMeta.get(p.diceId)?.name ?? p.diceId, p.pips, side.spLevelOf(p.diceId), statParams[p.diceId] ?? [], side.appliedFor(p.diceId), here,
     );
-    cardTitleEl.textContent = titlePrefix(side) + m.title;
+    cardTitleEl.textContent = titlePrefix(side) + cardTitle(diceMeta.get(p.diceId)?.name ?? p.diceId, p.pips, side.spLevelOf(p.diceId), LANG);
     cardRows.replaceChildren(...m.rows.flatMap(r => {
       const dt = document.createElement('dt');
       dt.textContent = r.label;
@@ -355,8 +355,8 @@ if (grid && deckH && deckRow && deckLegend && picker && pickerClose && live && c
     // 已經把合作模式的東西算全了。
     // 盤面加成不受局外模式影響：這一格有的話才補那一段，否則「不含」下出現括號會跟註記矛盾。
     cardNote.textContent = MODE_NOTE[side.state.mode]
-      + (coop ? '；未含合作限定的局內規則' : '')
-      + (here.entries.length > 0 ? '；含盤面加成' : '');
+      + (coop ? TB.coopNote : '')
+      + (here.entries.length > 0 ? TB.boardNote : '');
     card!.hidden = false;
     cellEl(side, i)?.setAttribute('aria-describedby', 'dice-card');
     renderHighlights();
@@ -522,7 +522,7 @@ if (grid && deckH && deckRow && deckLegend && picker && pickerClose && live && c
     closePicker();
     side.renderDeck();
     // 挑選網格全頁只有一個、兩盤共用，所以這一句也要說清楚是替哪一盤選的（同 announcePrefix）。
-    announce(`${side === partner ? PARTNER_SAY : ''}第 ${slot + 1} 槽選擇 ${diceMeta.get(diceId)?.name ?? diceId}`);
+    announce(`${side === partner ? PARTNER_SAY : ''}${TB.slotPicked(slot + 1, diceMeta.get(diceId)?.name ?? diceId)}`);
   });
 
   // ⚠️ 包一層：closePicker 現在收一個選用參數，直接當 handler 傳的話 MouseEvent 會被
@@ -573,7 +573,7 @@ if (grid && deckH && deckRow && deckLegend && picker && pickerClose && live && c
     // 那一盤等於讓使用者切回去時整盤消失，而播報只說得出「骰盤已清空」（B48b）。
     me.clearBoard();
     if (coop) partner.clearBoard();
-    announce(coop ? '兩盤骰盤已清空' : '骰盤已清空');
+    announce(coop ? TB.clearedBoth : TB.cleared);
   });
 
   const exportBtn = document.getElementById('board-export') as HTMLButtonElement | null;
@@ -598,7 +598,7 @@ if (grid && deckH && deckRow && deckLegend && picker && pickerClose && live && c
       hidePipsBtn.setAttribute('aria-pressed', String(hidePips));
       me.dom.grid.classList.toggle('hide-pips', hidePips);
       partner.dom.grid.classList.toggle('hide-pips', hidePips);
-      announce(hidePips ? '已隱藏星數' : '已顯示星數');
+      announce(hidePips ? TB.pipsHidden : TB.pipsShown);
     });
   }
 
@@ -626,7 +626,7 @@ if (grid && deckH && deckRow && deckLegend && picker && pickerClose && live && c
         });
         const blob = await new Promise<Blob | null>(res => canvas.toBlob(res, 'image/png'));
         if (!blob) {
-          announce('分享圖產生失敗');
+          announce(TB.exportFail);
           return;
         }
         if (lastUrl) URL.revokeObjectURL(lastUrl);
@@ -640,12 +640,12 @@ if (grid && deckH && deckRow && deckLegend && picker && pickerClose && live && c
         a.href = lastUrl;
         a.download = 'rd2-board.png';
         a.click();
-        announce('分享圖已產生');
+        announce(TB.exportDone);
       } catch {
         // ⚠️ 沒有這個 catch 的話，繪製途中的任何例外都只會變成一個未捕捉的 rejection：
         // 按鈕被 finally 回復成可按、輸出區塊仍是 hidden、live region 是空的——
         // 使用者看到的是「按了完全沒反應」，而這一頁的唯一產出就是這張圖。
-        announce('分享圖產生失敗');
+        announce(TB.exportFail);
       } finally {
         exportBtn.removeAttribute('aria-disabled');
       }
@@ -718,7 +718,7 @@ if (grid && deckH && deckRow && deckLegend && picker && pickerClose && live && c
     // 那一組隊伍列，播報還說得出槽號，畫面上完全沒有反應。focus 不還（見 closePicker 的說明）。
     closePicker(false);
     applyCoopLayout();
-    announce(coop ? '切換到合作模式，已加入隊友的骰盤' : '切換到對戰模式');
+    announce(coop ? TB.coopOn : TB.coopOff);
   });
 
   // 開頁的那一發：兩盤的格子都畫出來、卡片確定是關的、明細回到空狀態。

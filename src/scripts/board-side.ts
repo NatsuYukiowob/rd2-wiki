@@ -20,6 +20,7 @@ import {
 } from '../lib/offgame-calc.js';
 import type { SaveContextWire } from '../lib/sim-save-lite.js';
 import type { Branch } from '../lib/types.js';
+import { documentLang, messages } from '../lib/i18n.js';
 
 /** 這一盤的三塊 DOM。都是 board.astro 直接輸出的靜態元素，由 board.ts 抓好再傳進來。 */
 export interface SideDom {
@@ -136,7 +137,8 @@ export interface Side {
   onSaveChanged(): void;
 }
 
-const MODE_NAME: Record<OffgameMode, string> = { none: '不含', sim: '我的 /sim', max: '全滿' };
+const TB = messages(documentLang()).board;
+const MODE_NAME: Record<OffgameMode, string> = TB.modeName;
 
 export function createSide(dom: SideDom, opts: SideOptions): Side {
   const state: SideState = {
@@ -251,20 +253,20 @@ export function createSide(dom: SideDom, opts: SideOptions): Side {
         btn.append(img);
         // I4（Yuki 拍板）：已填槽的 Enter 拿起、Space 才是換骰子——見下方 #deck-row 的
         // keydown 委派。aria-label 要照實描述兩個鍵各做什麼，不能再寫含糊的「按下更換」。
-        btn.setAttribute('aria-label', `${opts.namePrefix}第 ${slot + 1} 槽，${meta?.name ?? p.diceId} ${p.pips} 骰點，Enter 拿起，Space 更換`);
+        btn.setAttribute('aria-label', TB.slotFilled(opts.namePrefix, slot + 1, meta?.name ?? p.diceId, p.pips));
         value.textContent = String(p.pips);
         const lv = spLevelOf(p.diceId);
         const name = meta?.name ?? p.diceId;
         spNum.textContent = String(lv);
-        spDec.setAttribute('aria-label', `${opts.namePrefix}第 ${slot + 1} 槽${name}降低強化等級，目前 Lv.${lv}，最低 1`);
-        spInc.setAttribute('aria-label', `${opts.namePrefix}第 ${slot + 1} 槽${name}提高強化等級，目前 Lv.${lv}，最高 ${MAX_SP_LEVEL}`);
+        spDec.setAttribute('aria-label', TB.spDecAt(opts.namePrefix, slot + 1, name, lv));
+        spInc.setAttribute('aria-label', TB.spIncAt(opts.namePrefix, slot + 1, name, lv, MAX_SP_LEVEL));
       } else {
         btn.innerHTML = '<span class="deck-dice-empty" aria-hidden="true">＋</span>';
-        btn.setAttribute('aria-label', `${opts.namePrefix}第 ${slot + 1} 槽，尚未選擇骰子，按下選擇`);
+        btn.setAttribute('aria-label', TB.slotEmpty(opts.namePrefix, slot + 1));
         value.textContent = '1';
         spNum.textContent = '1';
-        spDec.setAttribute('aria-label', `${opts.namePrefix}第 ${slot + 1} 槽降低強化等級`);
-        spInc.setAttribute('aria-label', `${opts.namePrefix}第 ${slot + 1} 槽提高強化等級`);
+        spDec.setAttribute('aria-label', TB.spDec(opts.namePrefix, slot + 1));
+        spInc.setAttribute('aria-label', TB.spInc(opts.namePrefix, slot + 1));
       }
       // 空槽不能調等級：等級是「這一槽的骰子」的屬性，沒有骰子就沒有等級可言。
       dec.disabled = !p;
@@ -304,9 +306,9 @@ export function createSide(dom: SideDom, opts: SideOptions): Side {
           el.textContent = b.glyph;
           cell.append(el);
         }
-        cell.setAttribute('aria-label', `${opts.namePrefix}第 ${row} 列第 ${col} 格，${meta?.name ?? p.diceId} ${p.pips} 骰點${b ? `，${b.spoken}，按 R 切換` : ''}`);
+        cell.setAttribute('aria-label', TB.cellFilled(opts.namePrefix, row, col, meta?.name ?? p.diceId, p.pips) + (b ? TB.cellBadge(b.spoken) : ''));
       } else {
-        cell.setAttribute('aria-label', `${opts.namePrefix}第 ${row} 列第 ${col} 格，空`);
+        cell.setAttribute('aria-label', TB.cellEmpty(opts.namePrefix, row, col));
       }
     }
   }
@@ -353,7 +355,7 @@ export function createSide(dom: SideDom, opts: SideOptions): Side {
       renderDeck();
       // ⚠️ 改的是別種骰子也可能變：光的強化 Lv 會改到它照到的鄰格，所以整張卡片重算而不是只改這一列。
       opts.onChange();
-      say(`${opts.diceMeta.get(p.diceId)?.name ?? p.diceId}強化 Lv.${lv}，同種骰子共用`);
+      say(TB.spShared(opts.diceMeta.get(p.diceId)?.name ?? p.diceId, lv));
       return;
     }
     const step = target.closest<HTMLButtonElement>('.pips-inc, .pips-dec');
@@ -364,7 +366,7 @@ export function createSide(dom: SideDom, opts: SideOptions): Side {
     const delta = step.classList.contains('pips-inc') ? 1 : -1;
     state.deck = setDeckSlot(state.deck, slot, { diceId: current.diceId, pips: clampPips(current.pips + delta) });
     renderDeck();
-    say(`第 ${slot + 1} 槽改為 ${state.deck[slot]!.pips} 骰點`);
+    say(TB.pipsSet(slot + 1, state.deck[slot]!.pips));
   });
 
   dom.offgameEl.addEventListener('click', e => {
@@ -372,14 +374,14 @@ export function createSide(dom: SideDom, opts: SideOptions): Side {
     if (!btn) return;
     const next = btn.dataset.mode as OffgameMode;
     if (next === 'sim' && !opts.simSave()) {
-      say('沒有找到 /sim 的存檔');
+      say(TB.noSave);
       return;
     }
     state.mode = next;
     renderMode();
     // 開著的卡片原地重算：切換鈕在 pointerdown／focusout 的豁免清單裡，卡片不會先被收掉。
     opts.onChange();
-    say(`局外加成：${MODE_NAME[state.mode]}`);
+    say(TB.modeSay(MODE_NAME[state.mode]));
   });
 
   /** 目前正在拖的東西。`from` 是來源格 index，來自組合列時為 null。
@@ -481,7 +483,7 @@ export function createSide(dom: SideDom, opts: SideOptions): Side {
     // ⚠️ 但**不能靜靜不作用**：畫面上骰子彈回原處看得出來，螢幕閱讀器使用者卻分不出
     // 「我沒瞄準」與「這一頁不理我」——所以這條路徑要自己說一句。
     if (target === 'other') {
-      say('不能把骰子搬到另一盤，骰子留在原處');
+      say(TB.cantMove);
       return;
     }
     if (target === null) {
@@ -489,20 +491,20 @@ export function createSide(dom: SideDom, opts: SideOptions): Side {
       if (from !== null) {
         state.board = clear(state.board, from);
         renderBoard();
-        say('已移除一顆骰子');
+        say(TB.removedOne);
       }
       return;
     }
     if (from === null) {
       state.board = place(state.board, target, payload);
-      say(`${opts.diceMeta.get(payload.diceId)?.name ?? payload.diceId} ${payload.pips} 骰點放到第 ${Math.floor(target / 5) + 1} 列第 ${(target % 5) + 1} 格`);
+      say(TB.placed(opts.diceMeta.get(payload.diceId)?.name ?? payload.diceId, payload.pips, Math.floor(target / 5) + 1, (target % 5) + 1));
     } else {
       // ⚠️ swap() 在 from === target 時是 no-op（回原陣列）。無條件播報的話，在已有骰子的
       // 格子上「原地點一下」就會讓螢幕閱讀器收到一句「兩格已交換」，而畫面上什麼都沒動。
       const next = swap(state.board, from, target);
       if (next !== state.board) {
         state.board = next;
-        say('兩格已交換');
+        say(TB.swapped);
       }
     }
     renderBoard();
@@ -602,7 +604,7 @@ export function createSide(dom: SideDom, opts: SideOptions): Side {
     }
     e.preventDefault();
     held = { payload: p, from: null };
-    say(`拿起 ${opts.diceMeta.get(p.diceId)?.name ?? p.diceId} ${p.pips} 骰點，移到骰盤上按 Enter 放下`);
+    say(TB.picked(opts.diceMeta.get(p.diceId)?.name ?? p.diceId, p.pips));
   });
 
   dom.grid.addEventListener('keydown', e => {
@@ -646,7 +648,7 @@ export function createSide(dom: SideDom, opts: SideOptions): Side {
         // place() 一定會真的寫入（組合列來源沒有「原地」這回事），只有 swap 分支需要這層保護。
         if (next !== state.board) {
           state.board = next;
-          say(`${name} 放到第 ${row + 1} 列第 ${col + 1} 格`);
+          say(TB.placedAt(name, row + 1, col + 1));
         }
         renderBoard();
         focusCell(i);
@@ -654,7 +656,7 @@ export function createSide(dom: SideDom, opts: SideOptions): Side {
         opts.syncCardToFocus();
       } else if (state.board[i]) {
         held = { payload: state.board[i]!, from: i };
-        say(`拿起第 ${row + 1} 列第 ${col + 1} 格的骰子，移到目標格按 Enter 放下`);
+        say(TB.pickedCell(row + 1, col + 1));
       }
       return;
     }
@@ -666,14 +668,14 @@ export function createSide(dom: SideDom, opts: SideOptions): Side {
       held = null;
       renderBoard();
       focusCell(i);
-      say(`已移除第 ${row + 1} 列第 ${col + 1} 格的骰子`);
+      say(TB.removedAt(row + 1, col + 1));
       return;
     }
 
     if (e.key === 'Escape' && held) {
       e.preventDefault();
       held = null;
-      say('已放下');
+      say(TB.dropped);
     }
   });
 

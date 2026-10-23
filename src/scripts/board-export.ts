@@ -8,6 +8,10 @@ import {
   badgeRect, cellRect, deckLabelBaseline, deckRect, iconRect, imageSize,
   type BoardSide, type Rect,
 } from '../lib/board-image.js';
+import { documentLang, messages } from '../lib/i18n.js';
+
+const TP = messages(documentLang()).boardPage;
+const TB = messages(documentLang()).board;
 
 export interface ExportInput {
   board: Board;
@@ -105,10 +109,10 @@ export async function renderShareImage(input: ExportInput): Promise<HTMLCanvasEl
   const partner = input.partner ?? { board: emptyBoard(), deck: emptyDeck() };
   const sides: { side: BoardSide; board: Board; deck: Deck; deckLabel: string }[] = coop
     ? [
-      { side: 'partner', board: partner.board, deck: partner.deck, deckLabel: '隊友的隊伍' },
-      { side: 'me', board: input.board, deck: input.deck, deckLabel: '我的隊伍' },
+      { side: 'partner', board: partner.board, deck: partner.deck, deckLabel: TP.partnerDeck },
+      { side: 'me', board: input.board, deck: input.deck, deckLabel: TP.myDeck },
     ]
-    : [{ side: 'me', board: input.board, deck: input.deck, deckLabel: '我的隊伍' }];
+    : [{ side: 'me', board: input.board, deck: input.deck, deckLabel: TP.myDeck }];
 
   // ⚠️ 等字型載完再畫，否則中文會退回系統預設字面，跟站上看到的不一樣。
   await document.fonts.ready;
@@ -136,7 +140,7 @@ export async function renderShareImage(input: ExportInput): Promise<HTMLCanvasEl
   ctx.fillStyle = COLORS.fg;
   ctx.font = `600 40px ${FONT_STACK}`;
   ctx.textBaseline = 'middle';
-  ctx.fillText(coop ? '我們的骰盤' : '我的骰盤', 48, 52);
+  ctx.fillText(coop ? TB.ourBoard : TB.myBoardTitle, 48, 52);
 
   ctx.fillStyle = COLORS.muted;
   ctx.font = `24px ${FONT_STACK}`;

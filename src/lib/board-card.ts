@@ -1,13 +1,14 @@
 // /board 數值卡片的純邏輯：卡片內容（標題＋數值列）與浮層擺位。不碰 DOM 所以測得到；
 // DOM 組裝在 src/scripts/board.ts。
 import { valueAt, type StatParams } from './dice-calc.js';
+import { messages, type Lang } from './i18n.js';
 
 export interface CardRow { label: string; value: string }
 export interface CardModel { title: string; rows: CardRow[] }
 
 /** 卡片與明細面板共用的標題，格式固定為「火骰子 · 3 骰點 · 強化 Lv.5」。只留這一份。 */
-export function cardTitle(name: string, pips: number, level: number): string {
-  return `${name} · ${pips} 骰點 · 強化 Lv.${level}`;
+export function cardTitle(name: string, pips: number, level: number, lang: Lang = 'zh'): string {
+  return messages(lang).board.cardTitle(name, pips, level);
 }
 
 /** 卡片內容。標題見 cardTitle()；列的順序照 dice-stats.json。 */
