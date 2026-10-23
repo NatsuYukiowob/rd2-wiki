@@ -24,7 +24,7 @@ import Base from '../layouts/Base.astro';
 import { langFromPath, localizePath, messages } from '../lib/i18n';
 import '../styles/board.css';
 import { ICONS } from '../lib/icons';
-import { treeData as data } from '../lib/tree-data';
+import { treeDataFor } from '../lib/tree-data';
 import boardIconsRaw from '../../data/board-icons.json';
 import nodeTextRaw from '../../data/nodes.json';
 import diceStatsRaw from '../../data/dice-stats.json';
@@ -38,7 +38,7 @@ import { buildSimContext } from '../lib/sim';
 import { encodeSaveContext } from '../lib/sim-save-lite';
 import type { DiceStatsTable, PassiveUpgradeCost, TreeData, TreeNode } from '../lib/types';
 
-const tree = data as unknown as TreeData;
+const tree = treeDataFor(langFromPath(Astro.url.pathname)) as unknown as TreeData;
 const boardIcons = boardIconsRaw as Record<string, string>;
 // 只收骰子本體：符文／玩家被動／支援不是「一顆能放進骰盤的骰子」。
 // 排序照節點 id，跟 /dice 圖鑑一致（id 首碼＝分支、次碼＝層級，見規則 2）。

@@ -14,6 +14,8 @@ import { isGlossaryAlias } from '../src/lib/types.js';
 import { textColor } from '../src/lib/glossary-groups.js';
 import type { Branch, Edge, GlossaryDisplay, GlossaryRecord, TreeData, TreeNode, UnlockVia, UpgradeCostTable } from '../src/lib/types.js';
 import { encodeTree, encodeTreeText } from '../src/lib/tree-wire.js';
+import { buildLocaleText, localeIssues } from '../src/lib/tree-locale.js';
+import { LANGS, DEFAULT_LANG } from '../src/lib/i18n.js';
 
 interface BuildOpts {
   /** `data/keywords.json` 的內容：key ＝不含 `#` 的詞，同時是規則 8 的白名單與玩家看的解釋。 */
@@ -297,6 +299,19 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
   writeFileSync('src/generated/tree.json', json);
   const textJson = JSON.stringify(encodeTreeText(data));
   writeFileSync('src/generated/tree-text.json', textJson);
+  const sourceText = JSON.parse(readFileSync('data/nodes.json', 'utf8'));
+  for (const lang of LANGS.filter(l => l !== DEFAULT_LANG)) {
+    const viNodes = JSON.parse(readFileSync(`data/i18n/${lang}/nodes.json`, 'utf8'));
+    const viKeywords = JSON.parse(readFileSync(`data/i18n/${lang}/keywords.json`, 'utf8'));
+    const issues = localeIssues(sourceText, viNodes, keywords, viKeywords);
+    if (issues.length > 0) {
+      console.error(`❌ data/i18n/${lang} 跟正本對不上：\n${issues.join('\n')}`);
+      process.exit(1);
+    }
+    const localeJson = JSON.stringify(buildLocaleText(data, viNodes, keywords, viKeywords));
+    writeFileSync(`src/generated/tree-text-${lang}.json`, localeJson);
+    console.log(`tree-text-${lang}.json gzip ${(gzipSync(Buffer.from(localeJson)).length / 1024).toFixed(1)} KB（不計入預算）`);
+  }
 
   console.log(`tree.json ${(Buffer.byteLength(json) / 1024).toFixed(1)} KB, sprite ${(sprite.length / 1024).toFixed(0)} KB`);
   console.log(`tree-text.json gzip ${(gzipSync(Buffer.from(textJson)).length / 1024).toFixed(1)} KB（不計入預算）`);

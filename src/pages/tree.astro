@@ -5,6 +5,7 @@
 import Base from '../layouts/Base.astro';
 import { langFromPath, messages } from '../lib/i18n';
 import ModeSwitch from '../components/ModeSwitch.astro';
+import TreeLocaleLabels from '../components/TreeLocaleLabels.astro';
 import NodeIndex from '../components/NodeIndex.astro';
 import { BRANCH_ZH, TYPE_ZH } from '../lib/labels';
 import '../styles/detail.css';
@@ -83,6 +84,7 @@ const TYPES = (Object.keys(TYPE_ZH) as (keyof typeof TYPE_ZH)[]).map(k => [k, m.
     </nav>
   </div>
   <div id="canvas-host">
+    <TreeLocaleLabels />
     <script>
       import '../scripts/tree-canvas.ts';
     </script>

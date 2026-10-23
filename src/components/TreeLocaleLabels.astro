@@ -1,0 +1,10 @@
+---
+// 非預設語言的 /tree、/sim：把節點譯名內嵌進頁面，讓 src/lib/tree-client.ts 在畫布第一次畫之前就換上
+// （描述等其餘文字照樣晚到，見該檔）。預設語言什麼都不輸出。
+import { langFromPath } from '../lib/i18n';
+import { localeLabelsFor } from '../lib/tree-data';
+import { LOCALE_LABELS_ID } from '../lib/tree-locale';
+
+const labels = localeLabelsFor(langFromPath(Astro.url.pathname));
+---
+{labels && <script type="application/json" id={LOCALE_LABELS_ID} set:html={JSON.stringify(labels).replace(/</g, '\\u003c')} />}

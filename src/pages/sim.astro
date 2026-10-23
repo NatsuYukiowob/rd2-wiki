@@ -17,15 +17,16 @@
 import Base from '../layouts/Base.astro';
 import { langFromPath, messages } from '../lib/i18n';
 import ModeSwitch from '../components/ModeSwitch.astro';
+import TreeLocaleLabels from '../components/TreeLocaleLabels.astro';
 import { ICONS } from '../lib/icons';
 import '../styles/canvas.css';
-import { treeData as data } from '../lib/tree-data';
+import { treeDataFor } from '../lib/tree-data';
 import { MYTHIC_CORES } from '../lib/currency';
 import tablesRaw from '../../data/passive-upgrade-cost.json';
 import { buildSimContext } from '../lib/sim';
 import type { PassiveUpgradeCost, TreeData } from '../lib/types';
 
-const tree = data as unknown as TreeData;
+const tree = treeDataFor(langFromPath(Astro.url.pathname)) as unknown as TreeData;
 const tables = tablesRaw as unknown as PassiveUpgradeCost;
 
 // 可選初始骰子的清單在建置期就算好：它是「unlockVia 非 cost 非 default 且不用付錢」的
@@ -112,6 +113,7 @@ const zeroCost = `${m.labels.core} 0 ／${m.labels.gold} 0`;
   </div>
 
   <div id="canvas-host">
+    <TreeLocaleLabels />
     <script>
       import '../scripts/sim.ts';
     </script>
