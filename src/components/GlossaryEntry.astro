@@ -10,6 +10,7 @@
 import { renderStaticText } from '../lib/static-markup';
 import type { GlossaryIndex, GlossaryItem } from '../lib/glossary-groups';
 import { ICONS } from '../lib/icons';
+import { langFromPath, linker, messages } from '../lib/i18n';
 
 interface Props {
   item: GlossaryItem;
@@ -20,6 +21,10 @@ interface Props {
 
 const { item, index, whitelist, glossary } = Astro.props;
 const desc = renderStaticText(item.desc, whitelist, glossary, index);
+const lang = langFromPath(Astro.url.pathname);
+const kw = messages(lang).keywordsPage;
+const search = messages(lang).dicePage.searchInTree.replace('{term}', item.term);
+const link = linker(lang);
 ---
 
 <article class="kw-entry" id={item.anchor}>
@@ -27,7 +32,7 @@ const desc = renderStaticText(item.desc, whitelist, glossary, index);
     <span class="kw-term" style={`color:${item.color}`}>#{item.term}</span>
     <code class="kw-code">{item.anchor}</code>
     {item.aliases.length > 0 && (
-      <span class="kw-alias">別名 {item.aliases.map(a => `#${a}`).join('、')}</span>
+      <span class="kw-alias">{kw.alias(item.aliases.map(a => `#${a}`).join(kw.aliasSep))}</span>
     )}
   </h3>
   <p class="kw-desc" set:html={desc} />
@@ -35,12 +40,12 @@ const desc = renderStaticText(item.desc, whitelist, glossary, index);
     item.usedBy.length > 0 ? (
       /* 只給入口，不列出是哪些節點（2026-08-22 Yuki 指定）：那份清單這裡讀起來只是一串
          名字，玩家真正要問的「它長在樹的哪裡、要多少錢」只有骰子樹答得了。 */
-      <p class="kw-used"><a href={`/tree/?q=${encodeURIComponent(item.term)}`}>在骰子樹搜尋 #{item.term}<Fragment set:html={ICONS.arrow} /></a></p>
+      <p class="kw-used"><a href={link(`/tree/?q=${encodeURIComponent(item.term)}`)}>{search}<Fragment set:html={ICONS.arrow} /></a></p>
     ) : (
       /* 62 條裡有 25 條沒被任何節點文案引用。不隱藏——藏起來玩家會以為站台漏資料，
          標出來才說得清楚「這是遊戲有、但骰子樹上沒有節點用到的機制」。
          也刻意不給搜尋入口：那條路過去是一個 0 筆結果的搜尋，比不給還糟。 */
-      <p class="kw-unused">骰子樹的節點文案沒有用到這個標記</p>
+      <p class="kw-unused">{kw.unused}</p>
     )
   }
 </article>

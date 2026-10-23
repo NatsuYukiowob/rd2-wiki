@@ -7,7 +7,7 @@
 // 所以腳本要能從錨點反查它在哪個分類；舊網址 `/guide/<slug>` 由 `public/_redirects` 301 到
 // `?tab=<slug>`。
 import Base from '../../layouts/Base.astro';
-import { langFromPath, messages } from '../../lib/i18n';
+import { langFromPath, linker, messages } from '../../lib/i18n';
 import GlossaryEntry from '../../components/GlossaryEntry.astro';
 import { treeData as data } from '../../lib/tree-data';
 import keywordsRaw from '../../../data/keywords.json';
@@ -30,19 +30,21 @@ const tabs = GUIDE_TABS.map(tab => {
 const total = tabs.reduce((n, tab) => n + tab.total, 0);
 
 const m = messages(langFromPath(Astro.url.pathname));
+const link = linker(langFromPath(Astro.url.pathname));
+const kw = m.keywordsPage;
 ---
 
 <Base title={m.pages.keywords.title} description={m.pages.keywords.description(total)}>
   <section class="page" data-kw-page>
-    <h1 class="page-head">遊戲名詞</h1>
+    <h1 class="page-head">{kw.heading}</h1>
     {/* 中文句子不斷行：原始碼換行會在「。」後面渲染出一個空白。 */}
-    <p class="lede">骰子描述裡那些帶 <code>#</code> 的詞是遊戲的正式標記，共 {total} 條。分組依據是官方資料表給每個標記的<strong>底色碼</strong>（同色＝同一類機制），組名是本站取的。在<a href="/dice/">骰子圖鑑</a>的卡片上點任何一個標記，會就地展開同一份解釋。</p>
+    <p class="lede">{kw.ledeBefore}<code>#</code>{kw.ledeMiddle(total)}<strong>{kw.ledeColor}</strong>{kw.ledeAfter}<a href={link('/dice/')}>{kw.ledeDiceLink}</a>{kw.ledeEnd}</p>
 
-    <div class="kw-tabs" role="group" aria-label="名詞分類" data-kw-tabs hidden>
+    <div class="kw-tabs" role="group" aria-label={kw.tabsGroup} data-kw-tabs hidden>
       {tabs.map((tab, i) => (
         <button type="button" class="btn btn-alt" data-kw-tab={tab.slug}
           aria-controls={`kw-panel-${tab.slug}`} aria-pressed={i === 0 ? 'true' : 'false'}>
-          {tab.title}<span class="kw-tab-count">{tab.total}</span>
+          {kw.tabs[tab.slug]?.title ?? tab.title}<span class="kw-tab-count">{tab.total}</span>
         </button>
       ))}
     </div>
@@ -50,14 +52,14 @@ const m = messages(langFromPath(Astro.url.pathname));
     {tabs.map(tab => (
       <section class="kw-tab-panel" id={`kw-panel-${tab.slug}`} data-kw-panel={tab.slug}
         aria-labelledby={tab.sections.length > 1 ? undefined : `kw-heading-${tab.slug}`}
-        aria-label={tab.sections.length > 1 ? tab.title : undefined}>
+        aria-label={tab.sections.length > 1 ? (kw.tabs[tab.slug]?.title ?? tab.title) : undefined}>
         {/* 只有一組時分類名稱就是組標題；多組時各組各印自己的標題，不重複印分類名。 */}
-        {tab.sections.length === 1 && <h2 class="sec-title" id={`kw-heading-${tab.slug}`}>{tab.title}</h2>}
-        <p class="note">{tab.intro}（{tab.total} 條）</p>
+        {tab.sections.length === 1 && <h2 class="sec-title" id={`kw-heading-${tab.slug}`}>{kw.tabs[tab.slug]?.title ?? tab.title}</h2>}
+        <p class="note">{kw.tabCount(kw.tabs[tab.slug]?.intro ?? tab.intro, tab.total)}</p>
         {tab.sections.map(section => (
           <section class="kw-section">
-            {tab.sections.length > 1 && <h2 class="sec-title">{section.group.title}</h2>}
-            {tab.sections.length > 1 && <p class="note">{section.group.blurb}</p>}
+            {tab.sections.length > 1 && <h2 class="sec-title">{kw.groups[section.group.slug]?.title ?? section.group.title}</h2>}
+            {tab.sections.length > 1 && <p class="note">{kw.groups[section.group.slug]?.blurb ?? section.group.blurb}</p>}
             <div class="kw-list">
               {section.items.map(item => (
                 <GlossaryEntry item={item} index={index} whitelist={whitelist} glossary={glossary} />

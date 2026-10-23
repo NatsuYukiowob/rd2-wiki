@@ -10,7 +10,8 @@ import { renderStaticText } from '../lib/static-markup';
 import { STAT_MODES, isFixed, growthNote, levelStep, statValue } from '../lib/dice-stats';
 import { formatCost, formatGrowth, formatUnlockVia } from '../lib/format';
 import { cumulativeUpgradeCost, upgradeTableApplies } from '../lib/cost';
-import { AWAKENING_CONDITION, BRANCH_ZH } from '../lib/labels';
+import { awakeningCondition, branchLabel } from '../lib/labels';
+import { langFromPath, linker, messages } from '../lib/i18n';
 import { DICE_CARD_ICON_PX } from '../lib/dice-icon';
 import type { GlossaryIndex } from '../lib/glossary-groups';
 import type { DiceStatEntry, TreeNode, UpgradeCostTable } from '../lib/types';
@@ -42,7 +43,7 @@ const { node, gameId, index, whitelist, glossary, upgradeCostTable, stats, enter
 
 const desc = renderStaticText(node.description, whitelist, glossary, index);
 const awakening = node.awakening ? renderStaticText(node.awakening, whitelist, glossary, index) : null;
-const growth = formatGrowth(node);
+const growth = formatGrowth(node, langFromPath(Astro.url.pathname));
 // 練滿累計只適用骰子符文（見 UpgradeCostTable 的說明）：玩家被動的等級上限與單價各不相同，
 // 套這張表會算出一個看起來很專業的錯數字，所以套不上就整列不顯示。
 const maxUpgrade = upgradeTableApplies(upgradeCostTable, node)
@@ -50,6 +51,10 @@ const maxUpgrade = upgradeTableApplies(upgradeCostTable, node)
   : null;
 // radio 的 name 要全頁唯一，否則 41 張卡片會變成同一組——切一張的模式會把其他 40 張一起切掉。
 const modeName = `stat-mode-${node.id}`;
+const lang = langFromPath(Astro.url.pathname);
+const link = linker(lang);
+const l = messages(lang).labels;
+const dp = messages(lang).dicePage;
 ---
 
 <article class="dice-card card" id={`n${node.id}`} data-branch={node.branch} data-type={node.type} style={`--i:${enterIndex}`}>
@@ -71,7 +76,7 @@ const modeName = `stat-mode-${node.id}`;
         {/* 刻意不印類型：圖鑑只收骰子本體，41 張卡片全寫「骰子」等於沒寫。 */}
         <p class="meta">
           <span class={`branch-dot branch-${node.branch}`} aria-hidden="true"></span>
-          {BRANCH_ZH[node.branch]}
+          {branchLabel(node.branch, lang)}
           {gameId && <code class="game-id">{gameId}</code>}
         </p>
       </div>
@@ -92,7 +97,7 @@ const modeName = `stat-mode-${node.id}`;
         <div class="dice-stats">
           <ul class="stat-pills">
             {stats.stats.map(s => (
-              <li class={`stat-pill pill${isFixed(s) ? ' is-fixed' : ''}`} title={growthNote(s) ?? undefined}>
+              <li class={`stat-pill pill${isFixed(s) ? ' is-fixed' : ''}`} title={growthNote(s, lang) ?? undefined}>
                 <span class="stat-k">{s.label}</span>
                 <span class="stat-v">
                   {isFixed(s)
@@ -108,16 +113,16 @@ const modeName = `stat-mode-${node.id}`;
           {stats.note && <p class="stat-note">{stats.note}</p>}
           {/* 切換鈕排在數值下面（Yuki 指定）。`:has()` 是往上找的，所以 DOM 順序不受選擇器
                牽制，視覺順序＝DOM 順序＝焦點順序，三者一致。 */}
-          <div class="stat-modes" role="group" aria-label={`${node.name} 的數值模式`}>
+          <div class="stat-modes" role="group" aria-label={dp.statModesOf(node.name)}>
             {STAT_MODES.map((m, i) => (
               <label class="chip chip-xs">
                 <input type="radio" name={modeName} value={m.key} checked={i === 0} />
-                {m.label}
+                {l.statModes[m.key]}
               </label>
             ))}
             {/* 按住才顯示：pill 的數值後面接上局內強化再升 1 級的增減（客戶端 *_UpAdd）。放開就收，
                  不留狀態。按住的判定在 dice.astro 的腳本（data-holding），CSS `:active` 是沒有 JS 時的後備。 */}
-            <button type="button" class="chip chip-xs stat-up-btn">局內升級</button>
+            <button type="button" class="chip chip-xs stat-up-btn">{dp.statUp}</button>
           </div>
         </div>
       )
@@ -125,24 +130,24 @@ const modeName = `stat-mode-${node.id}`;
 
     {/* 花錢買得到的才加「解鎖」前綴：formatUnlockVia 對其餘 9 顆回的是「初始解鎖」或官方寫的
          取得條件原文，前面再加一個「解鎖」會變成「解鎖 初始解鎖」。 */}
-    <p class="meta">{node.unlockVia === 'cost' ? `解鎖 ${formatUnlockVia(node)}` : formatUnlockVia(node)}</p>
-    {node.maxLevel > 1 && <p class="meta">等級上限 {node.maxLevel}</p>}
+    <p class="meta">{node.unlockVia === 'cost' ? dp.unlock(formatUnlockVia(node, lang)) : formatUnlockVia(node, lang)}</p>
+    {node.maxLevel > 1 && <p class="meta">{dp.maxLevel(node.maxLevel)}</p>}
     {growth && <p class="growth">{growth}</p>}
-    {maxUpgrade && <p class="upgrade">練滿 {node.maxLevel} 級累計 {formatCost(maxUpgrade)}<span class="cond">含解鎖那一次</span></p>}
-    {node.dataIssue === 'placeholder' && <p class="warn">數值待補（遊戲資料含未替換佔位符）</p>}
+    {maxUpgrade && <p class="upgrade">{dp.maxUpgrade(node.maxLevel, formatCost(maxUpgrade, lang))}<span class="cond">{dp.includesUnlock}</span></p>}
+    {node.dataIssue === 'placeholder' && <p class="warn">{dp.placeholder}</p>}
 
     <p class="desc" set:html={desc} />
 
     {
       awakening && (
         <div class="awakening">
-          <p class="awakening-head">骰子覺醒<span class="cond">{AWAKENING_CONDITION}</span></p>
+          <p class="awakening-head">{dp.awakening}<span class="cond">{awakeningCondition(lang)}</span></p>
           <p class="desc" set:html={awakening} />
         </div>
       )
     }
 
-    <a class="card-link" href={`/tree/?node=${node.id}`}>在骰子樹查看前置鏈<Fragment set:html={ICONS.arrow} /></a>
+    <a class="card-link" href={link(`/tree/?node=${node.id}`)}>{dp.viewInTree}<Fragment set:html={ICONS.arrow} /></a>
   </div>
 
   {/*

@@ -226,23 +226,25 @@ const alternates = LANGS.map(l => ({ lang: l, path: localizePath(basePath, l) })
            （tools/build-data.ts 解析進 meta.updated），會隨資料更新自動變動，
            不是寫死在頁面上的字串。 */}
       <span class="nav-updated">{m.nav.updated(data.meta.updated)}</span>
-      {/* 語言選單。class 刻意不是 `.nav-menu`：E2E 有一大串 `.nav-menu > summary` 的單一元素選取器
-           （strict mode），而它也跟「遊戲介紹」一樣放在 `.nav-links` 捲動盒外。
+      {/* 語言切換。只有兩個語言，所以是並排的切換而不是下拉：不多一個 <details>／<summary>
+           （E2E 有不少 `summary`、`.nav-menu` 的單一元素選取器），也不必等 JS。
+           目前的語言是不可點的 <span>（不是連到自己的 <a>：那會讓 `a[href="/events/"]` 這種
+           選取器多命中一個）。放在 `.nav-links` 捲動盒外，手機上永遠看得到。
            連結指向同一頁的另一個語言；404 頁沒有「同一頁」可言，改指各語言首頁。 */}
-      <details class="nav-lang">
-        <summary aria-label={`${m.nav.language}：${LANG_META[lang].label}`}><Fragment set:html={ICONS.globe} /><span class="nav-lang-short">{LANG_META[lang].short}</span><Fragment set:html={ICONS.down} /></summary>
-        <div class="nav-lang-items">
-          {alternates.map(a => (
-            <a
-              href={noIndex ? localizePath('/', a.lang) : a.path}
-              hreflang={LANG_META[a.lang].tag}
-              lang={LANG_META[a.lang].tag}
-              data-lang={a.lang}
-              aria-current={a.lang === lang ? 'true' : undefined}
-            >{LANG_META[a.lang].label}</a>
-          ))}
-        </div>
-      </details>
+      <div class="nav-lang" role="group" aria-label={m.nav.language}>
+        <Fragment set:html={ICONS.globe} />
+        {alternates.map(a => a.lang === lang ? (
+          <span class="nav-lang-current" lang={LANG_META[a.lang].tag} aria-current="true" title={LANG_META[a.lang].label}>{LANG_META[a.lang].short}</span>
+        ) : (
+          <a
+            href={noIndex ? localizePath('/', a.lang) : a.path}
+            hreflang={LANG_META[a.lang].tag}
+            lang={LANG_META[a.lang].tag}
+            data-lang={a.lang}
+            aria-label={LANG_META[a.lang].label}
+          >{LANG_META[a.lang].short}</a>
+        ))}
+      </div>
     </nav>
     <main>
       <slot />
@@ -278,7 +280,7 @@ const alternates = LANGS.map(l => ({ lang: l, path: localizePath(basePath, l) })
 
       // <details> 唯一缺的兩件事：點到選單外面、以及按 Esc，都要收起來。
       // 沒有這兩條的話，選單一開就只能再點一次 summary 才關得掉——在手機上等於擋住半頁。
-      const menus = [...document.querySelectorAll<HTMLDetailsElement>('#site-nav .nav-menu, #site-nav .nav-lang')];
+      const menus = [...document.querySelectorAll<HTMLDetailsElement>('#site-nav .nav-menu')];
       const closeAll = (except?: Element) => {
         for (const m of menus) if (m !== except) m.open = false;
       };
@@ -302,7 +304,7 @@ const alternates = LANGS.map(l => ({ lang: l, path: localizePath(basePath, l) })
 
       // 語言選單選了哪個就記住，下次從站外進來時 head 那支 script 直接換過去。
       import { LANG_STORAGE_KEY } from '../lib/i18n';
-      for (const a of document.querySelectorAll<HTMLAnchorElement>('#site-nav .nav-lang-items a[data-lang]')) {
+      for (const a of document.querySelectorAll<HTMLAnchorElement>('#site-nav .nav-lang a[data-lang]')) {
         a.addEventListener('click', () => {
           try { localStorage.setItem(LANG_STORAGE_KEY, a.dataset.lang!); } catch { /* 無痕模式寫不進去就算了 */ }
         });

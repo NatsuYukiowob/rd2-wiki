@@ -8,8 +8,8 @@
  * ⚠️ 只翻介面文字。`data/` 的遊戲文案（節點名稱、描述、戰術、怪物…）仍是中文，
  * 翻譯資料是另一件事（validate 規則與 join key 都綁著中文名稱）。
  */
-import { zh, type Messages } from './messages-zh';
-import { vi } from './messages-vi';
+import { zh, type Messages } from './messages-zh.js';
+import { vi } from './messages-vi.js';
 
 export const LANGS = ['zh', 'vi'] as const;
 export type Lang = (typeof LANGS)[number];

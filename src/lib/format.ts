@@ -3,18 +3,16 @@
 import { mythicEntries } from './cost.js';
 import { maxLevelValue } from './growth.js';
 import type { Cost, GrowthUnit, TreeNode } from './types.js';
+import { messages, type Lang } from './i18n.js';
 
 // 成長值單位對照表。key 用 GrowthUnit 這個精確聯集型別（而非 Record<string, string>），
 // 讓編譯器強制要求五種單位全部涵蓋到——少寫一種會直接編譯失敗，不會漏到執行期才發現。
 // 'count'（次／個）是 growth.ts 把遊戲文案兩種寫法合併成的同一個單位，資料裡已經回不去
 // 原始用字，顯示上取較通用的「次」。
-const UNIT_TEXT: Record<GrowthUnit, string> = {
-  '%': '%',
-  s: '秒',
-  count: '次',
-  x: '倍',
-  '': '',
-};
+function unitText(unit: GrowthUnit, lang: Lang): string {
+  if (unit === '%' || unit === '') return unit;
+  return messages(lang).labels.unit[unit];
+}
 
 /**
  * 把解鎖成本格式化成含千分位的顯示字串，例：「核心 26 ＋ 金幣 12,000」。
@@ -24,12 +22,13 @@ const UNIT_TEXT: Record<GrowthUnit, string> = {
  * 全樹只有神話骰子那幾支花得到它們，每個面板都印一段 0 等於讓兩顆節點的貨幣佔掉每一顆節點的
  * 版面。多種同時出現時照 `MYTHIC_CORES` 的順序。
  */
-export function formatCost(c: Cost): string {
+export function formatCost(c: Cost, lang: Lang = 'zh'): string {
+  const l = messages(lang).labels;
   const parts: string[] = [];
-  if (c.core > 0) parts.push(`核心 ${c.core.toLocaleString('en-US')}`);
-  if (c.gold > 0) parts.push(`金幣 ${c.gold.toLocaleString('en-US')}`);
-  for (const [def, n] of mythicEntries(c)) parts.push(`${def.label} ${n.toLocaleString('en-US')}`);
-  return parts.length > 0 ? parts.join(' ＋ ') : '免費';
+  if (c.core > 0) parts.push(`${l.core} ${c.core.toLocaleString('en-US')}`);
+  if (c.gold > 0) parts.push(`${l.gold} ${c.gold.toLocaleString('en-US')}`);
+  for (const [def, n] of mythicEntries(c)) parts.push(`${l.mythic[def.kind] ?? def.label} ${n.toLocaleString('en-US')}`);
+  return parts.length > 0 ? parts.join(' ＋ ') : l.free;
 }
 
 /**
@@ -37,18 +36,13 @@ export function formatCost(c: Cost): string {
  * 等級上限為 1（無成長曲線可言）或沒有成長資料時回傳 null，由呼叫端決定要不要顯示這一列
  * （spec §6.2 第 3 點：`maxLevel > 1` 但無成長資料者只顯示等級上限，不顯示換算列）。
  */
-export function formatGrowth(node: TreeNode): string | null {
+export function formatGrowth(node: TreeNode, lang: Lang = 'zh'): string | null {
   if (!node.growth || node.maxLevel <= 1) return null;
-  const unit = UNIT_TEXT[node.growth.unit];
+  const unit = unitText(node.growth.unit, lang);
   const top = maxLevelValue(node.growth, node.maxLevel);
-  return `1 級 ${node.growth.base}${unit} → ${node.maxLevel} 級 ${top}${unit}`;
+  return messages(lang).labels.growth(`${node.growth.base}${unit}`, node.maxLevel, `${top}${unit}`);
 }
 
-const UNLOCK_VIA_ZH: Record<Exclude<TreeNode['unlockVia'], 'cost'>, string> = {
-  quest: '任務解鎖',
-  default: '預設解鎖',
-  achievement: '成就解鎖',
-};
 
 /**
  * 節點解鎖方式的顯示文字。
@@ -66,7 +60,7 @@ const UNLOCK_VIA_ZH: Record<Exclude<TreeNode['unlockVia'], 'cost'>, string> = {
  * 或 `formatCost()` 的數字，所以不跳脫也安全；`unlockNote` 進來之後就不是了——正本是社群發
  * PR 維護的，而 `renderDetail()` 是用 `innerHTML` 塞的（見 NodeDetail.ts）。
  */
-export function formatUnlockVia(node: Pick<TreeNode, 'unlockVia' | 'unlockCost' | 'unlockNote'>): string {
-  if (node.unlockVia === 'cost') return formatCost(node.unlockCost);
-  return node.unlockNote ?? UNLOCK_VIA_ZH[node.unlockVia];
+export function formatUnlockVia(node: Pick<TreeNode, 'unlockVia' | 'unlockCost' | 'unlockNote'>, lang: Lang = 'zh'): string {
+  if (node.unlockVia === 'cost') return formatCost(node.unlockCost, lang);
+  return node.unlockNote ?? messages(lang).labels.unlockVia[node.unlockVia];
 }

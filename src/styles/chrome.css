@@ -76,8 +76,7 @@
    那一條拿掉才會紅。這條 nowrap 是防更窄的裝置與日後變長的項目名，不要因為「拿掉也是綠的」
    就順手刪掉。 */
 #site-nav a,
-#site-nav .nav-menu > summary,
-#site-nav .nav-lang > summary {
+#site-nav .nav-menu > summary {
   white-space: nowrap;
 }
 
@@ -94,6 +93,19 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* 語言切換（Base.astro 的 `.nav-lang`）：地球圖示＋各語言短標，目前的語言是金色的純文字。
+   「上次更新」在它左邊吃 `margin-left: auto`，所以它在桌機釘在最右邊。 */
+#site-nav .nav-lang {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--muted);
+  white-space: nowrap;
+}
+#site-nav .nav-lang-current {
+  color: var(--gold);
+  font-weight: 600;
+}
 @media (max-width: 720px) {
   #site-nav {
     gap: var(--space-3);
@@ -174,14 +186,11 @@
   border-radius: var(--r-pill);
 }
 
-/* --- 導覽列的下拉選單（<details>）---
-   語言選單 `.nav-lang` 跟「遊戲介紹」同一套外觀，只有面板改成靠右對齊（它在導覽列最右邊）。 */
-#site-nav .nav-menu,
-#site-nav .nav-lang {
+/* --- 導覽列的下拉選單（<details>）--- */
+#site-nav .nav-menu {
   position: relative;
 }
-#site-nav .nav-menu > summary,
-#site-nav .nav-lang > summary {
+#site-nav .nav-menu > summary {
   /* list-style: none ＋ ::-webkit-details-marker：兩者都要，才能在所有瀏覽器上拿掉
      <summary> 預設的三角形。留著的話它會跟自己畫的箭頭疊成兩個記號。 */
   position: relative;
@@ -192,24 +201,20 @@
   user-select: none;
   transition: color var(--t-fast) var(--e-out);
 }
-#site-nav .nav-menu > summary::-webkit-details-marker,
-#site-nav .nav-lang > summary::-webkit-details-marker {
+#site-nav .nav-menu > summary::-webkit-details-marker {
   display: none;
 }
 /* 下拉箭頭是 inline SVG（ICONS.down，2026-09-23 骰桌：跟全站圖示同一套線條，取代文字 ▾）。
    font-size 縮它自己（`.icon` 是 1em 見方），不動 summary 的字。 */
-#site-nav .nav-menu > summary > .icon,
-#site-nav .nav-lang > summary > .icon {
+#site-nav .nav-menu > summary > .icon {
   margin-inline-start: var(--space-1);
   font-size: 0.8em;
   color: var(--muted);
 }
-#site-nav .nav-menu > summary:hover,
-#site-nav .nav-lang > summary:hover {
+#site-nav .nav-menu > summary:hover {
   color: var(--gold);
 }
-#site-nav .nav-menu-items,
-#site-nav .nav-lang-items {
+#site-nav .nav-menu-items {
   position: absolute;
   z-index: 30; /* 蓋過 /tree 的 #tree-controls（它是 position: fixed 的浮層） */
   top: calc(100% + var(--space-2));
@@ -228,22 +233,18 @@
   /* 跟 #detail 同一種東西（浮在內容上的面），用同一個配方。 */
   box-shadow: var(--face-float);
 }
-#site-nav .nav-menu-items a,
-#site-nav .nav-lang-items a {
+#site-nav .nav-menu-items a {
   padding: var(--space-2) var(--space-3);
   border-radius: var(--r-sm);
   font-weight: 500;
 }
 /* 選單是捲動容器（overflow-y: auto），會裁掉畫在內距外的東西；焦點框的外擴（--ring-offset）跟內距
    一樣寬，根字級小於 16px 時左右兩邊就被切掉。這裡把焦點框畫進連結自己裡面。 */
-#site-nav .nav-menu-items a:focus-visible,
-#site-nav .nav-lang-items a:focus-visible {
+#site-nav .nav-menu-items a:focus-visible {
   outline-offset: calc(var(--ring-offset) * -1);
 }
 #site-nav .nav-menu-items a:hover,
-#site-nav .nav-menu-items a:focus-visible,
-#site-nav .nav-lang-items a:hover,
-#site-nav .nav-lang-items a:focus-visible {
+#site-nav .nav-menu-items a:focus-visible {
   background: var(--surface-3);
   color: var(--fg);
   text-decoration: none;
@@ -251,27 +252,6 @@
 /* 下拉選單裡的目前分頁不畫底線槓（那條槓是給導覽列那一列用的），只留金色字。 */
 #site-nav .nav-menu-items [aria-current='page']::before {
   content: none;
-}
-
-/* 語言選單：地球圖示在 summary 最前面，不吃箭頭那條左間距。 */
-#site-nav .nav-lang > summary {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1);
-}
-#site-nav .nav-lang > summary > .icon:first-child {
-  margin-inline-start: 0;
-  font-size: 1em;
-  color: inherit;
-}
-#site-nav .nav-lang-items {
-  right: calc(var(--space-2) * -1);
-  left: auto;
-  min-width: 10rem;
-}
-/* 目前的語言用金色字標出（`aria-current="true"`，不是 'page'：同一頁的另一個語言不是「另一個分頁」）。 */
-#site-nav .nav-lang-items [aria-current='true'] {
-  color: var(--gold);
 }
 
 /* 窄螢幕的下拉：釘在導覽列正下方、橫向撐滿（左右留導覽列自己的內距）。
@@ -282,12 +262,10 @@
    `position`／`top`／`left` 會被後面的基底規則蓋回去，而基底沒寫的 `right` 卻會生效
    ——半套生效、畫面看起來只是「位置怪怪的」（2026-09-22 實際踩到）。 */
 @media (max-width: 720px) {
-  #site-nav .nav-menu,
-  #site-nav .nav-lang {
+  #site-nav .nav-menu {
     position: static;
   }
-  #site-nav .nav-menu-items,
-  #site-nav .nav-lang-items {
+  #site-nav .nav-menu-items {
     position: absolute;
     top: calc(100% + var(--space-2));
     right: var(--space-4);
@@ -303,8 +281,7 @@
    而 /tree 的篩選淡出是靠 opacity 在**傳達資訊**（這個節點被篩掉了），不是裝飾。 */
 @media (prefers-reduced-motion: reduce) {
   #site-nav a,
-  #site-nav .nav-menu > summary,
-  #site-nav .nav-lang > summary {
+  #site-nav .nav-menu > summary {
     transition: none;
   }
 }

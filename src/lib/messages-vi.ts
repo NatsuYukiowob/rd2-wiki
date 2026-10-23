@@ -2,7 +2,7 @@
  * 介面文字（越南文）。鍵與 `messages-zh.ts` 一一對應（型別守）。
  * 遊戲專有名詞盡量跟越南玩家社群的說法：骰子＝xúc xắc、符文＝rune、核心＝lõi。
  */
-import type { Messages } from './messages-zh';
+import type { Messages } from './messages-zh.js';
 
 export const vi: Messages = {
   site: {
@@ -95,6 +95,71 @@ export const vi: Messages = {
   common: {
     all: 'Tất cả',
     shown: 'Hiển thị',
+    back: 'Quay lại',
+  },
+  labels: {
+    branch: { nature: 'Tự nhiên', engineering: 'Kỹ thuật', magic: 'Phép thuật', order: 'Trật tự', chaos: 'Hỗn loạn' },
+    type: { dice: 'Xúc xắc', rune: 'Rune xúc xắc', passive: 'Nội tại người chơi', support: 'Hỗ trợ' },
+    category: {
+      'branch-stat': 'Thuộc tính theo hệ', 'global-stat': 'Thuộc tính toàn xúc xắc', 'branch-skill': 'Kỹ năng theo hệ',
+      'player-passive': 'Nội tại người chơi', 'support-upgrade': 'Cường hóa hỗ trợ',
+    },
+    awakeningCondition: 'Kích hoạt khi đạt 7 chấm',
+    unit: { s: ' giây', count: ' lần', x: ' lần' },
+    core: 'Lõi',
+    gold: 'Vàng',
+    free: 'Miễn phí',
+    mythic: { solar: 'Lõi Mặt Trời', gearSecond: 'Lõi Bánh Răng bậc 2', extreme: 'Lõi Cực Hạn' },
+    growth: (base: string, max: number, top: string) => `Cấp 1: ${base} → cấp ${max}: ${top}`,
+    unlockVia: { quest: 'Mở khóa qua nhiệm vụ', default: 'Mở khóa sẵn', achievement: 'Mở khóa qua thành tựu' },
+    statModes: { base: 'Cơ bản', dice7: '7 chấm', lv15: 'Lv.15', lv15dice7: 'Lv.15 + 7 chấm' },
+    statGrowthNote: (g: string) => `Theo chấm: ${g}`,
+  },
+  dicePage: {
+    heading: 'Bách khoa xúc xắc',
+    lede: (n: number) => `Hiệu ứng cơ bản, thức tỉnh 7 chấm, chỉ số và ID quản lý chính thức của ${n} viên xúc xắc.`,
+    ledeTreeBefore: 'Rune, nội tại người chơi và hỗ trợ là các cường hóa gắn lên xúc xắc và người chơi nên không có ở đây; hãy xem vị trí và quan hệ tiên quyết của chúng trên ',
+    ledeTreeLink: 'cây xúc xắc',
+    ledeTreeAfter: '.',
+    branchGroup: 'Hệ',
+    listHeading: 'Danh sách xúc xắc',
+    statModesOf: (name: string) => `Chế độ chỉ số của ${name}`,
+    statUp: 'Nâng cấp trong trận',
+    unlock: (cost: string) => `Mở khóa: ${cost}`,
+    maxLevel: (n: number) => `Cấp tối đa ${n}`,
+    maxUpgrade: (n: number, cost: string) => `Lên tối đa cấp ${n} tốn tổng cộng ${cost}`,
+    includesUnlock: 'đã gồm lần mở khóa',
+    placeholder: 'Chưa có số liệu (dữ liệu game còn ký hiệu giữ chỗ chưa thay)',
+    awakening: 'Thức tỉnh xúc xắc',
+    viewInTree: 'Xem chuỗi tiên quyết trên cây xúc xắc',
+    searchInTree: 'Tìm #{term} trên cây xúc xắc',
+  },
+  keywordsPage: {
+    heading: 'Thuật ngữ',
+    ledeBefore: 'Những từ có dấu ',
+    ledeMiddle: (n: number) => ` trong mô tả xúc xắc là ký hiệu chính thức của game, tổng cộng ${n} mục. Cách chia nhóm dựa trên `,
+    ledeColor: 'mã màu nền',
+    ledeAfter: ' mà bảng dữ liệu chính thức gán cho từng ký hiệu (cùng màu = cùng loại cơ chế); tên nhóm do trang này tự đặt. Bấm vào ký hiệu bất kỳ trên thẻ ở ',
+    ledeDiceLink: 'bách khoa xúc xắc',
+    ledeEnd: ' sẽ mở ngay phần giải thích này tại chỗ.',
+    tabsGroup: 'Nhóm thuật ngữ',
+    tabCount: (intro: string, n: number) => `${intro} (${n} mục)`,
+    alias: (names: string) => `Tên khác: ${names}`,
+    aliasSep: ', ',
+    unused: 'Không có nút nào trên cây xúc xắc dùng ký hiệu này',
+    groups: {
+      mechanics: { title: 'Cơ chế và kích hoạt của xúc xắc', blurb: 'Cơ chế riêng của xúc xắc: hợp nhất, cộng dồn, thời điểm kích hoạt. Nhóm xuất hiện nhiều nhất trong mô tả xúc xắc.' },
+      summons: { title: 'Vật triệu hồi và đạn bắn', blurb: 'Những thứ xúc xắc tạo ra: đạn bắn, vật triệu hồi, thực thể trên sân.' },
+      status: { title: 'Hiệu ứng lên quái vật', blurb: 'Hiệu ứng bám trên quái vật: làm chậm, sát thương theo thời gian, khống chế.' },
+      buffs: { title: 'Tăng ích và suy giảm', blurb: 'Ký hiệu tăng/giảm trực tiếp chỉ số.' },
+      monsters: { title: 'Quái vật và thuật ngữ cơ bản', blurb: 'Loại quái vật và các thuật ngữ cơ bản của game, bản thân chúng không phải hiệu ứng.' },
+    },
+    tabs: {
+      mechanics: { title: 'Cơ chế và kích hoạt của xúc xắc', intro: 'Cơ chế riêng của xúc xắc: hợp nhất, cộng dồn, thời điểm kích hoạt. Nhóm xuất hiện nhiều nhất trong mô tả xúc xắc.' },
+      summons: { title: 'Vật triệu hồi và đạn bắn', intro: 'Những thứ xúc xắc tạo ra. Khi xuất hiện trong mô tả, các từ này chỉ một thực thể có thật trên sân chứ không phải hiệu ứng gắn lên ai đó.' },
+      status: { title: 'Hiệu ứng trạng thái và tăng/giảm', intro: 'Hiệu ứng bám trên quái vật hoặc xúc xắc. Nhóm đầu là khống chế và sát thương theo thời gian lên quái vật, nhóm sau là ký hiệu tăng/giảm trực tiếp chỉ số.' },
+      monsters: { title: 'Quái vật và thuật ngữ cơ bản', intro: 'Loại quái vật và thuật ngữ cơ bản của game. Bản thân chúng không phải hiệu ứng, nhưng gần như mọi phần giải thích hiệu ứng đều nhắc đến.' },
+    },
   },
   tacticPage: {
     heading: 'Chiến thuật',

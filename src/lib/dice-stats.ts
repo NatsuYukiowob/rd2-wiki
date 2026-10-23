@@ -8,6 +8,7 @@
 // （那個預算只剩不到 1.5KB，而這份資料 30KB）。
 import { INTERVAL_GROWTH, formatNumber, parseNumber } from './dice-calc.js';
 import type { DiceStat, DiceStatEntry, DiceStatsTable } from './types.js';
+import { messages, type Lang } from './i18n.js';
 
 /** 四個檔位＝官方「骰子強化數據」分頁的四個數值欄。 */
 export type StatMode = 'base' | 'dice7' | 'lv15' | 'lv15dice7';
@@ -54,9 +55,9 @@ export function isFixed(stat: DiceStat): boolean {
  * ⚠️ 強化軸刻意不寫在這裡：它由卡片上「局內升級」按鈕按住時顯示（levelStep()），
  * 同一份 spGrowth 印兩處，改格式時就得記得改兩處。
  */
-export function growthNote(stat: DiceStat): string | null {
+export function growthNote(stat: DiceStat, lang: Lang = 'zh'): string | null {
   if (isFixed(stat) || stat.diceGrowth === undefined) return null;
-  return `骰點：${stat.diceGrowth}`;
+  return messages(lang).labels.statGrowthNote(stat.diceGrowth);
 }
 
 /**
