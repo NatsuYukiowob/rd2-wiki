@@ -6,8 +6,9 @@ import { readTree } from '../helpers/read-tree';
 import { statText } from '../../src/lib/stat-text';
 import { buildGlossary, KEYWORDS_PATH, termHref } from '../../src/lib/glossary-groups';
 import { BULLET_LABEL } from '../../src/lib/offgame-calc';
-import { bossLocaleIssues, localizeBosses, localizeTactics, tacticLocaleIssues, type RecordTerms } from '../../src/lib/record-locale';
-import { isGlossaryAlias, type Boss, type GlossaryRecord, type Tactic } from '../../src/lib/types';
+import { bossLocaleIssues, localizeBosses, localizeRiftShop, localizeTactics, riftLocaleIssues, tacticLocaleIssues, type RecordTerms } from '../../src/lib/record-locale';
+import { localizeRewards, rewardLocaleIssues, rewardTexts } from '../../src/lib/reward-locale';
+import { isGlossaryAlias, type Boss, type GlossaryRecord, type RewardCatalog, type RiftShopEffect, type Tactic } from '../../src/lib/types';
 
 const json = (p: string) => JSON.parse(readFileSync(p, 'utf8'));
 const sourceNodes = json('data/nodes.json');
@@ -120,6 +121,23 @@ describe.each(LANGS.filter(l => l !== DEFAULT_LANG))('%s：戰術與怪物圖鑑
     expect(bossLocaleIssues(source, local, terms)).toEqual([]);
     for (const b of localizeBosses(source, local)) expect(CJK.test(b.name + b.effect), b.id).toBe(false);
   });
+
+  it('rift-shop.json 雙向對得上，疊回後沒有中文', () => {
+    const local = json(`data/i18n/${lang}/rift-shop.json`);
+    const source = json('data/rift-shop.json') as RiftShopEffect[];
+    expect(riftLocaleIssues(source, local, terms)).toEqual([]);
+    for (const e of localizeRiftShop(source, local)) expect(CJK.test(e.name + e.effect), e.id).toBe(false);
+  });
+
+  it('rewards.json 蓋到畫面上的句子，id 維持原文', () => {
+    const dict = json(`data/i18n/${lang}/rewards.json`) as Record<string, string>;
+    const source = json('data/rewards.json') as RewardCatalog;
+    expect(rewardLocaleIssues(source, dict)).toEqual([]);
+    const local = localizeRewards(source, dict);
+    for (const text of rewardTexts(local)) expect(CJK.test(text), text).toBe(false);
+    const groups = (c: RewardCatalog) => c.modes.flatMap(m => m.kind === 'achievement' ? m.groups.map(g => g.id) : []);
+    expect(groups(local)).toEqual(groups(source));
+  });
 });
 
 describe('tacticLocaleIssues', () => {
@@ -137,6 +155,23 @@ describe('tacticLocaleIssues', () => {
     expect(wrong.some(s => s.includes('數字對不上'))).toBe(true);
     expect(wrong.some(s => s.includes('#標記對不上'))).toBe(true);
     expect(tacticLocaleIssues(src, { '1': { name: 'A', versus: 'Triệu hồi 3 #Quái thường' } }, terms)).toEqual([]);
+  });
+});
+
+describe('rewardLocaleIssues', () => {
+  const catalog = { status: 'official', note: '維護者註記', modes: [
+    { kind: 'threshold', id: 'm', name: '討伐', requirementLabel: '累計', tiers: [{ id: 't', requirement: 1, rewards: [{ type: 'collectible', itemId: 'x', label: '頭像', amount: 1 }] }] },
+  ] } as RewardCatalog;
+
+  it('缺句、多出來的句子、數字不符都會被指名；沒印出來的註記不用翻', () => {
+    expect(rewardLocaleIssues(catalog, { 討伐: 'A', 累計: 'B', 頭像: 'C' })).toEqual([]);
+    const issues = rewardLocaleIssues(catalog, { 討伐: 'A', 累計: 'B2', 多餘: 'D' });
+    expect(issues).toEqual(expect.arrayContaining([
+      '獎勵文案沒有譯文：頭像',
+      '譯文沒有對上正本：多餘',
+    ]));
+    expect(issues.some(s => s.includes('數字對不上'))).toBe(true);
+    expect(issues.some(s => s.includes('維護者註記'))).toBe(false);
   });
 });
 

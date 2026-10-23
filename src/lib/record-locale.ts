@@ -1,7 +1,7 @@
-// 戰術與怪物圖鑑的譯本（`data/i18n/<lang>/tactics.json`／`boss.json`）：以 id 為鍵，只蓋文字欄位，
+// 戰術、怪物圖鑑與裂縫商店的譯本（`data/i18n/<lang>/tactics.json`／`boss.json`／`rift-shop.json`）：以 id 為鍵，只蓋文字欄位，
 // 階段、可用模式、圖示這些 join key 一律沿用正本。`#標記` 寫譯名（見 tree-locale.ts 檔頭）。
 import { extractKeywords } from './keywords.js';
-import type { Boss, Tactic } from './types.js';
+import type { Boss, RiftShopEffect, Tactic } from './types.js';
 
 export interface LocaleTactic {
   name: string;
@@ -10,6 +10,7 @@ export interface LocaleTactic {
   options?: Record<string, { name: string; text: string }>;
 }
 export interface LocaleBoss { name: string; effect: string }
+export interface LocaleRift { name: string; effect: string }
 
 export function localizeTactics(source: Tactic[], local?: Record<string, LocaleTactic>): Tactic[] {
   if (!local) return source;
@@ -27,6 +28,11 @@ export function localizeTactics(source: Tactic[], local?: Record<string, LocaleT
 export function localizeBosses(source: Boss[], local?: Record<string, LocaleBoss>): Boss[] {
   if (!local) return source;
   return source.map(b => (local[b.id] ? { ...b, ...local[b.id] } : b));
+}
+
+export function localizeRiftShop(source: RiftShopEffect[], local?: Record<string, LocaleRift>): RiftShopEffect[] {
+  if (!local) return source;
+  return source.map(e => (local[e.id] ? { ...e, name: local[e.id]!.name, effect: local[e.id]!.effect } : e));
 }
 
 const flatTactic = (t: { name: string; versus?: string; coop?: string }, options: [string, { name: string; text: string }][]) => {
@@ -94,4 +100,10 @@ export function bossLocaleIssues(source: Boss[], local: Record<string, LocaleBos
   const src = Object.fromEntries(source.map(b => [b.id, { name: b.name, effect: b.effect }]));
   const loc = Object.fromEntries(Object.entries(local).map(([id, b]) => [id, { name: b.name, effect: b.effect }]));
   return compare('怪物', src, loc, k.sourceTerms, k.terms, k.translate);
+}
+
+export function riftLocaleIssues(source: RiftShopEffect[], local: Record<string, LocaleRift>, k: RecordTerms): string[] {
+  const src = Object.fromEntries(source.map(e => [e.id, { name: e.name, effect: e.effect }]));
+  const loc = Object.fromEntries(Object.entries(local).map(([id, e]) => [id, { name: e.name, effect: e.effect }]));
+  return compare('裂縫', src, loc, k.sourceTerms, k.terms, k.translate);
 }

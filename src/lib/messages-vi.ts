@@ -490,6 +490,7 @@ export const vi: Messages = {
     stageTarget: 'Mốc / mục tiêu',
     groupStages: (name: string) => `Các mốc ${name}`,
     target: (n: string) => `Mục tiêu ${n}`,
+    stageLabel: (n: number) => `Mốc ${n}`,
     dailyHeading: 'Nhiệm vụ hằng ngày',
     dailyTotal: (p: string) => `Tổng mỗi ngày ${p} điểm`,
     points: (p: string) => `${p} điểm`,

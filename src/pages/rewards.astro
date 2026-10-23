@@ -10,16 +10,19 @@ import RewardTaskList from '../components/RewardTaskList.astro';
 import RewardReferenceList from '../components/RewardReferenceList.astro';
 import '../styles/rewards.css';
 import rewardsRaw from '../../data/rewards.json';
+import rewardsVi from '../../data/i18n/vi/rewards.json';
 import { rewardDisplay } from '../lib/reward-display';
+import { localizeRewards } from '../lib/reward-locale';
 import { modeRewardTotals, sortedRewardTiers } from '../lib/rewards';
 import type { RewardCatalog } from '../lib/types';
 
-const catalog = rewardsRaw as RewardCatalog;
+const lang = langFromPath(Astro.url.pathname);
+const REWARD_LOCALE: Partial<Record<typeof lang, Record<string, string>>> = { vi: rewardsVi };
+const catalog = localizeRewards(rewardsRaw as RewardCatalog, REWARD_LOCALE[lang]);
 const defaultMode = catalog.modes[0]!;
 const navigation = [...catalog.modes, ...(catalog.repeatable ? [catalog.repeatable] : [])];
 const totalsByMode = new Map(catalog.modes.map(mode => [mode.id, modeRewardTotals(mode)]));
 
-const lang = langFromPath(Astro.url.pathname);
 const m = messages(lang);
 const rw = m.rewardsPage;
 ---
@@ -144,7 +147,7 @@ const rw = m.rewardsPage;
                         {group.stages.map(stage => (
                           <li class="reward-tier reward-reference-row row-card" data-reward-stage data-stage={stage.stage}>
                             <strong class="reward-requirement reward-stage-requirement">
-                              <span>Stage {stage.stage}</span>
+                              <span>{rw.stageLabel(stage.stage)}</span>
                               <small>{rw.target(stage.requirement.toLocaleString('en-US'))}</small>
                             </strong>
                             <ul class="reward-grants" aria-label={rw.rewardContent}>

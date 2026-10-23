@@ -5,8 +5,9 @@
  * （`langFromPath(Astro.url.pathname)`），不從 props 傳——頁面裡的子元件與瀏覽器腳本
  * （讀 `<html lang>`）才拿得到同一個答案。
  *
- * 骰子樹節點的名稱、描述、覺醒與關鍵字有譯本（`data/i18n/<lang>/`，見 src/lib/tree-locale.ts）；
- * 其餘遊戲文案（戰術、怪物、骰子數值表…）仍是中文（validate 規則與 join key 都綁著中文名稱）。
+ * 遊戲文案的譯本在 `data/i18n/<lang>/`：節點與關鍵字（tree-locale.ts）、戰術／怪物／裂縫商店
+ * （record-locale.ts）、獎勵頁（reward-locale.ts）、骰子數值與機制句。validate 規則與 join key
+ * 仍綁正本的中文，譯本只在顯示時疊上去。
  */
 import { zh, type Messages } from './messages-zh.js';
 import { vi } from './messages-vi.js';

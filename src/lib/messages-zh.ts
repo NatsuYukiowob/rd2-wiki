@@ -496,6 +496,7 @@ export const zh = {
     stageTarget: '階段／目標',
     groupStages: (name: string) => `${name}階段`,
     target: (n: string) => `目標 ${n}`,
+    stageLabel: (n: number) => `Stage ${n}`,
     dailyHeading: '每日任務',
     dailyTotal: (p: string) => `每日合計 ${p} 點`,
     points: (p: string) => `${p} 點`,
