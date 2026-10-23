@@ -5,7 +5,8 @@ import { applyLocale, buildLocaleText, localeIssues, localizeKeywords } from '..
 import { readTree } from '../helpers/read-tree';
 import { statText } from '../../src/lib/stat-text';
 import { BULLET_LABEL } from '../../src/lib/offgame-calc';
-import type { GlossaryRecord } from '../../src/lib/types';
+import { bossLocaleIssues, localizeBosses, localizeTactics, tacticLocaleIssues, type RecordTerms } from '../../src/lib/record-locale';
+import { isGlossaryAlias, type Boss, type GlossaryRecord, type Tactic } from '../../src/lib/types';
 
 const json = (p: string) => JSON.parse(readFileSync(p, 'utf8'));
 const sourceNodes = json('data/nodes.json');
@@ -88,5 +89,52 @@ describe('localeIssues', () => {
   it('缺譯文與多出來的譯文雙向列出', () => {
     const issues = localeIssues(src, { '9999': ok['1001'] }, kw, {});
     expect(issues).toEqual(expect.arrayContaining(['節點 1001 沒有譯文', '譯文 9999 不是正本的節點', '詞 燙傷 沒有譯名']));
+  });
+});
+
+describe.each(LANGS.filter(l => l !== DEFAULT_LANG))('%s：戰術與怪物圖鑑', lang => {
+  const vkw = json(`data/i18n/${lang}/keywords.json`) as Record<string, { term: string }>;
+  const terms: RecordTerms = {
+    sourceTerms: Object.keys(sourceKeywords),
+    terms: Object.values(vkw).map(k => k.term),
+    translate: t => {
+      const r = sourceKeywords[t];
+      return vkw[r && isGlossaryAlias(r) ? r.aliasOf : t]?.term;
+    },
+  };
+
+  it('tactics.json 雙向對得上（欄位有無、數字、#標記），疊回後沒有中文', () => {
+    const local = json(`data/i18n/${lang}/tactics.json`);
+    const source = json('data/tactics.json') as Tactic[];
+    expect(tacticLocaleIssues(source, local, terms)).toEqual([]);
+    for (const t of localizeTactics(source, local)) {
+      const texts = [t.name, t.versus ?? '', t.coop ?? '', ...(t.options ?? []).flatMap(o => [o.name, o.text])];
+      for (const s of texts) expect(CJK.test(s), `${t.id} ${s}`).toBe(false);
+    }
+  });
+
+  it('boss.json 雙向對得上，疊回後沒有中文', () => {
+    const local = json(`data/i18n/${lang}/boss.json`);
+    const source = json('data/boss.json') as Boss[];
+    expect(bossLocaleIssues(source, local, terms)).toEqual([]);
+    for (const b of localizeBosses(source, local)) expect(CJK.test(b.name + b.effect), b.id).toBe(false);
+  });
+});
+
+describe('tacticLocaleIssues', () => {
+  const terms: RecordTerms = { sourceTerms: ['一般怪物'], terms: ['Quái thường'], translate: t => (t === '一般怪物' ? 'Quái thường' : undefined) };
+  const src = [{ id: '1', name: '甲', versus: '召喚3個#一般怪物' }] as Tactic[];
+
+  it('缺欄位、多欄位、數字與標記不符都會被指名', () => {
+    const issues = tacticLocaleIssues(src, { '1': { name: 'A', coop: 'x' }, '2': { name: 'B' } }, terms);
+    expect(issues).toEqual(expect.arrayContaining([
+      '戰術 1 的 versus 有無跟正本不一致',
+      '戰術 1 的 coop 有無跟正本不一致',
+      '譯文 2 不是正本的戰術',
+    ]));
+    const wrong = tacticLocaleIssues(src, { '1': { name: 'A', versus: 'Triệu hồi 4 quái' } }, terms);
+    expect(wrong.some(s => s.includes('數字對不上'))).toBe(true);
+    expect(wrong.some(s => s.includes('#標記對不上'))).toBe(true);
+    expect(tacticLocaleIssues(src, { '1': { name: 'A', versus: 'Triệu hồi 3 #Quái thường' } }, terms)).toEqual([]);
   });
 });
