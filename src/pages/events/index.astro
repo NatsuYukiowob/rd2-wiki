@@ -6,7 +6,7 @@
 // 那類）只是視覺收合——每一場的整份內容表仍然在同一份 HTML 裡，索引頁會跟著每場活動一起變重。
 // 分頁把重量真的切開，也讓每一場有可分享、可被搜尋引擎索引的網址（同 `/guide/[slug]`）。
 import Base from '../../layouts/Base.astro';
-import { langFromPath, messages } from '../../lib/i18n';
+import { langFromPath, linker, messages } from '../../lib/i18n';
 import '../../styles/events.css';
 import eventsRaw from '../../../data/events.json';
 import { eventIcon, periodText } from '../../lib/events';
@@ -19,19 +19,21 @@ const events = eventsRaw as GameEvent[];
 const rowCount = (ev: GameEvent) => ev.sections.reduce((n, s) => n + s.rows.length, 0);
 
 const m = messages(langFromPath(Astro.url.pathname));
+const link = linker(langFromPath(Astro.url.pathname));
+const ep = m.eventsPage;
 ---
 
 <Base title={m.pages.events.title} description={m.pages.events.description}>
   <section class="page">
-    <h1 class="page-head">活動</h1>
+    <h1 class="page-head">{ep.heading}</h1>
     <p class="lede">
-      遊戲裡辦過的期間限定活動，點卡片看該場完整內容。
+      {ep.lede}
     </p>
 
     <div class="event-index">
       {events.map((ev, i) => (
         // 整張卡片是一個連結（同 `.guide-card`）：點哪裡都進得去，不必去瞄那個箭頭。
-        <a class="event-card-link row-card" href={`/events/${ev.id}/`} style={`--i:${i}`}>
+        <a class="event-card-link row-card" href={link(`/events/${ev.id}/`)} style={`--i:${i}`}>
           {ev.screenshots?.[0] && (
             <img
               class="event-thumb"
@@ -46,7 +48,7 @@ const m = messages(langFromPath(Astro.url.pathname));
           <div class="event-card-body">
             <div class="event-head">
               <h2>{ev.name}</h2>
-              <span class="event-badge">{ev.version} 客戶端</span>
+              <span class="event-badge">{ep.client(ev.version)}</span>
             </div>
             {ev.period && (
               <p class="event-period">{periodText(ev.period)}</p>
@@ -58,7 +60,7 @@ const m = messages(langFromPath(Astro.url.pathname));
                   <Fragment set:html={eventIcon(c.kind)} />{c.name}
                 </span>
               ))}
-              <span class="event-more">{rowCount(ev)} 項內容<Fragment set:html={ICONS.arrow} /></span>
+              <span class="event-more">{ep.items(rowCount(ev))}<Fragment set:html={ICONS.arrow} /></span>
             </p>
           </div>
         </a>

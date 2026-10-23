@@ -20,23 +20,24 @@ const navigation = [...catalog.modes, ...(catalog.repeatable ? [catalog.repeatab
 const totalsByMode = new Map(catalog.modes.map(mode => [mode.id, modeRewardTotals(mode)]));
 
 const m = messages(langFromPath(Astro.url.pathname));
+const rw = m.rewardsPage;
 ---
 
 <Base title={m.pages.rewards.title} description={m.pages.rewards.description}>
-  <section class="page rewards-page" data-rewards-page data-active-mode={defaultMode.id}>
-    <h1 class="page-head">獎勵系統</h1>
-    <p class="lede">各模式、活動與成就的里程碑獎勵，每個分類頂端列出全部領完的資源總量；可重複取得的獎勵另列。</p>
+  <section class="page rewards-page" data-rewards-page data-active-mode={defaultMode.id} data-msg-switched={rw.switched}>
+    <h1 class="page-head">{rw.heading}</h1>
+    <p class="lede">{rw.lede}</p>
 
     <label class="reward-mode-select" for="reward-mode-select">
-      <span>獎勵分類</span>
+      <span>{rw.category}</span>
       <select id="reward-mode-select" data-reward-mode-select>
         {navigation.map(mode => <option value={mode.id}>{mode.name}</option>)}
       </select>
     </label>
 
     <div class="reward-layout">
-      <nav class="reward-mode-nav panel" aria-label="獎勵分類">
-        <p>獎勵分類</p>
+      <nav class="reward-mode-nav panel" aria-label={rw.category}>
+        <p>{rw.category}</p>
         {navigation.map((mode, index) => (
           <button type="button" class="reward-mode-button" data-reward-mode-option={mode.id}
             aria-pressed={index === 0 ? 'true' : 'false'} aria-controls="reward-mode-content">
@@ -55,14 +56,14 @@ const m = messages(langFromPath(Astro.url.pathname));
             <div data-reward-mode-panel={mode.id}>
               <header class="reward-mode-heading">
                 <h2 class="sec-title">{mode.name}</h2>
-                <p>{mode.kind === 'threshold' ? `依${mode.requirementLabel}，共 ${stageCount} 階` : `${mode.groups.length} 項成就，共 ${stageCount} 階`}</p>
+                <p>{mode.kind === 'threshold' ? rw.thresholdSummary(mode.requirementLabel, stageCount) : rw.achievementSummary(mode.groups.length, stageCount)}</p>
               </header>
 
               <section class="reward-mode-summary panel" aria-labelledby={`reward-total-${mode.id}`} data-reward-summary={mode.id}>
-                <h3 id={`reward-total-${mode.id}`}>全部領完可獲得</h3>
+                <h3 id={`reward-total-${mode.id}`}>{rw.totalHeading}</h3>
                 {totals.currency.length > 0 && (
                   <section class="reward-summary-kind">
-                    <h4>固定貨幣</h4>
+                    <h4>{rw.fixedCurrency}</h4>
                     <dl class="reward-totals" data-reward-totals="currency">
                       {totals.currency.map(({ key, reward, amount }) => (
                         <div data-total-reward={key}>
@@ -76,7 +77,7 @@ const m = messages(langFromPath(Astro.url.pathname));
                 )}
                 {totals.collectible.length > 0 && (
                   <section class="reward-summary-kind">
-                    <h4>收藏型獎勵</h4>
+                    <h4>{rw.collectibles}</h4>
                     <dl class="reward-totals reward-collected-items" data-reward-totals="collectible">
                       {totals.collectible.map(({ key, reward, amount }) => (
                         <div data-total-reward={key}>
@@ -94,12 +95,12 @@ const m = messages(langFromPath(Astro.url.pathname));
 
               {mode.kind === 'threshold' && (mode.taskDays?.length ?? 0) > 0 && (
                 <details class="reward-task-panel panel" data-reward-task-panel={mode.id}>
-                  <summary>每日任務與點數</summary>
+                  <summary>{rw.dailyTasksAndPoints}</summary>
                   {mode.taskDays!.map(day => (
-                    <section class="reward-task-day" aria-label={`第${day.day}天任務`}>
+                    <section class="reward-task-day" aria-label={rw.dayLabel(day.day)}>
                       <div class="reward-task-day-heading">
-                        <h4>第{day.day}天</h4>
-                        <span>當日合計 {day.totalPoints.toLocaleString('en-US')} 點</span>
+                        <h4>{rw.dayHeading(day.day)}</h4>
+                        <span>{rw.dayTotal(day.totalPoints.toLocaleString('en-US'))}</span>
                       </div>
                       <RewardTaskList tasks={day.tasks} />
                     </section>
@@ -110,13 +111,13 @@ const m = messages(langFromPath(Astro.url.pathname));
               {mode.kind === 'threshold' ? (
                 <>
                   <div class="reward-list-head reward-reference-row" aria-hidden="true">
-                    <span>{mode.requirementLabel}</span><span>獎勵內容</span>
+                    <span>{mode.requirementLabel}</span><span>{rw.rewardContent}</span>
                   </div>
-                  <ol class="reward-list reward-milestone-list" aria-label={`${mode.name}獎勵階段`}>
+                  <ol class="reward-list reward-milestone-list" aria-label={rw.stagesOf(mode.name)}>
                     {sortedRewardTiers(mode.tiers).map((tier, index) => (
                       <li class="reward-tier reward-reference-row row-card" style={`--i:${index}`} data-reward-tier data-requirement={tier.requirement}>
                         <strong class="reward-requirement">{tier.requirement.toLocaleString('en-US')}</strong>
-                        <ul class="reward-grants" aria-label="獎勵內容">
+                        <ul class="reward-grants" aria-label={rw.rewardContent}>
                           {tier.rewards.map(reward => (
                             <li aria-label={`${rewardDisplay(reward).label} ${reward.amount.toLocaleString('en-US')}`}>
                               <RewardGrantView reward={reward} amount={reward.amount} />
@@ -128,24 +129,24 @@ const m = messages(langFromPath(Astro.url.pathname));
                   </ol>
                 </>
               ) : (
-                <div class="reward-achievement-groups" aria-label="成就群組">
+                <div class="reward-achievement-groups" aria-label={rw.achievementGroups}>
                   {mode.groups.map(group => (
                     <details class="reward-achievement-group panel" data-reward-achievement-group={group.id}>
                       <summary>
                         <span>{group.name}</span>
-                        <span class="reward-group-count">{group.stages.length} 階</span>
+                        <span class="reward-group-count">{rw.stageCount(group.stages.length)}</span>
                       </summary>
                       <div class="reward-list-head reward-reference-row" aria-hidden="true">
-                        <span>階段／目標</span><span>獎勵內容</span>
+                        <span>{rw.stageTarget}</span><span>{rw.rewardContent}</span>
                       </div>
-                      <ol class="reward-list" aria-label={`${group.name}階段`}>
+                      <ol class="reward-list" aria-label={rw.groupStages(group.name)}>
                         {group.stages.map(stage => (
                           <li class="reward-tier reward-reference-row row-card" data-reward-stage data-stage={stage.stage}>
                             <strong class="reward-requirement reward-stage-requirement">
                               <span>Stage {stage.stage}</span>
-                              <small>目標 {stage.requirement.toLocaleString('en-US')}</small>
+                              <small>{rw.target(stage.requirement.toLocaleString('en-US'))}</small>
                             </strong>
-                            <ul class="reward-grants" aria-label="獎勵內容">
+                            <ul class="reward-grants" aria-label={rw.rewardContent}>
                               {stage.rewards.map(reward => (
                                 <li aria-label={`${rewardDisplay(reward).label} ${reward.amount.toLocaleString('en-US')}`}>
                                   <RewardGrantView reward={reward} amount={reward.amount} />
@@ -168,13 +169,13 @@ const m = messages(langFromPath(Astro.url.pathname));
               <h2 class="sec-title">{catalog.repeatable.name}</h2>
             </header>
             <section aria-labelledby="reward-daily-heading">
-              <h3 class="sec-title" id="reward-daily-heading">每日任務</h3>
+              <h3 class="sec-title" id="reward-daily-heading">{rw.dailyHeading}</h3>
               <div class="reward-reference-card panel" data-repeatable-daily-rewards>
                 <RewardReferenceList section={catalog.repeatable.dailyTasks.rewards} showNote={false} />
               </div>
               <details class="reward-task-panel panel" data-reward-task-panel={catalog.repeatable.id}>
-                <summary>每日任務與點數</summary>
-                <p class="reward-achievement-note">每日合計 {catalog.repeatable.dailyTasks.totalPoints.toLocaleString('en-US')} 點</p>
+                <summary>{rw.dailyTasksAndPoints}</summary>
+                <p class="reward-achievement-note">{rw.dailyTotal(catalog.repeatable.dailyTasks.totalPoints.toLocaleString('en-US'))}</p>
                 <RewardTaskList tasks={catalog.repeatable.dailyTasks.tasks} />
               </details>
             </section>

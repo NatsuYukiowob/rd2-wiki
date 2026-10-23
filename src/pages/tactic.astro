@@ -20,61 +20,62 @@ const whitelist = Object.keys(keywords);
 const initialCount = tactics.filter(t => tacticMatches(t, DEFAULT_TACTIC_MODE, TACTIC_STAGES)).length;
 
 const m = messages(langFromPath(Astro.url.pathname));
+const t = m.tacticPage;
 ---
 
 <Base title={m.pages.tactic.title} description={m.pages.tactic.description}>
   <section class="page battle-page" id="tactic-page" data-mode={DEFAULT_TACTIC_MODE}>
-    <h1 class="page-head">戰術</h1>
-    <p class="lede">對戰與合作模式中的戰術效果。</p>
+    <h1 class="page-head">{t.heading}</h1>
+    <p class="lede">{t.lede}</p>
 
     <div class="filter-bar" id="tactic-filters">
-      <div class="filter-group" role="radiogroup" aria-label="選擇模式">
+      <div class="filter-group" role="radiogroup" aria-label={t.modeGroup}>
         {TACTIC_MODES.map(mode => (
           <label class="chip">
             <input type="radio" name="tactic-mode" value={mode.key} checked={mode.key === DEFAULT_TACTIC_MODE} />
-            {mode.label}
+            {t.modes[mode.key] ?? mode.label}
           </label>
         ))}
       </div>
-      <div class="filter-group" role="group" aria-label="依階段篩選">
-        <button type="button" id="tactic-all" class="chip" data-active aria-pressed="true">全部</button>
+      <div class="filter-group" role="group" aria-label={t.stageGroup}>
+        <button type="button" id="tactic-all" class="chip" data-active aria-pressed="true">{m.common.all}</button>
         {TACTIC_STAGES.map(stage => (
           <label class="chip">
             <input type="checkbox" name="stage" value={stage} checked />
-            {stage}
+            {t.stages[stage] ?? stage}
           </label>
         ))}
       </div>
       <span class="filter-count" aria-live="polite">
-        顯示 <span id="tactic-count">{initialCount}</span> / {tactics.length}
+        {m.common.shown} <span id="tactic-count">{initialCount}</span> / {tactics.length}
       </span>
     </div>
 
     <ul class="battle-list" id="tactic-list">
-      {tactics.map(t => (
+      {tactics.map(tc => (
         <li
           class="battle-item row-card"
-          id={`t${t.id}`}
-          data-id={t.id}
-          data-stage={t.stage}
-          data-versus={String(t.availability.versus)}
-          data-coop-normal={String(t.availability.coopNormal)}
-          data-coop-hard={String(t.availability.coopHard)}
-          hidden={!t.availability[DEFAULT_TACTIC_MODE]}
+          id={`t${tc.id}`}
+          data-id={tc.id}
+          data-stage={tc.stage}
+          data-versus={String(tc.availability.versus)}
+          data-coop-normal={String(tc.availability.coopNormal)}
+          data-coop-hard={String(tc.availability.coopHard)}
+          hidden={!tc.availability[DEFAULT_TACTIC_MODE]}
         >
-          <img class="battle-icon" src={`/assets/tactic-icons/${t.icon}.webp`} alt="" loading="lazy" decoding="async" />
+          <img class="battle-icon" src={`/assets/tactic-icons/${tc.icon}.webp`} alt="" loading="lazy" decoding="async" />
           <div class="tactic-content">
             <div class="battle-head">
-              <h2 class="battle-name">{t.name}</h2>
-              <span class="battle-meta"><span class="battle-tag">{t.stage}</span></span>
+              <h2 class="battle-name">{tc.name}</h2>
+              <span class="battle-meta"><span class="battle-tag">{t.stages[tc.stage] ?? tc.stage}</span></span>
             </div>
-            {t.versus && <p class="battle-text" data-mode="versus" set:html={renderStaticText(t.versus, whitelist, glossary, index)} />}
-            {t.coop && <p class="battle-text" data-mode="coop" set:html={renderStaticText(t.coop, whitelist, glossary, index)} />}
-            {t.options && (
+            {tc.versus && <p class="battle-text" data-mode="versus" set:html={renderStaticText(tc.versus, whitelist, glossary, index)} />}
+            {tc.coop && <p class="battle-text" data-mode="coop" set:html={renderStaticText(tc.coop, whitelist, glossary, index)} />}
+            {tc.options && (
               <details class="tactic-options">
-                <summary>查看 {t.options.length} 個選項</summary>
+                <summary>{t.options(tc.options.length)}</summary>
                 <ul class="battle-list">
-                  {t.options.map(option => (
+                  {tc.options.map(option => (
                     <li class="battle-item row-card" id={`t${option.id}`}>
                       <img class="battle-icon" src={`/assets/tactic-icons/${option.icon}.webp`} alt="" loading="lazy" decoding="async" />
                       <div class="tactic-content">
@@ -90,7 +91,7 @@ const m = messages(langFromPath(Astro.url.pathname));
         </li>
       ))}
     </ul>
-    <p class="battle-empty" id="tactic-empty" hidden>目前的篩選條件沒有符合的戰術。</p>
+    <p class="battle-empty" id="tactic-empty" hidden>{t.empty}</p>
   </section>
 </Base>
 

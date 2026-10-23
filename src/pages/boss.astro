@@ -59,26 +59,27 @@ const termsOf = (text: string) =>
   }));
 
 const m = messages(langFromPath(Astro.url.pathname));
+const bp = m.bossPage;
 ---
 
 <Base title={m.pages.boss.title} description={m.pages.boss.description}>
   <section class="page battle-page">
-    <h1 class="page-head">怪物圖鑑</h1>
+    <h1 class="page-head">{bp.heading}</h1>
     <p class="lede">
       {/* ⚠️ 三個數字都從資料算，不要寫死——收一批新怪物時忘了改這一句，畫面上跟「這次沒更新」
           長得一模一樣，而 CI 一個字都不會說。 */}
-      對戰與合作模式中會出現的怪物與首領，以及各自的特性與技能效果。
-      一般怪物 {grouped[0]!.items.length} 種、一般首領 {grouped[1]!.items.length} 隻、困難首領 {grouped[2]!.items.length} 隻。
+      {bp.lede}
+      {bp.counts(grouped[0]!.items.length, grouped[1]!.items.length, grouped[2]!.items.length)}
     </p>
 
-    {grouped.map(g => (
+    {grouped.map((g, gi) => (
       <>
         {/* 組標題。⚠️ 多了這一層之後 Boss 名稱從 h2 降成 h3——標題階層是無障礙的目錄，
             h1 底下直接跳到兩個平行的 h2 群組、每群裡面才是條目，少降一級就會變成
             「組標題與條目同級」，讀屏上整頁是一長串沒有分組的標題。 */}
         <h2 class="battle-group-head sec-title">
-          {g.title}
-          <span class="battle-group-note">{g.note}</span>
+          {bp.groups[gi]?.title ?? g.title}
+          <span class="battle-group-note">{bp.groups[gi]?.note ?? g.note}</span>
         </h2>
         <ul class="battle-list">
           {g.items.map(b => (

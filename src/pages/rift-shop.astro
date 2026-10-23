@@ -55,48 +55,45 @@ const coin = currencyIcon('tacticcoin');
  * ⚠️ 寫死在這裡而不是進資料檔（Yuki 2026-09-06 裁決）：它們不是商品、沒有編號、沒有圖，
  * 進 rift-shop.json 就得為三筆特例放寬規則 27 的每一條欄位檢查。
  */
-const WILLS = [
-  { name: '不屈意志', effect: '僵硬效果產生 1 秒延遲' },
-  { name: '守護意志', effect: '生命值等比傷害減少 50%' },
-  { name: '生存意志', effect: '生命值低於 30% 時，子彈暴斃效果生效' },
-];
+// 文字在 messages-*.ts 的 `riftShopPage.wills`（要跟著語言換）。
 
 const m = messages(langFromPath(Astro.url.pathname));
+const rs = m.riftShopPage;
+const gradeName = (g: string) => rs.grades[g] ?? g;
 ---
 
 <Base title={m.pages.riftShop.title} description={m.pages.riftShop.description(effects.length)}>
   <section class="page battle-page" id="rift-shop-page">
-    <h1 class="page-head">裂縫商店</h1>
+    <h1 class="page-head">{rs.heading}</h1>
     <p class="lede">
-      合作困難模式的局內商店。擊殺首領與 SP 魔像會掉落<strong>討伐硬幣</strong>，
-      在裂縫商店兌換以下 {effects.length} 種裂縫效果。
+      {rs.ledeBefore}<strong>{rs.coin}</strong>{rs.ledeAfter(effects.length)}
     </p>
 
     {/* 困難模式的共通條件。⚠️ 這一段不是商品清單的一部分，所以在篩選器上面、不受篩選影響。 */}
     <div class="battle-intro">
-      <p class="note">困難模式的所有怪物都帶著三種「意志」：</p>
+      <p class="note">{rs.willsIntro}</p>
       <ul class="battle-intro-list">
-        {WILLS.map(w => (
+        {rs.wills.map(w => (
           <li><strong>{w.name}</strong>　{w.effect}</li>
         ))}
       </ul>
     </div>
 
     <div class="filter-bar" id="rift-filters">
-      <div class="filter-group" role="group" aria-label="依階級篩選">
+      <div class="filter-group" role="group" aria-label={rs.gradeGroup}>
         {/* 切換鈕跟 /tactic、/dice 用同一個 .chip：外觀是按鈕、骨子裡是 <label> 包真的
             checkbox，鍵盤、螢幕閱讀器的「已勾選」、沒有 JS 時仍可操作全部免費。 */}
-        <button type="button" id="rift-all" class="chip">全部</button>
+        <button type="button" id="rift-all" class="chip">{m.common.all}</button>
         {grouped.map(g => (
           <label class="chip">
             <input type="checkbox" name="grade" value={g.grade} checked />
-            {g.grade} {g.items.length}
+            {gradeName(g.grade)} {g.items.length}
           </label>
         ))}
       </div>
 
       <p class="filter-count" aria-live="polite">
-        顯示 <span id="rift-count">{effects.length}</span> / {effects.length}
+        {m.common.shown} <span id="rift-count">{effects.length}</span> / {effects.length}
       </p>
     </div>
 
@@ -105,9 +102,9 @@ const m = messages(langFromPath(Astro.url.pathname));
         {/* 組標題與底下那一份清單一起藏（`data-grade` 同時掛在兩者上）——只藏清單的話，
             篩掉的那一組會剩下一個標題孤零零地掛在畫面上。 */}
         <h2 class="battle-group-head sec-title" data-grade={g.grade}>
-          {g.grade}階級
+          {rs.gradeHead(gradeName(g.grade))}
           <span class="battle-group-note">
-            <Fragment set:html={coin} />{g.costs.join('／')} 討伐硬幣 · 出現權重 {g.weights.join('／')}
+            <Fragment set:html={coin} />{rs.groupNote(g.costs.join('／'), g.weights.join('／'))}
           </span>
         </h2>
         <ul class="battle-list" data-grade={g.grade}>
@@ -141,7 +138,7 @@ const m = messages(langFromPath(Astro.url.pathname));
       </>
     ))}
 
-    <p class="battle-empty" id="rift-empty" hidden>目前的篩選條件沒有符合的裂縫效果。</p>
+    <p class="battle-empty" id="rift-empty" hidden>{rs.empty}</p>
   </section>
 </Base>
 

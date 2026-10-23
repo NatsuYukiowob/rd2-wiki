@@ -14,7 +14,7 @@ if (root) {
     buttons.forEach(button => button.setAttribute('aria-pressed', String(button.dataset.rewardModeOption === modeId)));
     panels.forEach(panel => { panel.hidden = panel.dataset.rewardModePanel !== modeId; });
     if (select) select.value = modeId;
-    if (announce && status) status.textContent = `已切換至${names.get(modeId)}。`;
+    if (announce && status) status.textContent = (root!.dataset.msgSwitched ?? '已切換至{name}。').replace('{name}', names.get(modeId) ?? '');
   }
 
   buttons.forEach(button => button.addEventListener('click', () => setMode(button.dataset.rewardModeOption ?? '')));

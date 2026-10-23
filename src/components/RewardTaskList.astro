@@ -1,13 +1,15 @@
 ---
 import type { RewardTask } from '../lib/types';
+import { langFromPath, messages } from '../lib/i18n';
 interface Props { tasks: RewardTask[] }
 const { tasks } = Astro.props;
+const rw = messages(langFromPath(Astro.url.pathname)).rewardsPage;
 ---
 <ul class="reward-task-list">
   {tasks.map(task => (
     <li data-reward-task>
       <span>{task.name} <small>×{task.requirement.toLocaleString('en-US')}</small></span>
-      <strong>{task.points.toLocaleString('en-US')} 點</strong>
+      <strong>{rw.points(task.points.toLocaleString('en-US'))}</strong>
     </li>
   ))}
 </ul>
