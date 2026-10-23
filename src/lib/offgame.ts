@@ -87,10 +87,14 @@ export function plainDescription(desc: string): string {
   return desc.replaceAll('#', '').replaceAll('，\n', '，').replaceAll('\n', ' ');
 }
 
-/** 建置期：拿掉 /board 用不到的 target，補上顯示需要的名稱與描述。 */
+/**
+ * 建置期：拿掉 /board 用不到的 target，補上顯示需要的名稱與描述。
+ * `templates` 是譯本的 `template`（`data/i18n/<lang>/offgame-templates.json`，以節點 id 為鍵），給了就蓋過原文。
+ */
 export function namedEffects(
   file: OffgameFile,
   nodeText: Record<string, { name: string; description: string }>,
+  templates: Record<string, string> = {},
 ): Record<string, NamedEffect> {
   const out: Record<string, NamedEffect> = {};
   for (const [id, full] of Object.entries(file.effects)) {
@@ -98,6 +102,7 @@ export function namedEffects(
     const n = nodeText[id];
     if (!n) continue;
     const { kind: _kind, reason: _reason, ...e } = full;
+    if (e.template && templates[id]) e.template = templates[id];
     const text = e.target === 'mechanic' && !e.template ? plainDescription(n.description) : undefined;
     out[id] = text === undefined ? { ...e, name: n.name } : { ...e, name: n.name, text };
   }

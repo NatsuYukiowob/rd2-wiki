@@ -122,6 +122,8 @@ export const vi: Messages = {
     },
   },
   treePage: {
+    /** 畫布中央樞紐底下的字（預設語言用正本 SVG 的那一份，這一欄只給其他語言）。 */
+    hubLabel: 'Cây xúc xắc',
     filtersToggle: 'Bộ lọc',
     filtersOpen: 'Mở bộ lọc',
     filtersClose: 'Đóng bộ lọc',

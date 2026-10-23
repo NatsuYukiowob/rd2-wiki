@@ -125,6 +125,8 @@ export const zh = {
     } as Record<string, string>,
   },
   treePage: {
+    /** 畫布中央樞紐底下的字（預設語言用正本 SVG 的那一份，這一欄只給其他語言）。 */
+    hubLabel: '骰子樹',
     filtersToggle: '篩選',
     filtersOpen: '展開篩選',
     filtersClose: '收起篩選',

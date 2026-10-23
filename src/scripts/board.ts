@@ -22,6 +22,7 @@ import { ownedIds } from '../lib/sim.js';
 import { decodeSaveContext, type SaveContextWire } from '../lib/sim-save-lite.js';
 import type { Branch } from '../lib/types.js';
 import { documentLang, messages } from '../lib/i18n.js';
+import { statText } from '../lib/stat-text.js';
 
 const LANG = documentLang();
 const TB = messages(LANG).board;
@@ -332,9 +333,9 @@ if (grid && deckH && deckRow && deckLegend && picker && pickerClose && live && c
     cardTitleEl.textContent = titlePrefix(side) + cardTitle(diceMeta.get(p.diceId)?.name ?? p.diceId, p.pips, side.spLevelOf(p.diceId), LANG);
     cardRows.replaceChildren(...m.rows.flatMap(r => {
       const dt = document.createElement('dt');
-      dt.textContent = r.label;
+      dt.textContent = statText(r.label, LANG);
       const dd = document.createElement('dd');
-      dd.textContent = r.value;
+      dd.textContent = statText(r.value, LANG);
       if (r.sub) {
         // 「子彈實際」：子彈%符文不在遊戲面板的攻擊力裡（發射時才乘），小一號附在攻擊力下面。
         dt.className = 'bullet';

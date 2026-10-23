@@ -9,6 +9,7 @@
 import { INTERVAL_GROWTH, formatNumber, parseNumber } from './dice-calc.js';
 import type { DiceStat, DiceStatEntry, DiceStatsTable } from './types.js';
 import { messages, type Lang } from './i18n.js';
+import { statText } from './stat-text.js';
 
 /** 四個檔位＝官方「骰子強化數據」分頁的四個數值欄。 */
 export type StatMode = 'base' | 'dice7' | 'lv15' | 'lv15dice7';
@@ -57,7 +58,7 @@ export function isFixed(stat: DiceStat): boolean {
  */
 export function growthNote(stat: DiceStat, lang: Lang = 'zh'): string | null {
   if (isFixed(stat) || stat.diceGrowth === undefined) return null;
-  return messages(lang).labels.statGrowthNote(stat.diceGrowth);
+  return messages(lang).labels.statGrowthNote(statText(stat.diceGrowth, lang));
 }
 
 /**

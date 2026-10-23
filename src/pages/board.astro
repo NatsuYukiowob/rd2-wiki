@@ -34,6 +34,7 @@ import { deriveTable, type StatParams } from '../lib/dice-calc';
 import offgameRaw from '../../data/offgame-effects.json';
 import passiveTablesRaw from '../../data/passive-upgrade-cost.json';
 import { namedEffects, type OffgameFile } from '../lib/offgame';
+import offgameTemplatesVi from '../../data/i18n/vi/offgame-templates.json';
 import { buildSimContext } from '../lib/sim';
 import { encodeSaveContext } from '../lib/sim-save-lite';
 import type { DiceStatsTable, PassiveUpgradeCost, TreeData, TreeNode } from '../lib/types';
@@ -63,10 +64,15 @@ const statPayload: Record<string, StatParams[]> = Object.fromEntries(
 // 局外加成（src/lib/offgame-calc.ts）：語意表只留 /board 用得到的 target（namedEffects），外加每顆骰子的
 // 分支（系別被動靠它判斷），以及讀 /sim 存檔用的精簡 context——整份 tree.json 太大，不為了讀一份存檔
 // 整包送進這一頁（src/lib/sim-save-lite.ts）。
+const pageLang = langFromPath(Astro.url.pathname);
+const OFFGAME_TEMPLATES: Partial<Record<typeof pageLang, Record<string, string>>> = { vi: offgameTemplatesVi };
 const offgamePayload = {
   effects: namedEffects(
     offgameRaw as unknown as OffgameFile,
-    nodeTextRaw as Record<string, { name: string; description: string }>,
+    pageLang === 'zh'
+      ? nodeTextRaw as Record<string, { name: string; description: string }>
+      : Object.fromEntries(tree.nodes.map(n => [n.id, { name: n.name, description: n.description }])),
+    OFFGAME_TEMPLATES[pageLang],
   ),
   branches: Object.fromEntries(dice.map(d => [d.id, d.branch])),
   save: encodeSaveContext(buildSimContext(tree, passiveTablesRaw as unknown as PassiveUpgradeCost)),

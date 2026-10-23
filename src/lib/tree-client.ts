@@ -8,13 +8,16 @@
 import raw from '../generated/tree.json';
 import { applyTreeText, decodeTree } from './tree-wire.js';
 import { LOCALE_LABELS_ID, applyLocale, applyLocaleLabels, type TreeLocaleWire } from './tree-locale.js';
-import { documentLang } from './i18n.js';
+import { documentLang, messages } from './i18n.js';
 
 export const treeData = decodeTree(raw);
 
 const lang = documentLang();
 const inline = typeof document === 'undefined' ? null : document.getElementById(LOCALE_LABELS_ID);
-if (lang !== 'zh' && inline?.textContent) applyLocaleLabels(treeData, JSON.parse(inline.textContent));
+if (lang !== 'zh') {
+  if (inline?.textContent) applyLocaleLabels(treeData, JSON.parse(inline.textContent));
+  if (treeData.meta.center) treeData.meta.center.label = messages(lang).treePage.hubLabel;
+}
 
 /**
  * 文字包補進 treeData 之後兌現。**不會拒絕**：載不到（斷線、剛好跨在部署前後）時記一筆錯誤照樣兌現，

@@ -23,6 +23,7 @@ import {
 } from './offgame.js';
 import type { Branch } from './types.js';
 import { messages, type Lang } from './i18n.js';
+import { statText } from './stat-text.js';
 
 export type OffgameMode = 'none' | 'sim' | 'max';
 
@@ -246,11 +247,11 @@ function numericText(group: readonly AppliedEffect[], params: readonly StatParam
     case 'bulletPct':
     case 'hitAttackMul': return T.bulletMul(fmt(1 + v / 100));
     case 'hitAttackFlat': return T.bulletAdd(fmt(Math.ceil(v)));
-    case 'statMul': return `${e.label} ×${fmt(1 + v / 100)}`;
-    case 'statSet': return `${e.label} ${fmt((e.setBase ?? 0) + Math.trunc(v))}${unit}`;
+    case 'statMul': return `${statText(e.label ?? '', lang)} ×${fmt(1 + v / 100)}`;
+    case 'statSet': return `${statText(e.label ?? '', lang)} ${fmt((e.setBase ?? 0) + Math.trunc(v))}${statText(unit, lang)}`;
     case 'statAdd': {
       const d = (e.sign ?? 1) * (e.int ? Math.trunc(v) : v);
-      return `${e.label} ${d < 0 ? MINUS : '+'}${fmt(Math.abs(d))}${unit}`;
+      return `${statText(e.label ?? '', lang)} ${d < 0 ? MINUS : '+'}${fmt(Math.abs(d))}${statText(unit, lang)}`;
     }
     default:
       return '';

@@ -8,6 +8,7 @@
 // （面板的內容是瀏覽器讀 tree.json 之後才渲染的，搜尋引擎一個字都拿不到）。
 import { renderStaticText } from '../lib/static-markup';
 import { STAT_MODES, isFixed, growthNote, levelStep, statValue } from '../lib/dice-stats';
+import { statText } from '../lib/stat-text';
 import { formatCost, formatGrowth, formatUnlockVia } from '../lib/format';
 import { cumulativeUpgradeCost, upgradeTableApplies } from '../lib/cost';
 import { awakeningCondition, branchLabel } from '../lib/labels';
@@ -98,19 +99,19 @@ const dp = messages(lang).dicePage;
           <ul class="stat-pills">
             {stats.stats.map(s => (
               <li class={`stat-pill pill${isFixed(s) ? ' is-fixed' : ''}`} title={growthNote(s, lang) ?? undefined}>
-                <span class="stat-k">{s.label}</span>
+                <span class="stat-k">{statText(s.label, lang)}</span>
                 <span class="stat-v">
                   {isFixed(s)
-                    ? <span class="stat-fixed">{s.base}</span>
+                    ? <span class="stat-fixed">{statText(s.base, lang)}</span>
                     : STAT_MODES.map(m => {
                         const up = levelStep(s, m.key);
-                        return <span data-m={m.key}>{statValue(s, m.key)}{up && <span class="stat-up">{up}</span>}</span>;
+                        return <span data-m={m.key}>{statText(statValue(s, m.key), lang)}{up && <span class="stat-up">{statText(up, lang)}</span>}</span>;
                       })}
                 </span>
               </li>
             ))}
           </ul>
-          {stats.note && <p class="stat-note">{stats.note}</p>}
+          {stats.note && <p class="stat-note">{statText(stats.note, lang)}</p>}
           {/* 切換鈕排在數值下面（Yuki 指定）。`:has()` 是往上找的，所以 DOM 順序不受選擇器
                牽制，視覺順序＝DOM 順序＝焦點順序，三者一致。 */}
           <div class="stat-modes" role="group" aria-label={dp.statModesOf(node.name)}>

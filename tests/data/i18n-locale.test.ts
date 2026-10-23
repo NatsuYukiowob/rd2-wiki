@@ -3,6 +3,8 @@ import { readFileSync } from 'node:fs';
 import { LANGS, DEFAULT_LANG } from '../../src/lib/i18n';
 import { applyLocale, buildLocaleText, localeIssues, localizeKeywords } from '../../src/lib/tree-locale';
 import { readTree } from '../helpers/read-tree';
+import { statText } from '../../src/lib/stat-text';
+import { BULLET_LABEL } from '../../src/lib/offgame-calc';
 import type { GlossaryRecord } from '../../src/lib/types';
 
 const json = (p: string) => JSON.parse(readFileSync(p, 'utf8'));
@@ -35,6 +37,33 @@ describe.each(LANGS.filter(l => l !== DEFAULT_LANG))('data/i18n/%s', lang => {
     expect(new Set(Object.values(local).map(r => ('code' in r ? r.code : '')))).toEqual(
       new Set(canon.map(r => ('code' in r ? r.code : ''))),
     );
+  });
+});
+
+const CJK = /[\u3400-\u9fff\uff01-\uff0e\uff10-\uff5e]/;
+
+describe.each(LANGS.filter(l => l !== DEFAULT_LANG))('%s：骰子數值表與 /board 的機制句', lang => {
+  it('dice-stats.json 的每一段字（項目名、值、成長寫法、備註）都譯得出來', () => {
+    const table = json('data/dice-stats.json') as Record<string, { note?: string; stats: Record<string, string>[] }>;
+    const texts = new Set<string>([BULLET_LABEL]);
+    for (const e of Object.values(table)) {
+      if (e.note) texts.add(e.note);
+      for (const s of e.stats) for (const [k, v] of Object.entries(s)) if (k !== 'name') texts.add(v);
+    }
+    const left = [...texts].filter(t => CJK.test(statText(t, lang)));
+    expect(left).toEqual([]);
+  });
+
+  it('機制句譯文跟正本同一組節點、同一組佔位符', () => {
+    const source = json('data/offgame-effects.json').effects as Record<string, { template?: string }>;
+    const local = json(`data/i18n/${lang}/offgame-templates.json`) as Record<string, string>;
+    const withTemplate = Object.keys(source).filter(id => source[id]!.template);
+    expect(Object.keys(local).sort()).toEqual(withTemplate.sort());
+    const holes = (s: string) => (s.match(/\{V2?\}/g) ?? []).sort();
+    for (const id of withTemplate) {
+      expect(holes(local[id]!), id).toEqual(holes(source[id]!.template!));
+      expect(CJK.test(local[id]!), id).toBe(false);
+    }
   });
 });
 
