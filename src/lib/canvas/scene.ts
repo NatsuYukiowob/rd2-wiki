@@ -2,7 +2,7 @@
 // 為什麼要這一層：TreeData 是資料正本的形狀（成本、解鎖方式……），畫布關心的是幾何與樣式；
 // 兩者混在一起會讓渲染迴圈每幀重算 formatUnlockVia／sprite 查表這些不變的東西。
 import { formatUnlockVia } from '../format.js';
-import { TYPE_ZH } from '../labels.js';
+import { documentLang, messages } from '../i18n.js';
 import type { Branch, NodeType, Shape, TreeData } from '../types.js';
 
 export interface SceneNode {
@@ -21,12 +21,15 @@ export interface Scene {
 
 /** 把 TreeData 攤成畫圖紀錄。一次算完，之後每一幀都只讀這份，不再碰 TreeData。 */
 export function buildScene(data: TreeData): Scene {
+  const lang = documentLang();
+  const l = messages(lang).labels;
+  const sep = lang === 'zh' ? '，' : ', ';
   const nodes: SceneNode[] = data.nodes.map(n => ({
     id: n.id, x: n.x, y: n.y, w: n.size[0], h: n.size[1], shape: n.shape, type: n.type, branch: n.branch,
     icon: n.icon, cell: data.meta.sprite.index[n.icon] ?? null,
     label: n.label, labelAlways: n.type === 'dice' || n.type === 'support',
     // aria-label 用中文類型字：英文代碼會被逐字母唸出來。
-    ariaLabel: `${n.name}，${TYPE_ZH[n.type]}，${formatUnlockVia(n)}`,
+    ariaLabel: `${n.name}${sep}${l.type[n.type]}${sep}${formatUnlockVia(n, lang)}`,
     bypassPrereq: n.bypassPrereq === true,
   }));
   const byId = new Map(nodes.map(n => [n.id, n]));

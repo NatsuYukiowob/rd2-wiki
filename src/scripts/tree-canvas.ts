@@ -26,6 +26,9 @@ import type { Branch, NodeType, PassiveUpgradeCost, TreeData, TreeNode } from '.
 import { updateNavHeight } from '../lib/nav-height.js';
 import { NARROW_QUERY } from '../lib/breakpoints.js';
 import { applyCarriedView, parseViewParam, saveTreeFilter, wireModeLink, withSavedTreeFilter } from '../lib/mode-switch.js';
+import { documentLang, localizePath, messages } from '../lib/i18n.js';
+
+const T = messages(documentLang()).treePage;
 
 // tree.json 是建置期由 tools/build-data.ts 產生、結構保證符合 TreeData；
 // 但 TS 對 JSON 匯入的型別推論會把 tuple（如 viewBox、size）寬鬆推成 number[]，
@@ -404,7 +407,7 @@ function markFilteredButtons(next: Set<string>): void {
     if (!next.has(id)) tree.buttons.byId.get(id)?.removeAttribute('aria-description');
   }
   for (const id of next) {
-    if (!describedFiltered.has(id)) tree.buttons.byId.get(id)?.setAttribute('aria-description', '不符合目前的篩選');
+    if (!describedFiltered.has(id)) tree.buttons.byId.get(id)?.setAttribute('aria-description', T.filteredOut);
   }
   describedFiltered = next;   // applyFilter() 每次都給一份新的 Set、之後不再改，不必複製
 }
@@ -943,10 +946,10 @@ function updateFilterStatus(matchCount: number): void {
   const live = document.getElementById('filter-live');
   if (live) {
     live.textContent = !active
-      ? `顯示全部 ${data.nodes.length} 個節點`
+      ? T.liveAll(data.nodes.length)
       : matchCount === 0
-        ? '沒有符合的節點'
-        : `符合 ${matchCount} 個節點`;
+        ? T.liveNone
+        : T.liveSome(matchCount);
   }
 }
 
@@ -1038,7 +1041,7 @@ let filtersOpen = false;
 function setFiltersOpen(open: boolean, animate = false): void {
   filtersOpen = open;
   filtersToggle?.setAttribute('aria-expanded', String(open));
-  filtersToggle?.setAttribute('aria-label', open ? '收起篩選' : '展開篩選');
+  filtersToggle?.setAttribute('aria-label', open ? T.filtersClose : T.filtersOpen);
 
   window.clearTimeout(filtersAnimTimer);
   filtersEl.style.width = '';
@@ -1582,4 +1585,4 @@ void treeTextReady.then(() => {
   else centerOnSelected();
 });
 
-wireModeLink('/sim/', () => currentSelected, tree.view, undefined, () => saveTreeFilter(stateToQueryString(filterState, null)));
+wireModeLink(localizePath('/sim/', documentLang()), () => currentSelected, tree.view, undefined, () => saveTreeFilter(stateToQueryString(filterState, null)));

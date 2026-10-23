@@ -1,6 +1,7 @@
 // canvas 對鍵盤與讀屏是一塊黑洞：<canvas> 裡畫的東西不會進無障礙樹，Tab 也跳不進去。
 // 所以每顆節點另外掛一份「隱形但可聚焦」的真實 DOM：一顆節點一顆 <button>，
 // aria-label 沿用 SVG 時期的「名稱，類型，成本」（見 scene.ts 的 ariaLabel）。
+import { langFromTag, messages } from '../i18n.js';
 import type { Scene } from './scene.js';
 
 export interface NodeButtons { list: HTMLUListElement; byId: Map<string, HTMLButtonElement> }
@@ -22,7 +23,7 @@ export function mountNodeButtons(doc: Document, host: HTMLElement, scene: Scene,
 }): NodeButtons {
   const list = doc.createElement('ul');
   list.className = 'tree-a11y';
-  list.setAttribute('aria-label', '骰子樹節點');
+  list.setAttribute('aria-label', messages(langFromTag(doc.documentElement?.lang)).treePage.a11yList);
   const byId = new Map<string, HTMLButtonElement>();
   for (const n of scene.nodes) {
     const li = doc.createElement('li');

@@ -4,6 +4,7 @@ import { mythicAmount, mythicEntries } from './cost.js';
 import { maxSelectableLevel, minSelectableLevel, ownedIds, simTotals } from './sim.js';
 import type { SaveContext, SimContext, SimState } from './sim.js';
 import type { Cost } from './types.js';
+import { messages, type Lang } from './i18n.js';
 
 /**
  * 存檔的鍵名。**版本號寫在鍵名裡**：格式改了就換一個鍵，舊資料自然失效，
@@ -91,14 +92,17 @@ export function deserializeSim(text: string | null, ctx: SaveContext): SimState 
 const num = (n: number) => n.toLocaleString('en-US');
 
 /** 可貼進聊天室的純文字報告。刻意不含表格或色碼——它會被貼到哪裡我們控制不了。 */
-export function simReport(state: SimState, ctx: SimContext): string {
+export function simReport(state: SimState, ctx: SimContext, lang: Lang = 'zh'): string {
   const t = simTotals(state, ctx);
+  const ms = messages(lang);
+  const r = ms.sim.report;
+  const l = ms.labels;
   // 超越核心只在這份規劃真的用得到時才進報告——沒用到就一個字都不多印，既有的報告格式
   // 逐位元組不變。⚠️ 判準是**總計**而不是逐行：三行是同一個區塊，只有其中一行多一段的話
   // 讀報告的人得自己去推「另外兩行是 0 還是這個欄位不適用」。
   const shown = mythicEntries(t.total).map(([def]) => def);
   const money = (c: Cost) =>
-    `核心 ${num(c.core)} ／金幣 ${num(c.gold)}` + shown.map(d => ` ／${d.label} ${num(mythicAmount(c, d.kind))}`).join('');
+    `${l.core} ${num(c.core)} ／${l.gold} ${num(c.gold)}` + shown.map(d => ` ／${l.mythic[d.kind] ?? d.label} ${num(mythicAmount(c, d.kind))}`).join('');
   const owned = ownedIds(state, ctx);
   const initialNames = [...state.initial].map(id => ctx.byId.get(id)?.name ?? id);
   // 起始骰子不列進清單：玩家沒有為它們做過任何選擇，列出來只是稀釋掉真正的規劃內容。
@@ -107,15 +111,15 @@ export function simReport(state: SimState, ctx: SimContext): string {
     .filter((x): x is NonNullable<typeof x> => x !== undefined)
     .sort((a, b) => a.id.localeCompare(b.id));
   const lines = [
-    'Random Dice 2 骰子樹模擬結果',
-    `初始骰子：${initialNames.length > 0 ? initialNames.join('、') : '無（只有起始的 5 顆）'}`,
-    `已取得節點：${owned.size} / ${ctx.byId.size}`,
+    r.title,
+    r.initial(initialNames.length > 0 ? initialNames.join(ms.sim.sep) : r.noInitial),
+    r.owned(owned.size, ctx.byId.size),
     '',
-    `總資源：${money(t.total)}`,
-    `解鎖：${money(t.unlock)}`,
-    `升級：${money(t.upgrade)}`,
+    `${r.total}${money(t.total)}`,
+    `${r.unlock}${money(t.unlock)}`,
+    `${r.upgrade}${money(t.upgrade)}`,
     '',
-    '取得節點：',
+    r.picked,
   ];
   for (const n of picked) {
     const cap = maxSelectableLevel(n, ctx);

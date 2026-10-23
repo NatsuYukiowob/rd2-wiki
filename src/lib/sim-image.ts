@@ -3,12 +3,11 @@
 import { emptyPaintState, type PaintState, type SimPaint } from './canvas/state.js';
 import type { ViewGeometry } from './canvas/view.js';
 import { mythicEntries } from './cost.js';
-import { BRANCH_ZH } from './labels.js';
+import { messages, type Lang } from './i18n.js';
 import { maxSelectableLevel, simTotals } from './sim.js';
 import type { SimContext, SimState } from './sim.js';
 import type { Branch } from './types.js';
 
-export const IMAGE_TITLE = 'Random Dice 2 骰子樹規劃';
 const BRANCH_ORDER: readonly Branch[] = ['nature', 'engineering', 'magic', 'order', 'chaos'];
 const num = (n: number) => n.toLocaleString('en-US');
 
@@ -16,13 +15,15 @@ const num = (n: number) => n.toLocaleString('en-US');
  * 圖頂的總計一行。超越核心只在總計用得到時才印，判準同 `simReport()`（`mythicEntries(total)`）。
  * 只印總計、不拆解鎖／升級（Yuki 2026-09-23）。
  */
-export function headerTotalLine(state: SimState, ctx: SimContext): string {
+export function headerTotalLine(state: SimState, ctx: SimContext, lang: Lang = 'zh'): string {
   const t = simTotals(state, ctx).total;
+  const ms = messages(lang);
+  const l = ms.labels;
   const parts = [
-    `核心 ${num(t.core)}`, `金幣 ${num(t.gold)}`,
-    ...mythicEntries(t).map(([def, n]) => `${def.label} ${num(n)}`),
+    `${l.core} ${num(t.core)}`, `${l.gold} ${num(t.gold)}`,
+    ...mythicEntries(t).map(([def, n]) => `${l.mythic[def.kind] ?? def.label} ${num(n)}`),
   ];
-  return `總計  ${parts.join(' ／')}`;
+  return ms.sim.imageTotal(parts.join(' ／'));
 }
 
 export interface CompactEntry { id: string; name: string; level: string | null }
@@ -33,7 +34,8 @@ export interface CompactSection { branch: Branch; title: string; entries: Compac
  * （`initial`）；起始送的（`ctx.free`）不列，理由同 `simReport()`：玩家沒為它們做過選擇。
  * 區頭的分母同樣不含 `ctx.free`，分子分母口徑一致。取得 0 顆的系整區不出現。
  */
-export function compactSections(state: SimState, ctx: SimContext): CompactSection[] {
+export function compactSections(state: SimState, ctx: SimContext, lang: Lang = 'zh'): CompactSection[] {
+  const branchName = messages(lang).labels.branch;
   const picked = new Set([...state.unlocked, ...state.initial]);
   const out: CompactSection[] = [];
   for (const branch of BRANCH_ORDER) {
@@ -42,7 +44,7 @@ export function compactSections(state: SimState, ctx: SimContext): CompactSectio
     if (got.length === 0) continue;
     out.push({
       branch,
-      title: `${BRANCH_ZH[branch]} ${got.length}/${pool.length}`,
+      title: `${branchName[branch]} ${got.length}/${pool.length}`,
       entries: got.map(n => {
         const cap = maxSelectableLevel(n, ctx);
         return { id: n.id, name: n.name, level: cap > 1 ? `Lv.${state.levels.get(n.id) ?? 1}/${cap}` : null };

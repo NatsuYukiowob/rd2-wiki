@@ -35,11 +35,16 @@ import { levelTableFor, upgradeExtraCost } from '../lib/upgrade-tiers.js';
 import { costHtml, currencyIcon, mythicIcon, simCostHtml } from '../lib/cost-html.js';
 import { subCost, zeroCost } from '../lib/cost.js';
 import { MYTHIC_CORES, mythicCoreByKind } from '../lib/currency.js';
-import { BRANCH_ZH, typeLabel } from '../lib/labels.js';
+import { typeLabel } from '../lib/labels.js';
 import { NARROW_QUERY } from '../lib/breakpoints.js';
 import { applyCarriedView, parseViewParam, wireModeLink, type VisibleCenter } from '../lib/mode-switch.js';
 import { renderTaggedText } from '../lib/markup.js';
 import type { Cost, PassiveUpgradeCost, TreeData, TreeNode } from '../lib/types.js';
+import { documentLang, localizePath, messages } from '../lib/i18n.js';
+
+const LANG = documentLang();
+const T = messages(LANG).sim;
+const TP = messages(LANG).simPage;
 
 /** 「這一級沒有追加花費」的零成本。 */
 const ZERO_COST: Cost = zeroCost();
@@ -48,7 +53,7 @@ const data = rawData as unknown as TreeData;
 const tables = rawTables as unknown as PassiveUpgradeCost;
 const ctx = buildSimContext(data, tables);
 
-const GROUP_ZH: Record<AbilityGroup, string> = { global: '全部骰子', ...BRANCH_ZH };
+const GROUP_ZH: Record<AbilityGroup, string> = { global: T.allDice, ...messages(LANG).labels.branch };
 
 const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
 
@@ -223,7 +228,7 @@ function syncFromStorage(): void {
   const hadFocus = $('sim-detail').contains(document.activeElement);
   render();
   if (hadFocus) $('sim-detail').querySelector<HTMLElement>('h3')?.focus({ preventScroll: true });
-  toast('已同步其他分頁的變更（可按復原）');
+  toast(T.synced);
 }
 let syncPending = false;
 
@@ -285,9 +290,11 @@ function gapIcon(key: string): string {
 
 /** 差額的一列：「還差」標警示色，夠用的印剩餘量。數字全來自 number，不含自由文字（innerHTML 安全）。 */
 function gapRow(g: GapEntry): string {
-  const text = gapText(g);
+  const text = gapText(g, LANG);
+  const l = messages(LANG).labels;
+  const label = g.key === 'core' ? l.core : g.key === 'gold' ? l.gold : l.mythic[g.key] ?? g.label;
   return `<div class="sim-total-row ${g.short > 0 ? 'is-short' : 'is-enough'}" data-gap="${g.key}">`
-    + `<dt>${gapIcon(g.key)}${g.label}</dt><dd>${text}</dd></div>`;
+    + `<dt>${gapIcon(g.key)}${label}</dt><dd>${text}</dd></div>`;
 }
 
 // --- 畫面 -------------------------------------------------------------------
@@ -328,12 +335,12 @@ function describeNode(id: string, p: SimPaint): string {
   let text: string;
   if (p.owned.has(id)) {
     const max = p.maxLevels.get(id) ?? 1;
-    text = max > 1 ? `已取得，Lv.${p.levels.get(id) ?? 1} / ${max}` : '已取得';
-  } else if (ctx.optional.has(id)) text = '未勾選的初始骰子';
+    text = max > 1 ? T.ownedLv(p.levels.get(id) ?? 1, max) : T.owned;
+  } else if (ctx.optional.has(id)) text = T.uncheckedInitial;
   // 被搜尋淡出的節點按 Enter 是「取消選取」不是取得（onSelect 的 dimmed 那道），不能說「按下即取得」。
-  else if (p.available.has(id)) text = dimmed.has(id) ? '可取得' : '可取得，按下即取得';
-  else text = '未解鎖';
-  return dimmed.has(id) ? `${text}，不符合搜尋` : text;
+  else if (p.available.has(id)) text = dimmed.has(id) ? T.available : T.availableTap;
+  else text = T.locked;
+  return dimmed.has(id) ? T.noMatch(text) : text;
 }
 
 function syncButtons(p: SimPaint | null = lastPaint): void {
@@ -357,7 +364,7 @@ function syncButtons(p: SimPaint | null = lastPaint): void {
 // 帶貨幣圖的版本在 src/lib/cost-html.ts（文字跟以前逐字相同，E2E 的 toHaveText 不受影響）。
 // ⚠️ 下面用 innerHTML 塞進三列合計：安全只因為字串裡的數字全部來自 `Cost` 的 number 欄位、
 // 圖示網址是本站常數。日後要併入任何資料來的文字（節點名稱、描述），先跳脫再拼。
-const cost = (c: Cost) => simCostHtml(c);
+const cost = (c: Cost) => simCostHtml(c, LANG);
 
 function renderTotals(): void {
   const t = simTotals(state, ctx);
@@ -412,7 +419,7 @@ function levelInfo(node: TreeNode) {
 }
 
 const nextLevelText = (lv: number, cap: number, step: Cost | null): string =>
-  lv >= cap ? '已滿級' : step ? costHtml(step) : '成本未確認';
+  lv >= cap ? T.maxed : step ? costHtml(step, LANG) : T.costUnknown;
 
 /**
  * 拖曳滑桿時**只改文字**，不重建等級區塊。
@@ -430,8 +437,8 @@ function updateLevelReadout(): void {
   const { cap, floor, lv, extra, step } = levelInfo(node);
   value.textContent = `Lv.${lv} / ${cap}`;
   const notes = box.querySelectorAll('.sim-level .note');
-  if (notes[0]) notes[0].innerHTML = `下一級：${nextLevelText(lv, cap, step)}`;
-  if (notes[1]) notes[1].innerHTML = `Lv.1 → Lv.${lv} 追加：${costHtml(extra ?? ZERO_COST)}`;
+  if (notes[0]) notes[0].innerHTML = `${T.nextLevel}${nextLevelText(lv, cap, step)}`;
+  if (notes[1]) notes[1].innerHTML = `${T.extra(lv)}${costHtml(extra ?? ZERO_COST, LANG)}`;
   const dec = box.querySelector<HTMLButtonElement>('[data-step="-1"]');
   const inc = box.querySelector<HTMLButtonElement>('[data-step="1"]');
   if (dec) dec.disabled = lv <= floor;
@@ -448,14 +455,14 @@ function levelBlockHtml(node: TreeNode): string {
   return `
     <div class="sim-level">
       <div class="sim-level-row">
-        <button type="button" data-step="-1" aria-label="降低等級"${lv <= floor ? ' disabled' : ''}>−</button>
-        <input type="range" id="sim-level-range" min="${floor}" max="${cap}" value="${lv}" aria-label="等級" />
-        <button type="button" data-step="1" aria-label="提高等級"${lv >= cap ? ' disabled' : ''}>＋</button>
+        <button type="button" data-step="-1" aria-label="${T.levelDown}"${lv <= floor ? ' disabled' : ''}>−</button>
+        <input type="range" id="sim-level-range" min="${floor}" max="${cap}" value="${lv}" aria-label="${T.level}" />
+        <button type="button" data-step="1" aria-label="${T.levelUp}"${lv >= cap ? ' disabled' : ''}>＋</button>
         <span class="sim-level-value">Lv.${lv} / ${cap}</span>
       </div>
-      <p class="note">下一級：${nextLevelText(lv, cap, step)}</p>
-      <p class="note">Lv.1 → Lv.${lv} 追加：${costHtml(extra ?? ZERO_COST)}</p>
-      ${floor > 1 ? `<p class="note">已取得的${esc(heldBy.join('、'))}要求它達到 Lv.${floor}，不能再往下調</p>` : ''}
+      <p class="note">${T.nextLevel}${nextLevelText(lv, cap, step)}</p>
+      <p class="note">${T.extra(lv)}${costHtml(extra ?? ZERO_COST, LANG)}</p>
+      ${floor > 1 ? `<p class="note">${T.heldBy(esc(heldBy.join(T.sep)), floor)}</p>` : ''}
     </div>`;
 }
 
@@ -466,7 +473,7 @@ function renderDetailPanel(): void {
   const node = selected === null || !textArrived ? undefined : ctx.byId.get(selected);
   if (!node) {
     box.classList.add('empty');
-    box.innerHTML = '<p class="note">點畫布上的節點看它的詳情；前置都解開的節點點一下就會取得。</p>';
+    box.innerHTML = `<p class="note">${TP.emptyDetail}</p>`;
     return;
   }
   box.classList.remove('empty');
@@ -477,37 +484,37 @@ function renderDetailPanel(): void {
   const missing = missingParents(node.id, state, ctx);
 
   let action: string;
-  if (free) action = '<button type="button" class="cta btn btn-pri" disabled>起始骰子（一開始就有）</button>';
+  if (free) action = `<button type="button" class="cta btn btn-pri" disabled>${T.startDice}</button>`;
   else if (optional) {
     action = owned
-      ? '<button type="button" class="cta danger btn btn-alt" data-uncheck>取消勾選（會連帶取消後續）</button>'
-      : '<button type="button" class="cta btn btn-pri" data-check>我已經有這顆了</button>';
-  } else if (owned) action = '<button type="button" class="cta danger btn btn-alt" data-remove>取消此節點（會連帶取消後續）</button>';
-  else if (avail) action = `<button type="button" class="cta btn btn-pri" data-unlock>取得 · ${costHtml(node.unlockCost)}</button>`;
+      ? `<button type="button" class="cta danger btn btn-alt" data-uncheck>${T.uncheck}</button>`
+      : `<button type="button" class="cta btn btn-pri" data-check>${T.check}</button>`;
+  } else if (owned) action = `<button type="button" class="cta danger btn btn-alt" data-remove>${T.remove}</button>`;
+  else if (avail) action = `<button type="button" class="cta btn btn-pri" data-unlock>${T.take}${costHtml(node.unlockCost, LANG)}</button>`;
   else {
     // ⚠️ 不可以只說「還缺前置」：太陽骰子的三顆前置全在手上時它照樣點不開，那句話會讓玩家
     // 對著一棵已經解完的前置鏈找不到問題在哪。缺前置與等級不夠是兩句不同的話，各印各的。
     const lines: string[] = [];
     if (missing.length > 0) {
-      lines.push(`缺少前置：${missing.map(id => esc(ctx.byId.get(id)?.name ?? id)).join('、')}`);
+      lines.push(T.missing(missing.map(id => esc(ctx.byId.get(id)?.name ?? id)).join(T.sep)));
     }
     for (const m of missingPrereqRanks(node.id, state, ctx)) {
-      lines.push(`${esc(m.name)}需達 Lv.${m.rank}（目前 ${m.owned ? `Lv.${m.level}` : '未取得'}）`);
+      lines.push(T.needRank(esc(m.name), m.rank, m.owned ? `Lv.${m.level}` : T.notOwned));
     }
     action = lines.map(t => `<p class="note warn">${t}</p>`).join('')
-      + '<button type="button" class="cta btn btn-pri" data-path>一鍵點亮到這裡</button>';
+      + `<button type="button" class="cta btn btn-pri" data-path>${T.path}</button>`;
   }
 
   box.innerHTML = `
     <h3 tabindex="-1">${esc(node.name)}</h3>
-    <p><span class="tag">${esc(typeLabel(node))}</span><span class="tag">${esc(node.id)}</span></p>
+    <p><span class="tag">${esc(typeLabel(node, LANG))}</span><span class="tag">${esc(node.id)}</span></p>
     <p class="desc">${renderTaggedText(node.description, node.keywords, data.meta.glossary, (term, entry) => {
       // 顏色照抄遊戲內該標記的底色（同色＝同一類機制），跟 /tree 的詳情面板同一份資料來源。
       // 這一頁刻意**不做**可點的詞彙視圖：模擬器的側欄只有一層，堆疊視圖在這裡沒有返回鍵可用。
       const color = entry ? ` style="color:${esc(entry.color)}"` : '';
       return `<span class="sim-term"${color}>#${esc(term)}</span>`;
     })}</p>
-    ${node.unlockNote ? `<p class="note">取得條件：${esc(node.unlockNote)}</p>` : ''}
+    ${node.unlockNote ? `<p class="note">${T.unlockNote}${esc(node.unlockNote)}</p>` : ''}
     ${action}
     ${levelBlockHtml(node)}`;
 }
@@ -552,7 +559,7 @@ function activate(id: string | null, source: 'pointer' | 'keyboard' = 'pointer')
   if (!taken) render();
   // 取得是會花資源的動作，畫面上只是節點變亮、側欄數字變了——讀屏什麼都聽不到
   // （#sim-toast 是這一頁唯一的 live region；2026-09-24 review sim-4）。
-  if (taken) toast(`已取得 ${ctx.byId.get(id)?.name ?? id}`);
+  if (taken) toast(T.taken(ctx.byId.get(id)?.name ?? id));
   if (id === null) return;
   // 手機抽屜預設收起，選了節點得看得到詳情的主按鈕（見 revealDetail 的說明）；抽屜長高之後
   // 被選的節點可能落在它底下，再把畫布挪一下（revealSelected）。
@@ -620,7 +627,7 @@ function commitCascading(next: SimState | null): boolean {
   const before = ownedIds(state, ctx).size;
   if (!commit(next)) return false;
   const lost = before - ownedIds(state, ctx).size - 1;   // 扣掉被取消的那一顆自己
-  if (lost > 0) toast(`已連帶取消 ${lost} 個後續節點（可按復原）`);
+  if (lost > 0) toast(T.cascaded(lost));
   return true;
 }
 
@@ -646,17 +653,17 @@ $('sim-detail').addEventListener('click', e => {
   else if (btn.hasAttribute('data-path')) {
     const plan = pathTo(id, state, ctx);
     if (plan.blocked.length > 0) {
-      toast(`請先在「初始骰子」勾選：${plan.blocked.map(x => ctx.byId.get(x)?.name ?? x).join('、')}`);
+      toast(T.blocked(plan.blocked.map(x => ctx.byId.get(x)?.name ?? x).join(T.sep)));
       return;
     }
     if (plan.need.length === 0 && plan.levels.length === 0) return;
     // 整份計畫一起套用（節點 ＋ 練等），算一步復原：分兩次的話 undo 會停在「解完節點、
     // 還沒練完」的中間狀態，而那正是「解一半」要避免的情形。
     const levelText = plan.levels
-      .map(l => `${ctx.byId.get(l.id)?.name ?? l.id} 練到 Lv.${l.level}`)
-      .join('、');
+      .map(l => T.levelTo(ctx.byId.get(l.id)?.name ?? l.id, l.level))
+      .join(T.sep);
     if (commit(unlockMany(state, ctx, plan))) {
-      toast(`已點亮 ${plan.need.length} 個節點${levelText ? `，並把${levelText}` : ''}`);
+      toast(T.lit(plan.need.length, levelText));
     }
   } else if (btn.hasAttribute('data-step')) {
     const lv = (state.levels.get(id) ?? 1) + Number(btn.getAttribute('data-step'));
@@ -741,21 +748,21 @@ $('sim-reset').addEventListener('click', () => {
   // 會推一步內容相同的復原、清掉重做、還說「已重置」（2026-09-24 review sim-7）。
   // 比序列化而不是比 size：拖回 Lv.1 的等級會留在 levels 裡，serializeSim 會濾掉它。
   if (serializeSim(state) === serializeSim(initialSimState(ctx))) {
-    toast('規劃已經是空的');
+    toast(T.alreadyEmpty);
     return;
   }
   if (commit(initialSimState(ctx))) {
     selected = null;
     render();
-    toast('已重置');
+    toast(T.resetDone);
   }
 });
 
 $('sim-export').addEventListener('click', async () => {
-  const text = simReport(state, ctx);
+  const text = simReport(state, ctx, LANG);
   try {
     await navigator.clipboard.writeText(text);
-    toast('已複製到剪貼簿');
+    toast(T.copied);
   } catch {
     // 沒有剪貼簿權限（非 HTTPS、或使用者拒絕）時退回選取模式，至少讓玩家自己複製。
     const ta = document.createElement('textarea');
@@ -763,7 +770,7 @@ $('sim-export').addEventListener('click', async () => {
     ta.setAttribute('readonly', '');
     document.body.appendChild(ta);
     ta.select();
-    toast('剪貼簿不可用，請手動複製選取的文字');
+    toast(T.clipboardFail);
     setTimeout(() => ta.remove(), 8000);
   }
 });
@@ -784,13 +791,13 @@ async function exportImage(kind: 'compact' | 'full'): Promise<void> {
   try {
     exportScene ??= buildScene(data);
     // 內容在按下去那一刻就決定（參數先求值），產生途中玩家再改規劃不會混進這張圖。
-    const total = headerTotalLine(state, ctx);
+    const total = headerTotalLine(state, ctx, LANG);
     const canvas = kind === 'compact'
-      ? await renderCompactImage(exportScene, compactSections(state, ctx), total)
+      ? await renderCompactImage(exportScene, compactSections(state, ctx, LANG), total)
       : await renderFullImage(exportScene, simPaintFor(state, ctx, data, null), total);
     const blob = await new Promise<Blob | null>(res => canvas.toBlob(res, 'image/png'));
     if (!blob) {
-      toast('圖片產生失敗');
+      toast(T.imageFail);
       return;
     }
     if (lastImageUrl) URL.revokeObjectURL(lastImageUrl);
@@ -805,11 +812,11 @@ async function exportImage(kind: 'compact' | 'full'): Promise<void> {
     a.href = lastImageUrl;
     a.download = name;
     a.click();
-    toast('圖片已產生');
+    toast(T.imageDone);
   } catch {
     // 沒有這個 catch 的話任何例外都只是一個未捕捉的 rejection：按鈕恢復可按、
     // 什麼都沒出現——使用者看到的是「按了沒反應」（board.ts 同一條理由）。
-    toast('圖片產生失敗');
+    toast(T.imageFail);
   } finally {
     exporting = false;
     for (const b of buttons) b.disabled = false;
@@ -843,7 +850,7 @@ function renderAbilities(): void {
   const groups = summarizeAbilities(state, ctx);
   const body = $('sim-ability-body');
   if (groups.length === 0) {
-    body.innerHTML = '<p class="sim-ability-empty">還沒有取得任何玩家被動。</p>';
+    body.innerHTML = `<p class="sim-ability-empty">${T.noAbilities}</p>`;
     return;
   }
   body.innerHTML = groups.map(g => `
@@ -851,7 +858,8 @@ function renderAbilities(): void {
       <h3>${esc(GROUP_ZH[g.group])}</h3>
       ${g.entries.map(e => {
         if (e.total) {
-          const unit = e.total.unit === 's' ? '秒' : e.total.unit === 'count' ? '次' : e.total.unit === 'x' ? '倍' : e.total.unit;
+          const units = messages(LANG).labels.unit;
+          const unit = e.total.unit === 's' || e.total.unit === 'count' || e.total.unit === 'x' ? units[e.total.unit] : e.total.unit;
           return `<div class="sim-ability-row"><span>${esc(e.name)}</span><strong>${e.total.value}${esc(unit)}</strong></div>`;
         }
         // 沒有成長值的節點不硬湊數字（見 src/lib/sim.ts 的說明），照描述列出來並標次數。
@@ -1001,7 +1009,7 @@ function syncHandleState(): void {
   const open = !panelCollapsed();
   const handle = $('sim-panel-handle');
   handle.setAttribute('aria-expanded', String(open));
-  handle.setAttribute('aria-label', open ? '收合資源合計' : '展開資源合計');
+  handle.setAttribute('aria-label', open ? TP.panelClose : TP.panelOpen);
 }
 
 /**
@@ -1220,7 +1228,7 @@ const visibleCenter: VisibleCenter = () => {
   return [(rect.width - sidePanelInset(rect)) / 2, rect.height / 2];
 };
 
-wireModeLink('/tree/', () => selected, vp, visibleCenter);
+wireModeLink(localizePath('/tree/', documentLang()), () => selected, vp, visibleCenter);
 
 // --- 啟動 -------------------------------------------------------------------
 trackPanelHeight();

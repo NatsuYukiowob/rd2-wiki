@@ -12,7 +12,8 @@ import { levelTableFor, upgradeExtraCost } from '../lib/upgrade-tiers.js';
 import type { Cost, GlossaryDisplay, PassiveUpgradeCost, TreeNode, UpgradeCostTable } from '../lib/types.js';
 import type { Selection } from '../lib/selection.js';
 import { escapeHtml, renderTaggedText } from '../lib/markup.js';
-import { AWAKENING_CONDITION, BRANCH_ZH, typeLabel } from '../lib/labels.js';
+import { awakeningCondition, branchLabel, typeLabel } from '../lib/labels.js';
+import { documentLang, messages } from '../lib/i18n.js';
 
 /**
  * 面板版的描述渲染：`#關鍵字` 包成 `<button class="kw">`，點下去會在同一張卡片裡推出
@@ -45,11 +46,12 @@ function renderDescription(
 function viewShell(opts: { title: string; body: string; back: boolean }): string {
   // tabindex="-1"：推入／返回之後要用程式把焦點移進來（見 tree-canvas.ts）。少了這一步，
   // 舊視圖一 display:none，焦點就掉回 <body>，Esc 與 Tab 都不再落在卡片上。
+  const t = messages(documentLang()).detail;
   return `<section class="view" tabindex="-1">
     <div class="view-head">
-      ${opts.back ? '<button type="button" class="view-back" data-detail-back aria-label="返回上一頁">←</button>' : ''}
+      ${opts.back ? `<button type="button" class="view-back" data-detail-back aria-label="${t.back}">←</button>` : ''}
       <h2>${opts.title}</h2>
-      <button type="button" class="view-close" data-detail-close aria-label="關閉詳情">✕</button>
+      <button type="button" class="view-close" data-detail-close aria-label="${t.close}">✕</button>
     </div>
     ${opts.body}
   </section>`;
@@ -63,7 +65,10 @@ function nodeBody(
   upgradeCostTable: UpgradeCostTable | null,
   tables: PassiveUpgradeCost,
 ): string {
-  const growth = formatGrowth(node);
+  const lang = documentLang();
+  const t = messages(lang).detail;
+  const cost = (c: Cost) => costHtml(c, lang);
+  const growth = formatGrowth(node, lang);
   const desc = renderDescription(node.description, node.keywords, glossary);
   // 練滿的累計花費＝解鎖那一筆 ＋ Lv.2 → maxLevel 的追加。查不到費用表就整列不顯示——
   // 顯示一個算錯的總價比什麼都不顯示糟得多。
@@ -89,32 +94,32 @@ function nodeBody(
   return `
     <div class="node-body">
       <div class="col">
-        <p class="meta">${BRANCH_ZH[node.branch]} · ${typeLabel(node)} · ${node.unlockVia === 'cost' ? costHtml(node.unlockCost) : escapeHtml(formatUnlockVia(node))}</p>
-        ${node.maxLevel > 1 ? `<p class="meta">等級上限 ${node.maxLevel}</p>` : ''}
-        ${maxUpgrade ? `<p class="upgrade">練滿 ${node.maxLevel} 級累計 ${costHtml(maxUpgrade)}<span class="cond">含解鎖那一次</span></p>` : ''}
+        <p class="meta">${branchLabel(node.branch, lang)} · ${typeLabel(node, lang)} · ${node.unlockVia === 'cost' ? cost(node.unlockCost) : escapeHtml(formatUnlockVia(node, lang))}</p>
+        ${node.maxLevel > 1 ? `<p class="meta">${t.maxLevel(node.maxLevel)}</p>` : ''}
+        ${maxUpgrade ? `<p class="upgrade">${t.maxUpgrade(node.maxLevel)}${cost(maxUpgrade)}<span class="cond">${t.includesUnlock}</span></p>` : ''}
         ${growth ? `<p class="growth">${escapeHtml(growth)}</p>` : ''}
-        ${node.dataIssue === 'placeholder' ? '<p class="warn">數值待補（遊戲資料含未替換佔位符）</p>' : ''}
+        ${node.dataIssue === 'placeholder' ? `<p class="warn">${t.placeholder}</p>` : ''}
         <p class="desc">${desc}</p>
-        ${node.awakening ? `<button type="button" class="awakening-link" data-detail-awakening>骰子覺醒<span class="cond">${AWAKENING_CONDITION}</span><span class="chev" aria-hidden="true">›</span></button>` : ''}
+        ${node.awakening ? `<button type="button" class="awakening-link" data-detail-awakening>${t.awakening}<span class="cond">${awakeningCondition(lang)}</span><span class="chev" aria-hidden="true">›</span></button>` : ''}
       </div>
       <div class="col chain">
-        <h3>前置鏈（${sel.chain.size} 個節點）</h3>
+        <h3>${t.chain(sel.chain.size)}</h3>
         ${sel.prereqRanks.length > 0
           // 有必要練等時分三件事講：總計、解鎖前置、每一段練等各多少。混成一個數字的話，
           // 太陽骰子那 595,700 金幣裡有 78% 其實是拿去練 1201 的，玩家完全看不出來。
-          ? `<p class="cost">總計 ${costHtml(sel.totalCost)}</p>
-        <p class="note">解鎖前置 ${costHtml(sel.cost)}</p>
+          ? `<p class="cost">${t.total}${cost(sel.totalCost)}</p>
+        <p class="note">${t.unlockPrereq}${cost(sel.cost)}</p>
         ${sel.prereqRanks.map(r =>
           // cost 是 null ＝查不到費用表。**寫「成本未確認」而不是印 0**：「這一段免費」跟
           // 「這一段算不出來」在畫面上必須是兩件事（見 PrereqRankCost 的說明）。
-          `<p class="note">前置練等 ${escapeHtml(r.name)} Lv.${r.rank}：${r.cost ? costHtml(r.cost) : '成本未確認'}</p>`
+          `<p class="note">${t.rankPrereq(escapeHtml(r.name), r.rank)}${r.cost ? cost(r.cost) : t.costUnknown}</p>`
         ).join('\n        ')}`
-          : `<p class="cost">${costHtml(sel.cost)}</p>`}
-        <p class="note">此為 AND 假設下的上限值${sel.prereqRanks.length > 0 ? '；除了上列必要練等之外，不含其他強化費用' : '，不含強化費用'}。</p>
-        ${sel.skipped.length > 0 ? `<p class="note">已排除 ${sel.skipped.length} 個非成本解鎖節點</p>` : ''}
-        ${sel.bypassNodes > 0 ? `<p class="note">鏈上有 ${sel.bypassNodes} 顆可直接領的骰子，通往它的前置邊畫成虛線</p>` : ''}
-        ${sel.bypassed > 0 ? `<p class="note">因此已跳過 ${sel.bypassed} 個前置</p>` : ''}
-        ${sel.hiddenByFilter > 0 ? `<p class="note">含 ${sel.hiddenByFilter} 個被篩選隱藏的前置</p>` : ''}
+          : `<p class="cost">${cost(sel.cost)}</p>`}
+        <p class="note">${t.andNote(sel.prereqRanks.length > 0)}</p>
+        ${sel.skipped.length > 0 ? `<p class="note">${t.skipped(sel.skipped.length)}</p>` : ''}
+        ${sel.bypassNodes > 0 ? `<p class="note">${t.bypassNodes(sel.bypassNodes)}</p>` : ''}
+        ${sel.bypassed > 0 ? `<p class="note">${t.bypassed(sel.bypassed)}</p>` : ''}
+        ${sel.hiddenByFilter > 0 ? `<p class="note">${t.hiddenByFilter(sel.hiddenByFilter)}</p>` : ''}
       </div>
     </div>
   `;
@@ -147,19 +152,21 @@ export function nodeViewHtml(
  */
 export function termViewHtml(term: string, glossary: Record<string, GlossaryDisplay>): string {
   const entry = glossary[term];
+  const t = messages(documentLang()).detail;
   const body = entry
     ? `<p class="desc">${renderDescription(entry.desc, Object.keys(glossary), glossary)}</p>
-    <button type="button" class="kw-search" data-detail-search="${escapeHtml(term)}">搜尋 #${escapeHtml(term)}</button>`
-    : '<p class="warn">這個詞不在詞彙表裡</p>';
+    <button type="button" class="kw-search" data-detail-search="${escapeHtml(term)}">${t.search(escapeHtml(term))}</button>`
+    : `<p class="warn">${t.notInGlossary}</p>`;
   const color = entry ? ` style="color:${escapeHtml(entry.color)}"` : '';
   return viewShell({ title: `<span${color}>#${escapeHtml(term)}</span>`, body, back: true });
 }
 
 /** 骰子覺醒視圖。沒有覺醒的節點不會走到這裡（呼叫端只在 `node.awakening` 有值時推）。 */
 export function awakeningViewHtml(node: TreeNode, glossary: Record<string, GlossaryDisplay>): string {
+  const lang = documentLang();
   return viewShell({
-    title: '骰子覺醒',
-    body: `<p class="meta">${escapeHtml(node.name)} · ${AWAKENING_CONDITION}</p>
+    title: messages(lang).detail.awakening,
+    body: `<p class="meta">${escapeHtml(node.name)} · ${awakeningCondition(lang)}</p>
     <p class="desc">${renderDescription(node.awakening ?? '', Object.keys(glossary), glossary)}</p>`,
     back: true,
   });

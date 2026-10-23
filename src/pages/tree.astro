@@ -17,17 +17,17 @@ import '../styles/canvas.css';
 // 值得鎖住的行為），見 task-16-report.md「FilterBar.ts 的取捨」一節。
 // value 直接取 labels.ts 的鍵（型別是 Record<Branch|NodeType, …>），所以跟字面聯集必然一致——
 // tree-canvas.ts 會直接把 dataset 值當 Branch/NodeType 塞進 FilterState。
-const BRANCHES = Object.entries(BRANCH_ZH);
-const TYPES = Object.entries(TYPE_ZH);
-
 const m = messages(langFromPath(Astro.url.pathname));
+const t = m.treePage;
+const BRANCHES = (Object.keys(BRANCH_ZH) as (keyof typeof BRANCH_ZH)[]).map(b => [b, m.labels.branch[b]] as const);
+const TYPES = (Object.keys(TYPE_ZH) as (keyof typeof TYPE_ZH)[]).map(k => [k, m.labels.type[k]] as const);
 ---
 
 <Base title={m.pages.tree.title} viewTransition>
   {/* 整頁的主標題。畫面上的「標題」是畫布本身，所以視覺隱藏；少了它讀屏的標題導覽在這一頁
        一個標題都找不到（2026-09-24 review）。.sr-only 是 absolute ＋ clip-path，不佔版面，
        不影響 body:has(#canvas-host) 的零偏移量排版。 */}
-  <h1 class="sr-only">骰子樹</h1>
+  <h1 class="sr-only">{m.nav.tree}</h1>
   {/* #tree-controls：把 #toolbar 與 #branch-nav 包進同一個 position:fixed 的直向
        flex 容器（修 bug：舊版兩者各自用寫死的 top 值疊放，#branch-nav 的 top:6rem
        假設 #toolbar 永遠只有 3rem 高，但 #toolbar 有 flex-wrap，視窗變窄換行變高後
@@ -41,8 +41,8 @@ const m = messages(langFromPath(Astro.url.pathname));
       {/* 手機版才顯示（見下面 CSS）：篩選收進頂部抽屜，預設收起，點這顆按鈕展開/收起
            #filters（切 .open class，接線見 tree-canvas.ts）。桌機版 #filters 本來就常駐
            顯示，不需要這顆按鈕，靠 CSS 媒體查詢隱藏。 */}
-      <button id="filters-toggle" class="btn btn-alt" type="button" aria-label="展開篩選" aria-controls="filters">篩選</button>
-      <input id="search" type="search" placeholder="搜尋節點名稱、效果、關鍵字…" aria-label="搜尋節點" />
+      <button id="filters-toggle" class="btn btn-alt" type="button" aria-label={t.filtersOpen} aria-controls="filters">{t.filtersToggle}</button>
+      <input id="search" type="search" placeholder={t.searchPlaceholder} aria-label={t.searchLabel} />
       {/*
         篩選結果的播報。看不見，但仍在無障礙樹裡（.sr-only 用 clip-path，不是 display:none）。
         2026-08-22 把工具列上那句「符合 N 個節點」拿掉之後，篩選結果就完全沒有東西告訴螢幕
@@ -52,8 +52,8 @@ const m = messages(langFromPath(Astro.url.pathname));
       <p id="filter-live" class="sr-only" role="status" aria-live="polite"></p>
       <div id="filters">
         {/* 用 <div role="group"> 而不是 <fieldset><legend>，理由見 dice.astro 的說明。 */}
-        <div class="filter-group" role="group" aria-label="分支">
-          <span class="filter-group-label" aria-hidden="true">分支</span>
+        <div class="filter-group" role="group" aria-label={t.branchGroup}>
+          <span class="filter-group-label" aria-hidden="true">{t.branchGroup}</span>
           {BRANCHES.map(([value, label]) => (
             <label class="chip" data-branch={value}>
               <input type="checkbox" data-branch={value} />
@@ -61,8 +61,8 @@ const m = messages(langFromPath(Astro.url.pathname));
             </label>
           ))}
         </div>
-        <div class="filter-group" role="group" aria-label="類型">
-          <span class="filter-group-label" aria-hidden="true">類型</span>
+        <div class="filter-group" role="group" aria-label={t.typeGroup}>
+          <span class="filter-group-label" aria-hidden="true">{t.typeGroup}</span>
           {TYPES.map(([value, label]) => (
             <label class="chip"><input type="checkbox" data-type={value} />{label}</label>
           ))}
@@ -70,13 +70,13 @@ const m = messages(langFromPath(Astro.url.pathname));
         {/* 「清除篩選」住在面板裡，不在工具列上：它一出現就會改變工具列寬度，而工具列是
              浮在畫布上的，寬度一變整排東西跟著跳（2026-08-22 Yuki 回報）。面板收起時看不到
              它也沒關係——切換鈕上的金點會說現在有篩選在生效。 */}
-        <button id="filter-clear" type="button" data-idle>清除篩選</button>
+        <button id="filter-clear" type="button" data-idle>{t.clear}</button>
       </div>
     </div>
     {/* 桌機側欄的分支快速跳轉（spec §6.2.6）：跟下面手機版 #branch-chips 是同一組分支、
          同一個按鈕點擊 handler（見 tree-canvas.ts 的 jumpToBranch()，不寫兩份跳轉邏輯），
          只是版面位置與顯示時機不同（CSS 媒體查詢互斥顯示）。 */}
-    <nav id="branch-nav" aria-label="分支快速跳轉">
+    <nav id="branch-nav" aria-label={t.branchNav}>
       {BRANCHES.map(([value, label]) => (
         <button type="button" class="chip" data-branch={value}><span class={`branch-dot branch-${value}`} aria-hidden="true"></span>{label}</button>
       ))}
@@ -87,7 +87,7 @@ const m = messages(langFromPath(Astro.url.pathname));
       import '../scripts/tree-canvas.ts';
     </script>
   </div>
-  <aside id="detail" class="panel" aria-label="節點詳情" hidden></aside>
+  <aside id="detail" class="panel" aria-label={t.detail} hidden></aside>
   {/* 手機版底部的分支切換列（DOM 契約，見 task-17 brief：#branch-chips 內含 5 個
        button[data-branch]，第 18 個任務的 E2E 已經寫死這個結構）。 */}
   <div id="branch-chips">

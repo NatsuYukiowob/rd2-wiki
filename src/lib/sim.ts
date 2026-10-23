@@ -7,6 +7,7 @@ import { buildAdjacency, sumUnlockCost } from './graph.js';
 import { levelTableFor, upgradeExtraCost } from './upgrade-tiers.js';
 import { addCost, mythicAmount, zeroCost } from './cost.js';
 import { MYTHIC_CORES } from './currency.js';
+import { messages, type Lang } from './i18n.js';
 import type {
   Branch, Cost, GrowthUnit, PassiveUpgradeCost, TreeData, TreeNode, UpgradeCostTable,
 } from './types.js';
@@ -414,9 +415,10 @@ export function resourceGap(total: Cost, held: SimHoldings): GapEntry[] {
  * ⚠️ 剛好夠用時 `short` 是 0，`-short` 是 **-0**，`toLocaleString` 會印成「-0」
  * （2026-09-24 review：太陽核心填 0、規劃沒用到 → 「剩餘 -0」）。`Math.max(0, …)` 回 +0。
  */
-export function gapText(g: Pick<GapEntry, 'short'>): string {
+export function gapText(g: Pick<GapEntry, 'short'>, lang: Lang = 'zh'): string {
   const n = (v: number) => v.toLocaleString('en-US');
-  return g.short > 0 ? `還差 ${n(g.short)}` : `剩餘 ${n(Math.max(0, -g.short))}`;
+  const t = messages(lang).sim;
+  return g.short > 0 ? t.gapShort(n(g.short)) : t.gapLeft(n(Math.max(0, -g.short)));
 }
 
 /**

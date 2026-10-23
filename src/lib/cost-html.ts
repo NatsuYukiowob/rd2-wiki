@@ -1,6 +1,7 @@
 import { mythicEntries } from './cost.js';
 import { mythicCoreByKind, type MythicCoreDef } from './currency.js';
 import type { Cost } from './types.js';
+import { messages, type Lang } from './i18n.js';
 
 /**
  * 成本的 HTML 版：每一種貨幣前面帶一張遊戲內的貨幣圖（金幣／骰子核心／超越核心），
@@ -84,31 +85,38 @@ export function mythicIcon(def: MythicCoreDef): string {
  * 任意已登記貨幣的圖與名稱。`/events` 與 `/rewards` 共用這一個 resolver，
  * 固定貨幣與超越核心不在各頁再複製一份 registry。
  */
-export function currencyIconDetails(kind: string): { label: string; html: string } {
+export function currencyIconDetails(kind: string, lang: Lang = 'zh'): { label: string; html: string } {
   const mythic = mythicCoreByKind(kind);
-  if (mythic) return { label: mythic.label, html: mythicIcon(mythic) };
+  if (mythic) return { label: mythicLabel(mythic, lang), html: mythicIcon(mythic) };
   if (Object.hasOwn(CURRENCY, kind)) {
-    const fixed = CURRENCY[kind as CurrencyIconKind];
-    return { label: fixed.label, html: currencyIcon(kind as CurrencyIconKind) };
+    return { label: currencyLabel(kind as CurrencyIconKind, lang), html: currencyIcon(kind as CurrencyIconKind) };
   }
   throw new Error(`未登記的貨幣圖種類 ${JSON.stringify(kind)}`);
 }
 
-function part(kind: CurrencyKind, n: number): string {
-  return `${currencyIcon(kind)}${CURRENCY[kind].label} ${n.toLocaleString('en-US')}`;
+function currencyLabel(kind: CurrencyIconKind, lang: Lang): string {
+  return messages(lang).labels.currency[kind] ?? CURRENCY[kind].label;
 }
 
-function mythicPart(def: MythicCoreDef, n: number): string {
-  return `${mythicIcon(def)}${def.label} ${n.toLocaleString('en-US')}`;
+function mythicLabel(def: MythicCoreDef, lang: Lang): string {
+  return messages(lang).labels.mythic[def.kind] ?? def.label;
+}
+
+function part(kind: CurrencyKind, n: number, lang: Lang): string {
+  return `${currencyIcon(kind)}${currencyLabel(kind, lang)} ${n.toLocaleString('en-US')}`;
+}
+
+function mythicPart(def: MythicCoreDef, n: number, lang: Lang): string {
+  return `${mythicIcon(def)}${mythicLabel(def, lang)} ${n.toLocaleString('en-US')}`;
 }
 
 /** `formatCost()` 的帶圖版：有值的貨幣才印，順序核心→金幣→超越核心，皆為 0 印「免費」。 */
-export function costHtml(c: Cost): string {
+export function costHtml(c: Cost, lang: Lang = 'zh'): string {
   const parts: string[] = [];
-  if (c.core > 0) parts.push(part('core', c.core));
-  if (c.gold > 0) parts.push(part('gold', c.gold));
-  for (const [def, n] of mythicEntries(c)) parts.push(mythicPart(def, n));
-  return parts.length > 0 ? parts.join(' ＋ ') : '免費';
+  if (c.core > 0) parts.push(part('core', c.core, lang));
+  if (c.gold > 0) parts.push(part('gold', c.gold, lang));
+  for (const [def, n] of mythicEntries(c)) parts.push(mythicPart(def, n, lang));
+  return parts.length > 0 ? parts.join(' ＋ ') : messages(lang).labels.free;
 }
 
 /**
@@ -116,7 +124,7 @@ export function costHtml(c: Cost): string {
  * 「核心 0」是資訊不是雜訊），超越核心只在有值時多接一段——文字跟 `src/scripts/sim.ts`
  * 原本的 `cost()` 逐字相同。
  */
-export function simCostHtml(c: Cost): string {
-  return `${part('core', c.core)} ／${part('gold', c.gold)}`
-    + mythicEntries(c).map(([def, n]) => ` ／${mythicPart(def, n)}`).join('');
+export function simCostHtml(c: Cost, lang: Lang = 'zh'): string {
+  return `${part('core', c.core, lang)} ／${part('gold', c.gold, lang)}`
+    + mythicEntries(c).map(([def, n]) => ` ／${mythicPart(def, n, lang)}`).join('');
 }

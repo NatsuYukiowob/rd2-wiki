@@ -9,9 +9,12 @@ import type { Scene } from '../lib/canvas/scene.js';
 import type { SimPaint } from '../lib/canvas/state.js';
 import { readTheme, type Theme } from '../lib/canvas/theme.js';
 import {
-  COMPACT, FULL, IMAGE_TITLE, compactLayout, exportPaintState, fitText, fixedView, fullImageSize,
+  COMPACT, FULL, compactLayout, exportPaintState, fitText, fixedView, fullImageSize,
   type CompactSection,
 } from '../lib/sim-image.js';
+import { documentLang, messages } from '../lib/i18n.js';
+
+const T = messages(documentLang()).sim;
 
 /** 跟 `mountCanvasTree()` 的預設 `hiresBase` 同一個路徑。 */
 const HIRES_BASE = '/assets/icons';
@@ -57,7 +60,7 @@ function drawHeader(ctx: CanvasRenderingContext2D, theme: Theme, width: number, 
   ctx.textBaseline = 'alphabetic';
   ctx.fillStyle = theme.gold;
   ctx.font = `700 ${36 * k}px ${theme.font}`;
-  ctx.fillText(IMAGE_TITLE, x, 64 * k);
+  ctx.fillText(T.imageHeader, x, 64 * k);
   ctx.fillStyle = theme.fg;
   ctx.font = `500 ${26 * k}px ${theme.fontNum}`;
   ctx.fillText(fitText(totalLine, width - x * 2, s => ctx.measureText(s).width), x, 112 * k);
@@ -79,7 +82,7 @@ export async function renderCompactImage(scene: Scene, sections: CompactSection[
   if (layout.sections.length === 0) {
     ctx.fillStyle = theme.fg;
     ctx.font = `500 22px ${theme.font}`;
-    ctx.fillText('尚未取得任何節點', pad, headerH + 44);
+    ctx.fillText(T.imageEmpty, pad, headerH + 44);
   }
   for (const s of layout.sections) {
     ctx.fillStyle = theme.gold;

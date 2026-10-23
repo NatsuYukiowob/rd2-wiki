@@ -6,14 +6,17 @@
 // 換頁時金框滑塊（.mode-thumb）從舊位置滑到新位置，頁面本身瞬間切換：跨頁 View Transitions
 // 只給滑塊命名、root 不做動畫。opt-in 由 Base 的 `viewTransition` 輸出（理由見 Base 的 Props），
 // 減少動態時 Base 不宣告＝直接換頁；不支援的瀏覽器（Firefox）同樣直接換頁；手機不做（見樣式）。
+import { langFromPath, localizePath, messages } from '../lib/i18n';
 interface Props { current: 'tree' | 'sim' }
 const { current } = Astro.props;
+const lang = langFromPath(Astro.url.pathname);
+const t = messages(lang).modeSwitch;
 const MODES = [
-  { key: 'tree', href: '/tree/', label: '瀏覽' },
-  { key: 'sim', href: '/sim/', label: '模擬' },
+  { key: 'tree', href: localizePath('/tree/', lang), label: t.tree },
+  { key: 'sim', href: localizePath('/sim/', lang), label: t.sim },
 ] as const;
 ---
-<nav class="seg mode-switch" aria-label="骰子樹模式">
+<nav class="seg mode-switch" aria-label={t.label}>
   {MODES.map(m => m.key === current
     ? <a aria-current="page"><span class="mode-thumb" aria-hidden="true"></span><span class={`mode-label-${m.key}`}>{m.label}</span></a>
     : <a href={m.href} data-mode-switch><span class={`mode-label-${m.key}`}>{m.label}</span></a>)}

@@ -62,6 +62,19 @@ export function localizePath(path: string, lang: Lang): string {
   return base === '/' ? `/${lang}/` : `/${lang}${base}`;
 }
 
+/** `<html lang>` 的值換回語言；認不得的一律當預設語言。 */
+export function langFromTag(tag: string | null | undefined): Lang {
+  return LANGS.find(l => LANG_META[l].tag === tag) ?? DEFAULT_LANG;
+}
+
+/**
+ * 瀏覽器腳本用：目前頁面的語言（讀 Base.astro 輸出的 `<html lang>`）。
+ * 沒有 document（Node 測試、建置期）時是預設語言，輸出跟加語言之前逐字相同。
+ */
+export function documentLang(): Lang {
+  return typeof document === 'undefined' ? DEFAULT_LANG : langFromTag(document.documentElement?.lang);
+}
+
 /** 綁定語言的 `localizePath`，頁面裡寫成 `href={link('/tree/')}`。 */
 export function linker(lang: Lang): (path: string) => string {
   return path => localizePath(path, lang);
