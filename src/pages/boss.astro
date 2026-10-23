@@ -10,6 +10,7 @@
 // **不是上游漏填的佔位符**（2026-08-26 一度誤判過）。全站的戰術與 Boss 文字裡只有這一個標記，
 // 規則 25(k) 守它落在 data/keywords.json 的白名單內。
 import Base from '../layouts/Base.astro';
+import { langFromPath, messages } from '../lib/i18n';
 import '../styles/battle.css';
 import bossRaw from '../../data/boss.json';
 import keywordsRaw from '../../data/keywords.json';
@@ -56,9 +57,11 @@ const termsOf = (text: string) =>
     color: index.byTerm.get(term)?.color ?? '',
     desc: index.byTerm.get(term)?.desc ?? '',
   }));
+
+const m = messages(langFromPath(Astro.url.pathname));
 ---
 
-<Base title="怪物圖鑑" description="Random Dice 2 怪物圖鑑：對戰與合作模式的怪物與首領，以及各自的特性與技能效果。">
+<Base title={m.pages.boss.title} description={m.pages.boss.description}>
   <section class="page battle-page">
     <h1 class="page-head">怪物圖鑑</h1>
     <p class="lede">

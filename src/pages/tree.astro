@@ -3,6 +3,7 @@
 // 選取/前置鏈高亮/詳情面板 + 搜尋/篩選/網址狀態同步。
 // 掛載邏輯放在 src/scripts/tree-canvas.ts，方便各任務在同一支腳本上疊加互動。
 import Base from '../layouts/Base.astro';
+import { langFromPath, messages } from '../lib/i18n';
 import ModeSwitch from '../components/ModeSwitch.astro';
 import NodeIndex from '../components/NodeIndex.astro';
 import { BRANCH_ZH, TYPE_ZH } from '../lib/labels';
@@ -18,9 +19,11 @@ import '../styles/canvas.css';
 // tree-canvas.ts 會直接把 dataset 值當 Branch/NodeType 塞進 FilterState。
 const BRANCHES = Object.entries(BRANCH_ZH);
 const TYPES = Object.entries(TYPE_ZH);
+
+const m = messages(langFromPath(Astro.url.pathname));
 ---
 
-<Base title="骰子樹" viewTransition>
+<Base title={m.pages.tree.title} viewTransition>
   {/* 整頁的主標題。畫面上的「標題」是畫布本身，所以視覺隱藏；少了它讀屏的標題導覽在這一頁
        一個標題都找不到（2026-09-24 review）。.sr-only 是 absolute ＋ clip-path，不佔版面，
        不影響 body:has(#canvas-host) 的零偏移量排版。 */}

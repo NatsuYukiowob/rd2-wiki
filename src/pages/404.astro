@@ -11,6 +11,9 @@
 // 也因此「看起來存在」（見 tests/e2e/seo.spec.ts 的說明）。
 import Base from '../layouts/Base.astro';
 import { ICONS } from '../lib/icons';
+import { messages } from '../lib/i18n';
+
+const vi = messages('vi');
 ---
 
 <Base title="找不到頁面" noIndex>
@@ -19,5 +22,12 @@ import { ICONS } from '../lib/icons';
     <p class="lede">網址可能打錯了，或這一頁已經搬走。</p>
     <p><a href="/tree/">開啟骰子樹<Fragment set:html={ICONS.arrow} /></a></p>
     <p><a href="/">回首頁</a></p>
+  </section>
+  {/* Cloudflare Pages 只有這一份 404，`/vi/…` 的失效連結也是它回的，所以越南文直接並列。 */}
+  <section class="page" lang="vi">
+    <h2 class="sec-title">{vi.pages.notFound.heading}</h2>
+    <p class="lede">{vi.pages.notFound.lede}</p>
+    <p><a href="/vi/tree/">{vi.pages.notFound.openTree}<Fragment set:html={ICONS.arrow} /></a></p>
+    <p><a href="/vi/">{vi.pages.notFound.home}</a></p>
   </section>
 </Base>

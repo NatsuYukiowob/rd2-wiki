@@ -14,6 +14,7 @@
 // Yuki 指定，跟 /tree 的詳情面板同一種操作感）。四組關鍵字的完整清單在 /guide 底下，
 // 那裡是「攤開來瀏覽」用的；卡片上的就地視圖是「讀到一半想起來這個詞是什麼」用的。
 import Base from '../layouts/Base.astro';
+import { langFromPath, messages } from '../lib/i18n';
 import '../styles/dice.css';
 import DiceCard from '../components/DiceCard.astro';
 import { treeData as data } from '../lib/tree-data';
@@ -62,9 +63,11 @@ const nodes = tree.nodes
 const dice3Icons = dice3IconsRaw as Record<string, string>;
 
 const BRANCHES = Object.entries(BRANCH_ZH);
+
+const m = messages(langFromPath(Astro.url.pathname));
 ---
 
-<Base title="骰子圖鑑" description={`Random Dice 2 骰子圖鑑：${nodes.length} 顆骰子的基本效果、7 骰點覺醒效果與數值。`}>
+<Base title={m.pages.dice.title} description={m.pages.dice.description(nodes.length)}>
   <section class="page">
     <h1 class="page-head">骰子圖鑑</h1>
     <p class="lede">

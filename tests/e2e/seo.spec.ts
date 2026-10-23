@@ -37,7 +37,36 @@ const PAGES = [
   { request: '/guide', canonical: `${SITE}/guide/`, name: '總覽' },
   { request: '/guide/keywords', canonical: `${SITE}/guide/keywords/`, name: '遊戲名詞' },
   { request: '/about', canonical: `${SITE}/about/`, name: '貢獻' },
+  // 越南文版（src/pages/vi/）：每一頁都有一份，分頁名是 messages-vi.ts 的 title。
+  // 活動頁的分頁名是活動名稱本身（資料沒有翻譯）。
+  { request: '/vi/', canonical: `${SITE}/vi/`, name: 'Trang chủ' },
+  { request: '/vi/tree', canonical: `${SITE}/vi/tree/`, name: 'Cây xúc xắc' },
+  { request: '/vi/dice', canonical: `${SITE}/vi/dice/`, name: 'Bách khoa xúc xắc' },
+  { request: '/vi/board', canonical: `${SITE}/vi/board/`, name: 'Bàn xúc xắc' },
+  { request: '/vi/tactic', canonical: `${SITE}/vi/tactic/`, name: 'Chiến thuật' },
+  { request: '/vi/boss', canonical: `${SITE}/vi/boss/`, name: 'Bách khoa quái vật' },
+  { request: '/vi/rift-shop', canonical: `${SITE}/vi/rift-shop/`, name: 'Cửa hàng Khe nứt' },
+  { request: '/vi/events', canonical: `${SITE}/vi/events/`, name: 'Sự kiện' },
+  { request: '/vi/rewards', canonical: `${SITE}/vi/rewards/`, name: 'Phần thưởng' },
+  { request: '/vi/events/exploration-bingo-2026', canonical: `${SITE}/vi/events/exploration-bingo-2026/`, name: '探索賓果活動' },
+  { request: '/vi/events/chuseok-2026', canonical: `${SITE}/vi/events/chuseok-2026/`, name: '中秋賞月活動' },
+  { request: '/vi/sim', canonical: `${SITE}/vi/sim/`, name: 'Mô phỏng cây xúc xắc (beta)' },
+  { request: '/vi/guide', canonical: `${SITE}/vi/guide/`, name: 'Tổng quan' },
+  { request: '/vi/guide/keywords', canonical: `${SITE}/vi/guide/keywords/`, name: 'Thuật ngữ' },
+  { request: '/vi/about', canonical: `${SITE}/vi/about/`, name: 'Đóng góp' },
 ] as const;
+
+test('SEO-10. 每個語言版本都用 hreflang 互指，x-default 指向中文版', async ({ page }) => {
+  for (const [path, zhUrl, viUrl] of [
+    ['/dice/', `${SITE}/dice/`, `${SITE}/vi/dice/`],
+    ['/vi/dice/', `${SITE}/dice/`, `${SITE}/vi/dice/`],
+  ] as const) {
+    await page.goto(path);
+    await expect(page.locator('link[rel="alternate"][hreflang="zh-Hant"]')).toHaveAttribute('href', zhUrl);
+    await expect(page.locator('link[rel="alternate"][hreflang="vi"]')).toHaveAttribute('href', viUrl);
+    await expect(page.locator('link[rel="alternate"][hreflang="x-default"]')).toHaveAttribute('href', zhUrl);
+  }
+});
 
 test('SEO-1. robots.txt 是真的純文字檔，不是首頁的回退', async ({ request }) => {
   const res = await request.get('/robots.txt');

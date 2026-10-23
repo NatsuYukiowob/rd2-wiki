@@ -1,0 +1,12 @@
+---
+// 越南文版：轉呼叫原頁面，語言由網址前綴決定（src/lib/i18n.ts）。
+import Page from '../../events/[id].astro';
+import eventsRaw from '../../../../data/events.json';
+import type { GameEvent } from '../../../lib/types';
+
+export function getStaticPaths() {
+  return (eventsRaw as GameEvent[]).map(ev => ({ params: { id: ev.id }, props: { ev } }));
+}
+---
+
+<Page {...Astro.props} />

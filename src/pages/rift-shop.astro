@@ -10,6 +10,7 @@
 // 版面共用 battle.css（圖左文右的橫列清單），分組方式抄 /boss 的難度分組。
 // 同樣不進 tree.json：靜態頁建置期直接讀 data/，不吃那 20 KB gzip 預算。
 import Base from '../layouts/Base.astro';
+import { langFromPath, messages } from '../lib/i18n';
 import '../styles/battle.css';
 import riftShopRaw from '../../data/rift-shop.json';
 import keywordsRaw from '../../data/keywords.json';
@@ -59,9 +60,11 @@ const WILLS = [
   { name: '守護意志', effect: '生命值等比傷害減少 50%' },
   { name: '生存意志', effect: '生命值低於 30% 時，子彈暴斃效果生效' },
 ];
+
+const m = messages(langFromPath(Astro.url.pathname));
 ---
 
-<Base title="裂縫商店" description={`Random Dice 2 合作困難模式的裂縫商店：用討伐硬幣兌換的 ${effects.length} 種裂縫效果。`}>
+<Base title={m.pages.riftShop.title} description={m.pages.riftShop.description(effects.length)}>
   <section class="page battle-page" id="rift-shop-page">
     <h1 class="page-head">裂縫商店</h1>
     <p class="lede">

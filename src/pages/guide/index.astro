@@ -2,6 +2,7 @@
 // 遊戲介紹的索引頁：卡片跟導覽列「遊戲介紹」下拉的項目一一對應、順序相同（2026-09-27 Yuki 裁決），
 // 每張補一句說明與條數——下拉選單塞不下這些。
 import Base from '../../layouts/Base.astro';
+import { langFromPath, linker, messages } from '../../lib/i18n';
 import { treeData as data } from '../../lib/tree-data';
 import keywordsRaw from '../../../data/keywords.json';
 import { buildGlossary, GROUPS, KEYWORDS_PATH } from '../../lib/glossary-groups';
@@ -25,24 +26,28 @@ const termCount = new Set(index.byTerm.values()).size;
 // 而首頁 banner 就是為此說過謊一次。
 const tacticCount = (tacticsRaw as Tactic[]).length;
 const bossCount = (bossRaw as Boss[]).length;
+const m = messages(langFromPath(Astro.url.pathname));
+const link = linker(langFromPath(Astro.url.pathname));
+const c = m.guidePage.cards;
 const cards = [
-  { href: KEYWORDS_PATH, title: '遊戲名詞', intro: '骰子描述裡帶 # 的正式標記，依官方底色碼分成四類：骰子機制與觸發、召喚物與投射物、狀態效果與增減益、怪物與基本名詞。', count: termCount, unit: '條', colors: GROUPS.map(g => g.color) },
-  { href: '/tactic/', title: '戰術', intro: '對戰與合作模式中的戰術效果，可依階段篩選，也能切換看合作模式的版本。', count: tacticCount, unit: '條' },
-  { href: '/boss/', title: '怪物圖鑑', intro: '對戰與合作模式中會出現的怪物與首領，以及各自的特性與技能效果。', count: bossCount, unit: '種' },
-  { href: '/rift-shop/', title: '裂縫商店', intro: '合作困難模式的局內商店。擊殺首領與 SP 魔像取得討伐硬幣，兌換裂縫效果。', count: riftShopRaw.length, unit: '種' },
-  { href: '/events/', title: '活動', intro: '遊戲裡辦過的期間限定活動，逐場列出完整內容。', count: eventsRaw.length, unit: '場' },
-  { href: '/rewards/', title: '獎勵系統', intro: '各模式、活動與成就的里程碑獎勵，並列出每個分類全部領完可拿到的資源總量。', count: rewardsRaw.modes.length + (rewardsRaw.repeatable ? 1 : 0), unit: '類' },
-];
+  { href: KEYWORDS_PATH, ...c.keywords, n: termCount, colors: GROUPS.map(g => g.color) },
+  { href: '/tactic/', ...c.tactic, n: tacticCount },
+  { href: '/boss/', ...c.boss, n: bossCount },
+  { href: '/rift-shop/', ...c.riftShop, n: riftShopRaw.length },
+  { href: '/events/', ...c.events, n: eventsRaw.length },
+  { href: '/rewards/', ...c.rewards, n: rewardsRaw.modes.length + (rewardsRaw.repeatable ? 1 : 0) },
+].map(card => ({ ...card, countText: card.count(card.n) }));
+
 ---
 
-<Base title="總覽" description="Random Dice 2 遊戲介紹總覽：遊戲名詞、戰術、怪物圖鑑、裂縫商店、活動與獎勵。">
+<Base title={m.pages.guide.title} description={m.pages.guide.description}>
   <section class="page">
-    <h1 class="page-head">總覽</h1>
-    <p class="lede">遊戲裡的名詞、戰術、怪物、商店、活動與獎勵。</p>
+    <h1 class="page-head">{m.guidePage.heading}</h1>
+    <p class="lede">{m.guidePage.lede}</p>
 
     <div class="guide-cards is-content">
       {cards.map((card, i) => (
-        <a class="guide-card card" href={card.href} style={`--i:${i}`}>
+        <a class="guide-card card" href={link(card.href)} style={`--i:${i}`}>
           {'colors' in card && card.colors && (
             <span class="guide-swatch" aria-hidden="true">
               {card.colors.map(c => <span style={`background:${c}`}></span>)}
@@ -50,7 +55,7 @@ const cards = [
           )}
           <h2>{card.title}</h2>
           <p>{card.intro}</p>
-          <p class="note">{card.count} {card.unit}<Fragment set:html={ICONS.arrow} /></p>
+          <p class="note">{card.countText}<Fragment set:html={ICONS.arrow} /></p>
         </a>
       ))}
     </div>

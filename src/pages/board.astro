@@ -21,6 +21,7 @@
 // build:data 額外轉出 public/assets/board-icons/<hash>.webp（CI 規則 21 守這份對應表）。
 // 不讀 tree.json 的 `icon` 欄位：那是骰子樹節點圖（帶底板），/board 刻意要換掉的正是它。
 import Base from '../layouts/Base.astro';
+import { langFromPath, messages } from '../lib/i18n';
 import '../styles/board.css';
 import { ICONS } from '../lib/icons';
 import { treeData as data } from '../lib/tree-data';
@@ -71,9 +72,11 @@ const offgamePayload = {
   branches: Object.fromEntries(dice.map(d => [d.id, d.branch])),
   save: encodeSaveContext(buildSimContext(tree, passiveTablesRaw as unknown as PassiveUpgradeCost)),
 };
+
+const m = messages(langFromPath(Astro.url.pathname));
 ---
 
-<Base title="骰盤" description="Random Dice 2 骰盤模擬工具：選擇骰子拖進骰盤，對戰與合作模式都能排。">
+<Base title={m.pages.board.title} description={m.pages.board.description}>
   <section class="page board-page">
     <h1 class="page-head">骰盤</h1>
     <p class="lede">

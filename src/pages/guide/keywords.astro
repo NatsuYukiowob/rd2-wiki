@@ -7,6 +7,7 @@
 // 所以腳本要能從錨點反查它在哪個分類；舊網址 `/guide/<slug>` 由 `public/_redirects` 301 到
 // `?tab=<slug>`。
 import Base from '../../layouts/Base.astro';
+import { langFromPath, messages } from '../../lib/i18n';
 import GlossaryEntry from '../../components/GlossaryEntry.astro';
 import { treeData as data } from '../../lib/tree-data';
 import keywordsRaw from '../../../data/keywords.json';
@@ -27,9 +28,11 @@ const tabs = GUIDE_TABS.map(tab => {
   return { ...tab, sections, total: sections.reduce((n, s) => n + s.items.length, 0) };
 });
 const total = tabs.reduce((n, tab) => n + tab.total, 0);
+
+const m = messages(langFromPath(Astro.url.pathname));
 ---
 
-<Base title="遊戲名詞" description={`Random Dice 2 骰子描述裡 # 標記的遊戲名詞解釋，共 ${total} 條，依官方底色分類。`}>
+<Base title={m.pages.keywords.title} description={m.pages.keywords.description(total)}>
   <section class="page" data-kw-page>
     <h1 class="page-head">遊戲名詞</h1>
     {/* 中文句子不斷行：原始碼換行會在「。」後面渲染出一個空白。 */}

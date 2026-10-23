@@ -6,6 +6,7 @@
 // 那類）只是視覺收合——每一場的整份內容表仍然在同一份 HTML 裡，索引頁會跟著每場活動一起變重。
 // 分頁把重量真的切開，也讓每一場有可分享、可被搜尋引擎索引的網址（同 `/guide/[slug]`）。
 import Base from '../../layouts/Base.astro';
+import { langFromPath, messages } from '../../lib/i18n';
 import '../../styles/events.css';
 import eventsRaw from '../../../data/events.json';
 import { eventIcon, periodText } from '../../lib/events';
@@ -16,9 +17,11 @@ const events = eventsRaw as GameEvent[];
 
 /** 卡片上的「N 項內容」：從資料算，不寫死——條數會隨活動漂移。 */
 const rowCount = (ev: GameEvent) => ev.sections.reduce((n, s) => n + s.rows.length, 0);
+
+const m = messages(langFromPath(Astro.url.pathname));
 ---
 
-<Base title="活動" description="Random Dice 2 期間限定活動的內容整理。">
+<Base title={m.pages.events.title} description={m.pages.events.description}>
   <section class="page">
     <h1 class="page-head">活動</h1>
     <p class="lede">

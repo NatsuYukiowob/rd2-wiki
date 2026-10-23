@@ -3,10 +3,13 @@
 // 用 Astro 內建的 Markdown 匯入（.md 檔可直接 import 取得 <Content />）渲染成排版後的
 // HTML，不需要額外安裝 Markdown 解析套件。
 import Base from '../layouts/Base.astro';
+import { langFromPath, messages } from '../lib/i18n';
 import { Content } from '../../CONTRIBUTING.md';
+
+const m = messages(langFromPath(Astro.url.pathname));
 ---
 
-<Base title="貢獻" description="如何回報 Random Dice 2 wiki 的資料錯誤、參與資料維護與送出修改。">
+<Base title={m.pages.about.title} description={m.pages.about.description}>
   <article class="contributing">
     <Content />
   </article>

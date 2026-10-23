@@ -4,6 +4,7 @@
 // ⚠️ 面板在 HTML 裡全部不帶 hidden：沒有 JS 時七類全部攤開、切換選單不出現（CSS 看 `data-js`），
 // 腳本載入後才收成一次一類（同 /guide/keywords）。
 import Base from '../layouts/Base.astro';
+import { langFromPath, messages } from '../lib/i18n';
 import RewardGrantView from '../components/RewardGrant.astro';
 import RewardTaskList from '../components/RewardTaskList.astro';
 import RewardReferenceList from '../components/RewardReferenceList.astro';
@@ -17,9 +18,11 @@ const catalog = rewardsRaw as RewardCatalog;
 const defaultMode = catalog.modes[0]!;
 const navigation = [...catalog.modes, ...(catalog.repeatable ? [catalog.repeatable] : [])];
 const totalsByMode = new Map(catalog.modes.map(mode => [mode.id, modeRewardTotals(mode)]));
+
+const m = messages(langFromPath(Astro.url.pathname));
 ---
 
-<Base title="獎勵系統" description="Random Dice 2 各模式、活動與成就的里程碑獎勵，以及全部領完可拿到的資源總量。">
+<Base title={m.pages.rewards.title} description={m.pages.rewards.description}>
   <section class="page rewards-page" data-rewards-page data-active-mode={defaultMode.id}>
     <h1 class="page-head">獎勵系統</h1>
     <p class="lede">各模式、活動與成就的里程碑獎勵，每個分類頂端列出全部領完的資源總量；可重複取得的獎勵另列。</p>
