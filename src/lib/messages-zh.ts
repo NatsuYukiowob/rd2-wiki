@@ -117,6 +117,7 @@ export const zh = {
     statModes: { base: '基礎', dice7: '7 骰點', lv15: 'Lv.15', lv15dice7: 'Lv.15＋7 骰點' },
     statGrowthNote: (g: string) => `骰點：${g}`,
     /** cost-html.ts 的 CURRENCY 依 kind 查。 */
+    rewardFallback: { emote: '表情', cosmetic: '外觀', collectible: '收藏品' },
     currency: {
       core: '核心', gold: '金幣', tacticcoin: '討伐硬幣', chuseoktoken: '賞月代幣', chuseokcoin: '滿月硬幣',
       explorationticket: '挖掘鎚子', explorationcoin: '古代印記', treeSeed: '骰子樹種子', coopTicket: '合作戰入場券',

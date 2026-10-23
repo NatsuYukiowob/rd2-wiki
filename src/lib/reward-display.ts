@@ -2,6 +2,7 @@ import dice3Icons from '../../data/dice3-icons.json';
 import { currencyIconDetails } from './cost-html.js';
 import { iconHashOf } from './dice-icon.js';
 import type { RewardGrant } from './types.js';
+import { messages, type Lang } from './i18n.js';
 
 export interface RewardDisplay {
   label: string;
@@ -16,9 +17,9 @@ export function rewardAmountVisible(reward: RewardGrant, amount?: number): boole
 }
 
 /** 單一 grant resolver：currency 沿用現有 registry，其餘只用已確認的正式圖片。 */
-export function rewardDisplay(reward: RewardGrant): RewardDisplay {
+export function rewardDisplay(reward: RewardGrant, lang: Lang = 'zh'): RewardDisplay {
   if (reward.type === 'currency') {
-    const { label, html } = currencyIconDetails(reward.kind);
+    const { label, html } = currencyIconDetails(reward.kind, lang);
     return { label, iconHtml: html };
   }
   if (reward.type === 'dice' && reward.nodeId) {
@@ -28,6 +29,7 @@ export function rewardDisplay(reward: RewardGrant): RewardDisplay {
   if (reward.assetStatus === 'ready' && reward.icon) {
     return { label: reward.label, iconSrc: reward.icon };
   }
-  const fallback = reward.type === 'emote' ? '表情' : reward.type === 'cosmetic' ? '外觀' : '收藏品';
+  const f = messages(lang).labels.rewardFallback;
+  const fallback = reward.type === 'emote' ? f.emote : reward.type === 'cosmetic' ? f.cosmetic : f.collectible;
   return { label: reward.label, fallback };
 }

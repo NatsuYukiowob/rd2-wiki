@@ -1,6 +1,7 @@
 ---
 import { rewardDisplay, rewardAmountVisible } from '../lib/reward-display';
 import type { RewardGrant } from '../lib/types';
+import { langFromPath } from '../lib/i18n';
 
 interface Props {
   reward: RewardGrant;
@@ -8,7 +9,7 @@ interface Props {
 }
 
 const { reward, amount } = Astro.props;
-const display = rewardDisplay(reward);
+const display = rewardDisplay(reward, langFromPath(Astro.url.pathname));
 const formatted = amount === undefined ? '' : amount.toLocaleString('en-US');
 ---
 

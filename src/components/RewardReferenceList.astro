@@ -5,7 +5,8 @@ import type { RewardReferenceSection } from '../lib/types';
 import { langFromPath, messages } from '../lib/i18n';
 interface Props { section: RewardReferenceSection; showNote?: boolean; card?: boolean; sectionTitle?: boolean }
 const { section, showNote = true, card = false, sectionTitle = false } = Astro.props;
-const rw = messages(langFromPath(Astro.url.pathname)).rewardsPage;
+const lang = langFromPath(Astro.url.pathname);
+const rw = messages(lang).rewardsPage;
 ---
 <section class="reward-reference-section" data-repeatable-section={section.id} aria-labelledby={`reward-reference-${section.id}`}>
   <div class="reward-reference-heading">
@@ -26,7 +27,7 @@ const rw = messages(langFromPath(Astro.url.pathname)).rewardsPage;
         <strong class="reward-requirement">{tier.requirement.toLocaleString('en-US')}</strong>
         <ul class="reward-grants" aria-label={rw.rewardContent}>
           {tier.rewards.map(reward => (
-            <li aria-label={`${rewardDisplay(reward).label} ${reward.amount.toLocaleString('en-US')}`}>
+            <li aria-label={`${rewardDisplay(reward, lang).label} ${reward.amount.toLocaleString('en-US')}`}>
               <RewardGrantView reward={reward} amount={reward.amount} />
             </li>
           ))}

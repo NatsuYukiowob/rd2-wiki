@@ -19,7 +19,8 @@ const defaultMode = catalog.modes[0]!;
 const navigation = [...catalog.modes, ...(catalog.repeatable ? [catalog.repeatable] : [])];
 const totalsByMode = new Map(catalog.modes.map(mode => [mode.id, modeRewardTotals(mode)]));
 
-const m = messages(langFromPath(Astro.url.pathname));
+const lang = langFromPath(Astro.url.pathname);
+const m = messages(lang);
 const rw = m.rewardsPage;
 ---
 
@@ -67,7 +68,7 @@ const rw = m.rewardsPage;
                     <dl class="reward-totals" data-reward-totals="currency">
                       {totals.currency.map(({ key, reward, amount }) => (
                         <div data-total-reward={key}>
-                          <dt class="sr-only">{rewardDisplay(reward).label}</dt>
+                          <dt class="sr-only">{rewardDisplay(reward, lang).label}</dt>
                           {/* RewardGrantView 整段 aria-hidden，數量要另外給讀屏（列上的數量由 li 的 aria-label 給）。 */}
                           <dd><RewardGrantView reward={reward} amount={amount} /><span class="sr-only">{amount.toLocaleString('en-US')}</span></dd>
                         </div>
@@ -81,7 +82,7 @@ const rw = m.rewardsPage;
                     <dl class="reward-totals reward-collected-items" data-reward-totals="collectible">
                       {totals.collectible.map(({ key, reward, amount }) => (
                         <div data-total-reward={key}>
-                          <dt class="sr-only">{rewardDisplay(reward).label}</dt>
+                          <dt class="sr-only">{rewardDisplay(reward, lang).label}</dt>
                           <dd>
                             <RewardGrantView reward={reward} />
                             {amount > 1 && <span class="reward-collected-count">×{amount.toLocaleString('en-US')}</span>}
@@ -119,7 +120,7 @@ const rw = m.rewardsPage;
                         <strong class="reward-requirement">{tier.requirement.toLocaleString('en-US')}</strong>
                         <ul class="reward-grants" aria-label={rw.rewardContent}>
                           {tier.rewards.map(reward => (
-                            <li aria-label={`${rewardDisplay(reward).label} ${reward.amount.toLocaleString('en-US')}`}>
+                            <li aria-label={`${rewardDisplay(reward, lang).label} ${reward.amount.toLocaleString('en-US')}`}>
                               <RewardGrantView reward={reward} amount={reward.amount} />
                             </li>
                           ))}
@@ -148,7 +149,7 @@ const rw = m.rewardsPage;
                             </strong>
                             <ul class="reward-grants" aria-label={rw.rewardContent}>
                               {stage.rewards.map(reward => (
-                                <li aria-label={`${rewardDisplay(reward).label} ${reward.amount.toLocaleString('en-US')}`}>
+                                <li aria-label={`${rewardDisplay(reward, lang).label} ${reward.amount.toLocaleString('en-US')}`}>
                                   <RewardGrantView reward={reward} amount={reward.amount} />
                                 </li>
                               ))}

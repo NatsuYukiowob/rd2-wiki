@@ -114,6 +114,7 @@ export const vi: Messages = {
     unlockVia: { quest: 'Mở khóa qua nhiệm vụ', default: 'Mở khóa sẵn', achievement: 'Mở khóa qua thành tựu' },
     statModes: { base: 'Cơ bản', dice7: '7 chấm', lv15: 'Lv.15', lv15dice7: 'Lv.15 + 7 chấm' },
     statGrowthNote: (g: string) => `Theo chấm: ${g}`,
+    rewardFallback: { emote: 'Biểu cảm', cosmetic: 'Ngoại hình', collectible: 'Vật sưu tầm' },
     currency: {
       core: 'Lõi', gold: 'Vàng', tacticcoin: 'Xu thảo phạt', chuseoktoken: 'Token ngắm trăng', chuseokcoin: 'Xu trăng tròn',
       explorationticket: 'Búa khai quật', explorationcoin: 'Ấn cổ đại', treeSeed: 'Hạt giống cây xúc xắc', coopTicket: 'Vé hợp tác',
