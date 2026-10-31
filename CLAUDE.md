@@ -337,7 +337,7 @@ npm run compare -- <beforeURL> <afterURL>  # computed-style 逐元素比對，�
 - **型別**：`Cost` ＝ `{ core, gold, mythic? }`（`src/lib/cost.ts`）。`core`／`gold` 必填；`mythic` 是 `kind → 數量`，
   **缺席＝沒有超越核心，有的話值都 > 0**（正規形）。**不可對 `mythic` 裡的數字直接加減**，一律走
   `addCost()`／`subCost()`／`mythicAmount()`／`mythicEntries()`。`LevelCost.mythic` 同樣選填，`UpgradeBand` 沒有。
-- **新增一顆神話骰子＝在 `src/lib/currency.ts` 的 `MYTHIC_CORES` 加一筆＋放 `public/currency/<kind>.png`，不改任何型別**。
+- **新增一顆超越骰子＝在 `src/lib/currency.ts` 的 `MYTHIC_CORES` 加一筆＋放 `public/currency/<kind>.png`，不改任何型別**。
   解析、顯示、`/sim` 上限欄、規則 22 都從這份清單列舉；陣列順序＝顯示順序，新的往後接（`tests/lib/cost.test.ts`）。
 - **成本字串格式（`parseCost`）**：順序固定 **金幣→核心→超越核心**，禁反序禁重複（超越核心全部合計只准一種）；
   分隔符是全形 `／`（U+FF0F）；金幣 ≥ 4 位必須千分位逗號，超越核心兩種都收；三種數字都不收前導零；`核心 N／太陽核心 M`（無金幣）刻意不支援。

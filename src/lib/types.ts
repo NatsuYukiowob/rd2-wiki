@@ -32,12 +32,12 @@ export type GrowthUnit = '%' | 's' | 'count' | 'x' | '';
 /**
  * 一筆花費：骰子核心、金幣，加上零到多種**超越核心**（`mythic`）。
  *
- * 超越核心是每顆神話骰子各自專屬的貨幣（1.1.0 太陽核心、1.1.2 齒輪二階核心……），鍵是
- * `src/lib/currency.ts` 的 `MYTHIC_CORES[].kind`，值是數量。**新增一顆神話骰子不改這個型別**，
+ * 超越核心是每顆超越骰子各自專屬的貨幣（1.1.0 太陽核心、1.1.2 齒輪二階核心……），鍵是
+ * `src/lib/currency.ts` 的 `MYTHIC_CORES[].kind`，值是數量。**新增一顆超越骰子不改這個型別**，
  * 只在那份登記表加一筆。
  *
  * ⚠️ **`mythic` 缺席＝沒有任何超越核心**，有的話裡面每個值都 > 0（`cost.ts` 的 `addCost`／
- * `subCost` 負責維持這個正規形）。它是選填的理由是 tree.json：241 顆節點裡只有神話骰子那幾顆
+ * `subCost` 負責維持這個正規形）。它是選填的理由是 tree.json：241 顆節點裡只有超越骰子那幾顆
  * 花得到超越核心，每顆都背一個空物件（或一個 `"solar":0`，1.1.0 的寫法）是白佔 gzip 預算。
  * 代價是**不可以對 `mythic` 裡的數字直接做加減**——一律走 `cost.ts` 的 `addCost()`／`subCost()`／
  * `mythicAmount()`，型別上 `c.mythic?.solar` 是 `number | undefined`，直接相加編譯不過，正是要的效果。
@@ -186,7 +186,7 @@ export interface UpgradeCostTable {
  * 一張逐級升級表的一列。`level 1` 是解鎖那一次，算升級追加花費時一律跳過（見 upgradeExtraCost）。
  *
  * ⚠️ `mythic`（超越核心）是**選填**的，缺席＝這一級不花任何超越核心：這個形狀直接對應社群維護的兩份
- * JSON（`data/upgrade-cost.json`／`data/passive-upgrade-cost.json`），只有神話骰子符文那幾張 special
+ * JSON（`data/upgrade-cost.json`／`data/passive-upgrade-cost.json`），只有超越骰子符文那幾張 special
  * 表才用得到它。`upgradeExtraCost()` 一律走 `addCost()` 累加，不必寫 `?? 0`。
  */
 export interface LevelCost { level: number; gold: number; core: number; mythic?: MythicCores }
@@ -198,7 +198,7 @@ export interface LevelCost { level: number; gold: number; core: number; mythic?:
  * 並在表頭註明「等級5以後未說明之等級費用以前一級所需金幣資源相同」。照逐級展開存進 JSON 的話，
  * 那 100 級的 tier F 要寫 99 列，而且沒有任何地方看得出「這一段是同一個區間」。
  *
- * ⚠️ **刻意沒有超越核心欄位**：超越核心只出現在神話骰子與它的符文上，那是骰子分支的東西，
+ * ⚠️ **刻意沒有超越核心欄位**：超越核心只出現在超越骰子與它的符文上，那是骰子分支的東西，
  * 而 tier 制只服務玩家被動與支援。留一個永遠是空的欄位在這裡，只會讓下一個人以為它有用。
  */
 export interface UpgradeBand { from: number; to: number; gold: number; core: number }

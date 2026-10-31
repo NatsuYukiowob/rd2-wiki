@@ -52,6 +52,7 @@
 
 ## 超越骰子（`1501` 太陽／`2503` 齒輪二階／`3505` 極限，含符文 `1601`／`2603`／`3605`）
 
+- 名稱：遊戲 1.1.6 起把「神話骰子」改稱「超越骰子」（`archievement_desc_MythicDiceCount` 等 localization），站上跟著改；程式識別字 `mythic`／`MYTHIC_*` 照舊不改，`changelog.json` 舊條目保留當時的名稱。`rewards.json` 是 `tools/import-rewards.py` 從工作簿匯入的，重匯前工作簿也要改名，否則會改回「神話」。
 - 解鎖除了入邊還要前置節點練到 Lv.50（`1201`／`2203`／`3205`）→ `data/prereq-ranks.json`（上游 `NeedNode`／`NeedNodeRank`，
   規則 26），不寫進描述。登場條件寫在 `dice-stats.json` 的 `note`（客戶端 `MythicTranscendTable`）。
 - 符文的逐級費用在 `passive-upgrade-cost.json` 的 `special`（金幣＋超越核心）。
