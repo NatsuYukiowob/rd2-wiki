@@ -74,12 +74,12 @@ function theirs(sel: string): string {
 /** helper 收的「哪一盤」：`mine` 或 `theirs`。 */
 type SideSel = (sel: string) => string;
 
-test('B0. 骰盤頁的骨架：15 格、5 個組合槽、44 顆可挑選的骰子', async ({ page }) => {
+test('B0. 骰盤頁的骨架：15 格、5 個組合槽、45 顆可挑選的骰子', async ({ page }) => {
   await page.goto('/board');
   await expect(page.locator('#board-grid .board-cell')).toHaveCount(15);
   await expect(page.locator('#deck-row .deck-slot')).toHaveCount(5);
   await expect(page.locator('#dice-picker .picker-dice')).toHaveCount(dice.length);
-  expect(dice).toHaveLength(44);
+  expect(dice).toHaveLength(45);   // 1.1.6 扭曲骰子 +1
 
   // 正面證明這三個選擇器抓得到東西——B0b 的「不存在」斷言全靠它們沒打錯字。
   await expect(page.locator('#deck-row .pips-row')).toHaveCount(5);
@@ -126,7 +126,7 @@ test('B0c. 導覽列有「骰盤」入口且在本頁標成目前分頁', async 
   await expect(link).toHaveAttribute('aria-current', 'page');
 });
 
-test('B0d. 44 顆骰子的挑選圖示都指向純骰子圖，而且每一張都真的載得到', async ({ page }) => {
+test('B0d. 45 顆骰子的挑選圖示都指向純骰子圖，而且每一張都真的載得到', async ({ page }) => {
   // 換掉節點圖示（帶底板）之後這是第一道防線：src 對得上正則不代表圖真的存在——路徑打錯
   // 一個字或 build:data 漏轉一張，畫面上就是一個 41 分之一的破圖，naturalWidth 會是 0。
   await page.goto('/board');
@@ -139,7 +139,7 @@ test('B0d. 44 顆骰子的挑選圖示都指向純骰子圖，而且每一張都
   await expect(imgs).toHaveCount(dice.length);
 
   const srcs = await imgs.evaluateAll(els => els.map(el => el.getAttribute('src')));
-  expect(srcs).toHaveLength(44);
+  expect(srcs).toHaveLength(45);   // 1.1.6 扭曲骰子 +1
   for (const src of srcs) {
     expect(src, `${src} 沒有指向 /board 專用的純骰子圖路徑`).toMatch(/^\/assets\/board-icons\/[0-9a-f]{12}\.webp$/);
   }

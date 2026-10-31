@@ -39,9 +39,11 @@ describe('buildTreeData', () => {
   // 零成本節點，其他規則（19、可達性、成本總和）都不會說話，只有這裡擋得到。照失敗訊息的
   // 實際值改數字、同步 CLAUDE.md〈不變量〉表，並在註解寫明增減來源。
   // 1.1.4 加了極限骰子 3505 與極限強化 3605：節點 +2、邊 +3（3305→3505、3405→3505、3505→3605）。
+  // 1.1.6 加了扭曲骰子 5010 與符文 5210／5310／5410、五顆骰子技能威力 x116：節點 +9、邊 +9
+  // （5009→5010、5010→5210、5210→5310、5210→5410、1109→1116、2007→2116、3101→3116、4101→4116、5007→5116）。
   it('節點與邊數釘住正本（金標：增刪節點／連線時要跟著改）', () => {
-    expect(data.nodes).toHaveLength(245);
-    expect(data.edges).toHaveLength(257);
+    expect(data.nodes).toHaveLength(254);
+    expect(data.edges).toHaveLength(266);
   });
   it('edges 方向為 [前置, 被解鎖]', () => {
     const fromRoot = data.edges.filter(([from]) => from === '1001');
@@ -59,10 +61,12 @@ describe('buildTreeData', () => {
   // （金幣 50,000／太陽核心 100）：金幣 +150,000、太陽核心 +2,100（→ 1842／7,056,000／2,100）。
   // 1.1.4 加了極限骰子 3505（金幣 100,000／極限核心 2,000）與極限強化 3605（金幣 50,000／極限核心 100）：
   // 金幣 +150,000、極限核心 +2,100（→ 1842／7,356,000）。
+  // 1.1.6 加了扭曲骰子 5010（核心 8）、扭曲符文 5210（金幣 2,000）／5310（金幣 50,000／核心 10）／5410（金幣 100,000／核心 20）、
+  // 五顆骰子技能威力（各金幣 8,000）：核心 +38、金幣 +192,000（→ 1880／7,548,000）。
   // ⚠️ 給送資料 PR 的人：改了任何一顆節點的 `cost`，這條紅是**預期的**——把下面的數字換成
   // 失敗訊息裡的實際值（Received），同步改 CLAUDE.md〈不變量〉表，並在 PR 說明寫一句為什麼變。
   it('全樹解鎖成本總和釘住正本（金標：成本一動這裡就要跟著動）', () => {
-    expect(data.meta.totalUnlockCost).toEqual({ core: 1842, gold: 7356000, mythic: { solar: 2100, gearSecond: 2100, extreme: 2100 } });
+    expect(data.meta.totalUnlockCost).toEqual({ core: 1880, gold: 7548000, mythic: { solar: 2100, gearSecond: 2100, extreme: 2100 } });
   });
   // 太陽核心（v1.1.0）也要進全樹總和。光靠上面那條釘住的總和證明不了加總會動（上面那個數字
   // 也可能是某一顆直接指派的結果）。所以這裡合成兩顆帶太陽核心
@@ -152,7 +156,7 @@ describe('buildTreeData', () => {
 
   it('每顆骰子都有覺醒，其他節點都沒有', () => {
     const withAwakening = data.nodes.filter(n => n.awakening !== undefined);
-    expect(withAwakening).toHaveLength(44);
+    expect(withAwakening).toHaveLength(45);   // 1.1.6 扭曲骰子 +1
     expect(withAwakening.map(n => n.id)).toEqual(data.nodes.filter(n => n.type === 'dice').map(n => n.id));
     expect(withAwakening.every(n => (n.awakening ?? '').length > 0)).toBe(true);
   });
@@ -176,13 +180,15 @@ describe('buildTreeData', () => {
     expect(data.meta.glossary['果實']).toBeDefined();
   });
 
-  it('70 個玩家被動都有細分類，其他節點都沒有；管理 ID 刻意不進 tree.json', () => {
+  // 1.1.6 五顆骰子技能威力（全骰屬性）+5。
+  it('75 個玩家被動都有細分類，其他節點都沒有；管理 ID 刻意不進 tree.json', () => {
     const withCat = data.nodes.filter(n => n.category !== undefined);
-    expect(withCat).toHaveLength(70);
+    expect(withCat).toHaveLength(75);
     expect(withCat.every(n => n.type === 'passive')).toBe(true);
     const counts = withCat.reduce<Record<string, number>>((a, n) => ({ ...a, [n.category!]: (a[n.category!] ?? 0) + 1 }), {});
     expect(counts).toEqual({
-      'branch-stat': 25, 'global-stat': 15, 'branch-skill': 15, 'player-passive': 10, 'support-upgrade': 5,
+      'branch-stat': 25, 'global-stat': 20,   // 1.1.6 骰子技能威力 +5
+      'branch-skill': 15, 'player-passive': 10, 'support-upgrade': 5,
     });
     // data-game-id 是給貢獻者比對遊戲資源檔的，站台不顯示；239 個節點各帶一個字串要吃掉
     // 0.55 KB gzip，而預算只剩 1 KB 出頭。它留在正本裡，不進建置產物。
@@ -213,7 +219,7 @@ describe('buildTreeData', () => {
   it('樞紐不佔節點名額：nodes 裡沒有它，成本總和也不含它', () => {
     const c = data.meta.center!;
     expect(data.nodes.some(n => n.x === c.x && n.y === c.y)).toBe(false);
-    expect(data.nodes).toHaveLength(245);
+    expect(data.nodes).toHaveLength(254);
   });
 
   // prereqRanks 是「只在有值的節點上才放」的欄位（同 wip／category／unlockNote）。

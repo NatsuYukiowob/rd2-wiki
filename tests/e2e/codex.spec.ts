@@ -35,7 +35,7 @@ test('C1. /dice 的骰子名稱與效果是伺服器輸出的 HTML，不是瀏�
 
   // 這是 #22 要解掉的症狀：2026-08-20 實測 dist/tree/index.html 的可索引文字只有 194 個
   // 字元，239 個節點名一個字都沒進 HTML。圖鑑必須把每一顆骰子都寫進去。
-  expect(dice.length).toBe(44);
+  expect(dice.length).toBe(45);   // 1.1.6 扭曲骰子 +1
   const missing = dice.filter(d => !html.includes(d.name));
   expect(missing.map(d => d.name)).toEqual([]);
 
@@ -586,7 +586,7 @@ test('C13. 圖鑑卡片的圖示指向 3D 骰子圖，而且每一張都真的�
     // 要驗：接錯的話畫面上只是「圖鑑的骰子變回有底板的那張」，其餘每條測試都不會紅。
     expect(src, `${src} 沒有指向 /dice 專用的 3D 骰子圖路徑`).toMatch(/^\/assets\/dice3-icons\/[0-9a-f]{12}\.webp$/);
   }
-  // 44 顆骰子各一張圖，不准有兩張重複（規則 30(g) 守資料那一側，這裡守畫面那一側）。
+  // 45 顆骰子各一張圖，不准有兩張重複（規則 30(g) 守資料那一側，這裡守畫面那一側）。
   expect(new Set(srcs).size).toBe(dice.length);
 
   // 卡片是 loading="lazy" 而網格大半在可視範圍外，不強制 eager 的話量到的 naturalWidth

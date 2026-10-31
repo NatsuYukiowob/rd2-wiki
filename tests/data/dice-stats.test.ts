@@ -9,8 +9,8 @@ import type { DiceStatsTable } from '../../src/lib/types';
 const table = JSON.parse(readFileSync('data/dice-stats.json', 'utf8')) as DiceStatsTable;
 
 describe('data/dice-stats.json', () => {
-  it('44 顆骰子，每顆至少有攻擊力、攻擊速度、目標三項', () => {
-    expect(Object.keys(table)).toHaveLength(44);
+  it('45 顆骰子，每顆至少有攻擊力、攻擊速度、目標三項', () => {
+    expect(Object.keys(table)).toHaveLength(45);   // 1.1.6 扭曲骰子 D409 +1
     for (const [gameId, entry] of Object.entries(table)) {
       expect(entry.stats.map(s => s.label).slice(0, 3), gameId).toEqual(['攻擊力', '攻擊速度', '目標']);
     }
@@ -23,9 +23,10 @@ describe('data/dice-stats.json', () => {
   // 1.1.2 的齒輪二階骰子（D209）取自客戶端表，多 5 項（攻擊力、攻擊速度與三項齒輪能力值）；
   // 同一輪把 1.1.0 時只寫了 base 的 30 項專屬能力值依客戶端成長參數補成四檔（Yuki 2026-09-18）。
   // 1.1.4 的極限骰子（D307）取自客戶端表，多 3 項（攻擊力、攻擊速度、每疊加傷害增加量）。
-  it('帶四個檔位的項目正好 136 個＝官方強化分頁 97 列＋太陽骰子 2 項－審判骰子攻擊速度＋齒輪二階骰子 5 項＋補齊的 30 項＋極限骰子 3 項', () => {
+  // 1.1.6 的扭曲骰子（D409）取自客戶端表，多 4 項（攻擊力、攻擊速度、扭曲疊加上限、扭曲持續時間）。
+  it('帶四個檔位的項目正好 140 個＝官方強化分頁 97 列＋太陽骰子 2 項－審判骰子攻擊速度＋齒輪二階骰子 5 項＋補齊的 30 項＋極限骰子 3 項＋扭曲骰子 4 項', () => {
     const scaling = Object.values(table).flatMap(e => e.stats).filter(s => s.dice7 !== undefined);
-    expect(scaling).toHaveLength(136);
+    expect(scaling).toHaveLength(140);
   });
 
   // 官方表自己空著的格子照原文寫成「待實測」。刻意逐格釘住而不是只數個數：上游哪天補了值，
