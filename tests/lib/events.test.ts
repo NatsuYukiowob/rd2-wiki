@@ -16,6 +16,20 @@ describe('活動資料的貨幣圖', () => {
       expect(eventCellHtml(row[0]!)).toBe(`${eventIcon(kind!)}${text}`);
     }
   });
+  it('裂縫大掃除的兌換所以屠戮印記計價，兩輪競賽分別給圖示與邊框', () => {
+    const event = events.find(e => e.id === 'rift-sweep-2026')!;
+    const rows = event.sections.flatMap(s => s.rows);
+    expect(rows).toContainEqual([{ icon: 'extreme', text: '極限核心 100' }, { icon: 'riftsweepcoin', text: '300' }, '2 次']);
+    expect(rows).toContainEqual(['第1名', '圖示「裂縫大掃除第1輪第1名」', '邊框「裂縫大掃除第2輪第1名」']);
+    // 大掃除硬幣（ticket）是領來玩的、屠戮印記（coin）是玩出來去兌換的：兩者對調 validate 照樣綠。
+    const section = (title: string) => event.sections.find(s => s.title === title)!.rows;
+    expect(section('免費領取').map(r => r[1])).toEqual([
+      { icon: 'riftsweepticket', text: '大掃除硬幣 1' },
+      { icon: 'riftsweepticket', text: '大掃除硬幣 2' },
+    ]);
+    expect(section('大掃除').every(r => typeof r[1] === 'object' && r[1].icon === 'riftsweepcoin')).toBe(true);
+  });
+
   it('探索賓果的兌換所以古代印記計價，最終獎勵是超越核心三選一的純文字格', () => {
     const event = events.find(e => e.id === 'exploration-bingo-2026')!;
     const rows = event.sections.flatMap(s => s.rows);
