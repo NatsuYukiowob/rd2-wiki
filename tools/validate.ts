@@ -1417,7 +1417,7 @@ export function validate(svgText: string, opts: ValidateOpts): ValidateResult {
           push(`規則 22: special 的 ${id} 的 Lv.${i + 2} 有未知欄位 ${bad.join('、')}`
             + (bad.includes('solar') ? '（超越核心寫成 "mythic": {"solar": N}）' : ''));
         }
-        // mythic（超越核心）是**選填**的：只有神話骰子符文的 special 表用得到。但寫了就要能算——
+        // mythic（超越核心）是**選填**的：只有超越骰子符文的 special 表用得到。但寫了就要能算——
         // 沒登記的 kind 在顯示端印不出名字，`"2000"` 這種字串在加總之後是 NaN，而 NaN 會沿著
         // 加總一路傳到「總資源」那一行，畫面上只會看到一個 NaN，看不出是哪一列寫壞的。
         else if (r['mythic'] !== undefined) {

@@ -61,7 +61,7 @@ export interface Selection {
   hiddenByFilter: number;
   /**
    * 前置鏈上的「必要練等」：某顆祖先要先練到某等級，這條鏈才走得通（`TreeNode.prereqRanks`）。
-   * 依 id 排序，沒有條件時是空陣列——現況只有神話骰子有這種條件（資料在 `data/prereq-ranks.json`）。
+   * 依 id 排序，沒有條件時是空陣列——現況只有超越骰子有這種條件（資料在 `data/prereq-ranks.json`）。
    */
   prereqRanks: PrereqRankCost[];
   /** 上面那些練等費用的加總。**成本未確認（`cost === null`）的那幾筆不計入**。 */

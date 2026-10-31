@@ -233,7 +233,7 @@ describe('buildTreeData', () => {
     expect(withRanks[1]!.prereqRanks).toEqual({ '2203': 50 });
     // 1.1.4 極限骰子：NeedNode 3205|3305|3405、NeedNodeRank 50|1|1
     expect(withRanks[2]!.prereqRanks).toEqual({ '3205': 50 });
-    // 反向：前置自己身上不該有這個欄位（條件是掛在神話骰子身上的）
+    // 反向：前置自己身上不該有這個欄位（條件是掛在超越骰子身上的）
     for (const id of ['1201', '1301', '1401', '1601', '2203', '2303', '2403', '2603', '3205', '3305', '3405', '3605']) {
       expect(data.nodes.find(n => n.id === id)!.prereqRanks).toBeUndefined();
     }

@@ -46,7 +46,7 @@ const withTiers = (over: unknown) => ({ ...opts, passiveUpgradeCost: over });
 /** 真實資料的深拷貝，給「只改一個地方」的破壞測試用。 */
 const tiers = () => structuredClone(passiveUpgradeCost) as {
   tiers: Record<string, { maxLevel: number; unlockGold: number; bands: { from: number; to: number; gold: number; core: number }[] }>;
-  // mythic（超越核心）是選填的（見 LevelCost）：只有神話骰子符文的 special 表用得到，寫了才驗。
+  // mythic（超越核心）是選填的（見 LevelCost）：只有超越骰子符文的 special 表用得到，寫了才驗。
   special: Record<string, { maxLevel: number; levels: { level: number; gold: number; core: number; mythic?: Record<string, number> }[] }>;
 };
 
@@ -1390,7 +1390,7 @@ describe('validate：邊與座標的守門（P2）', () => {
       expect(errors.filter(e => e.includes(passive[0]))).toEqual([]);
     });
 
-    // mythic 是選填的：只有神話骰子符文的 special 表用得到，缺席＝這一級不花超越核心。
+    // mythic 是選填的：只有超越骰子符文的 special 表用得到，缺席＝這一級不花超越核心。
     // 但寫了就要能算——`"2000"` 在加總之後是 NaN，而 NaN 會沿著加總一路傳到「總資源」那一行，
     // 畫面上只看得到一個 NaN，看不出是哪一列寫壞的；沒登記的種類則在顯示端印不出名字。
     it('special 的 levels 可以帶 mythic，但寫壞了要擋', () => {
