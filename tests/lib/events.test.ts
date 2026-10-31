@@ -27,7 +27,15 @@ describe('活動資料的貨幣圖', () => {
       { icon: 'riftsweepticket', text: '大掃除硬幣 1' },
       { icon: 'riftsweepticket', text: '大掃除硬幣 2' },
     ]);
-    expect(section('大掃除').every(r => typeof r[1] === 'object' && r[1].icon === 'riftsweepcoin')).toBe(true);
+    // 表的 Amount 是累計值（1/2/3/5/5），站上的「該檔獎勵」是逐檔差，對照遊戲內獎勵畫面。
+    expect(section('大掃除')).toEqual([
+      ['700m', { icon: 'riftsweepcoin', text: '屠戮印記 1' }, { icon: 'riftsweepcoin', text: '1' }],
+      ['1,500m', { icon: 'riftsweepcoin', text: '屠戮印記 1' }, { icon: 'riftsweepcoin', text: '2' }],
+      ['2,500m', { icon: 'riftsweepcoin', text: '屠戮印記 1' }, { icon: 'riftsweepcoin', text: '3' }],
+      ['3,500m', { icon: 'riftsweepcoin', text: '屠戮印記 2' }, { icon: 'riftsweepcoin', text: '5' }],
+      ['5,000m', '圖示「今日掃除王」', { icon: 'riftsweepcoin', text: '5' }],
+    ]);
+    expect(section('機率資訊')).toEqual([['x1', '49%'], ['x1.2', '30%'], ['x1.5', '20%'], ['x5', '1%']]);
   });
 
   it('探索賓果的兌換所以古代印記計價，最終獎勵是超越核心三選一的純文字格', () => {
