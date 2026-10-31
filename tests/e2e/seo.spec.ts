@@ -31,6 +31,7 @@ const PAGES = [
   { request: '/rewards', canonical: `${SITE}/rewards/`, name: '獎勵系統' },
   // ⚠️ 每一場活動各是一頁（`/events/[id]`），所以新增或移除活動時這份清單要跟著改
   // ——`<loc>` 是完全相等比對。
+  { request: '/events/rift-sweep-2026', canonical: `${SITE}/events/rift-sweep-2026/`, name: '裂縫大掃除' },
   { request: '/events/exploration-bingo-2026', canonical: `${SITE}/events/exploration-bingo-2026/`, name: '探索賓果活動' },
   { request: '/events/chuseok-2026', canonical: `${SITE}/events/chuseok-2026/`, name: '中秋賞月活動' },
   { request: '/sim', canonical: `${SITE}/sim/`, name: '骰子樹-模擬器(beta)' },

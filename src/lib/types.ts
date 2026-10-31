@@ -475,7 +475,7 @@ export interface RiftShopEffect {
  * 一場期間限定活動（`data/events.json` 的一筆，`/events`）。
  *
  * 資料來自客戶端那一版的活動資料表（中秋是 `ChuseokBoardTable`／`ChuseokMarketTable`／
- * `ChuseokShopFreeTable`／`ChoseokLapRewardTable`；探索賓果是 `BingoEvent*` 那一族），名稱一律取 `localization.json` 的
+ * `ChuseokShopFreeTable`／`ChoseokLapRewardTable`；探索賓果是 `BingoEvent*` 那一族、裂縫大掃除是 `RiftSweepEvent*`／`KillRace*`），名稱一律取 `localization.json` 的
  * `zh-tw`（官方繁中），不自己翻譯。
  *
  * ⚠️ **內容欄位刻意是通用的 `sections`（標題＋欄名＋列），不是「盤面」「商店」這種具名欄位。**
