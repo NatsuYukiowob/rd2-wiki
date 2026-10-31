@@ -21,11 +21,12 @@ describe('buildPreviewSvg（真實資料）', () => {
     expect(normalizeSvg(preview)).toBe(canonical);
   });
 
-  it('245 個節點各注回一個標籤，內容等於 nodes.json 的 label', () => {
+  // 1.1.6 節點 +9（扭曲骰子＋3 符文、5 顆骰子技能威力）：骰子 +1、其餘 +8。
+  it('254 個節點各注回一個標籤，內容等於 nodes.json 的 label', () => {
     const labels = [...preview.matchAll(/<text class="(?:dice|mini)-label"[^>]*>([^<]*)<\/text>/g)].map(m => m[1]!);
-    expect(labels).toHaveLength(245);
+    expect(labels).toHaveLength(254);
     const ids = [...preview.matchAll(/<text class="id" y="[-\d.]+">(\d+)<\/text>/g)].map(m => m[1]!);
-    expect(ids).toHaveLength(245);
+    expect(ids).toHaveLength(254);
     expect(new Set(ids)).toEqual(new Set(Object.keys(nodeText)));
     for (const id of ids) {
       const block = new RegExp(`data-id="${id}"[\\s\\S]*?</g>`).exec(preview)![0];
@@ -33,9 +34,9 @@ describe('buildPreviewSvg（真實資料）', () => {
     }
   });
 
-  it('class 由 type 決定：骰子 44 個 dice-label，其餘 201 個 mini-label', () => {
-    expect([...preview.matchAll(/class="dice-label"/g)]).toHaveLength(44);
-    expect([...preview.matchAll(/class="mini-label"/g)]).toHaveLength(201);
+  it('class 由 type 決定：骰子 45 個 dice-label，其餘 209 個 mini-label', () => {
+    expect([...preview.matchAll(/class="dice-label"/g)]).toHaveLength(45);
+    expect([...preview.matchAll(/class="mini-label"/g)]).toHaveLength(209);
   });
 
   // y 是幾何的函數（`h/2 + LABEL_DY`，跟 src/lib/canvas/painter.ts 畫布上那條同一個常數），

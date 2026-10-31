@@ -1,6 +1,6 @@
 {
   "note": "骰子樹符文／玩家被動對 /board 數值卡片的語意（規則 28 守）。數字取自客戶端表，語意依逆向結果人工標註；維護方式見 CLAUDE.md。",
-  "source": "遊戲 1.1.4 客戶端 DiceTreeNodeTable／RuneTable／PlayerPassiveTable",
+  "source": "遊戲 1.1.6 客戶端 DiceTreeNodeTable／RuneTable／PlayerPassiveTable",
   "effects": {
     "1101": {
       "kind": "NatureAttackUpPerV2",
@@ -119,6 +119,15 @@
       "rankAdd": 0,
       "maxLevel": 1,
       "reason": "支援技能冷卻"
+    },
+    "1116": {
+      "kind": "DiceSkillPowerPerV1",
+      "target": "none",
+      "scope": "all",
+      "value": 6,
+      "rankAdd": 0.8,
+      "maxLevel": 50,
+      "reason": "技能威力加成只作用在有技能威力係數的骰子，/board 尚未計算"
     },
     "1201": {
       "kind": "BulletAtkPercentUp",
@@ -454,6 +463,15 @@
       "rankAdd": 0,
       "maxLevel": 1,
       "reason": "支援技能冷卻"
+    },
+    "2116": {
+      "kind": "DiceSkillPowerPerV2",
+      "target": "none",
+      "scope": "all",
+      "value": 6,
+      "rankAdd": 0.8,
+      "maxLevel": 50,
+      "reason": "技能威力加成只作用在有技能威力係數的骰子，/board 尚未計算"
     },
     "2201": {
       "kind": "IronBulletBossDamageUpPercent",
@@ -823,6 +841,15 @@
       "maxLevel": 1,
       "reason": "支援技能冷卻"
     },
+    "3116": {
+      "kind": "DiceSkillPowerPerV3",
+      "target": "none",
+      "scope": "all",
+      "value": 6,
+      "rankAdd": 0.8,
+      "maxLevel": 50,
+      "reason": "技能威力加成只作用在有技能威力係數的骰子，/board 尚未計算"
+    },
     "3201": {
       "kind": "BulletAtkPercentUp",
       "target": "bulletPct",
@@ -1125,6 +1152,15 @@
       "rankAdd": 0,
       "maxLevel": 1,
       "reason": "支援技能冷卻"
+    },
+    "4116": {
+      "kind": "DiceSkillPowerPerV4",
+      "target": "none",
+      "scope": "all",
+      "value": 6,
+      "rankAdd": 0.8,
+      "maxLevel": 50,
+      "reason": "技能威力加成只作用在有技能威力係數的骰子，/board 尚未計算"
     },
     "4201": {
       "kind": "BubbleEmitPerCooldown",
@@ -1450,6 +1486,15 @@
       "maxLevel": 1,
       "reason": "支援技能冷卻"
     },
+    "5116": {
+      "kind": "DiceSkillPowerPerV5",
+      "target": "none",
+      "scope": "all",
+      "value": 6,
+      "rankAdd": 0.8,
+      "maxLevel": 50,
+      "reason": "技能威力加成只作用在有技能威力係數的骰子，/board 尚未計算"
+    },
     "5201": {
       "kind": "BulletAtkPercentUp",
       "target": "bulletPct",
@@ -1528,6 +1573,15 @@
       "maxLevel": 50,
       "label": "腐敗增幅量"
     },
+    "5210": {
+      "kind": "SpiderWebSlowUp",
+      "target": "mechanic",
+      "scope": "dice:5010",
+      "value": 10,
+      "rankAdd": 0.4,
+      "maxLevel": 50,
+      "template": "扭曲基本移動速度減少量 +{V}%"
+    },
     "5301": {
       "kind": "Solitude8WayDmg",
       "target": "conditional",
@@ -1603,6 +1657,14 @@
       "target": "mechanic",
       "scope": "dice:5009",
       "value": 0,
+      "rankAdd": 0,
+      "maxLevel": 1
+    },
+    "5310": {
+      "kind": "SpiderWebSkillDamageAmpUp",
+      "target": "mechanic",
+      "scope": "dice:5010",
+      "value": 150,
       "rankAdd": 0,
       "maxLevel": 1
     },
@@ -1686,6 +1748,14 @@
       "rankAdd": 0,
       "maxLevel": 1,
       "reason": "只對首領"
+    },
+    "5410": {
+      "kind": "SpiderWebMergeCountUp",
+      "target": "mechanic",
+      "scope": "dice:5010",
+      "value": 3,
+      "rankAdd": 0,
+      "maxLevel": 1
     }
   }
 }

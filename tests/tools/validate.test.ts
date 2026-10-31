@@ -420,7 +420,7 @@ describe('validate', () => {
     };
     const errs = withTable(drift);
     expect(errs.some(e => /規則 15.*解鎖金幣 2000 與升級花費表 1 級的 9999 不一致/.test(e))).toBe(true);
-    expect(errs.filter(e => /規則 15/.test(e)).length).toBe(43);   // 43 個 50 級符文全部報
+    expect(errs.filter(e => /規則 15/.test(e)).length).toBe(44);   // 44 個 50 級符文全部報（1.1.6 扭曲鈍化 5210 +1）
 
     expect(withTable({ ...upgradeCostTable, appliesTo: { type: 'rune', maxLevel: 49 } })
       .some(e => /規則 15.*表格長度/.test(e))).toBe(true);
