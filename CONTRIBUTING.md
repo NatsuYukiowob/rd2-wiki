@@ -40,6 +40,8 @@
 | `data/tactics.json`、`data/boss.json` | `/tactic` 戰術、`/boss` 怪物圖鑑 | 24、25 |
 | `data/rift-shop.json` | `/rift-shop` 裂縫商店 | 27 |
 | `data/relics.json`、`data/relic-levels.json` | `/relic` 神器 | 32 |
+| `data/relic-crystal.json` | `/relic` 的「取得裂縫結晶」（覺醒之甕、神器通行證） | 33 |
+| `data/seasons.json` | `/season` 賽季時間表 | 34 |
 | `data/events.json` | `/events` 期間限定活動 | 29 |
 | `data/rewards.json` | `/rewards` 獎勵系統 | 單元測試 |
 
@@ -154,7 +156,7 @@ npm run add-icon -- --relic <神器編號> <你的圖片路徑>
 ```bash
 npm run normalize    # 把 GUI 工具的重寫攤平回正規形式（跑完 git diff 要是乾淨的，見下一節）
 npm run preview      # 產出帶名字與 id 的 data/dice-tree.preview.svg，用來肉眼確認版面
-npm run validate     # 檢查資料本身正確不正確（規則 0～10、13～32，見下一節）
+npm run validate     # 檢查資料本身正確不正確（規則 0～10、13～34，見下一節）
 npm run build        # 或 npm run build:data；順便檢查組裝後的體積有沒有超出效能預算（規則 12）
 npm run typecheck    # 型別檢查（astro check ＋ tsc --noEmit）；動到 src/ 或 tools/ 一定要跑
 npm run test         # 純函式與解析器的單元測試
@@ -371,7 +373,15 @@ PR 送出後，CI 會用 `npm run validate` 檢查正本與各資料檔的正確
   （`valueLabels`）；花費表與收藏等級表是非空的數字陣列，
   神器數與金幣兩欄一樣長。這兩份檔案由客戶端資料表產生，**不要手改數字**。
 
-以上規則 0～10 與 13～32 都是 `npm run validate` 實際會檢查的內容，本機先跑一次就能提早抓到，不用等 CI。
+### 規則 33、34：裂縫結晶的來源與賽季
+
+- **規則 33｜`data/relic-crystal.json`**。`/relic` 最後一節的覺醒之甕與神器通行證。會擋下：獎勵種類不是
+  已登記的那幾種、數量不是正整數；覺醒之甕的點數門檻沒有一檔比一檔高（它是累計門檻，頁面會逐檔累加獎勵）；
+  通行證任務的編號重複，或任務句裡還留著沒填值的 `{0}`。這份檔案由客戶端資料表產生，**不要手改數字**。
+- **規則 34｜`data/seasons.json`**。`/season` 的賽季時間表。每一季的開始與結束跟活動檔期同一種寫法
+  （真實日期、必填時區 `tz`），而且兩端都要寫到幾點幾分；賽季要由舊到新排，後一季不能早於前一季結束就開始。
+
+以上規則 0～10 與 13～34 都是 `npm run validate` 實際會檢查的內容，本機先跑一次就能提早抓到，不用等 CI。
 
 ### 另外兩道 CI 檢查：正規化定點、型別檢查
 

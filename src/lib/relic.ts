@@ -1,6 +1,6 @@
 // /relic 的純函式：把 `data/relics.json`／`data/relic-levels.json` 的陣列整理成頁面要印的字。
 // 放在 src/lib 而不是頁面 frontmatter 裡，是為了讓 vitest 量得到（頁面本身只有 E2E 量得到）。
-import type { Relic } from './types';
+import type { Relic, RelicCrystal, RelicReward } from './types';
 
 /**
  * 樣板裡緊跟在 `{k}` 後面的單位；沒有就是空字串。
@@ -62,4 +62,24 @@ export function costRows(pieces: readonly number[], gold: readonly number[]) {
     sumGold += g;
     return { level: i + 2, pieces: p, gold: g, sumPieces, sumGold };
   });
+}
+
+/** 獎勵種類的顯示名稱。合法的 `goods` 只有這一份，規則 33 也讀它。 */
+export const RELIC_GOODS: Record<RelicReward['goods'], string> = { crystal: '裂縫結晶', gold: '金幣' };
+
+/** 「裂縫結晶 ×3」「金幣 ×20,000」。 */
+export function rewardText(r: RelicReward): string {
+  return `${RELIC_GOODS[r.goods]} ×${r.amount.toLocaleString('en-US')}`;
+}
+
+/** 幾筆獎勵依種類加總，照 `RELIC_GOODS` 的順序、只留有拿到的。 */
+export function rewardTotals(list: readonly RelicReward[]): RelicReward[] {
+  return (Object.keys(RELIC_GOODS) as RelicReward['goods'][])
+    .map(goods => ({ goods, amount: list.filter(r => r.goods === goods).reduce((n, r) => n + r.amount, 0) }))
+    .filter(r => r.amount > 0);
+}
+
+/** 覺醒之甕逐檔加上「領到這一檔為止」的累計（同種類才累加；目前全是裂縫結晶）。 */
+export function potRows(tiers: RelicCrystal['pot']['tiers']) {
+  return tiers.map((t, i) => ({ ...t, total: rewardTotals(tiers.slice(0, i + 1)) }));
 }

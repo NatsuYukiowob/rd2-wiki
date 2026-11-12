@@ -118,7 +118,7 @@ npm run compare -- <beforeURL> <afterURL>  # computed-style 逐元素比對，�
 | 解鎖例外 | `unlockVia` 只說「靠什麼開門」；`unlockPaid`（仍要付錢）、`bypassPrereq`（無視前置）另外說 | `data/unlock-exceptions.json`，規則 18 |
 | 升級 tier ↔ 節點 | **雙向零殘餘** | `data/passive-upgrade-cost.json`，規則 22 |
 | 骰子數值 ↔ 節點 | 雙向零殘餘 | `data/dice-stats.json`，規則 23 ＋ `tests/data/dice-stats.test.ts` |
-| 戰術／Boss／裂縫／活動／神器 | 見各自規則 | 規則 24／25／27／29／32 |
+| 戰術／Boss／裂縫／活動／神器／賽季 | 見各自規則 | 規則 24／25／27／29／32／33／34 |
 | 獎勵 | **沒有 validate 規則** | `tests/data/rewards.test.ts` |
 | 畫布 viewBox | `0 0 2000 1700` | |
 | 效能預算（硬斷言） | `tree.json` gzip ≤ 20KB／sprite ≤ 400KB（實測值 `build:data` 會印；`tree-text.json` 不設上限、只印大小） | `tests/tools/build-data.test.ts`（CI 規則 12） |
@@ -139,7 +139,7 @@ npm run compare -- <beforeURL> <afterURL>  # computed-style 逐元素比對，�
   正本刻意跟上游不一致的格子清單在 `data/CLAUDE.md`，對新版資料表時會顯示成差異，**不要改回去**。
 - ⚠️ **佔位符偵測機制留著但真實資料已無樣本**（`parseGrowth` 的 `{n}` 判定、`dataIssue: 'placeholder'`、
   規則 9、面板「數值待補」）。對應測試**一律用合成樣本**，不要綁真實節點。
-- ⚠️ **沒有進 tree.json 的資料檔**（`dice-stats`、`passive-upgrade-cost`、`tactics`、`boss`、`rift-shop`、`relics`、`relic-levels`、
+- ⚠️ **沒有進 tree.json 的資料檔**（`dice-stats`、`passive-upgrade-cost`、`tactics`、`boss`、`rift-shop`、`relics`、`relic-levels`、`relic-crystal`、`seasons`、
   `events`、`rewards`、`maxlevel-official`、`offgame-effects`）：「表與節點對不上」在產物層面零痕跡，
   **validate 規則（或 rewards 的單元測試）是唯一防線**，而且對應規則必須是**雙向**的。
 - ⚠️ **任何「這顆練滿要多少」一律走 `levelTableFor()`**（`/sim` 與 NodeDetail 同一判準）；
@@ -192,6 +192,8 @@ npm run compare -- <beforeURL> <afterURL>  # computed-style 逐元素比對，�
 | 29 | `data/events.json`：**不走 `checkIconedRecordList()`**。(a) 非空陣列 (b) 必填／未知欄位（**沒有 `notes` 欄位**，決策：維護者註記不進資料，不要加回）(c) `id` 小寫英數連字號、不撞號（頁面錨點）(d) `version` x.y.z (e) `period` 只能 `null` 或 `{begin, finish, tz}`，兩端是真實日期 `YYYY-MM-DD`（可帶 ` HH:MM`）且開始不晚於結束（只寫日期的一端算整天），`tz` 必填 `UTC±N`（畫面跟時間一起印） (f) `currencies` 的 `kind` 已登記 (g) 段落形狀 (h) **每列格數＝表頭欄數** (i) 格子是非空字串或 `{icon, text}` (j) `screenshots` 檔在 `public/events/`、`caption` 非空、寬高正整數、檔名無路徑、WebP 不帶 EXIF／XMP（ICC 要留）；**目錄讀不到是錯不是跳過**。合法 `icon`／`kind` 只有 `src/lib/events.ts` 的 `EVENT_ICON_KINDS` 一份 |
 | 31 | 可升級（`maxLevel > 1`）的節點：(a) `levelTableFor()` 查得到逐級費用表（否則 `/sim` 只讓它停在 Lv.1）(b) `growthIssue()` 不是 `no-growth`。判準是站台與 `build-data` 自己用的那兩支；**讓路**：(a) 不看 `special` 與付費解鎖的玩家被動／支援（規則 22）、升級花費表缺席時不看符文（規則 15），(b) 不看符文（規則 17） |
 | 32 | `data/relics.json`＋`data/relic-levels.json`（`/relic`）：圖示與文字走 `checkIconedRecordList()`（一種一張圖）；自己的語意檢查：(e) `values` 是「數字陣列的陣列」 (l) `relic-levels.json` 形狀：未知欄位擋、`pieces`／`gold` 等長、至少兩級、第 1 級是 0、非負整數 (m) 每組 `values` 的級數＝花費表級數 (n) `effect` 的 `{k}` 與 `values` 的組數一一對上 (o) 兩組以上數值必須有同樣多個互異的 `valueLabels`（逐級表表頭），單組不准寫 (p) **兩份檔互相對得上**：`critDamage` 段數 × `critStep` ＝ 神器數 × 等級上限 |
+| 33 | `data/relic-crystal.json`（`/relic` 的「取得裂縫結晶」）：(a) 外層 `{ pot, pass }`、未知欄位擋 (b) 甕的每一檔是 `{ points, goods, amount }`，`goods` 在 `src/lib/relic.ts` 的 `RELIC_GOODS` 內、`amount` 正整數 (c) **`points` 嚴格遞增**（它是累計門檻，頁面逐檔累加獎勵）(d) 重複獎勵的 `repeatPoints` 正整數、`repeatReward` 形狀 (e) 通行證每筆 `id` 不撞號、`mission` 非空且不留 `{n}`／標籤 (f) `free`／`paid` 形狀 |
+| 34 | `data/seasons.json`（`/season`）：(a) 外層 `{ unlockKills, eras }`、至少一季、未知欄位擋 (b) 每季 `id` 不撞號、`name` 非空 (c) `period` 走跟規則 29(e) 同一支 `checkPeriod()`，而且**兩端都要寫到時刻** (d) 由舊到新、後一季的開始不早於前一季的結束 |
 
 - ⚠️ **幾何規則吃 `nodes`，文案規則吃 `withText`**（文案規則＝1／3／4／8／9／14／15／16／17／31）。
   餵錯的話 `nodes.json` 漏一筆會變成幾十條假錯誤。規則 21(h)／30(h) 判斷「是不是骰子」也走 `withText`。
@@ -287,7 +289,7 @@ npm run compare -- <beforeURL> <afterURL>  # computed-style 逐元素比對，�
 | `canvas.css` | 畫布**容器**（`/tree`、`/sim`）；畫布**內容**的外觀在 `src/lib/canvas/theme.ts` |
 | `dice.css` | `/dice` 圖鑑 |
 | `board.css` | `/board` |
-| `battle.css` | `/tactic`、`/boss`、`/rift-shop`、`/relic` 的橫列清單，以及 `/relic` 的圖示格 |
+| `battle.css` | `/tactic`、`/boss`、`/rift-shop`、`/relic` 的橫列清單，以及 `/relic` 的圖示格、`/season` 的條列 |
 | `events.css` | `/events`，含全站第一份 `<table>` 樣式（其他頁要表格從這拿） |
 | `rewards.css` | `/rewards` |
 

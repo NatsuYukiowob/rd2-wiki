@@ -16,7 +16,7 @@
   `.battle-group-head[hidden]`、`.battle-list[hidden]`。
 - **來源長寬比不統一的圖一律 `object-fit: contain`**（`/board` 四個顯示點、`.battle-icon`）；改 `cover`
   CI 全綠而畫面裁角。唯一刻意用 `cover` 的是 `/events` 索引縮圖（`events.css` 註解）。
-- **「遊戲介紹」下拉裡的頁（`/guide`／`/tactic`／`/boss`／`/rift-shop`／`/relic`／`/events`／`/rewards`）都要列進
+- **「遊戲介紹」下拉裡的頁（`/guide`／`/tactic`／`/boss`／`/rift-shop`／`/relic`／`/season`／`/events`／`/rewards`）都要列進
   `Base.astro` 的 `guideCurrent`**，否則下拉收合時導覽列零提示。B6 守。
 - **畫面不印編號與內部 ID，但資料檔要留**：`id` 是錨點與 validate 規則的鍵，`gameId` 是對新版資料表的
   join key。T1b 量 `main` 的 `innerText`（屬性裡的 id 留著是對的）。
@@ -201,6 +201,16 @@ visible（`overflow-x: hidden` 明寫，`detail.css`）。
 - 效果句裡的數值印「1 級～滿級」的範圍（`relicEffectRange()`）；不印遊戲內綠字的下一級增量。
 - 數量、等級上限、累計一律從資料算，不寫進文案。抽取機率不收（客戶端表裡沒有）。
 - ⚠️ 圖示 sprite 的編號不等於神器編號（客戶端對照表有交叉配的），換圖前看 `data/CLAUDE.md`。
+- 最後一節「取得裂縫結晶」（覺醒之甕、神器通行證，規則 33）：甕的門檻是**累計**點數，表格多印一欄累計獎勵；
+  「全部領完共多少」依獎勵種類分開加總（`rewardTotals()`，通行證的免費獎勵有金幣）。通行證售價不收（客戶端表裡沒有）。RL7 守。
+
+## /season
+
+賽季時間表（規則 34）。⚠️ 遊戲繁中把兩種東西都叫「賽季N」：這頁是排行榜結算用的賽季（客戶端 `EraTable`），
+**不是每月一期的骰子通行證**（`SeasonTable`）；lede 那句區分不要拿掉。
+
+- 時間一律是資料檔寫的那個時區的牆上時間，時區在表格下方印一次（各季同一個）；不換算成讀者的時區（同 `/events` 的裁決）。
+- 「賽季裡有什麼」那幾句是寫在頁面裡的文案，依據是客戶端字串，不是資料表；排行榜 ID 不上站。
 
 ## /events
 
