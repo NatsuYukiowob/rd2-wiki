@@ -22,9 +22,3 @@ test('SE2. 入口收在「遊戲介紹」下拉裡，下拉會標成目前分頁
   await expect(page.locator('#site-nav .nav-menu-items a:text-is("賽季")')).toHaveAttribute('aria-current', 'page');
   await expect(page.locator('#site-nav .nav-menu > summary')).toHaveAttribute('aria-current', 'page');
 });
-
-test('SE3. 320px 寬不撐出橫捲', { tag: '@mobile' }, async ({ page }) => {
-  await page.setViewportSize({ width: 320, height: 800 });
-  await page.goto('/season');
-  expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0);
-});

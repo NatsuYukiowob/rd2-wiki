@@ -100,5 +100,5 @@ test('RL7. 覺醒之甕與神器通行證兩張表逐格等於資料', async ({ 
     potRows(crystal.pot.tiers).map(t => [t.points.toLocaleString('en-US'), rewardText(t), t.total.map(rewardText).join('、')]));
   expect(await cells('relic-pass')).toEqual(crystal.pass.map(p => [p.mission, rewardText(p.free), rewardText(p.paid)]));
   // 表外的重複獎勵寫在說明文字裡。
-  await expect(page.locator('#relic-pot + .note')).toContainText(`每再累積 ${crystal.pot.repeatPoints} 點可以再領 ${rewardText(crystal.pot.repeatReward)}`);
+  await expect(page.locator('#relic-pot + .note')).toContainText(`每再累積 ${crystal.pot.repeatPoints.toLocaleString('en-US')} 點可以再領 ${rewardText(crystal.pot.repeatReward)}`);
 });

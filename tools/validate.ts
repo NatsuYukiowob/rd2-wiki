@@ -2169,10 +2169,11 @@ export function validate(svgText: string, opts: ValidateOpts): ValidateResult {
     }
   }
 
-  // 檔期 `{ begin, finish, tz }` 的形狀（規則 29(e) 的活動與規則 34 的賽季共用，畫面都走 `periodText()`）。
-  const checkPeriod = (period: unknown, rule: string, at: string): void => {
+  // 檔期 `{ begin, finish, tz }` 的形狀（規則 29(e) 的活動與規則 34 的賽季共用）。
+  // `nullable`：活動查不到檔期可以寫 `null`（呼叫端自己放行），賽季不行——錯誤訊息要跟著說對。
+  const checkPeriod = (period: unknown, rule: string, at: string, nullable: boolean): void => {
     if (!isPlainObject(period)) {
-      push(`${rule}: ${at}的 period 必須是 null 或 { begin, finish, tz }`);
+      push(`${rule}: ${at}的 period 必須是 ${nullable ? 'null 或 ' : ''}{ begin, finish, tz }`);
       return;
     }
     const stamps: Record<string, string> = {};
@@ -2279,7 +2280,7 @@ export function validate(svgText: string, opts: ValidateOpts): ValidateResult {
       // period：日期查不到（表裡沒有、也沒實測）就寫成 null，不是空字串、不是 "未知"。
       const period = raw['period'];
       if (period !== null && period !== undefined) {
-        checkPeriod(period, '規則 29(e)', at);
+        checkPeriod(period, '規則 29(e)', at, true);
       }
 
       const currencies = raw['currencies'];
@@ -2524,9 +2525,13 @@ export function validate(svgText: string, opts: ValidateOpts): ValidateResult {
   //
   // 不進 tree.json，這條是唯一防線。頁面把甕的門檻當「累計」印、把獎勵依種類加總成「全部領完」——
   // 門檻沒排好或種類拼錯時頁面不會壞，只會印出錯的累計或 `undefined ×3`。
-  const isReward = (v: unknown): boolean =>
-    isPlainObject(v) && Object.hasOwn(RELIC_GOODS, v['goods'] as string) && Number.isInteger(v['amount']) && (v['amount'] as number) > 0;
   const unknownKeys = (obj: Record<string, unknown>, known: string[]): string[] => Object.keys(obj).filter(k => !known.includes(k));
+  // `goods` 要先驗是字串：`["crystal"]` 當鍵查會被轉型成 "crystal" 而過關，頁面加總時用 `===` 比卻對不上。
+  // `extra` 是這筆獎勵所在的物件另外允許的欄位（甕的一檔多一個 `points`）。
+  const isReward = (v: unknown, extra: string[] = []): boolean =>
+    isPlainObject(v) && typeof v['goods'] === 'string' && Object.hasOwn(RELIC_GOODS, v['goods'])
+    && Number.isInteger(v['amount']) && (v['amount'] as number) > 0
+    && unknownKeys(v, ['goods', 'amount', ...extra]).length === 0;
   if (opts.relicCrystal === null) {
     warn('規則 33: 沒有提供 data/relic-crystal.json，裂縫結晶的來源未檢查');
   } else if (!isPlainObject(opts.relicCrystal) || !isPlainObject(opts.relicCrystal['pot']) || !Array.isArray(opts.relicCrystal['pass'])) {
@@ -2545,7 +2550,7 @@ export function validate(svgText: string, opts: ValidateOpts): ValidateResult {
       let prev = 0;
       tiers.forEach((t: unknown, i) => {
         const at = `${file} 的 pot.tiers 第 ${i + 1} 檔`;
-        if (!isPlainObject(t) || !isReward(t) || unknownKeys(t, ['points', 'goods', 'amount']).length > 0) {
+        if (!isPlainObject(t) || !isReward(t, ['points'])) {
           push(`規則 33(b): ${at}必須是 { points, goods, amount }（goods 是 ${Object.keys(RELIC_GOODS).join('／')}，amount 是正整數）`);
           return;
         }
@@ -2600,6 +2605,7 @@ export function validate(svgText: string, opts: ValidateOpts): ValidateResult {
     }
     const seenEra = new Set<unknown>();
     let prevFinish: string | null = null;
+    let eraTz: string | null = null;
     (opts.seasons['eras'] as unknown[]).forEach((era, i) => {
       const at = `${file} 第 ${i + 1} 季`;
       if (!isPlainObject(era)) {
@@ -2607,16 +2613,27 @@ export function validate(svgText: string, opts: ValidateOpts): ValidateResult {
         return;
       }
       for (const key of unknownKeys(era, ['id', 'name', 'period'])) push(`規則 34(b): ${at}有未知欄位 ${JSON.stringify(key)}`);
-      for (const key of ['id', 'name']) {
-        if (typeof era[key] !== 'string' || (era[key] as string).trim() === '') push(`規則 34(b): ${at}的 ${key} 必須是非空字串`);
+      if (typeof era['name'] !== 'string' || era['name'].trim() === '') push(`規則 34(b): ${at}的 name 必須是非空字串`);
+      // id 直接變成表格列的錨點（`#s<id>`），所以只收正整數字串（同規則 32 的神器編號）。
+      const id = era['id'];
+      if (typeof id !== 'string' || !/^[1-9]\d*$/.test(id)) {
+        push(`規則 34(b): ${at}的 id ${JSON.stringify(id)} 必須是正整數字串（它是那一列的錨點）`);
+      } else if (seenEra.has(id)) {
+        push(`規則 34(b): ${at}的 id ${JSON.stringify(id)} 撞號`);
+      } else {
+        seenEra.add(id);
       }
-      if (seenEra.has(era['id'])) push(`規則 34(b): ${at}的 id ${JSON.stringify(era['id'])} 撞號`);
-      seenEra.add(era['id']);
       const before = errors.length;
-      checkPeriod(era['period'], '規則 34(c)', at);
+      checkPeriod(era['period'], '規則 34(c)', at, false);
       if (errors.length !== before || !isPlainObject(era['period'])) return;
       // 兩端都要帶時刻才比得出先後（賽季是整點交接；只寫日期的話「同一天結束與開始」分不出重不重疊）。
-      const { begin, finish } = era['period'] as { begin: string; finish: string };
+      const { begin, finish, tz } = era['period'] as { begin: string; finish: string; tz: string };
+      // 頁面只在表格下方印一次時區，(d) 也是直接拿牆上時間的字串比先後——兩者都假設各季同一個時區。
+      if (eraTz !== null && tz !== eraTz) {
+        push(`規則 34(e): ${at}的時區 ${tz} 跟前面的 ${eraTz} 不同——各季要換算成同一個時區`);
+        return;
+      }
+      eraTz = tz;
       if (begin.length !== 16 || finish.length !== 16) {
         push(`規則 34(c): ${at}的 period 兩端都要寫到時刻（YYYY-MM-DD HH:MM）`);
         return;

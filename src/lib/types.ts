@@ -551,8 +551,8 @@ export interface RelicCrystal {
 export interface Seasons {
   /** 開放賽季要的累積擊殺數（`ContentOpenTable` 的 `ERA`）。 */
   unlockKills: number;
-  /** 由舊到新；`period` 的寫法同 `GameEvent.period`（帶 `tz`）。 */
-  eras: { id: string; name: string; period: { begin: string; finish: string; tz: string } }[];
+  /** 由舊到新；`period` 兩端都寫到時刻，各季同一個 `tz`（規則 34）。 */
+  eras: { id: string; name: string; period: NonNullable<GameEvent['period']> }[];
 }
 
 /**

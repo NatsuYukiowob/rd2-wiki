@@ -2475,6 +2475,15 @@ describe('規則 33：裂縫結晶的來源', () => {
     expect(errors.some(e => /規則 33\(d\).*repeatReward/.test(e))).toBe(true);
   });
 
+  it('獎勵的 goods 必須是字串、不准有未知欄位（陣列會被轉型成鍵而矇混過去）', () => {
+    const arr = data();
+    arr.pot.tiers[0]!.goods = ['crystal'];
+    expect(errorsOf({ relicCrystal: arr }).some(e => /規則 33\(b\).*第 1 檔/.test(e))).toBe(true);
+    const typo = data();
+    typo.pass[0]!.paid = { goods: 'crystal', amount: 3, amout: 5 };
+    expect(errorsOf({ relicCrystal: typo }).some(e => /規則 33\(f\).*第 1 筆的 paid/.test(e))).toBe(true);
+  });
+
   it('(e)(f) 通行證：任務句留著佔位、id 撞號、獎勵形狀不對', () => {
     const d = data();
     d.pass[1]!.mission = '抽取神器{0}次';
@@ -2531,6 +2540,26 @@ describe('規則 34：賽季', () => {
     const dateOnly = data();
     dateOnly.eras[0]!.period.begin = '2026-10-12';
     expect(errorsOf({ seasons: dateOnly }).some(e => /規則 34\(c\).*寫到時刻/.test(e))).toBe(true);
+  });
+
+  it('(b) id 是列的錨點：只收正整數字串', () => {
+    const d = data();
+    d.eras[1]!.id = '2 pre';
+    expect(errorsOf({ seasons: d }).some(e => /規則 34\(b\).*第 2 季的 id/.test(e))).toBe(true);
+  });
+
+  it('(c) 賽季的 period 不能是 null，訊息不能說可以', () => {
+    const d = data() as unknown as { eras: { period: unknown }[] };
+    d.eras[0]!.period = null;
+    const errors = errorsOf({ seasons: d });
+    expect(errors.some(e => /規則 34\(c\).*第 1 季的 period 必須是 \{ begin, finish, tz \}/.test(e))).toBe(true);
+    expect(errors.some(e => /null/.test(e))).toBe(false);
+  });
+
+  it('(e) 各季同一個時區（頁面只印一次時區、先後也是拿牆上時間比）', () => {
+    const d = data();
+    d.eras[1]!.period.tz = 'UTC+8';
+    expect(errorsOf({ seasons: d }).some(e => /規則 34\(e\).*第 2 季.*UTC\+8.*UTC\+9/.test(e))).toBe(true);
   });
 
   it('(d) 賽季要由舊到新、不重疊', () => {
