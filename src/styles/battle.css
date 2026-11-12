@@ -187,24 +187,22 @@
   list-style: none;
 }
 
+/* 格子的面、框、hover 抬升、按壓與減少動態全部來自 components.css 的 `a.row-card`，這裡只管排版。
+   li 是 grid 讓 <a> 撐滿整格：名稱在窄螢幕換成兩行時，同一列的格子才會等高。 */
+.relic-grid > li {
+  display: grid;
+}
+
 .relic-cell {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: var(--space-1);
   padding: var(--space-2) var(--space-1);
-  border: 1px solid var(--border);
-  border-radius: var(--r-md);
-  background: var(--surface-1);
   color: inherit;
   font-size: var(--fs-sm);
   text-align: center;
   text-decoration: none;
-  transition: background var(--t-fast) var(--e-out);
-}
-
-.relic-cell:hover {
-  background: var(--surface-3);
 }
 
 .relic-cell > img {

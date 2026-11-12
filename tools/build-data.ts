@@ -270,8 +270,8 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
   // （見 tools/validate.ts 的 checkIconedRecordList()）。同樣不進 tree.json：
   // /tactic、/boss 與 /rift-shop 都是靜態頁，建置期直接讀 data/，不吃那 20 KB gzip 預算。
   //
-  // 轉檔重用 buildBoardIcon()：三批來源同樣尺寸與長寬比都不統一（戰術多為 176×206、
-  // Boss 約 128×128、裂縫效果 176×176），同樣是給普通 <img> 用而不是 SVG <pattern>，
+  // 轉檔重用 buildBoardIcon()：這幾批來源同樣尺寸與長寬比都不統一（戰術多為 176×206、
+  // Boss 約 128×128、裂縫效果 176×176、神器 256×256），同樣是給普通 <img> 用而不是 SVG <pattern>，
   // 所以同樣**不套 withGutter()**。要是哪天需要不同的轉檔參數，是在那支函式加參數，
   // 不是複製第四份。
   //

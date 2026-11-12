@@ -2,9 +2,13 @@
 // 放在 src/lib 而不是頁面 frontmatter 裡，是為了讓 vitest 量得到（頁面本身只有 E2E 量得到）。
 import type { Relic } from './types';
 
-/** 樣板裡緊跟在 `{k}` 後面的單位（`%`／`秒`／`倍`／`隻`）；沒有就是空字串。 */
+/**
+ * 樣板裡緊跟在 `{k}` 後面的單位；沒有就是空字串。
+ * 清單＝`src/lib/growth.ts` 的成長值單位（`%`／秒／次／個／倍）加上這份資料自己的「隻」。
+ * ⚠️ 只能是白名單：`{0}的`、`{0}SP` 這種後面接的不是單位。新單位要加進來，否則逐級表只印裸數字。
+ */
 export function relicUnit(effect: string, k: number): string {
-  return new RegExp(`\\{${k}\\}(%|秒|倍|隻)`).exec(effect)?.[1] ?? '';
+  return new RegExp(`\\{${k}\\}(%|秒|次|個|倍|隻)`).exec(effect)?.[1] ?? '';
 }
 
 /** 把 `{k}` 換成「1 級值～滿級值」。單位留在樣板原位，所以讀起來是「30～140%」。 */

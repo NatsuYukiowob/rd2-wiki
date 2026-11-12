@@ -103,7 +103,7 @@ export interface AddRecordIconResult extends AddIconResult {
 
 /**
  * 把一張圖加進「一筆一個 id、雜湊寫在紀錄 `icon` 欄」的資料檔——`data/tactics.json`（戰術）、
- * `data/boss.json`（Boss）與 `data/rift-shop.json`（裂縫效果）共用。
+ * `data/boss.json`（Boss）、`data/rift-shop.json`（裂縫效果）與 `data/relics.json`（神器）共用。
  *
  * 存在的理由跟 `addMappedIcon()` 一模一樣：規則 24／25／27 擋下「新增一條戰術／一個 Boss／
  * 一條裂縫效果」這個動作，但**沒有工具放得進那三個 `data/*-icons`**的話，貢獻者只能自己算
@@ -166,8 +166,8 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
     '  npm run add-icon -- --relic <神器編號> <圖片路徑>   神器圖 → data/relic-icons/，並更新 data/relics.json 那一筆的 icon',
   ].join('\n');
   try {
-    // 戰術、Boss 與裂縫效果走同一條分支：三者的資料檔形狀相同（陣列 ＋ 每筆自帶 icon），
-    // 差別只有目錄與檔名。分成三段 if 只會讓三邊的提示訊息各自漂移。
+    // 戰術、Boss、裂縫效果與神器走同一條分支：資料檔形狀相同（陣列 ＋ 每筆自帶 icon），
+    // 差別只有目錄與檔名。各寫一段 if 只會讓每一邊的提示訊息各自漂移。
     //
     // ⚠️ 裂縫效果是同一組的幾個檔位共用一張圖（規則 27 的 `sharedIconKey`，`riftIconGroup`），所以它帶同一個
     // 鍵：換其中一筆的圖時同組兄弟一起換，否則下一步 validate 一定紅在 27(g)。

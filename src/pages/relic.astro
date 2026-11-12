@@ -48,8 +48,9 @@ const num = (n: number) => n.toLocaleString('en-US');
     <ul class="relic-grid">
       {relics.map(r => (
         <li>
-          <a class="relic-cell" href={`#r${r.id}`}>
-            <img src={`/assets/relic-icons/${r.icon}.webp`} alt="" loading="lazy" decoding="async" />
+          <a class="relic-cell row-card" href={`#r${r.id}`}>
+            {/* 這一格是首屏內容，不 lazy；下面清單裡同一張圖才 lazy（同網址，走快取）。 */}
+            <img src={`/assets/relic-icons/${r.icon}.webp`} alt="" decoding="async" />
             <span>{r.name}</span>
           </a>
         </li>

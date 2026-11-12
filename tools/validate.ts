@@ -2453,11 +2453,34 @@ export function validate(svgText: string, opts: ValidateOpts): ValidateResult {
       for (const key of ['pieces', 'gold', 'critDamage']) {
         if (!isNumbers(lv[key])) push(`規則 32(l): data/relic-levels.json 的 ${key} 必須是非空的數字陣列`);
       }
+      // 花費是「升到第 i+1 級」的量：第 0 格（1 級）一定是 0（`costRows()` 從第 2 級起列，不是 0 的話那筆
+      // 花費會從表格與累計裡一起消失），其餘是非負整數；至少要有兩級，頁面才有「升滿要多少」可印。
+      for (const key of ['pieces', 'gold']) {
+        const list = lv[key];
+        if (!isNumbers(list)) continue;
+        if (list.length < 2 || list[0] !== 0 || !list.every(x => Number.isInteger(x) && x >= 0)) {
+          push(`規則 32(l): data/relic-levels.json 的 ${key} 必須至少兩級、第 1 級是 0、其餘是非負整數`);
+        }
+      }
       if (isNumbers(lv.pieces) && isNumbers(lv.gold) && lv.pieces.length !== lv.gold.length) {
         push(`規則 32(l): data/relic-levels.json 的 pieces（${lv.pieces.length} 級）與 gold（${lv.gold.length} 級）長度不一致`);
       }
+      const KNOWN = ['unlockKills', 'pieces', 'gold', 'critStep', 'critDamage'];
+      for (const key of Object.keys(lv)) {
+        if (!KNOWN.includes(key)) push(`規則 32(l): data/relic-levels.json 有未知欄位 ${JSON.stringify(key)}`);
+      }
     }
     const maxRank = levelsOk && isNumbers(lv.pieces) ? lv.pieces.length : null;
+
+    // (p) 兩份檔要對得起來：`/relic` 的「總等級上限」是 神器數 × 等級上限，收藏等級表則是
+    // critDamage 的段數 × critStep——加了一種神器卻沒重產 relic-levels.json 時，頁面會說上限 620 而表只到 600。
+    if (maxRank !== null && levelsOk && isNumbers(lv.critDamage) && Number.isInteger(lv.critStep)) {
+      const covered = lv.critDamage.length * (lv.critStep as number);
+      const total = scan.records.length * maxRank;
+      if (covered !== total) {
+        push(`規則 32(p): 收藏等級表蓋到總等級 ${covered}（${lv.critDamage.length} 段 × ${lv.critStep as number}），但 ${scan.records.length} 種神器 × ${maxRank} 級 ＝ ${total}——data/relics.json 與 data/relic-levels.json 要一起重產`);
+      }
+    }
 
     for (const rec of scan.records) {
       const id = rec.id as string;

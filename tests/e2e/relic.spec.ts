@@ -15,15 +15,23 @@ test('RL1. /relic 的名稱與每一級的數值是伺服器輸出的 HTML（收
   expect(relics.length).toBeGreaterThan(0);
   expect(relics.filter(r => !html.includes(r.name)).map(r => r.name)).toEqual([]);
   // 逐級表收在 <details> 裡，但格子本身要在 HTML 裡——搜尋引擎與 Ctrl+F 才找得到。
-  const missing: string[] = [];
+  // 這裡只驗「在不在 HTML」；「每一種的表裝的是不是自己的數值」由 RL1b 逐表比對
+  // （數值在神器之間大量重複，整頁 includes 分不出表接錯）。
+  expect(html).toContain(`>${relics[0]!.values[0]![1]}${relicUnit(relics[0]!.effect, 0)}<`);
+});
+
+test('RL1b. 每一種神器自己的逐級表：欄名、列數與每一格都等於資料', async ({ page }) => {
+  await page.goto('/relic');
   for (const r of relics) {
-    r.values.forEach((list, k) => {
-      for (const v of list) if (!html.includes(`>${v}${relicUnit(r.effect, k)}<`)) missing.push(`${r.id}:${v}`);
-    });
+    const table = page.locator(`#r${r.id} table`);
+    const head = await table.locator('thead th').evaluateAll(els => els.map(el => el.textContent!.trim()));
+    expect(head, r.name).toEqual(['等級', ...(r.valueLabels ?? ['數值'])]);
+    const cells = await table.locator('tbody tr').evaluateAll(rows => rows.map(row => [...row.children].map(c => c.textContent!.trim())));
+    const want = r.values[0]!.map((_, lv) => [String(lv + 1), ...r.values.map((list, k) => `${list[lv]}${relicUnit(r.effect, k)}`)]);
+    expect(cells, r.name).toEqual(want);
   }
-  expect(missing).toEqual([]);
-  // 佔位一定要全部填掉。
-  expect(html).not.toMatch(/\{\d\}|undefined|NaN/);
+  // 佔位一定要全部填掉（只看內容區的字，不掃 inline script）。
+  expect(await page.locator('main').evaluate(el => el.textContent ?? '')).not.toMatch(/\{\d+\}|undefined|NaN/);
 });
 
 test('RL2. 圖示格照遊戲順序排，每一格連到同一頁那一種神器的說明', { tag: '@mobile' }, async ({ page, isMobile }) => {

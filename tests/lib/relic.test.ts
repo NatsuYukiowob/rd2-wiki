@@ -27,6 +27,12 @@ describe('relicEffectRange / relicUnit', () => {
     expect(relicUnit(byGameId('MergeAttackUp').effect, 0)).toBe('');
   });
 
+  it('單位是白名單：次／個認得，後面接的不是單位時回空字串', () => {
+    expect(relicUnit('攻擊{0}次', 0)).toBe('次');
+    expect(relicUnit('增加{0}個', 0)).toBe('個');
+    expect(relicUnit('增加{0}的效果', 0)).toBe('');
+  });
+
   it('全部 30 種都換得乾淨（不剩大括號、沒有 undefined）', () => {
     for (const r of relics) expect(relicEffectRange(r)).not.toMatch(/[{}]|undefined/);
   });

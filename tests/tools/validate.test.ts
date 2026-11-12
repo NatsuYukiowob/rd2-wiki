@@ -2402,5 +2402,27 @@ describe('規則 32：神器', () => {
     const errors = errorsOf({ relicLevels: bad });
     expect(errors.some(e => /unlockKills.*正整數/.test(e))).toBe(true);
     expect(errors.some(e => /critDamage 必須是非空的數字陣列/.test(e))).toBe(true);
+
+    const first = levels();
+    (first.pieces as number[])[0] = 1;
+    expect(errorsOf({ relicLevels: first }).some(e => /pieces 必須至少兩級、第 1 級是 0/.test(e))).toBe(true);
+
+    const frac = levels();
+    (frac.gold as number[])[3] = 0.5;
+    expect(errorsOf({ relicLevels: frac }).some(e => /gold 必須至少兩級/.test(e))).toBe(true);
+
+    const typo = levels();
+    typo.critSteps = 5;
+    expect(errorsOf({ relicLevels: typo }).some(e => /未知欄位 "critSteps"/.test(e))).toBe(true);
+  });
+
+  it('(p) 收藏等級表蓋到的總等級要等於 神器數 × 等級上限（兩個方向都擋）', () => {
+    const fewer = rows();
+    fewer.pop();
+    expect(errorsOf({ relics: fewer }).some(e => /規則 32\(p\).*蓋到總等級 600.*＝ 580/.test(e))).toBe(true);
+
+    const shortTable = levels();
+    (shortTable.critDamage as number[]).pop();
+    expect(errorsOf({ relicLevels: shortTable }).some(e => /規則 32\(p\).*蓋到總等級 595/.test(e))).toBe(true);
   });
 });
