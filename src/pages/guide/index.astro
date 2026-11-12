@@ -9,6 +9,7 @@ import tacticsRaw from '../../../data/tactics.json';
 import bossRaw from '../../../data/boss.json';
 import riftShopRaw from '../../../data/rift-shop.json';
 import relicsRaw from '../../../data/relics.json';
+import seasonsRaw from '../../../data/seasons.json';
 import eventsRaw from '../../../data/events.json';
 import rewardsRaw from '../../../data/rewards.json';
 import type { Boss, GlossaryRecord, Tactic, TreeData } from '../../lib/types';
@@ -31,16 +32,17 @@ const cards = [
   { href: '/tactic/', title: '戰術', intro: '對戰與合作模式中的戰術效果，可依階段篩選，也能切換看合作模式的版本。', count: tacticCount, unit: '條' },
   { href: '/boss/', title: '怪物圖鑑', intro: '對戰與合作模式中會出現的怪物與首領，以及各自的特性與技能效果。', count: bossCount, unit: '種' },
   { href: '/rift-shop/', title: '裂縫商店', intro: '合作困難模式的局內商店。擊殺首領與 SP 魔像取得討伐硬幣，兌換裂縫效果。', count: riftShopRaw.length, unit: '種' },
-  { href: '/relic/', title: '神器', intro: '累積擊殺解鎖的局外養成。列出每種神器的效果、逐級數值、升級花費與收藏等級的暴擊傷害加成。', count: relicsRaw.length, unit: '種' },
+  { href: '/relic/', title: '神器', intro: '累積擊殺解鎖的局外養成。列出每種神器的效果、逐級數值、升級花費、收藏等級的暴擊傷害加成，以及裂縫結晶的取得方式。', count: relicsRaw.length, unit: '種' },
+  { href: '/season/', title: '賽季', intro: '排行榜結算用的賽季：每一季的開始與結束時間、開放條件，以及換季時會發生的事。', count: seasonsRaw.eras.length, unit: '季' },
   { href: '/events/', title: '活動', intro: '遊戲裡辦過的期間限定活動，逐場列出完整內容。', count: eventsRaw.length, unit: '場' },
   { href: '/rewards/', title: '獎勵系統', intro: '各模式、活動與成就的里程碑獎勵，並列出每個分類全部領完可拿到的資源總量。', count: rewardsRaw.modes.length + (rewardsRaw.repeatable ? 1 : 0), unit: '類' },
 ];
 ---
 
-<Base title="總覽" description="Random Dice 2 遊戲介紹總覽：遊戲名詞、戰術、怪物圖鑑、裂縫商店、活動與獎勵。">
+<Base title="總覽" description="Random Dice 2 遊戲介紹總覽：遊戲名詞、戰術、怪物圖鑑、裂縫商店、神器、賽季、活動與獎勵。">
   <section class="page">
     <h1 class="page-head">總覽</h1>
-    <p class="lede">遊戲裡的名詞、戰術、怪物、商店、活動與獎勵。</p>
+    <p class="lede">遊戲裡的名詞、戰術、怪物、商店、神器、賽季、活動與獎勵。</p>
 
     <div class="guide-cards is-content">
       {cards.map((card, i) => (

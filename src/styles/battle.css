@@ -235,3 +235,16 @@
     grid-template-columns: repeat(6, minmax(0, 1fr));
   }
 }
+
+/* /relic「取得裂縫結晶」底下的兩個小節（覺醒之甕、神器通行證）。上緣比 h2 的分組標題少一階。 */
+.relic-sub {
+  margin: var(--space-5) 0 var(--space-2);
+  font-size: var(--fs-lg);
+}
+
+/* /season 的條列說明：瀏覽器預設的內距換成 token，行寬跟表格對齊。 */
+.season-notes {
+  max-width: 44rem;
+  margin: 0;
+  padding-left: var(--space-5);
+}

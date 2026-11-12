@@ -1,0 +1,55 @@
+---
+// 賽季（遊戲 1.2.0 新增）。資料來自客戶端 `EraTable`（`data/seasons.json`，規則 34）。
+//
+// ⚠️ 遊戲繁中把兩種東西都叫「賽季N」：這一頁是排行榜結算用的賽季（`EraTable`，一季兩到三個月），
+// 不是每月一期的骰子通行證（`SeasonTable`）。頁面開頭要講明，否則「賽季1」會被讀成通行證那個。
+// 時區印在表格下方一次（各季同一個時區，規則 34 的檔期形狀跟 /events 共用）；表格共用 events.css，
+// 分組標題與條列的間距在 battle.css。
+import Base from '../layouts/Base.astro';
+import '../styles/battle.css';
+import '../styles/events.css';
+import seasonsRaw from '../../data/seasons.json';
+import type { Seasons } from '../lib/types';
+
+const seasons = seasonsRaw as Seasons;
+const num = (n: number) => n.toLocaleString('en-US');
+---
+
+<Base title="賽季" description="Random Dice 2 的賽季時間表：每一季的開始與結束時間、開放條件，以及換季時會發生的事。">
+  <section class="page" id="season-page">
+    <h1 class="page-head">賽季</h1>
+    <p class="lede">
+      賽季是競技場與合作戰排行榜的結算週期，累積擊殺 {num(seasons.unlockKills)} 隻怪物後開放。遊戲裡每月一期的骰子通行證也叫「賽季」，跟這裡的賽季是兩回事。
+    </p>
+
+    <h2 class="sec-title" id="season-schedule">賽季時間表</h2>
+    <div class="event-table-wrap" tabindex="0" role="region" aria-labelledby="season-schedule">
+      <table class="event-table">
+        <thead>
+          <tr>
+            <th scope="col">賽季</th>
+            <th scope="col">開始</th>
+            <th scope="col">結束</th>
+          </tr>
+        </thead>
+        <tbody>
+          {seasons.eras.map(era => (
+            <tr id={`s${era.id}`}>
+              <th scope="row">{era.name}</th>
+              <td>{era.period.begin}</td>
+              <td>{era.period.finish}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+    <p class="note">時間是 {seasons.eras[0]!.period.tz}。</p>
+
+    <h2 class="battle-group-head sec-title" id="season-notes">賽季裡有什麼</h2>
+    <ul class="season-notes">
+      <li>競技場點數分成「最高競技場點數」與「賽季競技場點數」，賽季競技場點數只算當季。</li>
+      <li>競技場、合作戰、合作戰困難模式各有一份當季的排行榜。</li>
+      <li>賽季1開始時，骰子樹可以免費重置 1 次。</li>
+    </ul>
+  </section>
+</Base>

@@ -1,11 +1,12 @@
 // 神器（/relic）。跟 /rift-shop 同一族的靜態頁：核心承諾是「文字進得了 HTML」。
 import { readFileSync } from 'node:fs';
 import { test, expect } from './fixtures';
-import { costRows, critBands, relicUnit } from '../../src/lib/relic';
-import type { Relic, RelicLevels } from '../../src/lib/types';
+import { costRows, critBands, potRows, relicUnit, rewardText } from '../../src/lib/relic';
+import type { Relic, RelicCrystal, RelicLevels } from '../../src/lib/types';
 
 const relics: Relic[] = JSON.parse(readFileSync(new URL('../../data/relics.json', import.meta.url), 'utf8'));
 const levels: RelicLevels = JSON.parse(readFileSync(new URL('../../data/relic-levels.json', import.meta.url), 'utf8'));
+const crystal: RelicCrystal = JSON.parse(readFileSync(new URL('../../data/relic-crystal.json', import.meta.url), 'utf8'));
 
 test('RL1. /relic 的名稱與每一級的數值是伺服器輸出的 HTML（收合的逐級表也在）', async ({ request }) => {
   const res = await request.get('/relic');
@@ -89,4 +90,15 @@ test('RL6. 逐級數值預設收合，展開後看得到 20 級', async ({ page 
   await first.locator('summary').click();
   await expect(first.locator('tbody tr')).toHaveCount(relics[0]!.values[0]!.length);
   await expect(first.locator('tbody tr').last()).toBeVisible();
+});
+
+test('RL7. 覺醒之甕與神器通行證兩張表逐格等於資料', async ({ page }) => {
+  await page.goto('/relic');
+  const cells = (id: string) => page.locator(`[aria-labelledby="${id}"] tbody tr`)
+    .evaluateAll(rows => rows.map(tr => [...tr.children].map(td => td.textContent!.trim())));
+  expect(await cells('relic-pot')).toEqual(
+    potRows(crystal.pot.tiers).map(t => [t.points.toLocaleString('en-US'), rewardText(t), t.total.map(rewardText).join('、')]));
+  expect(await cells('relic-pass')).toEqual(crystal.pass.map(p => [p.mission, rewardText(p.free), rewardText(p.paid)]));
+  // 表外的重複獎勵寫在說明文字裡。
+  await expect(page.locator('#relic-pot + .note')).toContainText(`每再累積 ${crystal.pot.repeatPoints.toLocaleString('en-US')} 點可以再領 ${rewardText(crystal.pot.repeatReward)}`);
 });

@@ -524,6 +524,37 @@ export interface RelicLevels {
   critDamage: number[];
 }
 
+/** 一筆獎勵：哪一種貨幣、幾個（`data/relic-crystal.json`）。種類清單在 `src/lib/relic.ts` 的 `RELIC_GOODS`。 */
+export interface RelicReward {
+  goods: 'crystal' | 'gold';
+  amount: number;
+}
+
+/**
+ * 裂縫結晶（神器抽取貨幣）的兩個來源（`data/relic-crystal.json`，`/relic`）。
+ * 來自客戶端 `Eye7PotTable`／`RelicPassTable`。
+ */
+export interface RelicCrystal {
+  /** 覺醒之甕：累積覺醒點數領獎。 */
+  pot: {
+    /** `points` 是**累計**門檻（由小到大），不是每一檔各自要的量。 */
+    tiers: ({ points: number } & RelicReward)[];
+    /** 最後一檔之後，每再累積這麼多點領一次 `repeatReward`。 */
+    repeatPoints: number;
+    repeatReward: RelicReward;
+  };
+  /** 神器通行證：`free` 是免費獎勵，`paid` 是購買通行證後多拿的那一份。 */
+  pass: { id: string; mission: string; free: RelicReward; paid: RelicReward }[];
+}
+
+/** 賽季（`data/seasons.json`，`/season`）。來自客戶端 `EraTable`，不是每月一期的骰子通行證。 */
+export interface Seasons {
+  /** 開放賽季要的累積擊殺數（`ContentOpenTable` 的 `ERA`）。 */
+  unlockKills: number;
+  /** 由舊到新；`period` 兩端都寫到時刻，各季同一個 `tz`（規則 34）。 */
+  eras: { id: string; name: string; period: NonNullable<GameEvent['period']> }[];
+}
+
 /**
  * 一場期間限定活動（`data/events.json` 的一筆，`/events`）。
  *

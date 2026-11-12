@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { costRows, critBands, relicEffectRange, relicUnit } from '../../src/lib/relic';
-import type { Relic, RelicLevels } from '../../src/lib/types';
+import { costRows, critBands, potRows, relicEffectRange, relicUnit, rewardText, rewardTotals } from '../../src/lib/relic';
+import type { Relic, RelicCrystal, RelicLevels } from '../../src/lib/types';
 
 const relics: Relic[] = JSON.parse(readFileSync('data/relics.json', 'utf8'));
 const levels: RelicLevels = JSON.parse(readFileSync('data/relic-levels.json', 'utf8'));
@@ -60,5 +60,29 @@ describe('costRows', () => {
     const rows = costRows(levels.pieces, levels.gold);
     expect(rows[0]).toEqual({ level: 2, pieces: 2, gold: 1000, sumPieces: 2, sumGold: 1000 });
     expect(rows[rows.length - 1]).toEqual({ level: 20, pieces: 290, gold: 500000, sumPieces: 1751, sumGold: 1859000 });
+  });
+});
+
+describe('裂縫結晶的來源', () => {
+  const crystal: RelicCrystal = JSON.parse(readFileSync('data/relic-crystal.json', 'utf8'));
+
+  it('rewardText：名稱＋千分位數量', () => {
+    expect(rewardText({ goods: 'crystal', amount: 3 })).toBe('裂縫結晶 ×3');
+    expect(rewardText({ goods: 'gold', amount: 20000 })).toBe('金幣 ×20,000');
+  });
+
+  it('rewardTotals：依種類加總、結晶在前、沒拿到的種類不列', () => {
+    expect(rewardTotals([{ goods: 'gold', amount: 5 }, { goods: 'crystal', amount: 1 }, { goods: 'gold', amount: 7 }]))
+      .toEqual([{ goods: 'crystal', amount: 1 }, { goods: 'gold', amount: 12 }]);
+    expect(rewardTotals([{ goods: 'gold', amount: 5 }])).toEqual([{ goods: 'gold', amount: 5 }]);
+  });
+
+  it('potRows：每一檔帶著領到這一檔為止的累計，最後一檔＝全部加總', () => {
+    const rows = potRows(crystal.pot.tiers);
+    expect(rows[0]!.total).toEqual([{ goods: crystal.pot.tiers[0]!.goods, amount: crystal.pot.tiers[0]!.amount }]);
+    expect(rows[rows.length - 1]!.total).toEqual(rewardTotals(crystal.pot.tiers));
+    // 累計只增不減（門檻是累計制，規則 33(c)）。
+    const sums = rows.map(r => r.total.reduce((n, t) => n + t.amount, 0));
+    expect(sums.every((n, i) => i === 0 || n > sums[i - 1]!)).toBe(true);
   });
 });

@@ -20,7 +20,7 @@ test('GI1. 總覽卡片與「遊戲介紹」下拉一一對應、資料計數、
   for (const [href, count, unit] of [
     ['/guide/keywords/', Object.values(keywords).filter(k => !k.aliasOf).length, '條'],
     ['/tactic/', readData('tactics').length, '條'], ['/boss/', readData('boss').length, '種'],
-    ['/rift-shop/', readData('rift-shop').length, '種'], ['/relic/', readData('relics').length, '種'], ['/events/', readData('events').length, '場'],
+    ['/rift-shop/', readData('rift-shop').length, '種'], ['/relic/', readData('relics').length, '種'], ['/season/', readData('seasons').eras.length, '季'], ['/events/', readData('events').length, '場'],
     ['/rewards/', rewards.modes.length + (rewards.repeatable ? 1 : 0), '類'],
   ] as const) {
     await expect(content.locator(`a[href="${href}"] .note`)).toContainText(`${count} ${unit}`);
@@ -32,7 +32,7 @@ test('GI1. 總覽卡片與「遊戲介紹」下拉一一對應、資料計數、
       return { width: rect.width, left: rect.left, index: getComputedStyle(card).getPropertyValue('--i') };
     }));
     expect(Math.max(...boxes.map(box => box.width)) - Math.min(...boxes.map(box => box.width))).toBeLessThan(0.5);
-    expect(boxes.map(box => Number(box.index))).toEqual([0, 1, 2, 3, 4, 5, 6]);
+    expect(boxes.map(box => Number(box.index))).toEqual([0, 1, 2, 3, 4, 5, 6, 7]);
     if (isMobile) expect(boxes.every(box => Math.abs(box.left - boxes[0]!.left) < 0.5)).toBe(true);
     expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(0);
   }
