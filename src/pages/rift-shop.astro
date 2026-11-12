@@ -49,15 +49,14 @@ const grouped = GRADE_ORDER.map(grade => {
 const coin = currencyIcon('tacticcoin');
 
 /**
- * 困難模式全怪物共通的三種「意志」（客戶端 `common_ingame_hard_desc_03..05`）。
+ * 困難模式全怪物共通的兩種「意志」（客戶端 `common_ingame_hard_desc_03..04`；1.2.0 起 `GameModeBuffTable` 不再掛生存意志）。
  *
  * ⚠️ 寫死在這裡而不是進資料檔（Yuki 2026-09-06 裁決）：它們不是商品、沒有編號、沒有圖，
- * 進 rift-shop.json 就得為三筆特例放寬規則 27 的每一條欄位檢查。
+ * 進 rift-shop.json 就得為這幾筆特例放寬規則 27 的每一條欄位檢查。
  */
 const WILLS = [
-  { name: '不屈意志', effect: '僵硬效果產生 1 秒延遲' },
+  { name: '不屈意志', effect: '僵硬效果產生 0.15 秒延遲' },
   { name: '守護意志', effect: '生命值等比傷害減少 50%' },
-  { name: '生存意志', effect: '生命值低於 30% 時，子彈暴斃效果生效' },
 ];
 ---
 
@@ -71,7 +70,7 @@ const WILLS = [
 
     {/* 困難模式的共通條件。⚠️ 這一段不是商品清單的一部分，所以在篩選器上面、不受篩選影響。 */}
     <div class="battle-intro">
-      <p class="note">困難模式的所有怪物都帶著三種「意志」：</p>
+      <p class="note">困難模式的所有怪物都帶著兩種「意志」：</p>
       <ul class="battle-intro-list">
         {WILLS.map(w => (
           <li><strong>{w.name}</strong>　{w.effect}</li>

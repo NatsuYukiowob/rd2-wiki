@@ -744,8 +744,8 @@
     "icon": "6b225ab91d1c",
     "availability": {
       "versus": true,
-      "coopNormal": true,
-      "coopHard": true
+      "coopNormal": false,
+      "coopHard": false
     }
   },
   {

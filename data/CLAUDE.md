@@ -19,12 +19,13 @@
   `3605`（比表格再往左 10，讓出 `3505` 的骰子標籤）、`2307`（比表格往下 20，否則 `2207` 的標籤壓到它的圖示）、
   `5010`（比表格往上 10，否則骰子標籤壓到 `5210`）、`5310`（往下 20，讓出 `5210` 的標籤、避開 `5410` 的標籤）、
   `1206`（往左 30，否則跟 `1006` 的骰子標籤互壓）、`1306`（往左 30、往下 10，讓出 `1103` 的標籤，且不壓到 `1206` 的圖示）、
-  `5114`（往下 5，讓出 `5109` 的標籤）、`5306`（往上 10，否則它的標籤壓到 `5006`）。
+  `5114`（往下 5，讓出 `5109` 的標籤）、`5306`（往上 10，否則它的標籤壓到 `5006`）、
+  `4204`（往下 20，否則 `4004` 的骰子標籤壓到它的圖示；這一塊擠不出零重疊，剩下的是符文自己的 hover 標籤）。
   量的時候三種都要算：標籤壓圖示、標籤互壓（標籤外框加上描邊 `lineWidth 3`）、圖示互壓。
   量重疊要用畫布的字（`700 12px` world 單位，`theme.labelPx`），預覽 SVG 的字比較小、會低估。
   已知且接受：`3305` 的標籤左緣擦進 `3505` 圖框右下約 2.5（落在圖檔的透明邊，畫面看不出來；要避開得把 `3505` 移 40 以上）。其餘一律照表格。
 - ⚠️ **客戶端描述是樣板不是成品**：`{0}`／`{1}` 用 `Value1`／`Value1_RankAdd` 填、`<tag>X</tag>` 換成 `#關鍵字`、
-  `<color>`／`<u>` 剝掉。三類差異**不是遊戲改了**：(a) 樣板沒放成長佔位（`盛開`／`排序增幅`／`末日宣言`），正本保留
+  `<color>`／`<u>` 剝掉。三類差異**不是遊戲改了**：(a) 樣板沒放成長佔位（`盛開`／`末日宣言`），正本保留
   `(+每級)` 讓規則 17 算得出來；(b) 負值成長印成 `-0.5秒(+-0.2秒)`，正本維持 `0.5秒(+0.2秒)`；(c) 值在別張表
   （`蔑視弱者` 的 30／100）。判「真變動」要**三向比對**：上一版上游 ≠ 新版客戶端才算；wiki ≠ 客戶端但舊上游 ＝ wiki 的是本站自己的正規化。
 - ⚠️ **sprite 名稱與譯名對得起來不等於它就是那個東西的圖**（活動貨幣挑錯過一次）。拿不到 UI 綁定時標成推測並找實機截圖對。
@@ -32,11 +33,12 @@
 ## 正本刻意跟上游不一致的格子（對帳時會顯示成差異，不要改回去）
 
 - 5403：上游 `（最多100疊加）`（全形）→ 正本 `(最多100疊加)`（半形，全站一致）。
+- 4207：上游 `5% (+0.5%)`（中間有空格）→ 正本 `5%(+0.5%)`（全站成長值不留空格）。
 - **以客戶端表為準、xlsx 仍是舊值的格子**：`nodes.json` 的 4307／4407／5304／5403／5404 解鎖成本與 2201 描述、
   `maxlevel-official.json` 的 D2000、`dice-stats.json` 的 D206／D407 攻擊力，D004／D005／D104／D107／D200 首領額外傷害／
   D201／D202／D208×2／D302／D306／D402／D406 的技能四檔。對帳時拿 `DefenderTable`／`DefenderSkillTable`／
   `ProjectileAbilityTable`／`DiceTreeNodeTable`／`RuneTable` 對。
-- 決策：`2009`／`5001` 描述末尾 xlsx 加註的數字保留；`D102` 審判骰子攻擊速度是「—」（客戶端 `AttackInterval` 為 0）。
+- 決策：`2009`／`5001` 描述末尾 xlsx 加註的數字保留。
 - ⚠️ 判斷某格是否「仍不一致」要**把兩邊字串直接比對**，不是看上游還有沒有大括號。
 
 ## 對帳清單
@@ -70,7 +72,10 @@
 | `passive-upgrade-cost.json` | 規則 22（雙向） | `bands` 照官方寫法（`core` 只在 `from` 那級收一次），展開只走 `src/lib/upgrade-tiers.ts` 的 `expandTier()`，validate 與 `/sim` 共用 |
 | `dice-stats.json` | 規則 23 | 見下 |
 | `tactics.json`／`boss.json` | 規則 24／25 | 見下 |
-| `rift-shop.json` | 規則 27 | 換圖用 `add-icon --rift-shop`（同一組檔位一起換，分組看 `gameId` 去掉 Low／Mid／High，不看名字）；來源 `TacticsEffectTable` 的 `Store === True` 列；跟 `tactics.json`（`Use === True`）**不要合併**；每個檔位一筆、按階級分組；三種「意志」寫死在頁面、不進資料檔 |
+| `rift-shop.json` | 規則 27 | 換圖用 `add-icon --rift-shop`（同一組檔位一起換，分組看 `gameId` 去掉 Low／Mid／High，不看名字）；來源 `TacticsEffectTable` 的 `Store === True` 列；跟 `tactics.json`（`Use === True`）**不要合併**；每個檔位一筆、按階級分組；困難模式的「意志」寫死在頁面、不進資料檔 |
+| `relics.json`／`relic-levels.json` | 規則 32 | 來源 `RelicTable`／`RelicCriticalTable`／`ContentOpenTable`（`RELIC`）。`Value`／`Value2` 是「1 級值＋每級增量」，正本存**累加後的絕對值**（客戶端 `GetRelicCumulativeValue`）；描述樣板剝掉綠字增量提示、`{0}`／`{2}` 重新編成 `{0}`／`{1}`。30 種的升級花費相同所以只存一份（產生腳本會斷言；哪天不同了要改資料形狀）。收藏等級＝ `TotalLevel` ≤ 總等級的列加總。多組數值的欄名（`valueLabels`）客戶端沒有、是產生腳本裡人工補的，新的多數值神器要先補。⚠️ **圖示不是 `icon_relic_<10000+Id>`**：客戶端 `IconResources` 的對照表把 15 與 25 交叉配，以對照表為準；換圖用 `add-icon --relic` |
+| `relic-crystal.json` | 規則 33 | 來源 `Eye7PotTable`（覺醒之甕）、`RelicPassTable`（神器通行證）、`ConstantsTable` 的 `Eye7RepeatPoint`／`Eye7RepeatRewardId`（查 `RewardTable`）。`Eye7Point` 是**累計**門檻（客戶端 `IsEye7PotRewardable` 比的是累計點數）；20 檔之後每 `Eye7RepeatPoint` 點領一次重複獎勵。獎勵種類只收金幣（GOODS 1）與裂縫結晶（GOODS 111），出現別的產生腳本會中止，要先在 `RELIC_GOODS` 登記。通行證任務句的 `{0}`＝`DoneCount`、`{1}`＝`Mission` 尾巴的等級（照字面推的）。通行證售價不在表裡，不收 |
+| `seasons.json` | 規則 34 | 來源 `EraTable`＋`ContentOpenTable`（`ERA`）。⚠️ 不是 `SeasonTable`（那是每月一期的骰子通行證，繁中同樣叫「賽季N」）。表裡開始是 UTC、結束是 UTC+9，正本**一律換成 UTC+9 的牆上時間**並寫到時刻。排行榜 ID 不收 |
 | `events.json` | 規則 29 | 軸是活動不是版本；內容是通用表格（`sections[].columns`＋`rows`）；只收帶專屬貨幣與兌換所的限時活動（賽季、熱門時段、付費禮包不收）；截圖客戶端拿不到、檔期看活動（有排程表就讀表，沒有就靠實測），拿不到的放產生腳本的「人工補充」區塊，都沒有時 `period` 為 `null`，有的話連同時區（`tz`）一起寫；活動貨幣圖進 `public/currency/`、種類登記在 `src/lib/cost-html.ts` 的 `CurrencyIconKind` |
 | `rewards.json` | `tests/data/rewards.test.ts`（**沒有 validate 規則**） | 由 `tools/import-rewards.py` 從本機主表匯入；收藏品圖只在 `assetStatus: 'ready'` 且有 `icon` 時用，**沒確認過的圖不要拿截圖或單層 sprite 充數**；`public/rewards/` 沒有轉檔管線，別放更大的原圖 |
 | `changelog.json` | 規則 20 | 規則 20 檢查**最新一筆帶 `data` 的條目**，不是 `entries[0]` |
@@ -85,8 +90,8 @@
 3. **備註欄不可整欄照抄**：校訂記錄（判準 `/^原始.*文本/`）是給維護者的，`tests/data/dice-stats.test.ts` 釘住保留的 gameId。CI 擋不到。
 4. 四檔全部用客戶端表算：`base`／`dice7 = base+6·LvAdd`／`lv15 = base+14·UpAdd`／`lv15dice7` 兩者疊加；攻擊速度另算
    （`dice7 = base÷7`）。來源欄 `DefenderTable`（Attack／AttackInterval／BossAttackPer）、`DefenderSkillTable`
-   （PowerConstant／Range／CastCount／Interval）、`ProjectileAbilityTable`（Value／Duration／Range／StackMax），以 `Local_*` 的 zh-tw 名對到 `label`。
-   ⚠️ `Duration`／`StackMax`／`CastCount` 三種來源欄的項目是公式外推、未獨立驗證（`D002`／`D003`／`D400`／`D100`／`D302`／`D209`），有實機截圖時優先對這幾格。
+   （PowerConstant／Range／CastCount／Interval／Value）、`ProjectileAbilityTable`（Value／Value2／Duration／Range／StackMax），以 `Local_*` 的 zh-tw 名對到 `label`。
+   ⚠️ `Duration`／`StackMax`／`CastCount` 三種來源欄的項目是公式外推、未獨立驗證（`D002`／`D003`／`D400`／`D100`／`D102`／`D302`／`D209`），有實機截圖時優先對這幾格。
    秒單位的成長文字一律帶 `s`。
 5. 官方空著的格子寫 `待實測`，不要省略（省略會被判成固定值）；**不用 CI 警告記錄**（validate 黃金樣本要求 warnings 為零），
    改由 `tests/data/dice-stats.test.ts` 逐格釘住；`tests/e2e/codex.spec.ts` 的 C7 守「待實測」不得回到畫面。

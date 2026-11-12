@@ -1,0 +1,233 @@
+{
+  "pot": {
+    "tiers": [
+      {
+        "points": 5,
+        "goods": "crystal",
+        "amount": 1
+      },
+      {
+        "points": 10,
+        "goods": "crystal",
+        "amount": 1
+      },
+      {
+        "points": 20,
+        "goods": "crystal",
+        "amount": 1
+      },
+      {
+        "points": 30,
+        "goods": "crystal",
+        "amount": 1
+      },
+      {
+        "points": 40,
+        "goods": "crystal",
+        "amount": 1
+      },
+      {
+        "points": 70,
+        "goods": "crystal",
+        "amount": 1
+      },
+      {
+        "points": 120,
+        "goods": "crystal",
+        "amount": 1
+      },
+      {
+        "points": 180,
+        "goods": "crystal",
+        "amount": 1
+      },
+      {
+        "points": 240,
+        "goods": "crystal",
+        "amount": 1
+      },
+      {
+        "points": 300,
+        "goods": "crystal",
+        "amount": 1
+      },
+      {
+        "points": 380,
+        "goods": "crystal",
+        "amount": 2
+      },
+      {
+        "points": 460,
+        "goods": "crystal",
+        "amount": 2
+      },
+      {
+        "points": 540,
+        "goods": "crystal",
+        "amount": 2
+      },
+      {
+        "points": 620,
+        "goods": "crystal",
+        "amount": 2
+      },
+      {
+        "points": 700,
+        "goods": "crystal",
+        "amount": 2
+      },
+      {
+        "points": 820,
+        "goods": "crystal",
+        "amount": 2
+      },
+      {
+        "points": 940,
+        "goods": "crystal",
+        "amount": 2
+      },
+      {
+        "points": 1060,
+        "goods": "crystal",
+        "amount": 2
+      },
+      {
+        "points": 1180,
+        "goods": "crystal",
+        "amount": 2
+      },
+      {
+        "points": 1300,
+        "goods": "crystal",
+        "amount": 2
+      }
+    ],
+    "repeatPoints": 80,
+    "repeatReward": {
+      "goods": "crystal",
+      "amount": 1
+    }
+  },
+  "pass": [
+    {
+      "id": "1",
+      "mission": "解鎖神器",
+      "free": {
+        "goods": "crystal",
+        "amount": 1
+      },
+      "paid": {
+        "goods": "crystal",
+        "amount": 1
+      }
+    },
+    {
+      "id": "2",
+      "mission": "抽取神器2次",
+      "free": {
+        "goods": "crystal",
+        "amount": 1
+      },
+      "paid": {
+        "goods": "crystal",
+        "amount": 3
+      }
+    },
+    {
+      "id": "3",
+      "mission": "抽取神器5次",
+      "free": {
+        "goods": "crystal",
+        "amount": 1
+      },
+      "paid": {
+        "goods": "crystal",
+        "amount": 3
+      }
+    },
+    {
+      "id": "4",
+      "mission": "抽取神器10次",
+      "free": {
+        "goods": "crystal",
+        "amount": 1
+      },
+      "paid": {
+        "goods": "crystal",
+        "amount": 5
+      }
+    },
+    {
+      "id": "5",
+      "mission": "1個神器達到3等級",
+      "free": {
+        "goods": "crystal",
+        "amount": 1
+      },
+      "paid": {
+        "goods": "crystal",
+        "amount": 5
+      }
+    },
+    {
+      "id": "6",
+      "mission": "3個神器達到3等級",
+      "free": {
+        "goods": "crystal",
+        "amount": 1
+      },
+      "paid": {
+        "goods": "crystal",
+        "amount": 10
+      }
+    },
+    {
+      "id": "7",
+      "mission": "5個神器達到3等級",
+      "free": {
+        "goods": "crystal",
+        "amount": 1
+      },
+      "paid": {
+        "goods": "crystal",
+        "amount": 15
+      }
+    },
+    {
+      "id": "8",
+      "mission": "1個神器達到5等級",
+      "free": {
+        "goods": "crystal",
+        "amount": 1
+      },
+      "paid": {
+        "goods": "crystal",
+        "amount": 10
+      }
+    },
+    {
+      "id": "9",
+      "mission": "3個神器達到5等級",
+      "free": {
+        "goods": "gold",
+        "amount": 20000
+      },
+      "paid": {
+        "goods": "crystal",
+        "amount": 25
+      }
+    },
+    {
+      "id": "10",
+      "mission": "1個神器達到10等級",
+      "free": {
+        "goods": "gold",
+        "amount": 50000
+      },
+      "paid": {
+        "goods": "crystal",
+        "amount": 50
+      }
+    }
+  ]
+}
