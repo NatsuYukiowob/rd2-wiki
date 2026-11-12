@@ -5,6 +5,7 @@ import { DEFAULT_TACTIC_MODE, TACTIC_MODES, TACTIC_STAGES, tacticMatches, toggle
 
 const tactics = data as Tactic[];
 // RD2資料交接「戰術系統驗證」A5:V80，v1.1.2 已驗證候選池；不從網站 coop 文本反推。
+// 1.2.0：68 撲克時間移出合作一般／困難的波次池（CoopWaveTable／CoopHardWaveTable 的 CoopTacticsIndex），只留對戰。
 const verifiedPools: Record<TacticMode, string[]> = {
   "versus": [
     "6",
@@ -106,7 +107,6 @@ const verifiedPools: Record<TacticMode, string[]> = {
     "62",
     "64",
     "67",
-    "68",
     "69",
     "71"
   ],
@@ -151,7 +151,6 @@ const verifiedPools: Record<TacticMode, string[]> = {
     "62",
     "64",
     "67",
-    "68",
     "69",
     "71"
   ]
