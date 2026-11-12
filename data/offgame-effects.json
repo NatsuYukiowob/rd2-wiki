@@ -1186,7 +1186,7 @@
       "value": 2,
       "rankAdd": 1,
       "maxLevel": 50,
-      "template": "攻擊時額外打擊範圍內 {V} 個怪物（70% 攻擊力）"
+      "template": "攻擊時額外打擊 0.7 範圍內最近的 {V} 個怪物（傷害與該次攻擊相同）"
     },
     "4204": {
       "kind": "BrokenGrowthSuccessRateUpPercent",
