@@ -1,6 +1,6 @@
 {
   "note": "骰子樹符文／玩家被動對 /board 數值卡片的語意（規則 28 守）。數字取自客戶端表，語意依逆向結果人工標註；維護方式見 CLAUDE.md。",
-  "source": "遊戲 1.1.6 客戶端 DiceTreeNodeTable／RuneTable／PlayerPassiveTable",
+  "source": "遊戲 1.2.0 客戶端 DiceTreeNodeTable／RuneTable／PlayerPassiveTable",
   "effects": {
     "1101": {
       "kind": "NatureAttackUpPerV2",
@@ -1257,7 +1257,7 @@
       "value": 5,
       "rankAdd": 3,
       "maxLevel": 3,
-      "label": "拳擊最大補充量"
+      "label": "最大補充量"
     },
     "4304": {
       "kind": "BrokenGrowthSafeBelow1Star",
