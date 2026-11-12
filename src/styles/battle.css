@@ -173,3 +173,65 @@
   margin: var(--space-5) 0;
   color: var(--muted);
 }
+
+/* --- 神器（/relic）--- */
+/* 照遊戲內「神器」畫面排的圖示格：圖在上、名稱在下。手機 4 欄（＝遊戲），寬螢幕 6 欄
+   （30 種剛好 5 列）。欄數寫死而不是 auto-fill：這一格的重點是「跟遊戲裡同一個位置找得到」。 */
+.relic-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-2);
+  max-width: 44rem;
+  margin: 0 0 var(--space-5);
+  padding: 0;
+  list-style: none;
+}
+
+/* 格子的面、框、hover 抬升、按壓與減少動態全部來自 components.css 的 `a.row-card`，這裡只管排版。
+   li 是 grid 讓 <a> 撐滿整格：名稱在窄螢幕換成兩行時，同一列的格子才會等高。 */
+.relic-grid > li {
+  display: grid;
+}
+
+.relic-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-1);
+  color: inherit;
+  font-size: var(--fs-sm);
+  text-align: center;
+  text-decoration: none;
+}
+
+.relic-cell > img {
+  width: var(--space-7);
+  height: var(--space-7);
+  object-fit: contain;
+}
+
+/* 逐級數值：原生 details，收合時只佔一行。 */
+.relic-levels {
+  /* 橫跨 `.battle-item` 的兩欄（圖示＋文字），表格才填得滿整張卡片。 */
+  grid-column: 1 / -1;
+}
+
+.relic-levels > summary {
+  width: fit-content;
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
+
+.relic-levels > .event-table-wrap {
+  /* 蓋掉 `.event-table-wrap` 的行寬上限：這張表要跟卡片同寬。 */
+  max-width: none;
+  margin-top: var(--space-2);
+}
+
+@media (min-width: 721px) {
+  .relic-grid {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+}

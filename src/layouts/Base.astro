@@ -69,7 +69,7 @@ const isCurrent = (link: string) => {
  * 收進這個下拉之後，只看 `/guide` 的話，站在戰術頁時導覽列上零提示——下拉是收起來的，
  * 裡面那條 `aria-current` 使用者根本看不到。2026-09-06 的 `/rift-shop` 同理。
  */
-const guideCurrent = ['/guide', '/tactic', '/boss', '/rift-shop', '/events', '/rewards']
+const guideCurrent = ['/guide', '/tactic', '/boss', '/rift-shop', '/relic', '/events', '/rewards']
   .some(href => isCurrent(href));
 
 /**
@@ -183,6 +183,7 @@ const imageUrl = new URL('/favicon.png', Astro.site).href;
           <a href="/tactic/" aria-current={isCurrent('/tactic/') ? 'page' : undefined}>戰術</a>
           <a href="/boss/" aria-current={isCurrent('/boss/') ? 'page' : undefined}>怪物圖鑑</a>
           <a href="/rift-shop/" aria-current={isCurrent('/rift-shop/') ? 'page' : undefined}>裂縫商店</a>
+          <a href="/relic/" aria-current={isCurrent('/relic/') ? 'page' : undefined}>神器</a>
           <a href="/events/" aria-current={isCurrent('/events/') ? 'page' : undefined}>活動</a>
           <a href="/rewards/" aria-current={isCurrent('/rewards/') ? 'page' : undefined}>獎勵系統</a>
         </div>

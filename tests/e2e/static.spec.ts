@@ -14,6 +14,7 @@ const PAGES: { path: string; secTitle: number; card?: string; rowCard?: boolean;
   { path: '/tactic', secTitle: 0, rowCard: true, filterBar: true },
   { path: '/boss', secTitle: 3, rowCard: true },
   { path: '/rift-shop', secTitle: 3, rowCard: true, filterBar: true },
+  { path: '/relic', secTitle: 4, rowCard: true },
 ];
 
 for (const p of PAGES) {
@@ -222,7 +223,7 @@ for (const [path, name] of [['/tree', '骰子樹'], ['/sim', '骰子樹模擬器
 
 /** 有內容的頁面（`/tree`、`/sim` 只有 sr-only 的 h1，也照樣要合格）。 */
 const ALL_PAGES = ['/', '/tree', '/dice', '/board', '/sim', '/guide', '/guide/keywords', '/tactic', '/boss',
-  '/rift-shop', '/events', '/events/chuseok-2026', '/rewards', '/about'];
+  '/rift-shop', '/relic', '/events', '/events/chuseok-2026', '/rewards', '/about'];
 
 test('ST7. 標題階層不跳級：每一頁相鄰標題的層級最多往下一階（讀屏用標題清單當目錄）', async ({ page }) => {
   for (const path of ALL_PAGES) {
@@ -236,7 +237,7 @@ test('ST7. 標題階層不跳級：每一頁相鄰標題的層級最多往下一
 test('ST8. 320px 與 280px：靜態頁不撐出橫捲，卡片左右留白對稱（grid 的 minmax 下限不能大於內容寬）', async ({ page }) => {
   for (const width of [320, 280]) {
     await page.setViewportSize({ width, height: 800 });
-    for (const path of ['/', '/dice', '/guide', '/guide/keywords', '/tactic', '/boss', '/rift-shop', '/events', '/rewards']) {
+    for (const path of ['/', '/dice', '/guide', '/guide/keywords', '/tactic', '/boss', '/rift-shop', '/relic', '/events', '/rewards']) {
       await page.goto(path);
       const m = await page.evaluate(() => {
         const cw = document.documentElement.clientWidth;

@@ -27,6 +27,7 @@ const PAGES = [
   { request: '/tactic', canonical: `${SITE}/tactic/`, name: '戰術' },
   { request: '/boss', canonical: `${SITE}/boss/`, name: '怪物圖鑑' },
   { request: '/rift-shop', canonical: `${SITE}/rift-shop/`, name: '裂縫商店' },
+  { request: '/relic', canonical: `${SITE}/relic/`, name: '神器' },
   { request: '/events', canonical: `${SITE}/events/`, name: '活動' },
   { request: '/rewards', canonical: `${SITE}/rewards/`, name: '獎勵系統' },
   // ⚠️ 每一場活動各是一頁（`/events/[id]`），所以新增或移除活動時這份清單要跟著改

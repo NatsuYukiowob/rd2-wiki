@@ -196,7 +196,7 @@ test('C3d. 每個會印 #關鍵字 的頁面，每條連結都落在詞彙頁上
   // 錨點對錯時，沒有 JS（或中鍵另開）的人只會停在頁頂；抽查一條守不住——錯的那條剛好不是第一條時照樣綠。
   // 這幾頁都走同一支 renderStaticText()，各自餵自己的文字；詞彙頁本身的解釋裡也有巢狀標記。
   // /tactic、/rift-shop 目前的資料沒有標記（0 條），但文字一改就會長出來，所以照樣掃、不要求每頁都有。
-  const pages = ['/dice', '/tactic', '/boss', '/rift-shop', KEYWORDS_PATH];
+  const pages = ['/dice', '/tactic', '/boss', '/rift-shop', '/relic', KEYWORDS_PATH];
   const htmls = await Promise.all(pages.map(async p => (await request.get(p)).text()));
   const anchors = termAnchors(htmls[pages.indexOf(KEYWORDS_PATH)]!);
   expect(anchors.size, '詞彙頁上一個詞條都沒抓到——正則或頁面輸出改了').toBeGreaterThan(0);
