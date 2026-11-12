@@ -16,7 +16,7 @@
   `.battle-group-head[hidden]`、`.battle-list[hidden]`。
 - **來源長寬比不統一的圖一律 `object-fit: contain`**（`/board` 四個顯示點、`.battle-icon`）；改 `cover`
   CI 全綠而畫面裁角。唯一刻意用 `cover` 的是 `/events` 索引縮圖（`events.css` 註解）。
-- **「遊戲介紹」下拉裡的頁（`/guide`／`/tactic`／`/boss`／`/rift-shop`／`/events`／`/rewards`）都要列進
+- **「遊戲介紹」下拉裡的頁（`/guide`／`/tactic`／`/boss`／`/rift-shop`／`/relic`／`/events`／`/rewards`）都要列進
   `Base.astro` 的 `guideCurrent`**，否則下拉收合時導覽列零提示。B6 守。
 - **畫面不印編號與內部 ID，但資料檔要留**：`id` 是錨點與 validate 規則的鍵，`gameId` 是對新版資料表的
   join key。T1b 量 `main` 的 `innerText`（屬性裡的 id 留著是對的）。
@@ -191,6 +191,16 @@ visible（`overflow-x: hidden` 明寫，`detail.css`）。
 - 篩選選擇器要指名 `.battle-group-head[data-grade], .battle-list[data-grade]`，不能只寫 `[data-grade]`
   （每條 `.battle-item` 也帶 `data-grade`）。
 - 討伐硬幣圖走 `currencyIcon('tacticcoin')`，不另寫 `<img>`。
+
+## /relic
+
+神器（局外養成）。最上面的圖示格照遊戲內「神器」畫面排（規則 32；`src/lib/relic.ts` 是整理數字的純函式）。
+
+- **決策：圖示格欄數寫死（手機 4 欄＝遊戲內、桌機 6 欄），順序＝資料順序＝遊戲內順序**，不要改成 `auto-fill` 或重新排序。RL2 守。
+- 圖示格只是頁內目錄（連到 `#r<id>`），內容在下面的橫列清單；逐級數值收在原生 `<details>`，**全部輸出進 HTML**（RL1 守）。
+- 效果句裡的數值印「1 級～滿級」的範圍（`relicEffectRange()`）；不印遊戲內綠字的下一級增量。
+- 數量、等級上限、累計一律從資料算，不寫進文案。抽取機率不收（客戶端表裡沒有）。
+- ⚠️ 圖示 sprite 的編號不等於神器編號（客戶端對照表有交叉配的），換圖前看 `data/CLAUDE.md`。
 
 ## /events
 

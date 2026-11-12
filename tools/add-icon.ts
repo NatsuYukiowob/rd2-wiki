@@ -163,6 +163,7 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
     '  npm run add-icon -- --tactic <戰術編號> <圖片路徑>  戰術圖 → data/tactic-icons/，並更新 data/tactics.json 那一筆的 icon',
     '  npm run add-icon -- --boss <Boss 編號> <圖片路徑>   Boss 圖 → data/boss-icons/，並更新 data/boss.json 那一筆的 icon',
     '  npm run add-icon -- --rift-shop <效果編號> <圖片路徑>  裂縫效果圖 → data/rift-shop-icons/，並更新 data/rift-shop.json 那一筆的 icon',
+    '  npm run add-icon -- --relic <神器編號> <圖片路徑>   神器圖 → data/relic-icons/，並更新 data/relics.json 那一筆的 icon',
   ].join('\n');
   try {
     // 戰術、Boss 與裂縫效果走同一條分支：三者的資料檔形狀相同（陣列 ＋ 每筆自帶 icon），
@@ -174,6 +175,7 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
       '--tactic': { label: '戰術', iconsDir: 'data/tactic-icons', dataPath: 'data/tactics.json' },
       '--boss': { label: 'Boss', iconsDir: 'data/boss-icons', dataPath: 'data/boss.json' },
       '--rift-shop': { label: '裂縫效果', iconsDir: 'data/rift-shop-icons', dataPath: 'data/rift-shop.json', sharedIconKey: riftIconGroup },
+      '--relic': { label: '神器', iconsDir: 'data/relic-icons', dataPath: 'data/relics.json' },
     } as const;
     // 「對應表是 {節點 id: hash}」的兩條資產路徑走同一條分支，理由同 RECORD_KINDS：
     // 兩段各自的 if 只會讓提示訊息漂移。

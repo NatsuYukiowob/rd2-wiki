@@ -14,6 +14,7 @@ const PAGES: { path: string; secTitle: number; card?: string; rowCard?: boolean;
   { path: '/tactic', secTitle: 0, rowCard: true, filterBar: true },
   { path: '/boss', secTitle: 3, rowCard: true },
   { path: '/rift-shop', secTitle: 3, rowCard: true, filterBar: true },
+  { path: '/relic', secTitle: 4, rowCard: true },
 ];
 
 for (const p of PAGES) {

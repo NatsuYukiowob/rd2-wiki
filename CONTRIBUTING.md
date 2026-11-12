@@ -39,6 +39,7 @@
 | `data/offgame-effects.json` | `/board` 數值卡片的局外加成 | 28 |
 | `data/tactics.json`、`data/boss.json` | `/tactic` 戰術、`/boss` 怪物圖鑑 | 24、25 |
 | `data/rift-shop.json` | `/rift-shop` 裂縫商店 | 27 |
+| `data/relics.json`、`data/relic-levels.json` | `/relic` 神器 | 32 |
 | `data/events.json` | `/events` 期間限定活動 | 29 |
 | `data/rewards.json` | `/rewards` 獎勵系統 | 單元測試 |
 
@@ -129,21 +130,22 @@ npm run add-icon -- --dice3 <節點 id> <你的圖片路徑>
 立體），**三條路徑彼此獨立，不要互相借用**。接錯了畫面上只是「圖變成另一種樣子」，看起來
 完全正常，規則 30 就是為了擋這件事（見下一節）。
 
-**戰術（`/tactic`）、Boss（`/boss`）與裂縫商店（`/rift-shop`）也各有自己一批圖**，放在
-`data/tactic-icons/`、`data/boss-icons/` 與 `data/rift-shop-icons/`，雜湊直接寫在
-`data/tactics.json`／`data/boss.json`／`data/rift-shop.json` 那一筆的 `icon` 欄裡
+**戰術（`/tactic`）、Boss（`/boss`）、裂縫商店（`/rift-shop`）與神器（`/relic`）也各有自己一批圖**，放在
+`data/tactic-icons/`、`data/boss-icons/`、`data/rift-shop-icons/` 與 `data/relic-icons/`，雜湊直接寫在
+`data/tactics.json`／`data/boss.json`／`data/rift-shop.json`／`data/relics.json` 那一筆的 `icon` 欄裡
 （不像 `/board` 另有對應表，因為這些資料本來就是站台自己的，不必對到 SVG 裡的節點 id）：
 
 ```bash
 npm run add-icon -- --tactic <戰術編號> <你的圖片路徑>
 npm run add-icon -- --boss <Boss 編號> <你的圖片路徑>
 npm run add-icon -- --rift-shop <裂縫效果編號> <你的圖片路徑>
+npm run add-icon -- --relic <神器編號> <你的圖片路徑>
 ```
 
 裂縫商店同一個效果有好幾個檔位、共用同一張圖，所以 `--rift-shop` 會把**同名的
 檔位一起換掉**（規則 27 也要求同名的檔位指到同一張圖）。
 
-⚠️ 這三個只會**更新既有那一筆的 `icon`，不會新增紀錄**。要加一條全新的戰術，得先把名稱、
+⚠️ 這幾個只會**更新既有那一筆的 `icon`，不會新增紀錄**。要加一條全新的戰術，得先把名稱、
 階段、適用模式、效果全文與內部ID 補進 `data/tactics.json`，這些只有對照官方資料表才知道，
 工具猜不出來。找不到那個編號時它會直接失敗，**圖也還沒被寫進目錄**。
 
@@ -152,7 +154,7 @@ npm run add-icon -- --rift-shop <裂縫效果編號> <你的圖片路徑>
 ```bash
 npm run normalize    # 把 GUI 工具的重寫攤平回正規形式（跑完 git diff 要是乾淨的，見下一節）
 npm run preview      # 產出帶名字與 id 的 data/dice-tree.preview.svg，用來肉眼確認版面
-npm run validate     # 檢查資料本身正確不正確（規則 0～10、13～31，見下一節）
+npm run validate     # 檢查資料本身正確不正確（規則 0～10、13～32，見下一節）
 npm run build        # 或 npm run build:data；順便檢查組裝後的體積有沒有超出效能預算（規則 12）
 npm run typecheck    # 型別檢查（astro check ＋ tsc --noEmit）；動到 src/ 或 tools/ 一定要跑
 npm run test         # 純函式與解析器的單元測試
@@ -361,7 +363,15 @@ PR 送出後，CI 會用 `npm run validate` 檢查正本與各資料檔的正確
   `/sim` 卻只讓它停在 1 級。這條會擋下：查不到升級費用表，或說明解析不出每級成長值。
   （玩家被動／支援的費用表由規則 22 檢查、骰子符文的成長值由規則 17 檢查，這條不重複報。）
 
-以上規則 0～10 與 13～31 都是 `npm run validate` 實際會檢查的內容，本機先跑一次就能提早抓到，不用等 CI。
+### 規則 32：神器
+
+- **規則 32｜`data/relics.json` 與 `data/relic-levels.json`**。`/relic` 的神器：圖示與文字欄位跟規則 25
+  同一組檢查（每種一張圖、不能兩種共用）。另外檢查：每種神器的逐級數值是數字、級數要跟升級花費表
+  一樣多；效果說明裡的 `{0}`、`{1}` 要跟數值的組數一一對上；有兩組以上數值的神器要替每一組取欄名
+  （`valueLabels`）；花費表與收藏等級表是非空的數字陣列，
+  神器數與金幣兩欄一樣長。這兩份檔案由客戶端資料表產生，**不要手改數字**。
+
+以上規則 0～10 與 13～32 都是 `npm run validate` 實際會檢查的內容，本機先跑一次就能提早抓到，不用等 CI。
 
 ### 另外兩道 CI 檢查：正規化定點、型別檢查
 

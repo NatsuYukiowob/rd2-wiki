@@ -635,6 +635,12 @@ export interface ValidateOpts {
   riftShop: unknown;
   /** `data/rift-shop-icons/` 所在目錄。⚠️ 這一份是 39 張圖對 61 筆，見規則 27 的說明。 */
   riftShopIconsDir: string;
+  /** `data/relics.json` 的內容。同 `tactics`，沒有時傳 `null`（規則 32 只警告）。 */
+  relics: unknown;
+  /** `data/relic-icons/` 所在目錄。 */
+  relicIconsDir: string;
+  /** `data/relic-levels.json` 的內容；`relics` 是 `null` 時不看。 */
+  relicLevels: unknown;
   /**
    * `data/offgame-effects.json`：骰子樹符文／玩家被動對 /board 數值卡片的語意（規則 28）。
    * 型別刻意用 `unknown`（同 `diceStats`／`prereqRanks`）：規則 28 要擋的正是不合法的那些。
@@ -2410,6 +2416,77 @@ export function validate(svgText: string, opts: ValidateOpts): ValidateResult {
     }
   }
 
+  // 規則 32：神器（`data/relics.json` ＋ `data/relic-icons/` ＋ `data/relic-levels.json`）。
+  //
+  // 圖示與文字欄位全部走 checkIconedRecordList()（同規則 25）。這一層只管這份資料自己的語意：
+  // `/relic` 用 `values[k][等級-1]` 填 `effect` 的 `{k}`、用 `relic-levels.json` 的陣列畫花費表與
+  // 收藏等級表，而那些都是陣列索引——長度對不上時頁面不會壞，只會印出 `undefined` 或少一列。
+  if (opts.relics === null) {
+    warn('規則 32: 沒有提供 data/relics.json，神器未檢查');
+  } else {
+    const scan = checkIconedRecordList(opts.relics, {
+      rule: '規則 32',
+      file: 'data/relics.json',
+      iconsDir: opts.relicIconsDir,
+      idPattern: /^[1-9]\d*$/,
+      knownKeys: ['id', 'name', 'effect', 'values', 'valueLabels', 'gameId', 'icon'],
+      requiredText: ['id', 'name', 'effect', 'gameId'],
+      markupKeys: ['effect'],
+      whitelist,
+    });
+    scan.errors.forEach(push);
+    scan.warnings.forEach(warn);
+
+    const isNumbers = (v: unknown): v is number[] =>
+      Array.isArray(v) && v.length > 0 && v.every(x => typeof x === 'number' && Number.isFinite(x));
+
+    const lv = opts.relicLevels as Record<string, unknown> | null;
+    const levelsOk = lv !== null && typeof lv === 'object' && !Array.isArray(lv);
+    if (!levelsOk) {
+      push('規則 32(l): data/relic-levels.json 必須是物件（升級花費與收藏等級）');
+    } else {
+      for (const key of ['unlockKills', 'critStep']) {
+        if (!Number.isInteger(lv[key]) || (lv[key] as number) <= 0) {
+          push(`規則 32(l): data/relic-levels.json 的 ${key} ${JSON.stringify(lv[key])} 必須是正整數`);
+        }
+      }
+      for (const key of ['pieces', 'gold', 'critDamage']) {
+        if (!isNumbers(lv[key])) push(`規則 32(l): data/relic-levels.json 的 ${key} 必須是非空的數字陣列`);
+      }
+      if (isNumbers(lv.pieces) && isNumbers(lv.gold) && lv.pieces.length !== lv.gold.length) {
+        push(`規則 32(l): data/relic-levels.json 的 pieces（${lv.pieces.length} 級）與 gold（${lv.gold.length} 級）長度不一致`);
+      }
+    }
+    const maxRank = levelsOk && isNumbers(lv.pieces) ? lv.pieces.length : null;
+
+    for (const rec of scan.records) {
+      const id = rec.id as string;
+      const values = rec.values;
+      if (!Array.isArray(values) || values.length === 0 || !values.every(isNumbers)) {
+        push(`規則 32(e): data/relics.json 的 ${id} 的 values 必須是非空的「數字陣列的陣列」`);
+        continue;
+      }
+      for (const [k, list] of (values as number[][]).entries()) {
+        if (maxRank !== null && list.length !== maxRank) {
+          push(`規則 32(m): data/relics.json 的 ${id} 的 values[${k}] 有 ${list.length} 級，但 data/relic-levels.json 的花費表是 ${maxRank} 級`);
+        }
+      }
+      // 多組數值時逐級表每一欄都要有自己的欄名（`/relic` 直接拿來當表頭）；只有一組時欄名固定是「數值」，
+      // 寫了也沒人讀，所以不准寫——留著的話改成兩組時會以為欄名已經齊了。
+      const labels = rec.valueLabels;
+      const labelsOk = Array.isArray(labels) && labels.length === values.length && labels.every(x => typeof x === 'string' && x.trim() !== '') && new Set(labels).size === labels.length;
+      if (values.length > 1 ? !labelsOk : labels !== undefined) {
+        push(`規則 32(o): data/relics.json 的 ${id} 有 ${values.length} 組數值——兩組以上時 valueLabels 必須是同樣多個、互不相同的非空字串，只有一組時不寫`);
+      }
+      // 佔位與 values 要一一對上：多一個 `{1}` 會印出字面上的大括號，少一個則那一組數值沒人看得到。
+      const used = [...new Set([...(rec.effect as string).matchAll(/\{(\d+)\}/g)].map(m => Number(m[1])))].sort((a, b) => a - b);
+      const want = values.map((_, k) => k);
+      if (used.join() !== want.join()) {
+        push(`規則 32(n): data/relics.json 的 ${id} 的 effect 用到佔位 {${used.join('}{')}}，但 values 有 ${values.length} 組——兩邊要一一對上`);
+      }
+    }
+  }
+
   return { errors, warnings };
 }
 
@@ -2469,6 +2546,9 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
     prereqRanks: readDataFile('data/prereq-ranks.json', true),
     riftShop: readDataFile('data/rift-shop.json', true),
     riftShopIconsDir: 'data/rift-shop-icons',
+    relics: readDataFile('data/relics.json', true),
+    relicIconsDir: 'data/relic-icons',
+    relicLevels: readDataFile('data/relic-levels.json', true),
     offgameEffects: readDataFile('data/offgame-effects.json', true),
     events: readDataFile('data/events.json', true),
     eventShotsDir: 'public/events',

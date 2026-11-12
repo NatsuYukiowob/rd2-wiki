@@ -1,0 +1,159 @@
+---
+// 神器（遊戲 1.2.0 新增的局外養成系統）。30 種神器、各 20 級，外加依神器總等級給暴擊傷害的「收藏等級」。
+//
+// 資料來自客戶端 `RelicTable`／`RelicCriticalTable`（`data/relics.json`、`data/relic-levels.json`，規則 32）。
+// 跟 /tactic、/boss、/rift-shop 一樣是靜態頁、建置期直接讀 `data/`，不進 tree.json。
+//
+// 版面：最上面是照遊戲內「神器」畫面排的圖示格（4 欄、圖在上名稱在下、順序同遊戲），點一格跳到下面
+// 那一種的說明。說明清單共用 battle.css 的橫列；表格共用 events.css 的 `.event-table`。
+// 逐級數值全部輸出進 HTML（收在原生 <details> 裡），不用 JS。
+import Base from '../layouts/Base.astro';
+import '../styles/battle.css';
+import '../styles/events.css';
+import relicsRaw from '../../data/relics.json';
+import levelsRaw from '../../data/relic-levels.json';
+import keywordsRaw from '../../data/keywords.json';
+import { treeData } from '../lib/tree-data';
+import { buildGlossary, displayGlossary } from '../lib/glossary-groups';
+import { renderStaticText } from '../lib/static-markup';
+import { costRows, critBands, relicEffectRange, relicUnit } from '../lib/relic';
+import type { GlossaryRecord, Relic, RelicLevels, TreeData } from '../lib/types';
+
+const relics = relicsRaw as Relic[];
+const levels = levelsRaw as RelicLevels;
+const keywords = keywordsRaw as Record<string, GlossaryRecord>;
+const tree = treeData as unknown as TreeData;
+const index = buildGlossary(keywords, tree.nodes);
+const glossary = displayGlossary(keywords);
+const whitelist = Object.keys(keywords);
+
+// 數字一律從資料算（等級上限、總等級上限、累計），不寫進文案。
+const maxRank = levels.pieces.length;
+const costs = costRows(levels.pieces, levels.gold);
+const fullCost = costs[costs.length - 1]!;
+const bands = critBands(levels.critDamage, levels.critStep);
+const critTotal = bands[bands.length - 1]!.total;
+const maxTotal = relics.length * maxRank;
+const num = (n: number) => n.toLocaleString('en-US');
+---
+
+<Base title="神器" description={`Random Dice 2 的 ${relics.length} 種神器：效果、1 到 ${maxRank} 級的逐級數值、升級花費，以及收藏等級的暴擊傷害加成。`}>
+  <section class="page battle-page" id="relic-page">
+    <h1 class="page-head">神器</h1>
+    <p class="lede">
+      累積擊殺 {num(levels.unlockKills)} 隻怪物後解鎖。用<strong>裂縫結晶</strong>製作神器，重複取得的同名神器加上金幣可以升級，每種最高 {maxRank} 級。
+    </p>
+
+    <h2 class="sec-title" id="relic-list">神器一覽</h2>
+    <ul class="relic-grid">
+      {relics.map(r => (
+        <li>
+          <a class="relic-cell" href={`#r${r.id}`}>
+            <img src={`/assets/relic-icons/${r.icon}.webp`} alt="" loading="lazy" decoding="async" />
+            <span>{r.name}</span>
+          </a>
+        </li>
+      ))}
+    </ul>
+
+    <h2 class="battle-group-head sec-title" id="relic-effects">效果與逐級數值</h2>
+    <p class="note">效果裡的數值是 1 級到 {maxRank} 級的範圍，展開可以看每一級。</p>
+    <ul class="battle-list">
+      {relics.map(r => (
+        <li class="battle-item row-card" id={`r${r.id}`} data-id={r.id}>
+          <img class="battle-icon" src={`/assets/relic-icons/${r.icon}.webp`} alt="" loading="lazy" decoding="async" />
+          <div>
+            <div class="battle-head">
+              <h3 class="battle-name">{r.name}</h3>
+            </div>
+            <p class="battle-text" set:html={renderStaticText(relicEffectRange(r), whitelist, glossary, index)} />
+          </div>
+          {/* 逐級表是 li 的直屬子項、橫跨圖示欄與文字欄：放在文字欄裡的話，圖示底下會空一整條。 */}
+          <details class="relic-levels">
+            <summary>逐級數值</summary>
+            <div class="event-table-wrap" tabindex="0" role="region" aria-label={`${r.name}的逐級數值`}>
+              <table class="event-table">
+                <thead>
+                  <tr>
+                    <th scope="col">等級</th>
+                    {/* 規則 32(o)：兩組以上數值時 valueLabels 一定齊全。 */}
+                    {r.values.map((_, k) => (
+                      <th scope="col">{r.valueLabels?.[k] ?? '數值'}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {r.values[0]!.map((_, lv) => (
+                    <tr>
+                      <th scope="row">{lv + 1}</th>
+                      {r.values.map((list, k) => (
+                        <td>{list[lv]}{relicUnit(r.effect, k)}</td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </details>
+        </li>
+      ))}
+    </ul>
+
+    <h2 class="battle-group-head sec-title" id="relic-cost">升級花費</h2>
+    <p class="note">
+      {relics.length} 種神器的升級花費相同。一種神器從 1 級升到 {maxRank} 級，
+      共需要 {num(fullCost.sumPieces)} 個同名神器與 {num(fullCost.sumGold)} 金幣。
+    </p>
+    <div class="event-table-wrap" tabindex="0" role="region" aria-labelledby="relic-cost">
+      <table class="event-table">
+        <thead>
+          <tr>
+            <th scope="col">升到</th>
+            <th scope="col">同名神器</th>
+            <th scope="col">金幣</th>
+            <th scope="col">累計神器</th>
+            <th scope="col">累計金幣</th>
+          </tr>
+        </thead>
+        <tbody>
+          {costs.map(c => (
+            <tr>
+              <th scope="row">{c.level} 級</th>
+              <td>{num(c.pieces)}</td>
+              <td>{num(c.gold)}</td>
+              <td>{num(c.sumPieces)}</td>
+              <td>{num(c.sumGold)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+
+    <h2 class="battle-group-head sec-title" id="relic-collection">收藏等級</h2>
+    <p class="note">
+      全部神器的等級加總，每滿 {levels.critStep} 級增加一次暴擊傷害，加到總等級 {maxTotal}
+      （{relics.length} 種都 {maxRank} 級）為止，合計 +{num(critTotal)}%。
+      總等級不到 {levels.critStep} 時沒有加成。
+    </p>
+    <div class="event-table-wrap" tabindex="0" role="region" aria-labelledby="relic-collection">
+      <table class="event-table">
+        <thead>
+          <tr>
+            <th scope="col">神器總等級</th>
+            <th scope="col">每 {levels.critStep} 級增加</th>
+            <th scope="col">到這一段結束的累計</th>
+          </tr>
+        </thead>
+        <tbody>
+          {bands.map(b => (
+            <tr>
+              <th scope="row">{b.from === b.to ? b.from : `${b.from}～${b.to}`}</th>
+              <td>+{b.per}%</td>
+              <td>+{num(b.total)}%</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  </section>
+</Base>

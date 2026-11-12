@@ -265,8 +265,8 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
     }
   }
 
-  // 戰術、Boss 與裂縫商店的圖：跟 /board 的純骰子圖同一種平行路徑，差別只有「雜湊寫在
-  // 哪裡」——board-icons 是一份 {id: hash} 的對應表，這三份的雜湊直接寫在紀錄的 icon 欄裡
+  // 戰術、Boss、裂縫商店與神器的圖：跟 /board 的純骰子圖同一種平行路徑，差別只有「雜湊寫在
+  // 哪裡」——board-icons 是一份 {id: hash} 的對應表，這幾份的雜湊直接寫在紀錄的 icon 欄裡
   // （見 tools/validate.ts 的 checkIconedRecordList()）。同樣不進 tree.json：
   // /tactic、/boss 與 /rift-shop 都是靜態頁，建置期直接讀 data/，不吃那 20 KB gzip 預算。
   //
@@ -281,6 +281,7 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
     ['data/tactics.json', 'data/tactic-icons', 'public/assets/tactic-icons'],
     ['data/boss.json', 'data/boss-icons', 'public/assets/boss-icons'],
     ['data/rift-shop.json', 'data/rift-shop-icons', 'public/assets/rift-shop-icons'],
+    ['data/relics.json', 'data/relic-icons', 'public/assets/relic-icons'],
   ] as const) {
     const records: { icon: string; options?: { icon: string }[] }[] = JSON.parse(readFileSync(file, 'utf8'));
     mkdirSync(out, { recursive: true });

@@ -10,5 +10,5 @@
  */
 export const COMPARE_PAGES: readonly string[] = [
   '/', '/tree', '/dice', '/guide/keywords', '/board', '/sim', '/about',
-  '/tactic', '/boss', '/rift-shop', '/rewards', '/events',
+  '/tactic', '/boss', '/rift-shop', '/relic', '/rewards', '/events',
 ];
