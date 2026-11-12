@@ -21,6 +21,7 @@ import { SP_STEP } from '../src/lib/dice-stats.js';
 import { BRANCH_ZH } from '../src/lib/labels.js';
 import { OFFGAME_TARGETS, ROW_TARGETS } from '../src/lib/offgame.js';
 import { EVENT_ICON_KINDS } from '../src/lib/events.js';
+import { RELIC_GOODS } from '../src/lib/relic.js';
 import type { DiceStat, Edge, GlossaryRecord, Growth, UnlockVia, UpgradeCostTable, UpgradeTier } from '../src/lib/types.js';
 
 /**
@@ -635,6 +636,16 @@ export interface ValidateOpts {
   riftShop: unknown;
   /** `data/rift-shop-icons/` 所在目錄。⚠️ 這一份是 39 張圖對 61 筆，見規則 27 的說明。 */
   riftShopIconsDir: string;
+  /** `data/relics.json` 的內容。同 `tactics`，沒有時傳 `null`（規則 32 只警告）。 */
+  relics: unknown;
+  /** `data/relic-icons/` 所在目錄。 */
+  relicIconsDir: string;
+  /** `data/relic-levels.json` 的內容；`relics` 是 `null` 時不看。 */
+  relicLevels: unknown;
+  /** `data/relic-crystal.json` 的內容。沒有時傳 `null`（規則 33 只警告）。 */
+  relicCrystal: unknown;
+  /** `data/seasons.json` 的內容。沒有時傳 `null`（規則 34 只警告）。 */
+  seasons: unknown;
   /**
    * `data/offgame-effects.json`：骰子樹符文／玩家被動對 /board 數值卡片的語意（規則 28）。
    * 型別刻意用 `unknown`（同 `diceStats`／`prereqRanks`）：規則 28 要擋的正是不合法的那些。
@@ -2158,6 +2169,37 @@ export function validate(svgText: string, opts: ValidateOpts): ValidateResult {
     }
   }
 
+  // 檔期 `{ begin, finish, tz }` 的形狀（規則 29(e) 的活動與規則 34 的賽季共用）。
+  // `nullable`：活動查不到檔期可以寫 `null`（呼叫端自己放行），賽季不行——錯誤訊息要跟著說對。
+  const checkPeriod = (period: unknown, rule: string, at: string, nullable: boolean): void => {
+    if (!isPlainObject(period)) {
+      push(`${rule}: ${at}的 period 必須是 ${nullable ? 'null 或 ' : ''}{ begin, finish, tz }`);
+      return;
+    }
+    const stamps: Record<string, string> = {};
+    for (const key of ['begin', 'finish']) {
+      const v = period[key];
+      const m = typeof v === 'string' ? /^(\d{4}-\d{2}-\d{2})(?: ([01]\d|2[0-3]):([0-5]\d))?$/.exec(v) : null;
+      if (!m || !isCalendarDate(m[1]!)) {
+        push(`${rule}: ${at}的 period.${key} ${JSON.stringify(v)} 必須是 YYYY-MM-DD 或 YYYY-MM-DD HH:MM 的真實日期`);
+        continue;
+      }
+      // 只寫日期的那一端補成當天的頭或尾再比：begin「09-30」＝當天開始、finish「09-30」＝當天結束。
+      stamps[key] = m[2] ? (v as string) : `${m[1]} ${key === 'begin' ? '00:00' : '23:59'}`;
+    }
+    if (stamps['begin'] && stamps['finish'] && stamps['begin'] > stamps['finish']) {
+      push(`${rule}: ${at}的 period 開始 ${JSON.stringify(period['begin'])} 晚於結束 ${JSON.stringify(period['finish'])}`);
+    }
+    // 時區必填：畫面把它跟時間印在一起，少了它讀者會用自己的時區讀「23:59」。
+    const tz = period['tz'];
+    if (typeof tz !== 'string' || !/^UTC(?:\+(?:\d|1[0-4])|-(?:[1-9]|1[0-2]))(?::(?:30|45))?$/.test(tz)) {
+      push(`${rule}: ${at}的 period.tz ${JSON.stringify(tz)} 必須是 UTC+9／UTC+5:30 這種寫法（檔期是哪個時區量的）`);
+    }
+    for (const key of Object.keys(period)) {
+      if (!['begin', 'finish', 'tz'].includes(key)) push(`${rule}: ${at}的 period 有未知欄位 ${JSON.stringify(key)}`);
+    }
+  };
+
   // 規則 29：期間限定活動（`data/events.json`，/events）。
   //
   // 這份資料的形狀跟規則 24／25／27 那族完全不同（沒有 icon 檔、沒有 id ↔ 圖的對應），所以不走
@@ -2238,32 +2280,7 @@ export function validate(svgText: string, opts: ValidateOpts): ValidateResult {
       // period：日期查不到（表裡沒有、也沒實測）就寫成 null，不是空字串、不是 "未知"。
       const period = raw['period'];
       if (period !== null && period !== undefined) {
-        if (!isPlainObject(period)) {
-          push(`規則 29(e): ${at}的 period 必須是 null 或 { begin, finish, tz }`);
-        } else {
-          const stamps: Record<string, string> = {};
-          for (const key of ['begin', 'finish']) {
-            const v = period[key];
-            const m = typeof v === 'string' ? /^(\d{4}-\d{2}-\d{2})(?: ([01]\d|2[0-3]):([0-5]\d))?$/.exec(v) : null;
-            if (!m || !isCalendarDate(m[1]!)) {
-              push(`規則 29(e): ${at}的 period.${key} ${JSON.stringify(v)} 必須是 YYYY-MM-DD 或 YYYY-MM-DD HH:MM 的真實日期`);
-              continue;
-            }
-            // 只寫日期的那一端補成當天的頭或尾再比：begin「09-30」＝當天開始、finish「09-30」＝當天結束。
-            stamps[key] = m[2] ? (v as string) : `${m[1]} ${key === 'begin' ? '00:00' : '23:59'}`;
-          }
-          if (stamps['begin'] && stamps['finish'] && stamps['begin'] > stamps['finish']) {
-            push(`規則 29(e): ${at}的 period 開始 ${JSON.stringify(period['begin'])} 晚於結束 ${JSON.stringify(period['finish'])}`);
-          }
-          // 時區必填：畫面把它跟時間印在一起，少了它讀者會用自己的時區讀「23:59」。
-          const tz = period['tz'];
-          if (typeof tz !== 'string' || !/^UTC(?:\+(?:\d|1[0-4])|-(?:[1-9]|1[0-2]))(?::(?:30|45))?$/.test(tz)) {
-            push(`規則 29(e): ${at}的 period.tz ${JSON.stringify(tz)} 必須是 UTC+9／UTC+5:30 這種寫法（檔期是哪個時區量的）`);
-          }
-          for (const key of Object.keys(period)) {
-            if (!['begin', 'finish', 'tz'].includes(key)) push(`規則 29(e): ${at}的 period 有未知欄位 ${JSON.stringify(key)}`);
-          }
-        }
+        checkPeriod(period, '規則 29(e)', at, true);
       }
 
       const currencies = raw['currencies'];
@@ -2410,6 +2427,224 @@ export function validate(svgText: string, opts: ValidateOpts): ValidateResult {
     }
   }
 
+  // 規則 32：神器（`data/relics.json` ＋ `data/relic-icons/` ＋ `data/relic-levels.json`）。
+  //
+  // 圖示與文字欄位全部走 checkIconedRecordList()（同規則 25）。這一層只管這份資料自己的語意：
+  // `/relic` 用 `values[k][等級-1]` 填 `effect` 的 `{k}`、用 `relic-levels.json` 的陣列畫花費表與
+  // 收藏等級表，而那些都是陣列索引——長度對不上時頁面不會壞，只會印出 `undefined` 或少一列。
+  if (opts.relics === null) {
+    warn('規則 32: 沒有提供 data/relics.json，神器未檢查');
+  } else {
+    const scan = checkIconedRecordList(opts.relics, {
+      rule: '規則 32',
+      file: 'data/relics.json',
+      iconsDir: opts.relicIconsDir,
+      idPattern: /^[1-9]\d*$/,
+      knownKeys: ['id', 'name', 'effect', 'values', 'valueLabels', 'gameId', 'icon'],
+      requiredText: ['id', 'name', 'effect', 'gameId'],
+      markupKeys: ['effect'],
+      whitelist,
+    });
+    scan.errors.forEach(push);
+    scan.warnings.forEach(warn);
+
+    const isNumbers = (v: unknown): v is number[] =>
+      Array.isArray(v) && v.length > 0 && v.every(x => typeof x === 'number' && Number.isFinite(x));
+
+    const lv = opts.relicLevels as Record<string, unknown> | null;
+    const levelsOk = lv !== null && typeof lv === 'object' && !Array.isArray(lv);
+    if (!levelsOk) {
+      push('規則 32(l): data/relic-levels.json 必須是物件（升級花費與收藏等級）');
+    } else {
+      for (const key of ['unlockKills', 'critStep']) {
+        if (!Number.isInteger(lv[key]) || (lv[key] as number) <= 0) {
+          push(`規則 32(l): data/relic-levels.json 的 ${key} ${JSON.stringify(lv[key])} 必須是正整數`);
+        }
+      }
+      for (const key of ['pieces', 'gold', 'critDamage']) {
+        if (!isNumbers(lv[key])) push(`規則 32(l): data/relic-levels.json 的 ${key} 必須是非空的數字陣列`);
+      }
+      // 花費是「升到第 i+1 級」的量：第 0 格（1 級）一定是 0（`costRows()` 從第 2 級起列，不是 0 的話那筆
+      // 花費會從表格與累計裡一起消失），其餘是非負整數；至少要有兩級，頁面才有「升滿要多少」可印。
+      for (const key of ['pieces', 'gold']) {
+        const list = lv[key];
+        if (!isNumbers(list)) continue;
+        if (list.length < 2 || list[0] !== 0 || !list.every(x => Number.isInteger(x) && x >= 0)) {
+          push(`規則 32(l): data/relic-levels.json 的 ${key} 必須至少兩級、第 1 級是 0、其餘是非負整數`);
+        }
+      }
+      if (isNumbers(lv.pieces) && isNumbers(lv.gold) && lv.pieces.length !== lv.gold.length) {
+        push(`規則 32(l): data/relic-levels.json 的 pieces（${lv.pieces.length} 級）與 gold（${lv.gold.length} 級）長度不一致`);
+      }
+      const KNOWN = ['unlockKills', 'pieces', 'gold', 'critStep', 'critDamage'];
+      for (const key of Object.keys(lv)) {
+        if (!KNOWN.includes(key)) push(`規則 32(l): data/relic-levels.json 有未知欄位 ${JSON.stringify(key)}`);
+      }
+    }
+    const maxRank = levelsOk && isNumbers(lv.pieces) ? lv.pieces.length : null;
+
+    // (p) 兩份檔要對得起來：`/relic` 的「總等級上限」是 神器數 × 等級上限，收藏等級表則是
+    // critDamage 的段數 × critStep——加了一種神器卻沒重產 relic-levels.json 時，頁面會說上限 620 而表只到 600。
+    if (maxRank !== null && levelsOk && isNumbers(lv.critDamage) && Number.isInteger(lv.critStep)) {
+      const covered = lv.critDamage.length * (lv.critStep as number);
+      const total = scan.records.length * maxRank;
+      if (covered !== total) {
+        push(`規則 32(p): 收藏等級表蓋到總等級 ${covered}（${lv.critDamage.length} 段 × ${lv.critStep as number}），但 ${scan.records.length} 種神器 × ${maxRank} 級 ＝ ${total}——data/relics.json 與 data/relic-levels.json 要一起重產`);
+      }
+    }
+
+    for (const rec of scan.records) {
+      const id = rec.id as string;
+      const values = rec.values;
+      if (!Array.isArray(values) || values.length === 0 || !values.every(isNumbers)) {
+        push(`規則 32(e): data/relics.json 的 ${id} 的 values 必須是非空的「數字陣列的陣列」`);
+        continue;
+      }
+      for (const [k, list] of (values as number[][]).entries()) {
+        if (maxRank !== null && list.length !== maxRank) {
+          push(`規則 32(m): data/relics.json 的 ${id} 的 values[${k}] 有 ${list.length} 級，但 data/relic-levels.json 的花費表是 ${maxRank} 級`);
+        }
+      }
+      // 多組數值時逐級表每一欄都要有自己的欄名（`/relic` 直接拿來當表頭）；只有一組時欄名固定是「數值」，
+      // 寫了也沒人讀，所以不准寫——留著的話改成兩組時會以為欄名已經齊了。
+      const labels = rec.valueLabels;
+      const labelsOk = Array.isArray(labels) && labels.length === values.length && labels.every(x => typeof x === 'string' && x.trim() !== '') && new Set(labels).size === labels.length;
+      if (values.length > 1 ? !labelsOk : labels !== undefined) {
+        push(`規則 32(o): data/relics.json 的 ${id} 有 ${values.length} 組數值——兩組以上時 valueLabels 必須是同樣多個、互不相同的非空字串，只有一組時不寫`);
+      }
+      // 佔位與 values 要一一對上：多一個 `{1}` 會印出字面上的大括號，少一個則那一組數值沒人看得到。
+      const used = [...new Set([...(rec.effect as string).matchAll(/\{(\d+)\}/g)].map(m => Number(m[1])))].sort((a, b) => a - b);
+      const want = values.map((_, k) => k);
+      if (used.join() !== want.join()) {
+        push(`規則 32(n): data/relics.json 的 ${id} 的 effect 用到佔位 {${used.join('}{')}}，但 values 有 ${values.length} 組——兩邊要一一對上`);
+      }
+    }
+  }
+
+  // 規則 33：裂縫結晶的來源（`data/relic-crystal.json`：覺醒之甕＋神器通行證，`/relic`）。
+  //
+  // 不進 tree.json，這條是唯一防線。頁面把甕的門檻當「累計」印、把獎勵依種類加總成「全部領完」——
+  // 門檻沒排好或種類拼錯時頁面不會壞，只會印出錯的累計或 `undefined ×3`。
+  const unknownKeys = (obj: Record<string, unknown>, known: string[]): string[] => Object.keys(obj).filter(k => !known.includes(k));
+  // `goods` 要先驗是字串：`["crystal"]` 當鍵查會被轉型成 "crystal" 而過關，頁面加總時用 `===` 比卻對不上。
+  // `extra` 是這筆獎勵所在的物件另外允許的欄位（甕的一檔多一個 `points`）。
+  const isReward = (v: unknown, extra: string[] = []): boolean =>
+    isPlainObject(v) && typeof v['goods'] === 'string' && Object.hasOwn(RELIC_GOODS, v['goods'])
+    && Number.isInteger(v['amount']) && (v['amount'] as number) > 0
+    && unknownKeys(v, ['goods', 'amount', ...extra]).length === 0;
+  if (opts.relicCrystal === null) {
+    warn('規則 33: 沒有提供 data/relic-crystal.json，裂縫結晶的來源未檢查');
+  } else if (!isPlainObject(opts.relicCrystal) || !isPlainObject(opts.relicCrystal['pot']) || !Array.isArray(opts.relicCrystal['pass'])) {
+    push('規則 33(a): data/relic-crystal.json 必須是 { pot: {…}, pass: […] }');
+  } else {
+    const file = 'data/relic-crystal.json';
+    const pot = opts.relicCrystal['pot'];
+    const pass = opts.relicCrystal['pass'] as unknown[];
+    for (const key of unknownKeys(opts.relicCrystal, ['pot', 'pass'])) push(`規則 33(a): ${file} 有未知欄位 ${JSON.stringify(key)}`);
+    for (const key of unknownKeys(pot, ['tiers', 'repeatPoints', 'repeatReward'])) push(`規則 33(a): ${file} 的 pot 有未知欄位 ${JSON.stringify(key)}`);
+
+    const tiers = pot['tiers'];
+    if (!Array.isArray(tiers) || tiers.length === 0) {
+      push(`規則 33(b): ${file} 的 pot.tiers 必須是非空陣列`);
+    } else {
+      let prev = 0;
+      tiers.forEach((t: unknown, i) => {
+        const at = `${file} 的 pot.tiers 第 ${i + 1} 檔`;
+        if (!isPlainObject(t) || !isReward(t, ['points'])) {
+          push(`規則 33(b): ${at}必須是 { points, goods, amount }（goods 是 ${Object.keys(RELIC_GOODS).join('／')}，amount 是正整數）`);
+          return;
+        }
+        const points = t['points'];
+        // 累計門檻：頁面照順序印、逐檔累加獎勵，沒有嚴格遞增的話「領到這一檔為止」就是錯的。
+        if (!Number.isInteger(points) || (points as number) <= prev) {
+          push(`規則 33(c): ${at}的 points ${JSON.stringify(points)} 必須是比上一檔（${prev}）大的整數——它是累計門檻`);
+        } else {
+          prev = points as number;
+        }
+      });
+    }
+    if (!Number.isInteger(pot['repeatPoints']) || (pot['repeatPoints'] as number) <= 0) {
+      push(`規則 33(d): ${file} 的 pot.repeatPoints ${JSON.stringify(pot['repeatPoints'])} 必須是正整數`);
+    }
+    if (!isReward(pot['repeatReward'])) push(`規則 33(d): ${file} 的 pot.repeatReward 必須是 { goods, amount }`);
+
+    if (pass.length === 0) push(`規則 33(e): ${file} 的 pass 必須是非空陣列`);
+    const seenPass = new Set<unknown>();
+    pass.forEach((row, i) => {
+      const at = `${file} 的 pass 第 ${i + 1} 筆`;
+      if (!isPlainObject(row)) {
+        push(`規則 33(e): ${at}必須是物件`);
+        return;
+      }
+      for (const key of unknownKeys(row, ['id', 'mission', 'free', 'paid'])) push(`規則 33(e): ${at}有未知欄位 ${JSON.stringify(key)}`);
+      for (const key of ['id', 'mission']) {
+        const v = row[key];
+        if (typeof v !== 'string' || v.trim() === '' || /[{}<>]/.test(v)) {
+          push(`規則 33(e): ${at}的 ${key} ${JSON.stringify(v)} 必須是非空字串，且不帶沒填值的佔位或標籤`);
+        }
+      }
+      if (seenPass.has(row['id'])) push(`規則 33(e): ${at}的 id ${JSON.stringify(row['id'])} 撞號`);
+      seenPass.add(row['id']);
+      for (const key of ['free', 'paid']) {
+        if (!isReward(row[key])) push(`規則 33(f): ${at}的 ${key} 必須是 { goods, amount }（goods 是 ${Object.keys(RELIC_GOODS).join('／')}，amount 是正整數）`);
+      }
+    });
+  }
+
+  // 規則 34：賽季（`data/seasons.json`，`/season`）。檔期的形狀跟活動共用 checkPeriod()；
+  // 這裡多守「一季接一季」：頁面照陣列順序印，順序錯或兩季重疊時畫面上是一張自相矛盾的時間表。
+  if (opts.seasons === null) {
+    warn('規則 34: 沒有提供 data/seasons.json，賽季未檢查');
+  } else if (!isPlainObject(opts.seasons) || !Array.isArray(opts.seasons['eras']) || opts.seasons['eras'].length === 0) {
+    push('規則 34(a): data/seasons.json 必須是 { unlockKills, eras: [至少一季] }');
+  } else {
+    const file = 'data/seasons.json';
+    for (const key of unknownKeys(opts.seasons, ['unlockKills', 'eras'])) push(`規則 34(a): ${file} 有未知欄位 ${JSON.stringify(key)}`);
+    if (!Number.isInteger(opts.seasons['unlockKills']) || (opts.seasons['unlockKills'] as number) <= 0) {
+      push(`規則 34(a): ${file} 的 unlockKills ${JSON.stringify(opts.seasons['unlockKills'])} 必須是正整數`);
+    }
+    const seenEra = new Set<unknown>();
+    let prevFinish: string | null = null;
+    let eraTz: string | null = null;
+    (opts.seasons['eras'] as unknown[]).forEach((era, i) => {
+      const at = `${file} 第 ${i + 1} 季`;
+      if (!isPlainObject(era)) {
+        push(`規則 34(b): ${at}必須是物件`);
+        return;
+      }
+      for (const key of unknownKeys(era, ['id', 'name', 'period'])) push(`規則 34(b): ${at}有未知欄位 ${JSON.stringify(key)}`);
+      if (typeof era['name'] !== 'string' || era['name'].trim() === '') push(`規則 34(b): ${at}的 name 必須是非空字串`);
+      // id 直接變成表格列的錨點（`#s<id>`），所以只收正整數字串（同規則 32 的神器編號）。
+      const id = era['id'];
+      if (typeof id !== 'string' || !/^[1-9]\d*$/.test(id)) {
+        push(`規則 34(b): ${at}的 id ${JSON.stringify(id)} 必須是正整數字串（它是那一列的錨點）`);
+      } else if (seenEra.has(id)) {
+        push(`規則 34(b): ${at}的 id ${JSON.stringify(id)} 撞號`);
+      } else {
+        seenEra.add(id);
+      }
+      const before = errors.length;
+      checkPeriod(era['period'], '規則 34(c)', at, false);
+      if (errors.length !== before || !isPlainObject(era['period'])) return;
+      // 兩端都要帶時刻才比得出先後（賽季是整點交接；只寫日期的話「同一天結束與開始」分不出重不重疊）。
+      const { begin, finish, tz } = era['period'] as { begin: string; finish: string; tz: string };
+      // 頁面只在表格下方印一次時區，(d) 也是直接拿牆上時間的字串比先後——兩者都假設各季同一個時區。
+      if (eraTz !== null && tz !== eraTz) {
+        push(`規則 34(e): ${at}的時區 ${tz} 跟前面的 ${eraTz} 不同——各季要換算成同一個時區`);
+        return;
+      }
+      eraTz = tz;
+      if (begin.length !== 16 || finish.length !== 16) {
+        push(`規則 34(c): ${at}的 period 兩端都要寫到時刻（YYYY-MM-DD HH:MM）`);
+        return;
+      }
+      if (prevFinish !== null && begin < prevFinish) {
+        push(`規則 34(d): ${at}的開始 ${JSON.stringify(begin)} 早於上一季的結束 ${JSON.stringify(prevFinish)}——賽季要由舊到新、不重疊`);
+      }
+      prevFinish = finish;
+    });
+  }
+
   return { errors, warnings };
 }
 
@@ -2469,6 +2704,11 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
     prereqRanks: readDataFile('data/prereq-ranks.json', true),
     riftShop: readDataFile('data/rift-shop.json', true),
     riftShopIconsDir: 'data/rift-shop-icons',
+    relics: readDataFile('data/relics.json', true),
+    relicIconsDir: 'data/relic-icons',
+    relicLevels: readDataFile('data/relic-levels.json', true),
+    relicCrystal: readDataFile('data/relic-crystal.json', true),
+    seasons: readDataFile('data/seasons.json', true),
     offgameEffects: readDataFile('data/offgame-effects.json', true),
     events: readDataFile('data/events.json', true),
     eventShotsDir: 'public/events',

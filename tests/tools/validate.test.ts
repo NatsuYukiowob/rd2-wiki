@@ -32,13 +32,18 @@ const prereqRanks: unknown = JSON.parse(readFileSync('data/prereq-ranks.json', '
 const riftShop: unknown = JSON.parse(readFileSync('data/rift-shop.json', 'utf8'));
 const riftShopIconsDir = 'data/rift-shop-icons';
 const offgameEffects: unknown = JSON.parse(readFileSync('data/offgame-effects.json', 'utf8'));
+const relics: unknown = JSON.parse(readFileSync('data/relics.json', 'utf8'));
+const relicIconsDir = 'data/relic-icons';
+const relicLevels: unknown = JSON.parse(readFileSync('data/relic-levels.json', 'utf8'));
+const relicCrystal: unknown = JSON.parse(readFileSync('data/relic-crystal.json', 'utf8'));
+const seasons: unknown = JSON.parse(readFileSync('data/seasons.json', 'utf8'));
 const events: unknown = JSON.parse(readFileSync('data/events.json', 'utf8'));
 const eventShotsDir = 'public/events';
 const opts = {
   keywords, nodeText, upgradeCostTable, maxLevelOfficial, unlockExceptions, changelog, iconsDir, dataDir,
   boardIcons, boardIconsDir, dice3Icons, dice3IconsDir, passiveUpgradeCost, diceStats,
   tactics, tacticIconsDir, boss, bossIconsDir, prereqRanks, riftShop, riftShopIconsDir, offgameEffects,
-  events, eventShotsDir,
+  events, eventShotsDir, relics, relicIconsDir, relicLevels, relicCrystal, seasons,
 };
 
 /** 換掉升級費用表、其餘照舊。深拷貝理由同 patch()。 */
@@ -2317,5 +2322,256 @@ describe('規則 29：期間限定活動', () => {
     const data = rows();
     data[0]!['sections'] = [];
     expect(only29(data).some(e => /規則 29\(g\).*sections 必須是非空陣列/.test(e))).toBe(true);
+  });
+});
+
+describe('規則 32：神器', () => {
+  const rows = () => structuredClone(relics) as Record<string, unknown>[];
+  const levels = () => structuredClone(relicLevels) as Record<string, unknown>;
+  const errorsOf = (over: Partial<typeof opts>) => validate(svg, { ...opts, ...over }).errors.filter(e => e.startsWith('規則 32'));
+
+  it('正本通過', () => {
+    expect(errorsOf({})).toEqual([]);
+  });
+
+  it('沒有資料檔時只警告', () => {
+    const result = validate(svg, { ...opts, relics: null });
+    expect(result.warnings.some(w => /規則 32: 沒有提供 data\/relics\.json/.test(w))).toBe(true);
+    expect(result.errors.filter(e => e.startsWith('規則 32'))).toEqual([]);
+  });
+
+  it('圖示走共用檢查：兩筆指向同一張圖會擋', () => {
+    const data = rows();
+    data[1]!.icon = data[0]!.icon;
+    expect(errorsOf({ relics: data }).some(e => /規則 32\(g\).*指向同一張圖/.test(e))).toBe(true);
+  });
+
+  it('(e) values 不是數字陣列的陣列', () => {
+    const data = rows();
+    data[0]!.values = [1, 2, 3];
+    expect(errorsOf({ relics: data }).some(e => /規則 32\(e\).*1 的 values/.test(e))).toBe(true);
+  });
+
+  it('(m) 逐級值的級數與花費表對不上', () => {
+    const data = rows();
+    (data[0]!.values as number[][])[0]!.pop();
+    expect(errorsOf({ relics: data }).some(e => /規則 32\(m\).*19 級.*20 級/.test(e))).toBe(true);
+  });
+
+  it('(n) 佔位與 values 的組數對不上（多一個佔位、少一個佔位都擋）', () => {
+    const extra = rows();
+    extra[0]!.effect = `${extra[0]!.effect as string}{1}`;
+    expect(errorsOf({ relics: extra }).some(e => /規則 32\(n\)/.test(e))).toBe(true);
+
+    const missing = rows();
+    const two = missing.find(r => (r.values as number[][]).length === 2)!;
+    two.effect = (two.effect as string).replace('{1}', '');
+    expect(errorsOf({ relics: missing }).some(e => /規則 32\(n\)/.test(e))).toBe(true);
+  });
+
+  it('(o) 多組數值要有同樣多個欄名，單組不准寫', () => {
+    const two = () => {
+      const data = rows();
+      return { data, rec: data.find(r => (r.values as number[][]).length === 2)! };
+    };
+    const missing = two();
+    delete missing.rec.valueLabels;
+    expect(errorsOf({ relics: missing.data }).some(e => /規則 32\(o\)/.test(e))).toBe(true);
+
+    const short = two();
+    short.rec.valueLabels = ['機率'];
+    expect(errorsOf({ relics: short.data }).some(e => /規則 32\(o\)/.test(e))).toBe(true);
+
+    const dup = two();
+    dup.rec.valueLabels = ['機率', '機率'];
+    expect(errorsOf({ relics: dup.data }).some(e => /規則 32\(o\)/.test(e))).toBe(true);
+
+    const single = rows();
+    single[0]!.valueLabels = ['數值'];
+    expect(errorsOf({ relics: single }).some(e => /規則 32\(o\)/.test(e))).toBe(true);
+  });
+
+  it('(l) relic-levels.json 的形狀', () => {
+    expect(errorsOf({ relicLevels: null }).some(e => /規則 32\(l\).*必須是物件/.test(e))).toBe(true);
+
+    const short = levels();
+    (short.gold as number[]).pop();
+    expect(errorsOf({ relicLevels: short }).some(e => /規則 32\(l\).*長度不一致/.test(e))).toBe(true);
+
+    const bad = levels();
+    bad.unlockKills = 0;
+    bad.critDamage = [];
+    const errors = errorsOf({ relicLevels: bad });
+    expect(errors.some(e => /unlockKills.*正整數/.test(e))).toBe(true);
+    expect(errors.some(e => /critDamage 必須是非空的數字陣列/.test(e))).toBe(true);
+
+    const first = levels();
+    (first.pieces as number[])[0] = 1;
+    expect(errorsOf({ relicLevels: first }).some(e => /pieces 必須至少兩級、第 1 級是 0/.test(e))).toBe(true);
+
+    const frac = levels();
+    (frac.gold as number[])[3] = 0.5;
+    expect(errorsOf({ relicLevels: frac }).some(e => /gold 必須至少兩級/.test(e))).toBe(true);
+
+    const typo = levels();
+    typo.critSteps = 5;
+    expect(errorsOf({ relicLevels: typo }).some(e => /未知欄位 "critSteps"/.test(e))).toBe(true);
+  });
+
+  it('(p) 收藏等級表蓋到的總等級要等於 神器數 × 等級上限（兩個方向都擋）', () => {
+    const fewer = rows();
+    fewer.pop();
+    expect(errorsOf({ relics: fewer }).some(e => /規則 32\(p\).*蓋到總等級 600.*＝ 580/.test(e))).toBe(true);
+
+    const shortTable = levels();
+    (shortTable.critDamage as number[]).pop();
+    expect(errorsOf({ relicLevels: shortTable }).some(e => /規則 32\(p\).*蓋到總等級 595/.test(e))).toBe(true);
+  });
+});
+
+describe('規則 33：裂縫結晶的來源', () => {
+  type Crystal = { pot: { tiers: Record<string, unknown>[]; repeatPoints: unknown; repeatReward: unknown }; pass: Record<string, unknown>[] } & Record<string, unknown>;
+  const data = () => structuredClone(relicCrystal) as Crystal;
+  const errorsOf = (over: Partial<typeof opts>) => validate(svg, { ...opts, ...over }).errors.filter(e => e.startsWith('規則 33'));
+
+  it('正本通過', () => {
+    expect(errorsOf({})).toEqual([]);
+  });
+
+  it('沒有資料檔時只警告', () => {
+    const result = validate(svg, { ...opts, relicCrystal: null });
+    expect(result.warnings.some(w => /規則 33: 沒有提供 data\/relic-crystal\.json/.test(w))).toBe(true);
+    expect(result.errors.filter(e => e.startsWith('規則 33'))).toEqual([]);
+  });
+
+  it('(a) 外層形狀與未知欄位', () => {
+    expect(errorsOf({ relicCrystal: [] }).some(e => /規則 33\(a\).*必須是/.test(e))).toBe(true);
+    const typo = data();
+    typo.passes = [];
+    expect(errorsOf({ relicCrystal: typo }).some(e => /規則 33\(a\).*未知欄位 "passes"/.test(e))).toBe(true);
+  });
+
+  it('(b) 甕的一檔：種類沒登記、數量不是正整數都擋', () => {
+    const kind = data();
+    kind.pot.tiers[0]!.goods = 'gem';
+    expect(errorsOf({ relicCrystal: kind }).some(e => /規則 33\(b\).*第 1 檔/.test(e))).toBe(true);
+    const zero = data();
+    zero.pot.tiers[1]!.amount = 0;
+    expect(errorsOf({ relicCrystal: zero }).some(e => /規則 33\(b\).*第 2 檔/.test(e))).toBe(true);
+  });
+
+  it('(c) 門檻是累計：沒有嚴格遞增就擋', () => {
+    const d = data();
+    d.pot.tiers[2]!.points = d.pot.tiers[1]!.points;
+    expect(errorsOf({ relicCrystal: d }).some(e => /規則 33\(c\).*第 3 檔.*累計門檻/.test(e))).toBe(true);
+  });
+
+  it('(d) 重複獎勵', () => {
+    const d = data();
+    d.pot.repeatPoints = 0;
+    d.pot.repeatReward = { goods: 'crystal' };
+    const errors = errorsOf({ relicCrystal: d });
+    expect(errors.some(e => /規則 33\(d\).*repeatPoints/.test(e))).toBe(true);
+    expect(errors.some(e => /規則 33\(d\).*repeatReward/.test(e))).toBe(true);
+  });
+
+  it('獎勵的 goods 必須是字串、不准有未知欄位（陣列會被轉型成鍵而矇混過去）', () => {
+    const arr = data();
+    arr.pot.tiers[0]!.goods = ['crystal'];
+    expect(errorsOf({ relicCrystal: arr }).some(e => /規則 33\(b\).*第 1 檔/.test(e))).toBe(true);
+    const typo = data();
+    typo.pass[0]!.paid = { goods: 'crystal', amount: 3, amout: 5 };
+    expect(errorsOf({ relicCrystal: typo }).some(e => /規則 33\(f\).*第 1 筆的 paid/.test(e))).toBe(true);
+  });
+
+  it('(e)(f) 通行證：任務句留著佔位、id 撞號、獎勵形狀不對', () => {
+    const d = data();
+    d.pass[1]!.mission = '抽取神器{0}次';
+    d.pass[2]!.id = d.pass[0]!.id;
+    d.pass[3]!.paid = { goods: 'crystal', amount: 1.5 };
+    const errors = errorsOf({ relicCrystal: d });
+    expect(errors.some(e => /規則 33\(e\).*第 2 筆的 mission/.test(e))).toBe(true);
+    expect(errors.some(e => /規則 33\(e\).*第 3 筆.*撞號/.test(e))).toBe(true);
+    expect(errors.some(e => /規則 33\(f\).*第 4 筆的 paid/.test(e))).toBe(true);
+  });
+});
+
+describe('規則 34：賽季', () => {
+  type Seasons = { unlockKills: unknown; eras: { id: string; name: string; period: Record<string, unknown> }[] } & Record<string, unknown>;
+  const data = () => structuredClone(seasons) as Seasons;
+  const errorsOf = (over: Partial<typeof opts>) => validate(svg, { ...opts, ...over }).errors.filter(e => e.startsWith('規則 34'));
+
+  it('正本通過', () => {
+    expect(errorsOf({})).toEqual([]);
+  });
+
+  it('沒有資料檔時只警告', () => {
+    const result = validate(svg, { ...opts, seasons: null });
+    expect(result.warnings.some(w => /規則 34: 沒有提供 data\/seasons\.json/.test(w))).toBe(true);
+    expect(result.errors.filter(e => e.startsWith('規則 34'))).toEqual([]);
+  });
+
+  it('(a) 外層形狀', () => {
+    expect(errorsOf({ seasons: { unlockKills: 650, eras: [] } }).some(e => /規則 34\(a\)/.test(e))).toBe(true);
+    const d = data();
+    d.unlockKills = '650';
+    d.note = 'x';
+    const errors = errorsOf({ seasons: d });
+    expect(errors.some(e => /unlockKills.*正整數/.test(e))).toBe(true);
+    expect(errors.some(e => /未知欄位 "note"/.test(e))).toBe(true);
+  });
+
+  it('(b) 名稱空白與 id 撞號', () => {
+    const d = data();
+    d.eras[0]!.name = ' ';
+    d.eras[1]!.id = d.eras[0]!.id;
+    const errors = errorsOf({ seasons: d });
+    expect(errors.some(e => /規則 34\(b\).*第 1 季的 name/.test(e))).toBe(true);
+    expect(errors.some(e => /規則 34\(b\).*第 2 季.*撞號/.test(e))).toBe(true);
+  });
+
+  it('(c) 檔期走共用檢查：少時區、假日期、只寫日期都擋', () => {
+    const tz = data();
+    delete tz.eras[0]!.period.tz;
+    expect(errorsOf({ seasons: tz }).some(e => /規則 34\(c\).*period\.tz/.test(e))).toBe(true);
+    const fake = data();
+    fake.eras[0]!.period.finish = '2027-02-30 00:00';
+    expect(errorsOf({ seasons: fake }).some(e => /規則 34\(c\).*period\.finish/.test(e))).toBe(true);
+    const dateOnly = data();
+    dateOnly.eras[0]!.period.begin = '2026-10-12';
+    expect(errorsOf({ seasons: dateOnly }).some(e => /規則 34\(c\).*寫到時刻/.test(e))).toBe(true);
+  });
+
+  it('(b) id 是列的錨點：只收正整數字串', () => {
+    const d = data();
+    d.eras[1]!.id = '2 pre';
+    expect(errorsOf({ seasons: d }).some(e => /規則 34\(b\).*第 2 季的 id/.test(e))).toBe(true);
+  });
+
+  it('(c) 賽季的 period 不能是 null，訊息不能說可以', () => {
+    const d = data() as unknown as { eras: { period: unknown }[] };
+    d.eras[0]!.period = null;
+    const errors = errorsOf({ seasons: d });
+    expect(errors.some(e => /規則 34\(c\).*第 1 季的 period 必須是 \{ begin, finish, tz \}/.test(e))).toBe(true);
+    expect(errors.some(e => /null/.test(e))).toBe(false);
+  });
+
+  it('(e) 各季同一個時區（頁面只印一次時區、先後也是拿牆上時間比）', () => {
+    const d = data();
+    d.eras[1]!.period.tz = 'UTC+8';
+    expect(errorsOf({ seasons: d }).some(e => /規則 34\(e\).*第 2 季.*UTC\+8.*UTC\+9/.test(e))).toBe(true);
+  });
+
+  it('(d) 賽季要由舊到新、不重疊', () => {
+    const d = data();
+    d.eras.reverse();
+    expect(errorsOf({ seasons: d }).some(e => /規則 34\(d\).*第 2 季.*早於上一季/.test(e))).toBe(true);
+  });
+
+  it('規則 29(e) 仍由同一支檢查守（抽出共用實作後活動那邊沒有鬆掉）', () => {
+    const list = structuredClone(events) as { period: Record<string, unknown> | null }[];
+    const withPeriod = list.find(e => e.period !== null)!;
+    withPeriod.period!.tz = 'KST';
+    expect(validate(svg, { ...opts, events: list }).errors.some(e => /規則 29\(e\).*period\.tz/.test(e))).toBe(true);
   });
 });

@@ -472,6 +472,90 @@ export interface RiftShopEffect {
 }
 
 /**
+ * 一種神器（`data/relics.json` 的一筆，`/relic`）。遊戲 1.2.0 新增的局外養成系統。
+ *
+ * 來源是客戶端 `RelicTable`（30 列）＋ `localization.json` 的 `zh-tw`。
+ */
+export interface Relic {
+  /** 客戶端 `RelicTable.Id`（＝ `eRelicKind` 的值，1–30）。遊戲內一覽也照這個順序排。 */
+  id: string;
+  name: string;
+  /**
+   * 效果樣板。`{0}`／`{1}` 依序對 `values[0]`／`values[1]`，單位（`%`、`秒`、`倍`）寫在樣板裡。
+   * 客戶端描述裡綠字的「下一級增量」提示已剝掉——逐級值在 `values`。
+   */
+  effect: string;
+  /**
+   * 每個佔位的逐級**絕對值**（索引 0 ＝ 1 級）。客戶端 `Value`／`Value2` 存的是「1 級值＋每級增量」，
+   * 遊戲用 `TableBridge.GetRelicCumulativeValue` 累加；這裡已經加好。
+   * ⚠️ 不一定遞增：擊殺計數器是「每擊殺 N 隻」，N 隨等級往下降。
+   */
+  values: number[][];
+  /**
+   * 逐級表每一欄的欄名，跟 `values` 一一對應。**有兩組以上數值時必填、只有一組時不寫**
+   * （一組時欄名就是「數值」）。客戶端沒有這種字串，是照效果句的語意取的。
+   */
+  valueLabels?: string[];
+  /** 客戶端 `RelicKind`（`OldWallet`…）。對新版資料表的 join key。 */
+  gameId: string;
+  /**
+   * `data/relic-icons/` 底下來源 PNG 的內容 sha256 前 12 碼。
+   * ⚠️ sprite 檔名的編號不等於 `id`：客戶端 `IconResources` 的對照表把 15 與 25 交叉配。
+   */
+  icon: string;
+}
+
+/**
+ * 神器共用的等級資料（`data/relic-levels.json`）。30 種神器的升級花費在客戶端表裡完全相同，所以只存一份。
+ */
+export interface RelicLevels {
+  /** 解鎖神器系統要的累積擊殺數（`ContentOpenTable` 的 `RELIC`）。 */
+  unlockKills: number;
+  /** 升到第 i+1 級要消耗的同名神器數（索引 0 ＝ 1 級 ＝ 0）。 */
+  pieces: number[];
+  /** 升到第 i+1 級要的金幣（索引 0 ＝ 0）。 */
+  gold: number[];
+  /** 收藏等級每幾級算一段。 */
+  critStep: number;
+  /**
+   * 每一段加的暴擊傷害（%）。第 i 筆在神器總等級達到 `(i+1) × critStep` 時生效，逐段累加
+   * （`TableBridge.GetRelicCriticalDamagePer`）。
+   */
+  critDamage: number[];
+}
+
+/** 一筆獎勵：哪一種貨幣、幾個（`data/relic-crystal.json`）。種類清單在 `src/lib/relic.ts` 的 `RELIC_GOODS`。 */
+export interface RelicReward {
+  goods: 'crystal' | 'gold';
+  amount: number;
+}
+
+/**
+ * 裂縫結晶（神器抽取貨幣）的兩個來源（`data/relic-crystal.json`，`/relic`）。
+ * 來自客戶端 `Eye7PotTable`／`RelicPassTable`。
+ */
+export interface RelicCrystal {
+  /** 覺醒之甕：累積覺醒點數領獎。 */
+  pot: {
+    /** `points` 是**累計**門檻（由小到大），不是每一檔各自要的量。 */
+    tiers: ({ points: number } & RelicReward)[];
+    /** 最後一檔之後，每再累積這麼多點領一次 `repeatReward`。 */
+    repeatPoints: number;
+    repeatReward: RelicReward;
+  };
+  /** 神器通行證：`free` 是免費獎勵，`paid` 是購買通行證後多拿的那一份。 */
+  pass: { id: string; mission: string; free: RelicReward; paid: RelicReward }[];
+}
+
+/** 賽季（`data/seasons.json`，`/season`）。來自客戶端 `EraTable`，不是每月一期的骰子通行證。 */
+export interface Seasons {
+  /** 開放賽季要的累積擊殺數（`ContentOpenTable` 的 `ERA`）。 */
+  unlockKills: number;
+  /** 由舊到新；`period` 兩端都寫到時刻，各季同一個 `tz`（規則 34）。 */
+  eras: { id: string; name: string; period: NonNullable<GameEvent['period']> }[];
+}
+
+/**
  * 一場期間限定活動（`data/events.json` 的一筆，`/events`）。
  *
  * 資料來自客戶端那一版的活動資料表（中秋是 `ChuseokBoardTable`／`ChuseokMarketTable`／
