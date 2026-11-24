@@ -104,6 +104,16 @@ test('SEO-7. 每一頁的搜尋摘要（meta description）都不一樣，而且
   }
 });
 
+test('SEO-10. 首頁帶著舊網域資源的 Search Console 驗證標記', async ({ request }) => {
+  // 這個標記驗證的是 Search Console 裡的 `https://rd2-wiki.pages.dev/` 資源：舊網域整站 301 到這裡，
+  // Google 跟著轉址在落地的首頁找標記。標記不見＝那個資源失去驗證，「網址變更」跟著失效，
+  // 而站台逛起來完全正常，所以要有一條測試盯著。
+  const html = await (await request.get('/')).text();
+  expect(html).toContain(
+    '<meta name="google-site-verification" content="z_C28n-aRhFMXQX4cbF5Us3e42E2eyM2NipKINdOwoc"'
+  );
+});
+
 test('SEO-5. 未知路徑回 404 而不是首頁', async ({ page, request }) => {
   const res = await request.get('/no-such-page-abc123');
   // soft 404 的樣子就是這裡回 200 ＋ 首頁的 HTML；那會讓無限多個不存在的網址
