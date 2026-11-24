@@ -126,6 +126,13 @@ const imageUrl = new URL('/favicon.png', Astro.site).href;
          的顯示位置是正方形，直接放長方形圖會被壓扁。 */}
     <link rel="icon" type="image/png" href="/favicon.png" />
     <meta name="description" content={pageDescription ?? DESCRIPTION} />
+    {/*
+      Search Console 的擁有權驗證，驗的是**舊網域** `https://rd2-wiki.pages.dev/` 那個資源（網域資源
+      rd2wiki.org 走 DNS，不靠這行）。舊網域整站 301 到這裡，驗證檔讀不到，所以用標記：Google 跟著
+      轉址在落地頁找它。拿掉＝那個資源失去驗證，「網址變更」（告訴 Google 舊網域搬到這裡）跟著失效，
+      所以轉址還在的期間不要刪。只有首頁需要，放在共用版型是因為多出現幾頁沒有壞處。
+    */}
+    <meta name="google-site-verification" content="z_C28n-aRhFMXQX4cbF5Us3e42E2eyM2NipKINdOwoc" />
 
     {/*
       連結預覽（貼進 Discord／LINE／Twitter 等聊天室時展開的卡片）。
