@@ -907,10 +907,10 @@
       "kind": "PotionStackDoubleChancePercent",
       "target": "mechanic",
       "scope": "dice:3007",
-      "value": 10,
-      "rankAdd": 1,
+      "value": 2,
+      "rankAdd": 0.2,
       "maxLevel": 50,
-      "template": "投擲藥水時，{V}% 機率套用 2 疊加"
+      "template": "藥水傷害增益量 +{V}%"
     },
     "3301": {
       "kind": "ElectricChainUpgrade",
@@ -966,7 +966,7 @@
       "kind": "PotionMaxStackValuePlus",
       "target": "mechanic",
       "scope": "dice:3007",
-      "value": 2,
+      "value": 60,
       "rankAdd": 0,
       "maxLevel": 1
     },
