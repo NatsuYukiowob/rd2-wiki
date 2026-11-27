@@ -11,7 +11,7 @@
   CSV 源檔＋編譯二進位兩份，取 CSV；表頭三列＝註解／欄名／型別，資料從第 4 列起。文字在 `localization_text`
   （`ko,en,ja,zh-tw` 四欄）。解包工具、解出的 CSV、各產生腳本**不進版控**（維護者本機）。
 - **對照鍵**：節點 id ＝ `DiceTreeNodeTable.Id`；成本 ＝ `RankUpGoldArr[0]`／`RankUpGoodsArr[0]`（`RankUpGoodsType`：
-  `NODE_STONE` 核心、`CORE_SOLAR` 太陽核心、`CORE_GEAR_SECOND` 齒輪二階核心、`CORE_EXTREME` 極限核心）；骰子 ＝ `DefenderTable` 第 KindId 列；
+  `NODE_STONE` 核心、`CORE_SOLAR` 太陽核心、`CORE_GEAR_SECOND` 齒輪二階核心、`CORE_EXTREME` 極限核心、`CORE_TRANSMUTE` 無限冶煉核心）；骰子 ＝ `DefenderTable` 第 KindId 列；
   符文 ＝ `RuneTable.Id`；被動 ＝ `PlayerPassiveTable` 第 KindId 列。
   ⚠️ **等級上限不是 `RankUpGoldArr` 的長度**（上游一律補滿 50 格），骰子符文的上限在 `RuneTable.MaxRank`。
 - **SVG 座標 ＝ `(1000 + 0.2·x, 850 − 0.2·y)`**（`Position` 欄）。刻意不吻合表格的節點：`1407`（版面調整）、
@@ -20,7 +20,8 @@
   `5010`（比表格往上 10，否則骰子標籤壓到 `5210`）、`5310`（往下 20，讓出 `5210` 的標籤、避開 `5410` 的標籤）、
   `1206`（往左 30，否則跟 `1006` 的骰子標籤互壓）、`1306`（往左 30、往下 10，讓出 `1103` 的標籤，且不壓到 `1206` 的圖示）、
   `5114`（往下 5，讓出 `5109` 的標籤）、`5306`（往上 10，否則它的標籤壓到 `5006`）、
-  `4204`（往下 20，否則 `4004` 的骰子標籤壓到它的圖示；這一塊擠不出零重疊，剩下的是符文自己的 hover 標籤）。
+  `4204`（往下 20，否則 `4004` 的骰子標籤壓到它的圖示；這一塊擠不出零重疊，剩下的是符文自己的 hover 標籤）、
+  `3106`（往下 15，否則 `3007` 的骰子標籤壓到它的圖示）、`3607`（往右 20，讓出 `3507` 的骰子標籤；煉金那一塊剩下的是符文自己的 hover 標籤）。
   量的時候三種都要算：標籤壓圖示、標籤互壓（標籤外框加上描邊 `lineWidth 3`）、圖示互壓。
   量重疊要用畫布的字（`700 12px` world 單位，`theme.labelPx`），預覽 SVG 的字比較小、會低估。
   已知且接受：`3305` 的標籤左緣擦進 `3505` 圖框右下約 2.5（落在圖檔的透明邊，畫面看不出來；要避開得把 `3505` 移 40 以上）。其餘一律照表格。
@@ -39,6 +40,7 @@
   D201／D202／D208×2／D302／D306／D402／D406 的技能四檔。對帳時拿 `DefenderTable`／`DefenderSkillTable`／
   `ProjectileAbilityTable`／`DiceTreeNodeTable`／`RuneTable` 對。
 - 決策：`2009`／`5001` 描述末尾 xlsx 加註的數字保留。
+- 決策：關鍵字「治煉」（`TRANSMUTE_CIRCLE`，`3507`／`3607` 的描述）照上游原字，不要改成「冶煉」：客戶端標籤與官方商店頁都寫「治煉」，骰子、核心、`TRANSMUTE_TIER`「冶煉階段」才是「冶」。
 - ⚠️ 判斷某格是否「仍不一致」要**把兩邊字串直接比對**，不是看上游還有沒有大括號。
 
 ## 對帳清單
@@ -52,10 +54,10 @@
 - 階段清單有三份要一起改：`src/lib/types.ts` 的 `TacticStage`、`src/lib/tactics.ts` 的 `TACTIC_STAGES`（＝篩選鈕順序）、
   規則 24(e) 的 `stages`；E2E 是 `tests/e2e/battle.spec.ts` 的 T6。
 
-## 超越骰子（`1501` 太陽／`2503` 齒輪二階／`3505` 極限，含符文 `1601`／`2603`／`3605`）
+## 超越骰子（`1501` 太陽／`2503` 齒輪二階／`3505` 極限／`3507` 無限冶煉，含符文 `1601`／`2603`／`3605`／`3607`）
 
 - 名稱：遊戲 1.1.6 起把「神話骰子」改稱「超越骰子」（`archievement_desc_MythicDiceCount` 等 localization），站上跟著改；程式識別字 `mythic`／`MYTHIC_*` 照舊不改，`changelog.json` 舊條目保留當時的名稱。`rewards.json` 是 `tools/import-rewards.py` 從工作簿匯入的，重匯前工作簿也要改名，否則會改回「神話」。
-- 解鎖除了入邊還要前置節點練到 Lv.50（`1201`／`2203`／`3205`）→ `data/prereq-ranks.json`（上游 `NeedNode`／`NeedNodeRank`，
+- 解鎖除了入邊還要前置節點練到 Lv.50（`1201`／`2203`／`3205`／`3207`）→ `data/prereq-ranks.json`（上游 `NeedNode`／`NeedNodeRank`，
   規則 26），不寫進描述。登場條件寫在 `dice-stats.json` 的 `note`（客戶端 `MythicTranscendTable`）。
 - 符文的逐級費用在 `passive-upgrade-cost.json` 的 `special`（金幣＋超越核心）。
 - **圖示不是 `render-nodes` 產的**（在 `KEEP_ICON_IDS`，重跑時沿用原檔）。要重做圖時手工合成：節點 ＝ `DiceTree_Transcendence_on`
