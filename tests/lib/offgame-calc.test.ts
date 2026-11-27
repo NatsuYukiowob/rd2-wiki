@@ -137,16 +137,16 @@ describe('盤面增益用的符文與施加者那一列（2b）', () => {
     expect(applied('1006', { '1206': 1, '1306': 1 }).map(x => x.id)).toEqual(['1206']);
     for (const id of diceIds) expect(maxed(id).some(a => a.effect.target === 'board'), id).toBe(false);
   });
-  it('施加者的增益符文加在自己那一列上：排序增幅 Lv.50 +29.5、共鳴增幅 +5、陰之和諧 +3、陽之和諧 +7', () => {
+  it('施加者的增益符文加在自己那一列上：排序增幅 Lv.50 +29.5、共鳴增幅 +2.5、陰之和諧 +3、陽之和諧 +7', () => {
     expect(row(card('4007', 1, 1, applied('4007', { '4207': 50 })), '傷害增益量').bonus).toBe('(+29.5)');
-    expect(row(card('3002', 1, 1, applied('3002', { '3202': 1 })), '攻擊速度增益量').bonus).toBe('(+5)');
+    expect(row(card('3002', 1, 1, applied('3002', { '3202': 1 })), '攻擊速度增益量').bonus).toBe('(+2.5)');
     expect(row(card('4008', 1, 1, applied('4008', { '4208': 1 })), '橫排攻擊速度增加量').bonus).toBe('(+3)');
     expect(row(card('4008', 1, 1, applied('4008', { '4308': 1 })), '直排傷害增加量').bonus).toBe('(+7)');
   });
   it('rowValue：套上局外加成之後的數值（跟卡片那一列同一個數）；列不存在或不是數字回 null', () => {
     expect(rowValue(params('1006'), '攻擊速度增益', 1, 1, [])).toBe(6);
     expect(rowValue(params('1006'), '攻擊速度增益', 7, 1, applied('1006', { '1206': 50 }))).toBe(38.8);
-    expect(rowValue(params('4007'), '傷害增益量', 1, 1, applied('4007', { '4207': 1 }))).toBe(25);
+    expect(rowValue(params('4007'), '傷害增益量', 1, 1, applied('4007', { '4207': 1 }))).toBe(20);   // 1.2.1 排序基本 15＋排序增幅 Lv.1 5
     expect(rowValue(params('1001'), '目標', 1, 1, [])).toBeNull();
     expect(rowValue(params('1001'), '沒有這一列', 1, 1, [])).toBeNull();
   });

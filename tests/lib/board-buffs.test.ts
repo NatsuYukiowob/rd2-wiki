@@ -160,23 +160,24 @@ describe('排序', () => {
     expect(hit(run(filled({ 7: align(7) })))).toEqual([2, 5, 6, 8, 9, 12]);
     expect(hit(run(filled({ 7: align(1) })))).toEqual([]);
   });
-  it('值＝排序那一列（1 骰點 20%、7 骰點 260%）＋排序增幅（4207 Lv.1 → 25%）', () => {
-    expect(run(filled({ 7: align(1, 1) }))[8]!.attackPct).toBe(20);
-    expect(run(filled({ 7: align(7) }))[8]!.attackPct).toBe(260);
-    expect(run(filled({ 7: align(1, 1) }), { '4207': 1 })[8]!.attackPct).toBe(25);
+  // 1.2.1 排序骰子傷害增益量 20%(+40%/骰點) 改 15%(+20%/骰點)
+  it('值＝排序那一列（1 骰點 15%、7 骰點 135%）＋排序增幅（4207 Lv.1 → 20%）', () => {
+    expect(run(filled({ 7: align(1, 1) }))[8]!.attackPct).toBe(15);
+    expect(run(filled({ 7: align(7) }))[8]!.attackPct).toBe(135);
+    expect(run(filled({ 7: align(1, 1) }), { '4207': 1 })[8]!.attackPct).toBe(20);
   });
   it('同格兩顆排序相加；排序疊加強化（4307）× 層數，1 層也算', () => {
     const b = boardOf({ 0: align(1, 1), 6: align(1, 0), 1: dice(FIRE) });
     const plain = run(b)[1]!;
-    expect(plain.attackPct).toBe(40);
-    expect(texts(plain)).toEqual(['排序（第 1 列第 1 格 →）：攻擊 +20%', '排序（第 2 列第 2 格 ↑）：攻擊 +20%']);
+    expect(plain.attackPct).toBe(30);
+    expect(texts(plain)).toEqual(['排序（第 1 列第 1 格 →）：攻擊 +15%', '排序（第 2 列第 2 格 ↑）：攻擊 +15%']);
     const stacked = run(b, { '4307': 1 })[1]!;
-    expect(stacked.attackPct).toBe(60);
+    expect(stacked.attackPct).toBe(50);   // 疊加強化每層 10，1.2.1 沒變
     expect(texts(stacked)[2]).toBe('排序疊加強化 ×2：攻擊 +20%');
-    expect(run(boardOf({ 0: align(1, 1), 1: dice(FIRE) }), { '4307': 1 })[1]!.attackPct).toBe(30);
+    expect(run(boardOf({ 0: align(1, 1), 1: dice(FIRE) }), { '4307': 1 })[1]!.attackPct).toBe(25);
   });
   it('7 骰點的排序在明細寫「四向」', () => {
-    expect(texts(run(boardOf({ 0: align(7), 1: dice(FIRE) }))[1]!)).toEqual(['排序（第 1 列第 1 格 四向）：攻擊 +260%']);
+    expect(texts(run(boardOf({ 0: align(7), 1: dice(FIRE) }))[1]!)).toEqual(['排序（第 1 列第 1 格 四向）：攻擊 +135%']);
   });
 });
 
@@ -194,8 +195,8 @@ describe('共鳴', () => {
     const cells = run(boardOf({ 0: dice(RESONANCE_ID, 7), 1: dice(FIRE, 2), 14: dice(FIRE, 5) }));
     for (const i of [0, 1, 14]) expect(cells[i]!.intervalPcts, `第 ${i} 格`).toEqual([20]);
   });
-  it('共鳴增幅（3202）從共鳴那一列進來：3 骰點 8% → 13%', () => {
-    expect(run(boardOf({ 0: dice(RESONANCE_ID, 3), 1: dice(FIRE, 3) }), { '3202': 1 })[1]!.intervalPcts).toEqual([13]);
+  it('共鳴增幅（3202）從共鳴那一列進來：3 骰點 8% → 10.5%（1.2.1 起 Lv.1 是 +2.5）', () => {
+    expect(run(boardOf({ 0: dice(RESONANCE_ID, 3), 1: dice(FIRE, 3) }), { '3202': 1 })[1]!.intervalPcts).toEqual([10.5]);
   });
   it('三重共鳴（3402）：同骰點共鳴 ≥3 顆才加，每顆 10%；剛好 2 顆不加', () => {
     const three = run(boardOf({
@@ -346,9 +347,10 @@ describe('合進卡片（真實資料）', () => {
     const a = appliedEffects(FIRE, branchOfId(FIRE), effects, levelOf);
     expect(rowNamed(fireCard(7, cells[6]!, a), '攻擊速度').bonus).toBe('(−0.064)');
   });
-  it('排序 1 骰點朝右、火 1 骰點在射線上：150 (+30)', () => {
+  it('排序 1 骰點朝右、火 1 骰點在射線上：150 (+23)', () => {
     const cells = run(boardOf({ 0: align(1, 1), 2: dice(FIRE) }));
-    expect(rowNamed(fireCard(1, cells[2]!), '攻擊力')).toMatchObject({ value: '150', bonus: '(+30)' });
+    // 150 × 15% = 22.5，卡片四捨五入到整數
+    expect(rowNamed(fireCard(1, cells[2]!), '攻擊力')).toMatchObject({ value: '150', bonus: '(+23)' });
   });
   it('陰陽直排 3 顆 1 骰點：陰陽 150 (+75)', () => {
     const cells = run(boardOf({ 0: dice(BINGO_ID), 5: dice(BINGO_ID), 10: dice(BINGO_ID) }));
@@ -486,7 +488,7 @@ describe('合作雙盤：跨盤排序', () => {
     expect(alignEntries.some(e => e.from.length === 0 && e.fromPartner.length === 1)).toBe(true);
     const stack = cells[7]!.entries.find(e => e.kind === 'alignmentStack')!;
     expect(stack.text).toBe('排序疊加強化 ×2：攻擊 +20%');
-    expect(cells[7]!.attackPct).toBe(60);   // 20（本盤）＋20（跨盤）＋20（疊加 ×2 層）
+    expect(cells[7]!.attackPct).toBe(50);   // 15（本盤）＋15（跨盤）＋20（疊加 ×2 層）
   });
 
   it('隊友盤用自己的局外加成算值：隊友全滿時的值大於隊友不含時的值', () => {
