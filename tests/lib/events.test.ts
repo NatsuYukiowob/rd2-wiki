@@ -38,6 +38,32 @@ describe('活動資料的貨幣圖', () => {
     expect(section('機率資訊')).toEqual([['x1', '49%'], ['x1.2', '30%'], ['x1.5', '20%'], ['x5', '1%']]);
   });
 
+  it('神祕挖掘的通行證兩軌照實機截圖：裂縫結晶、無限冶煉核心、金幣不對調；所需經驗是逐級值', () => {
+    const event = events.find(e => e.id === 'mystery-dig-2026')!;
+    const section = (title: string) => event.sections.find(s => s.title === title)!.rows;
+    const gold = (n: string) => ({ icon: 'gold', text: `金幣 ${n}` });
+    const tm = (n: string) => ({ icon: 'transmute', text: `無限冶煉核心 ${n}` });
+    const rc = (n: string) => ({ icon: 'relicCrystal', text: `裂縫結晶 ${n}` });
+    // 截圖 Lv.1 進度 100/110：Exp 是「升到這一級要的經驗」，不是累計。
+    expect(section('活動通行證')).toEqual([
+      ['Lv.1', '100', gold('5,000'), gold('10,000')],
+      ['Lv.2', '110', gold('5,000'), tm('50')],
+      ['Lv.3', '120', rc('1'), rc('2')],
+      ['Lv.4', '120', tm('10'), tm('50')],
+      ['Lv.5', '130', rc('1'), rc('3')],
+      ['Lv.6', '140', gold('10,000'), '表情符號'],
+      ['Lv.7', '150', tm('20'), tm('100')],
+      ['Lv.8', '150', gold('10,000'), '圖示「神祕十字鎬」'],
+      ['Lv.9', '150', tm('20'), rc('5')],
+      ['Lv.10', '150', rc('3'), rc('10')],
+    ]);
+    expect(section('寶物')).toEqual([['2×2', '1 個', '80'], ['2×1', '1 個', '15'], ['1×2', '1 個', '15']]);
+    const pickaxe = { icon: 'mysterypickaxe', text: '神祕十字鎬 2' };
+    expect(section('活動任務')).toHaveLength(9);
+    for (const r of section('活動任務')) expect(r[1]).toEqual(pickaxe);
+    expect(section('免費領取')).toEqual([['觀看廣告', { icon: 'mysterypickaxe', text: '神祕十字鎬 1' }, '1 次']]);
+  });
+
   it('探索賓果的兌換所以古代印記計價，最終獎勵是超越核心三選一的純文字格', () => {
     const event = events.find(e => e.id === 'exploration-bingo-2026')!;
     const rows = event.sections.flatMap(s => s.rows);

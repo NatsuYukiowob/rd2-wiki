@@ -1,5 +1,295 @@
 [
   {
+    "id": "mystery-dig-2026",
+    "name": "神祕挖掘",
+    "version": "1.2.1",
+    "period": {
+      "begin": "2026-11-27 12:00",
+      "finish": "2026-12-03 23:59",
+      "tz": "UTC+9"
+    },
+    "screenshots": [
+      {
+        "file": "mystery-dig-2026-main.webp",
+        "caption": "活動主畫面：5×4 的挖掘盤面與十字鎬補充時間",
+        "width": 554,
+        "height": 1200
+      },
+      {
+        "file": "mystery-dig-2026-missions.webp",
+        "caption": "活動任務：每日重置，每項獎勵神祕十字鎬 2",
+        "width": 554,
+        "height": 1200
+      },
+      {
+        "file": "mystery-dig-2026-pass-1.webp",
+        "caption": "活動通行證第 1～5 級",
+        "width": 554,
+        "height": 1200
+      },
+      {
+        "file": "mystery-dig-2026-pass-2.webp",
+        "caption": "活動通行證第 5～10 級",
+        "width": 554,
+        "height": 1200
+      }
+    ],
+    "summary": "尋找秘密鑰匙！獲得十字鎬以發掘寶物。十字鎬每3小時補充，最多可持有3個。發現所有寶物後，將自動進入下一次挖掘。",
+    "currencies": [
+      {
+        "kind": "mysterypickaxe",
+        "name": "神祕十字鎬",
+        "note": "用於神祕挖掘活動的十字鎬。每 3 小時補充 1 個，最多可持有 3 個；也可從活動任務與活動商店獲得。"
+      }
+    ],
+    "sections": [
+      {
+        "title": "寶物",
+        "note": "5×4 的盤面裡藏著下列寶物，挖出來可獲得活動通行證經驗。發現所有寶物時另得 10 經驗（一輪合計 120），並自動進入下一次挖掘。",
+        "columns": [
+          "大小",
+          "數量",
+          "經驗"
+        ],
+        "rows": [
+          [
+            "2×2",
+            "1 個",
+            "80"
+          ],
+          [
+            "2×1",
+            "1 個",
+            "15"
+          ],
+          [
+            "1×2",
+            "1 個",
+            "15"
+          ]
+        ]
+      },
+      {
+        "title": "活動通行證",
+        "note": "「所需經驗」是從上一級升到該級要的經驗（從 0 升到 Lv.1 也要 100），不是累計值。高級獎勵需購買高級通行證。",
+        "columns": [
+          "等級",
+          "所需經驗",
+          "免費獎勵",
+          "高級獎勵"
+        ],
+        "rows": [
+          [
+            "Lv.1",
+            "100",
+            {
+              "icon": "gold",
+              "text": "金幣 5,000"
+            },
+            {
+              "icon": "gold",
+              "text": "金幣 10,000"
+            }
+          ],
+          [
+            "Lv.2",
+            "110",
+            {
+              "icon": "gold",
+              "text": "金幣 5,000"
+            },
+            {
+              "icon": "transmute",
+              "text": "無限冶煉核心 50"
+            }
+          ],
+          [
+            "Lv.3",
+            "120",
+            {
+              "icon": "relicCrystal",
+              "text": "裂縫結晶 1"
+            },
+            {
+              "icon": "relicCrystal",
+              "text": "裂縫結晶 2"
+            }
+          ],
+          [
+            "Lv.4",
+            "120",
+            {
+              "icon": "transmute",
+              "text": "無限冶煉核心 10"
+            },
+            {
+              "icon": "transmute",
+              "text": "無限冶煉核心 50"
+            }
+          ],
+          [
+            "Lv.5",
+            "130",
+            {
+              "icon": "relicCrystal",
+              "text": "裂縫結晶 1"
+            },
+            {
+              "icon": "relicCrystal",
+              "text": "裂縫結晶 3"
+            }
+          ],
+          [
+            "Lv.6",
+            "140",
+            {
+              "icon": "gold",
+              "text": "金幣 10,000"
+            },
+            "表情符號"
+          ],
+          [
+            "Lv.7",
+            "150",
+            {
+              "icon": "transmute",
+              "text": "無限冶煉核心 20"
+            },
+            {
+              "icon": "transmute",
+              "text": "無限冶煉核心 100"
+            }
+          ],
+          [
+            "Lv.8",
+            "150",
+            {
+              "icon": "gold",
+              "text": "金幣 10,000"
+            },
+            "圖示「神祕十字鎬」"
+          ],
+          [
+            "Lv.9",
+            "150",
+            {
+              "icon": "transmute",
+              "text": "無限冶煉核心 20"
+            },
+            {
+              "icon": "relicCrystal",
+              "text": "裂縫結晶 5"
+            }
+          ],
+          [
+            "Lv.10",
+            "150",
+            {
+              "icon": "relicCrystal",
+              "text": "裂縫結晶 3"
+            },
+            {
+              "icon": "relicCrystal",
+              "text": "裂縫結晶 10"
+            }
+          ]
+        ]
+      },
+      {
+        "title": "活動任務",
+        "note": "活動任務每日重置，每天登入領取獎勵吧！",
+        "columns": [
+          "任務",
+          "獎勵"
+        ],
+        "rows": [
+          [
+            "登入1次",
+            {
+              "icon": "mysterypickaxe",
+              "text": "神祕十字鎬 2"
+            }
+          ],
+          [
+            "遊玩合作戰1次",
+            {
+              "icon": "mysterypickaxe",
+              "text": "神祕十字鎬 2"
+            }
+          ],
+          [
+            "遊玩合作戰3次",
+            {
+              "icon": "mysterypickaxe",
+              "text": "神祕十字鎬 2"
+            }
+          ],
+          [
+            "狩獵SP魔像30次",
+            {
+              "icon": "mysterypickaxe",
+              "text": "神祕十字鎬 2"
+            }
+          ],
+          [
+            "使用1000金幣",
+            {
+              "icon": "mysterypickaxe",
+              "text": "神祕十字鎬 2"
+            }
+          ],
+          [
+            "製作神器1次",
+            {
+              "icon": "mysterypickaxe",
+              "text": "神祕十字鎬 2"
+            }
+          ],
+          [
+            "升級覺醒之甕3次",
+            {
+              "icon": "mysterypickaxe",
+              "text": "神祕十字鎬 2"
+            }
+          ],
+          [
+            "使用神祕十字鎬5次",
+            {
+              "icon": "mysterypickaxe",
+              "text": "神祕十字鎬 2"
+            }
+          ],
+          [
+            "發現寶物1次",
+            {
+              "icon": "mysterypickaxe",
+              "text": "神祕十字鎬 2"
+            }
+          ]
+        ]
+      },
+      {
+        "title": "免費領取",
+        "note": "活動商店每日可領取。",
+        "columns": [
+          "來源",
+          "獎勵",
+          "每日上限"
+        ],
+        "rows": [
+          [
+            "觀看廣告",
+            {
+              "icon": "mysterypickaxe",
+              "text": "神祕十字鎬 1"
+            },
+            "1 次"
+          ]
+        ]
+      }
+    ]
+  },
+  {
     "id": "rift-sweep-2026",
     "name": "裂縫大掃除",
     "version": "1.1.6",

@@ -31,10 +31,10 @@ export type CurrencyKind = 'core' | 'gold';
  * 運算都多背一個永遠是 0 的欄位。它只需要一張圖，所以只擴圖示這一層。
  */
 /**
- * 活動貨幣（`/events` 的中秋賞月活動、探索賓果活動、裂縫大掃除）。跟討伐硬幣同一個理由留在圖示這一層：它們不是
+ * 活動貨幣（`/events` 的中秋賞月活動、探索賓果活動、裂縫大掃除、神祕挖掘）。跟討伐硬幣同一個理由留在圖示這一層：它們不是
  * 骰子樹的花費，只在活動裡用（中秋的還明寫活動結束作廢，`event_chuseok_alert`）。
  */
-export type EventCoinKind = 'chuseoktoken' | 'chuseokcoin' | 'explorationticket' | 'explorationcoin' | 'riftsweepticket' | 'riftsweepcoin';
+export type EventCoinKind = 'chuseoktoken' | 'chuseokcoin' | 'explorationticket' | 'explorationcoin' | 'riftsweepticket' | 'riftsweepcoin' | 'mysterypickaxe';
 
 /** Rewards 與其他資料頁共用、但不屬於骰子樹 Cost 的固定資源圖。 */
 export type RewardIconKind =
@@ -42,7 +42,8 @@ export type RewardIconKind =
   | 'coopTicket'
   | 'arenaTicket'
   | 'skinCoin'
-  | 'luckyDiceTicket';
+  | 'luckyDiceTicket'
+  | 'relicCrystal';
 
 export type CurrencyIconKind = CurrencyKind | 'tacticcoin' | EventCoinKind | RewardIconKind;
 
@@ -56,11 +57,13 @@ const CURRENCY: Record<CurrencyIconKind, { label: string; file: string }> = {
   explorationcoin: { label: '古代印記', file: 'explorationcoin.png' },
   riftsweepticket: { label: '大掃除硬幣', file: 'riftsweepticket.png' },
   riftsweepcoin: { label: '屠戮印記', file: 'riftsweepcoin.png' },
+  mysterypickaxe: { label: '神祕十字鎬', file: 'mysterypickaxe.png' },
   treeSeed: { label: '骰子樹種子', file: 'treeSeed.png' },
   coopTicket: { label: '合作戰入場券', file: 'coopTicket.png' },
   arenaTicket: { label: '競技場入場券', file: 'arenaTicket.png' },
   skinCoin: { label: '造型硬幣', file: 'skinCoin.png' },
   luckyDiceTicket: { label: '幸運骰子票券', file: 'luckyDiceTicket.png' },
+  relicCrystal: { label: '裂縫結晶', file: 'relicCrystal.png' },
 };
 
 /**
