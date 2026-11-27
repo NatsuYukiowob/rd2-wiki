@@ -41,9 +41,10 @@ describe('buildTreeData', () => {
   // 1.1.4 加了極限骰子 3505 與極限強化 3605：節點 +2、邊 +3（3305→3505、3405→3505、3505→3605）。
   // 1.1.6 加了扭曲骰子 5010 與符文 5210／5310／5410、五顆骰子技能威力 x116：節點 +9、邊 +9
   // （5009→5010、5010→5210、5210→5310、5210→5410、1109→1116、2007→2116、3101→3116、4101→4116、5007→5116）。
+  // 1.2.1 加了無限冶煉骰子 3507 與冶煉強化 3607：節點 +2、邊 +3（3307→3507、3407→3507、3507→3607）。
   it('節點與邊數釘住正本（金標：增刪節點／連線時要跟著改）', () => {
-    expect(data.nodes).toHaveLength(254);
-    expect(data.edges).toHaveLength(266);
+    expect(data.nodes).toHaveLength(256);
+    expect(data.edges).toHaveLength(269);
   });
   it('edges 方向為 [前置, 被解鎖]', () => {
     const fromRoot = data.edges.filter(([from]) => from === '1001');
@@ -63,10 +64,12 @@ describe('buildTreeData', () => {
   // 金幣 +150,000、極限核心 +2,100（→ 1842／7,356,000）。
   // 1.1.6 加了扭曲骰子 5010（核心 8）、扭曲符文 5210（金幣 2,000）／5310（金幣 50,000／核心 10）／5410（金幣 100,000／核心 20）、
   // 五顆骰子技能威力（各金幣 8,000）：核心 +38、金幣 +192,000（→ 1880／7,548,000）。
+  // 1.2.1 加了無限冶煉骰子 3507（金幣 100,000／無限冶煉核心 2,000）與冶煉強化 3607（金幣 50,000／無限冶煉核心 100）：
+  // 金幣 +150,000、無限冶煉核心 +2,100（→ 1880／7,698,000）。
   // ⚠️ 給送資料 PR 的人：改了任何一顆節點的 `cost`，這條紅是**預期的**——把下面的數字換成
   // 失敗訊息裡的實際值（Received），同步改 CLAUDE.md〈不變量〉表，並在 PR 說明寫一句為什麼變。
   it('全樹解鎖成本總和釘住正本（金標：成本一動這裡就要跟著動）', () => {
-    expect(data.meta.totalUnlockCost).toEqual({ core: 1880, gold: 7548000, mythic: { solar: 2100, gearSecond: 2100, extreme: 2100 } });
+    expect(data.meta.totalUnlockCost).toEqual({ core: 1880, gold: 7698000, mythic: { solar: 2100, gearSecond: 2100, extreme: 2100, transmute: 2100 } });
   });
   // 太陽核心（v1.1.0）也要進全樹總和。光靠上面那條釘住的總和證明不了加總會動（上面那個數字
   // 也可能是某一顆直接指派的結果）。所以這裡合成兩顆帶太陽核心
@@ -156,7 +159,7 @@ describe('buildTreeData', () => {
 
   it('每顆骰子都有覺醒，其他節點都沒有', () => {
     const withAwakening = data.nodes.filter(n => n.awakening !== undefined);
-    expect(withAwakening).toHaveLength(45);   // 1.1.6 扭曲骰子 +1
+    expect(withAwakening).toHaveLength(46);   // 1.1.6 扭曲骰子 +1、1.2.1 無限冶煉骰子 +1
     expect(withAwakening.map(n => n.id)).toEqual(data.nodes.filter(n => n.type === 'dice').map(n => n.id));
     expect(withAwakening.every(n => (n.awakening ?? '').length > 0)).toBe(true);
   });
@@ -219,7 +222,7 @@ describe('buildTreeData', () => {
   it('樞紐不佔節點名額：nodes 裡沒有它，成本總和也不含它', () => {
     const c = data.meta.center!;
     expect(data.nodes.some(n => n.x === c.x && n.y === c.y)).toBe(false);
-    expect(data.nodes).toHaveLength(254);
+    expect(data.nodes).toHaveLength(256);
   });
 
   // prereqRanks 是「只在有值的節點上才放」的欄位（同 wip／category／unlockNote）。
@@ -227,14 +230,16 @@ describe('buildTreeData', () => {
   // 而下面那兩條預算斷言是硬上限——「順手補齊欄位」在這裡是會讓 CI 紅的改動。
   it('前置等級條件只出現在真的有條件的節點上', () => {
     const withRanks = data.nodes.filter(n => n.prereqRanks !== undefined);
-    expect(withRanks.map(n => n.id)).toEqual(['1501', '2503', '3505']);
+    expect(withRanks.map(n => n.id)).toEqual(['1501', '2503', '3505', '3507']);
     expect(withRanks[0]!.prereqRanks).toEqual({ '1201': 50 });
     // 1.1.2 齒輪二階骰子：NeedNode 2203|2303|2403、NeedNodeRank 50|1|1
     expect(withRanks[1]!.prereqRanks).toEqual({ '2203': 50 });
     // 1.1.4 極限骰子：NeedNode 3205|3305|3405、NeedNodeRank 50|1|1
     expect(withRanks[2]!.prereqRanks).toEqual({ '3205': 50 });
+    // 1.2.1 無限冶煉骰子：NeedNode 3207|3307|3407、NeedNodeRank 50|1|1
+    expect(withRanks[3]!.prereqRanks).toEqual({ '3207': 50 });
     // 反向：前置自己身上不該有這個欄位（條件是掛在超越骰子身上的）
-    for (const id of ['1201', '1301', '1401', '1601', '2203', '2303', '2403', '2603', '3205', '3305', '3405', '3605']) {
+    for (const id of ['1201', '1301', '1401', '1601', '2203', '2303', '2403', '2603', '3205', '3305', '3405', '3605', '3207', '3307', '3407', '3607']) {
       expect(data.nodes.find(n => n.id === id)!.prereqRanks).toBeUndefined();
     }
   });

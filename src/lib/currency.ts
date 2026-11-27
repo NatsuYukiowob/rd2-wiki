@@ -1,5 +1,5 @@
 // 超越核心（遊戲 GoodsType `CORE_*`）的登記表：每一顆超越骰子各帶一種專屬貨幣，
-// 只用在那顆骰子與它的符文上（1.1.0 太陽骰子的「太陽核心」、1.1.2 齒輪二階骰子的「齒輪二階核心」、1.1.4 極限骰子的「極限核心」）。
+// 只用在那顆骰子與它的符文上（1.1.0 太陽骰子的「太陽核心」、1.1.2 齒輪二階骰子的「齒輪二階核心」、1.1.4 極限骰子的「極限核心」、1.2.1 無限冶煉骰子的「無限冶煉核心」）。
 //
 // ⚠️ **新增一顆超越骰子＝在這裡加一筆，不改任何型別。** `Cost.mythic` 的鍵是這裡的 `kind`，
 // 成本字串的解析（`parseCost`）、顯示（`formatCost`／`costHtml`）、`/sim` 的上限欄、
@@ -22,6 +22,7 @@ export const MYTHIC_CORES: readonly MythicCoreDef[] = [
   { kind: 'solar', label: '太陽核心', goodsType: 'CORE_SOLAR' },
   { kind: 'gearSecond', label: '齒輪二階核心', goodsType: 'CORE_GEAR_SECOND' },
   { kind: 'extreme', label: '極限核心', goodsType: 'CORE_EXTREME' },
+  { kind: 'transmute', label: '無限冶煉核心', goodsType: 'CORE_TRANSMUTE' },
 ];
 
 const BY_KIND = new Map(MYTHIC_CORES.map(d => [d.kind, d]));

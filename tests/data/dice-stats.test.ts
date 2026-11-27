@@ -9,8 +9,8 @@ import type { DiceStatsTable } from '../../src/lib/types';
 const table = JSON.parse(readFileSync('data/dice-stats.json', 'utf8')) as DiceStatsTable;
 
 describe('data/dice-stats.json', () => {
-  it('45 顆骰子，每顆至少有攻擊力、攻擊速度、目標三項', () => {
-    expect(Object.keys(table)).toHaveLength(45);   // 1.1.6 扭曲骰子 D409 +1
+  it('46 顆骰子，每顆至少有攻擊力、攻擊速度、目標三項', () => {
+    expect(Object.keys(table)).toHaveLength(46);   // 1.1.6 扭曲骰子 D409 +1、1.2.1 無限冶煉骰子 D308 +1
     for (const [gameId, entry] of Object.entries(table)) {
       expect(entry.stats.map(s => s.label).slice(0, 3), gameId).toEqual(['攻擊力', '攻擊速度', '目標']);
     }
@@ -26,9 +26,10 @@ describe('data/dice-stats.json', () => {
   // 1.1.6 的扭曲骰子（D409）取自客戶端表，多 4 項（攻擊力、攻擊速度、扭曲疊加上限、扭曲持續時間）。
   // 1.2.0 審判骰子改成子彈型（攻擊速度回來、原本的補充量改成「最大補充量」四檔＋固定的「拳擊最大補充量」），多 1 項；
   // 狙擊骰子攻擊週期換成攻擊速度，項數不變。
-  it('帶四個檔位的項目正好 141 個＝官方強化分頁 97 列＋太陽骰子 2 項－審判骰子攻擊速度＋齒輪二階骰子 5 項＋補齊的 30 項＋極限骰子 3 項＋扭曲骰子 4 項＋1.2.0 審判骰子攻擊速度', () => {
+  // 1.2.1 的無限冶煉骰子（D308）取自客戶端表，多 3 項（攻擊力、攻擊速度、每等級傷害增益量）。
+  it('帶四個檔位的項目正好 144 個＝官方強化分頁 97 列＋太陽骰子 2 項－審判骰子攻擊速度＋齒輪二階骰子 5 項＋補齊的 30 項＋極限骰子 3 項＋扭曲骰子 4 項＋1.2.0 審判骰子攻擊速度＋無限冶煉骰子 3 項', () => {
     const scaling = Object.values(table).flatMap(e => e.stats).filter(s => s.dice7 !== undefined);
-    expect(scaling).toHaveLength(141);
+    expect(scaling).toHaveLength(144);
   });
 
   // 官方表自己空著的格子照原文寫成「待實測」。刻意逐格釘住而不是只數個數：上游哪天補了值，
@@ -60,7 +61,8 @@ describe('data/dice-stats.json', () => {
     // `Local_Appearance`，性質同機制說明。
     // D209 齒輪二階骰子同理（1.1.2 客戶端 `MythicTranscendTable` 的超越條件＋召喚時的齒輪種類）。
     // D307 極限骰子同理（1.1.4 客戶端 `MythicTranscendTable` 的超越條件：連擊骰子 111 連擊）。
-    expect(noted.map(([g]) => g).sort()).toEqual(['D005', 'D008', 'D102', 'D104', 'D201', 'D208', 'D209', 'D307']);
+    // D308 無限冶煉骰子同理（1.2.1 客戶端 `MythicTranscendTable` 的超越條件：藥水疊加的骰子 15 個以上）。
+    expect(noted.map(([g]) => g).sort()).toEqual(['D005', 'D008', 'D102', 'D104', 'D201', 'D208', 'D209', 'D307', 'D308']);
     for (const [gameId, e] of noted) {
       expect(e.note, `${gameId} 的備註看起來是校訂記錄不是機制說明`).not.toMatch(/^原始.*文本/);
     }

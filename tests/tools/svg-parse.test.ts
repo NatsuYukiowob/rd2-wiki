@@ -28,9 +28,10 @@ describe('parseTree（真實資料）', () => {
   const r = parseTree(svg);
 
   // 1.1.6 加了扭曲骰子 5010、符文 5210／5310／5410、五顆骰子技能威力 1116／2116／3116／4116／5116：節點 +9、邊 +9。
+  // 1.2.1 加了無限冶煉骰子 3507 與冶煉強化 3607：節點 +2、邊 +3（3307→3507、3407→3507、3507→3607）。
   it('節點與邊的數量正確', () => {
-    expect(r.nodes).toHaveLength(254);
-    expect(r.edges).toHaveLength(266);
+    expect(r.nodes).toHaveLength(256);
+    expect(r.edges).toHaveLength(269);
   });
   it('meta 來自 svg 屬性與 metadata', () => {
     // 期望值從正本的原始文字現場取，不寫死版本號與畫布尺寸。這條測的是「parser 有沒有把
@@ -87,9 +88,9 @@ describe('parseTree（真實資料）', () => {
   });
   it('形狀由子元素判定：rect / 4 點 polygon / circle / 6 點 polygon', () => {
     const count = (s: string) => r.nodes.filter(n => n.shape === s).length;
-    // 1.1.6：扭曲骰子 rect +1、扭曲符文 diamond +3、骰子技能威力 circle +5。
-    expect(count('rect')).toBe(45);
-    expect(count('diamond')).toBe(129);
+    // 1.1.6：扭曲骰子 rect +1、扭曲符文 diamond +3、骰子技能威力 circle +5。1.2.1：無限冶煉骰子 rect +1、冶煉強化 diamond +1。
+    expect(count('rect')).toBe(46);
+    expect(count('diamond')).toBe(130);
     expect(count('circle')).toBe(75);
     expect(count('hex')).toBe(5);
   });
@@ -105,10 +106,10 @@ describe('parseTree（真實資料）', () => {
   });
 
   it('label 是獨立資料，不是 name 的副本（實測 65 個不同）——所以它是欄位不是衍生值', () => {
-    // 若兩者永遠相同，label 就該從 nodes.json 拿掉、由 name 推導。65/254 是縮寫
+    // 若兩者永遠相同，label 就該從 nodes.json 拿掉、由 name 推導。65/256 是縮寫
     // （`所有骰子傷害` → `全骰傷害`），所以它得自己一欄。這條測的是那個前提還成立。
     const ids = Object.keys(nodeText);
-    expect(ids).toHaveLength(254);
+    expect(ids).toHaveLength(256);
     // 1.1.6 五顆骰子技能威力的 label 是「技能威力」：+5。
     expect(ids.filter(id => nodeText[id]!.label !== nodeText[id]!.name)).toHaveLength(65);
   });

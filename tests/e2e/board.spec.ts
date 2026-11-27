@@ -74,12 +74,12 @@ function theirs(sel: string): string {
 /** helper 收的「哪一盤」：`mine` 或 `theirs`。 */
 type SideSel = (sel: string) => string;
 
-test('B0. 骰盤頁的骨架：15 格、5 個組合槽、45 顆可挑選的骰子', async ({ page }) => {
+test('B0. 骰盤頁的骨架：15 格、5 個組合槽、46 顆可挑選的骰子', async ({ page }) => {
   await page.goto('/board');
   await expect(page.locator('#board-grid .board-cell')).toHaveCount(15);
   await expect(page.locator('#deck-row .deck-slot')).toHaveCount(5);
   await expect(page.locator('#dice-picker .picker-dice')).toHaveCount(dice.length);
-  expect(dice).toHaveLength(45);   // 1.1.6 扭曲骰子 +1
+  expect(dice).toHaveLength(46);   // 1.1.6 扭曲骰子 +1、1.2.1 無限冶煉骰子 +1
 
   // 正面證明這三個選擇器抓得到東西——B0b 的「不存在」斷言全靠它們沒打錯字。
   await expect(page.locator('#deck-row .pips-row')).toHaveCount(5);
@@ -126,7 +126,7 @@ test('B0c. 導覽列有「骰盤」入口且在本頁標成目前分頁', async 
   await expect(link).toHaveAttribute('aria-current', 'page');
 });
 
-test('B0d. 45 顆骰子的挑選圖示都指向純骰子圖，而且每一張都真的載得到', async ({ page }) => {
+test('B0d. 46 顆骰子的挑選圖示都指向純骰子圖，而且每一張都真的載得到', async ({ page }) => {
   // 換掉節點圖示（帶底板）之後這是第一道防線：src 對得上正則不代表圖真的存在——路徑打錯
   // 一個字或 build:data 漏轉一張，畫面上就是一個 41 分之一的破圖，naturalWidth 會是 0。
   await page.goto('/board');
@@ -139,7 +139,7 @@ test('B0d. 45 顆骰子的挑選圖示都指向純骰子圖，而且每一張都
   await expect(imgs).toHaveCount(dice.length);
 
   const srcs = await imgs.evaluateAll(els => els.map(el => el.getAttribute('src')));
-  expect(srcs).toHaveLength(45);   // 1.1.6 扭曲骰子 +1
+  expect(srcs).toHaveLength(46);   // 1.1.6 扭曲骰子 +1、1.2.1 無限冶煉骰子 +1
   for (const src of srcs) {
     expect(src, `${src} 沒有指向 /board 專用的純骰子圖路徑`).toMatch(/^\/assets\/board-icons\/[0-9a-f]{12}\.webp$/);
   }
@@ -1458,6 +1458,10 @@ test('B22b. 挑選網格開著時 Tab 走進骰盤：不開數值卡片（互斥
 
 test('B22c. 挑選網格開著時點骰盤上的骰子：不開數值卡片', async ({ page }) => {
   // 指標版的 B22b：網格是貼著視窗底部的 fixed 浮層，上方露出來的格子點得到，endDrag 若照開卡片就兩個都開著。
+  // 視窗加寬到 1600：1280×720 時網格是 4 列，頁面捲到底第 0 格中心只比網格上緣高 1px（45 顆骰子時），
+  // 1.2.1 多一顆名稱換兩行的骰子就被蓋住。加高視窗沒用（可捲距離同步變短）；加寬讓網格剩 3 列，
+  // 餘裕約 88px，骰子超過 51 顆（1600 寬一列 17 顆）時要再看一次。被測的互斥邏輯跟視窗大小無關。
+  await page.setViewportSize({ width: 1600, height: 720 });
   await page.goto('/board');
   await pickInto(page, 0, dice[0]!.id, 2);
   await drag(page, '.deck-dice[data-slot="0"]', '.board-cell[data-index="0"]');
