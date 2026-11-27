@@ -475,7 +475,7 @@
     "grade": "稀有",
     "cost": 70,
     "weight": 20,
-    "effect": "7骰點骰子達到3個以上時，7骰點骰子最終傷害增加10%",
+    "effect": "7骰點骰子達到3個以上時，最終傷害增加10%",
     "gameId": "AttackUpByMWhenSevenPipsNOrMore",
     "icon": "acfe447479de"
   },
