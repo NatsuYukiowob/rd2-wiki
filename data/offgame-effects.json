@@ -340,8 +340,8 @@
       "kind": "SolarMaxStackUp",
       "target": "statAdd",
       "scope": "dice:1501",
-      "value": 2,
-      "rankAdd": 2,
+      "value": 6,
+      "rankAdd": 6,
       "maxLevel": 20,
       "label": "太陽之力階段",
       "int": true
@@ -862,8 +862,8 @@
       "kind": "ResonanceBaseBuff",
       "target": "statAdd",
       "scope": "dice:3002",
-      "value": 5,
-      "rankAdd": 0.2,
+      "value": 2.5,
+      "rankAdd": 0.1,
       "maxLevel": 50,
       "label": "攻擊速度增益量"
     },

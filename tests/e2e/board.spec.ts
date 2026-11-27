@@ -2117,7 +2117,7 @@ test('B40. 盤面加成進卡片：光照到的火骰子攻速多一個括號、
   await expect(page.locator('#dice-detail .detail-board li')).toHaveText(['鄰格光 ×1：攻速 +20.8%']);
 });
 
-test('B41. 切換角標時卡片不收、數字即時變：排序朝右照到火骰子 → 150 (+30)；方向未指定時明細有提示；卡片收起後明細仍跟著變', async ({ page }) => {
+test('B41. 切換角標時卡片不收、數字即時變：排序朝右照到火骰子 → 150 (+23)（150×15%＝22.5）；方向未指定時明細有提示；卡片收起後明細仍跟著變', async ({ page }) => {
   await page.goto('/board');
   await pickInto(page, 0, ALIGN, 1);
   await pickInto(page, 1, dice[0]!.id, 1);
@@ -2132,8 +2132,8 @@ test('B41. 切換角標時卡片不收、數字即時變：排序朝右照到火
   await pressBadge(page, 0); // ↑
   await pressBadge(page, 0); // →
   await expect(page.locator('#dice-card'), '切換角標卡片不收').toBeVisible();
-  await expect(cardValue(page, '攻擊力')).toHaveText('150 (+30)');
-  await expect(page.locator('#dice-detail .detail-board li')).toHaveText(['排序（第 1 列第 1 格 →）：攻擊 +20%']);
+  await expect(cardValue(page, '攻擊力')).toHaveText('150 (+23)');
+  await expect(page.locator('#dice-detail .detail-board li')).toHaveText(['排序（第 1 列第 1 格 →）：攻擊 +15%']);
   await expect(page.locator(mine('.board-cell[data-index="0"]'))).toHaveClass(/\bbuff-src\b/);
 
   await pressBadge(page, 0); // ↓：射線離開火骰子
@@ -2145,7 +2145,7 @@ test('B41. 切換角標時卡片不收、數字即時變：排序朝右照到火
   await expect(badge(page, 0)).toHaveText('→');
   await page.keyboard.press('Escape');
   await expect(page.locator('#dice-card')).toBeHidden();
-  await expect(page.locator('#dice-detail .detail-board li')).toHaveText(['排序（第 1 列第 1 格 →）：攻擊 +20%']);
+  await expect(page.locator('#dice-detail .detail-board li')).toHaveText(['排序（第 1 列第 1 格 →）：攻擊 +15%']);
   await pressBadge(page, 0); // ↓
   await expect(page.locator('#dice-detail .detail-title')).toHaveText('火骰子 · 1 骰點 · 強化 Lv.1');
   await expect(page.locator('#dice-detail .detail-board')).toBeHidden();
@@ -2324,7 +2324,7 @@ test('B48. 合作：兩盤各自用指向對方的排序箭頭互相加成（隊
   await expect(page.locator('#partner-grid')).toBeVisible();
 
   // 隊友的局外加成預設是「全滿」（他的符文等級我們拿不到）：切成「不含」，排序那一列才是
-  // 乾淨的 20%，數字對得起 B41（同一顆骰子、同一個加成，只是換一盤施加）。
+  // 乾淨的 15%（1.2.1 起），數字對得起 B41（同一顆骰子、同一個加成，只是換一盤施加）。
   await page.locator('#partner-offgame-mode button[data-mode="none"]').click();
   // 隊友盤第 2 欄放一顆 1 骰點排序骰，角標切到「↓」——跨盤的只有箭頭指著我這一盤的那個方向，
   // 隊友盤畫在上面所以是 ↓（角標循環：無 → ↑ → → → ↓）。
@@ -2339,8 +2339,8 @@ test('B48. 合作：兩盤各自用指向對方的排序箭頭互相加成（隊
   await expect(modeBtn(page, 'none')).toHaveAttribute('aria-pressed', 'true');
 
   await page.locator(mine('.board-cell[data-index="6"]')).click();
-  await expect(cardValue(page, '攻擊力')).toHaveText('150 (+30)');
-  await expect(page.locator('#dice-detail .detail-board li')).toHaveText(['排序（隊友盤 第 1 列第 2 格 ↓）：攻擊 +20%']);
+  await expect(cardValue(page, '攻擊力')).toHaveText('150 (+23)');
+  await expect(page.locator('#dice-detail .detail-board li')).toHaveText(['排序（隊友盤 第 1 列第 2 格 ↓）：攻擊 +15%']);
   // 來源格在**隊友盤**上，我這一盤一格都不是來源。
   await expect(page.locator(theirs('.board-cell[data-index="1"]'))).toHaveClass(/\bbuff-src\b/);
   await expect(page.locator(theirs('.board-cell.buff-src'))).toHaveCount(1);
@@ -2351,12 +2351,12 @@ test('B48. 合作：兩盤各自用指向對方的排序箭頭互相加成（隊
   // 把卡片收掉，而同一個動作在我的那盤完全正常——只有這條斷言看得到那個半套失敗。
   await page.locator('#partner-offgame-mode button[data-mode="max"]').click();
   await expect(page.locator('#dice-card'), '改隊友的局外加成把卡片收掉了').toBeVisible();
-  // +90＝隊友全滿的排序列 +75 ＋ 疊加強化 ×1 層 +15：4307 讀施加者（隊友）那一盤的符文，
+  // +82＝隊友全滿的排序列 +66.75（15%＋排序增幅 Lv.50 29.5%）＋ 疊加強化 ×1 層 +15＝81.75 四捨五入：4307 讀施加者（隊友）那一盤的符文，
   // 我的盤是「不含」也照樣吃得到（2026-09-24 review board-1，客戶端 A32604C）。
-  await expect(cardValue(page, '攻擊力')).toHaveText('150 (+90)');
+  await expect(cardValue(page, '攻擊力')).toHaveText('150 (+82)');
   await expect(page.locator('#dice-detail .detail-board li')).toContainText(['排序疊加強化 ×1：攻擊 +10%']);
   await page.locator('#partner-offgame-mode button[data-mode="none"]').click();
-  await expect(cardValue(page, '攻擊力')).toHaveText('150 (+30)');
+  await expect(cardValue(page, '攻擊力')).toHaveText('150 (+23)');
 
   // 反過來那一半：我的盤畫在下面，所以「↑」那顆才打到隊友盤。兩盤的跨盤方向是相反的，
   // 實作若兩份都傳同一個方向，這一段與上面那一段必定有一段靜靜地算不出加成（兩段都要留）。
@@ -2368,8 +2368,8 @@ test('B48. 合作：兩盤各自用指向對方的排序箭頭互相加成（隊
   await pickInto(page, 1, dice[0]!.id, 1, theirs);
   await drag(page, '.deck-dice[data-slot="1"]', '.board-cell[data-index="5"]', theirs);
   await page.locator(theirs('.board-cell[data-index="5"]')).click();
-  await expect(cardValue(page, '攻擊力')).toHaveText('150 (+30)');
-  await expect(page.locator('#dice-detail .detail-board li')).toHaveText(['排序（我的盤 第 3 列第 1 格 ↑）：攻擊 +20%']);
+  await expect(cardValue(page, '攻擊力')).toHaveText('150 (+23)');
+  await expect(page.locator('#dice-detail .detail-board li')).toHaveText(['排序（我的盤 第 3 列第 1 格 ↑）：攻擊 +15%']);
   await expect(page.locator(mine('.board-cell[data-index="10"]'))).toHaveClass(/\bbuff-src\b/);
 
   // 切回對戰：兩盤不再合算，同一顆骰子回到 150。
